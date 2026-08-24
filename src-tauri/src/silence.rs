@@ -83,7 +83,7 @@ pub fn compute_kept_ranges(l: &[f32], r: &[f32], sr: u32, cfg: &SilenceConfig) -
     }
 
     if cuts.is_empty() {
-        return vec![(0, n)];
+        return vec![];
     }
 
     // build kept ranges = inverse of cuts, padded by keep_ms
@@ -109,6 +109,7 @@ pub fn compute_kept_ranges(l: &[f32], r: &[f32], sr: u32, cfg: &SilenceConfig) -
 pub fn cut_silence(l: &mut Vec<f32>, r: &mut Vec<f32>, sr: u32, cfg: &SilenceConfig) -> f32 {
     let before = l.len().min(r.len());
     let ranges = compute_kept_ranges(l, r, sr, cfg);
+    if ranges.is_empty() { return 0.0; }
 
     let fade = (cfg.fade_ms as usize * sr as usize / 1000).max(2);
     let mut nl = Vec::with_capacity(before);

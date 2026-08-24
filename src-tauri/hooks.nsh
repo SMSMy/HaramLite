@@ -1,13 +1,11 @@
-!macro NSIS_HOOK_PREINSTALL
-  ; Check if Visual C++ 2015-2022 Redistributable is installed
-  ReadRegDWord $0 HKLM "SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" "Installed"
+!macro NSIS_HOOK_POSTINSTALL
+  DetailPrint "Installing Microsoft Visual C++ Redistributable..."
+  ExecWait '"$INSTDIR\vc_redist.x64.exe" /install /quiet /norestart' $0
+  DetailPrint "vc_redist exit code: $0"
   
-  ${If} $0 != 1
-    DetailPrint "Extracting Microsoft Visual C++ Redistributable..."
-    SetOutPath $PLUGINSDIR
-    File "..\..\..\..\vc_redist.x64.exe"
-    
-    DetailPrint "Installing Microsoft Visual C++ Redistributable..."
-    ExecWait '"$PLUGINSDIR\vc_redist.x64.exe" /install /passive /norestart'
+  ${If} $0 != 0
+  ${AndIf} $0 != 3010
+  ${AndIf} $0 != 1638
+    DetailPrint "تحذير: فشل تثبيت VC++ Redistributable (كود $0)"
   ${EndIf}
 !macroend

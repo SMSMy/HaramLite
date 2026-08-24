@@ -36,7 +36,8 @@
     ],
     "resources": {
       "../bin": "bin",
-      "../models": "models"
+      "../models": "models",
+      "vc_redist.x64.exe": "."
     },
     "windows": {
       "nsis": {

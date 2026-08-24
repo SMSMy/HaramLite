@@ -197,7 +197,7 @@ fn run_files(o: &CliOpts) -> i32 {
         } else {
             pipeline::OutKind::Audio { fmt: o.format }
         };
-        match pipeline::process_file(path, &out_dir, o.mode, kind, o.keep_both, false, &|p| {
+        match pipeline::process_file(path, &out_dir, o.mode, kind, o.keep_both || o.keep_inst_only, false, &|p| {
             let pct = (p * 100.0) as u32;
             if pct > last_pct.get() + 4 {
                 last_pct.set(pct);

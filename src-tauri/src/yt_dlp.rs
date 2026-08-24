@@ -295,8 +295,9 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
         let _ = std::fs::create_dir_all(parent);
     }
 
+    let new_path = target.with_extension("new");
     let dl_progress = |p: f32| progress(p * 0.9); // reserve 10% for verify/swap
-    if let Err(e) = download_verified(&release.exe_url, &target, &expected, &dl_progress) {
+    if let Err(e) = download_verified(&release.exe_url, &new_path, &expected, &dl_progress) {
         let msg = format!("فشل تنزيل التحديث (أبقينا النسخة العاملة): {e}");
         tracing::warn!(target: "ytdlp", "{msg}");
         return (false, msg);
@@ -307,6 +308,12 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
     let backup = target.with_extension("exe.previous");
     if let Some(active_path) = &active {
         let _ = std::fs::copy(active_path, &backup);
+    }
+    
+    if let Err(e) = std::fs::rename(&new_path, &target) {
+        let msg = format!("فشل تبديل الملف الجديد: {e}");
+        tracing::warn!(target: "ytdlp", "{msg}");
+        return (false, msg);
     }
     let probe = make_cmd(&target).arg("--version").output();
     match probe {

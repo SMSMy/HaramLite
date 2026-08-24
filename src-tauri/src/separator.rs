@@ -442,8 +442,9 @@ mod tests {
         write_wav_stereo_f32(&wav_path, &l, &r, 44100).unwrap();
 
         let out_dir = tmp.join("out");
-        let stems = separate(&wav_path, &out_dir, &|p| {
-            tracing::debug!(target: "sep_test", "progress {:.0}%", p * 100.0)
+        let stems = separate(&wav_path, &out_dir, false, &|p| {
+            tracing::debug!(target: "sep_test", "progress {:.0}%", p * 100.0);
+            true
         })
         .expect("separation failed");
 
