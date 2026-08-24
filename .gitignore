@@ -27,7 +27,6 @@ dist-ssr
 /bin/
 /models/
 /docs/
-/IMG/
 HaramLite Downloads/
 .env
 /src-tauri/target/

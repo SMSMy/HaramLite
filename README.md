@@ -6,22 +6,7 @@
 
 ---
 
-## أهل الفضل
 
-هذا المشروع واقف على أكتاف ناس تعبوا قبلنا، فجزاهم الله خير:
-
-- الملهم الأصلي: [@alganzory](https://github.com/alganzory) ومشروع [HaramMute](https://github.com/alganzory) الأساسي.
-- نماذج الفصل (MDX-Net) المُدربة والمطورة عبر مشروع [Ultimate Vocal Remover (UVR)](https://github.com/Anjok07/ultimatevocalremovergui).
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) للتحميل من الإنترنت بكفاءة.
-- [FFmpeg](https://ffmpeg.org/) للقص، الدمج، التحويل، والهندسة الصوتية.
-- [ONNX Runtime](https://onnxruntime.ai/) لتشغيل نماذج الذكاء الاصطناعي مباشرة وبسرعة فائقة (بدون الحاجة لـ PyTorch).
-- إطار العمل [Tauri](https://tauri.app/) و لغة [Rust](https://www.rust-lang.org/) لبناء واجهة سريعة وخفيفة (بديلة لـ PyQt).
-
-## تنبيه صغير
-
-العزل الصوتي مو سحر. إذا الموسيقى ماسكة يد الصوت ومتمشية معه في نفس الترددات، البرنامج يحاول يفكهم بأدب، لكن قد تلاحظ بعض التأثير على خامة الصوت الأصلية. استخدم وضع "مقطع عادي (Clip)" لتخفيف هذا التأثير إذا لم تكن بحاجة لإزالة فترات الصمت.
-
----
 
 ## المميزات
 
@@ -107,3 +92,16 @@ pnpm tauri dev
 pnpm tauri build
 ```
 *(ستجد الملف التنفيذي الجاهز داخل `src-tauri/target/release/haramlite.exe`)*
+
+---
+
+## أهل الفضل
+
+هذا المشروع واقف على أكتاف ناس تعبوا قبلنا، فجزاهم الله خير:
+
+- الملهم الأصلي: [@alganzory](https://github.com/alganzory) ومشروع [HaramMute](https://github.com/alganzory) الأساسي.
+- نماذج الفصل (MDX-Net) المُدربة والمطورة عبر مشروع [Ultimate Vocal Remover (UVR)](https://github.com/Anjok07/ultimatevocalremovergui).
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) للتحميل من الإنترنت بكفاءة.
+- [FFmpeg](https://ffmpeg.org/) للقص، الدمج، التحويل، والهندسة الصوتية.
+- [ONNX Runtime](https://onnxruntime.ai/) لتشغيل نماذج الذكاء الاصطناعي مباشرة وبسرعة فائقة (بدون الحاجة لـ PyTorch).
+- إطار العمل [Tauri](https://tauri.app/) و لغة [Rust](https://www.rust-lang.org/) لبناء واجهة سريعة وخفيفة (بديلة لـ PyQt).
