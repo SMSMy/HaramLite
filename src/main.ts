@@ -114,6 +114,7 @@ const view = document.getElementById('log-view') as HTMLDivElement;
 const autoscroll = document.getElementById('autoscroll') as HTMLInputElement;
 
 function renderLogs(lines: LogLine[]): void {
+  const stick = nearBottom();
   const frag = document.createDocumentFragment();
   for (const line of lines) {
     const div = document.createElement('div');
@@ -125,9 +126,10 @@ function renderLogs(lines: LogLine[]): void {
     div.append(lvl, body);
     frag.appendChild(div);
   }
-  const stick = autoscroll.checked && nearBottom();
   view.replaceChildren(frag);
-  if (stick || autoscroll.checked) view.scrollTop = view.scrollHeight;
+  if (stick && autoscroll.checked) {
+    view.scrollTop = view.scrollHeight;
+  }
 }
 
 function nearBottom(): boolean {

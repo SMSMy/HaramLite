@@ -459,15 +459,17 @@
 <!-- Bottom Log Drawer -->
 <div id="logcard" class="glass-effect border-t border-border-muted flex flex-col z-50 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.5)] collapsed">
 <button id="log-toggle" class="w-full flex justify-between items-center px-gutter py-stack-sm bg-coal-surface/80 hover:bg-surface-container-high transition-colors duration-300 apple-ease cursor-pointer border-b border-border-muted group active:bg-surface-variant">
-<span class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-unit transition-colors duration-300 group-hover:text-cream-text">
-<span class="material-symbols-outlined text-sm" data-icon="terminal">terminal</span>
-                سجل الأحداث / Activity Log
-            </span>
 <div class="flex items-center gap-stack-md">
-<label class="autoscroll text-xs text-on-surface-variant hover:text-cream-text transition-colors flex items-center gap-unit cursor-pointer" onclick="event.stopPropagation()">
-<input type="checkbox" id="autoscroll" class="form-checkbox h-3 w-3 text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent focus:ring-offset-coal-surface transition-all duration-200" checked /> المتابعة التلقائية
-</label>
-<span class="material-symbols-outlined text-on-surface-variant text-sm transition-transform duration-300 apple-ease group-hover:-translate-y-0.5 group-hover:text-cream-text" data-icon="expand_less">expand_less</span>
+    <span class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-unit transition-colors duration-300 group-hover:text-cream-text">
+        <span class="material-symbols-outlined text-sm" data-icon="terminal">terminal</span>
+        سجل الأحداث / Activity Log
+    </span>
+    <label class="autoscroll text-xs text-on-surface-variant hover:text-cream-text transition-colors flex items-center gap-unit cursor-pointer" onclick="event.stopPropagation()">
+        <input type="checkbox" id="autoscroll" class="form-checkbox h-3 w-3 text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent focus:ring-offset-coal-surface transition-all duration-200" checked /> المتابعة التلقائية
+    </label>
+</div>
+<div class="flex items-center gap-stack-md">
+    <span class="material-symbols-outlined text-on-surface-variant text-sm transition-transform duration-300 apple-ease group-hover:-translate-y-0.5 group-hover:text-cream-text" data-icon="expand_less">expand_less</span>
 </div>
 </button>
 <div class="h-32 bg-coal-bg/90 p-stack-sm overflow-y-auto font-mono-code text-mono-code text-on-surface-variant scroll-smooth" dir="ltr" id="log-view">

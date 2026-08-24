@@ -259,8 +259,10 @@ fn open_file(path: String) -> Result<(), String> {
     
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
         std::process::Command::new("cmd")
             .args(["/c", "start", "", &target.to_string_lossy()])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .spawn()
             .map_err(|e| e.to_string())?;
     }

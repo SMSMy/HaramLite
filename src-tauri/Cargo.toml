@@ -1,6 +1,6 @@
 [package]
 name = "haramlite-rs"
-version = "0.1.0"
+version = "0.1.1"
 description = "HaramLite — lightweight AI music removal (Rust/Tauri)"
 authors = ["HaramMute"]
 edition = "2021"
