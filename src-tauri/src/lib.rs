@@ -163,7 +163,7 @@ async fn separate_file(
     // doesn't take use_cuda! I need to modify pipeline::process_file to take use_cuda.
     // Let me just set an environment variable or thread local?
     // Let's modify pipeline::process_file to take `use_cuda: bool`.
-    let out = pipeline::process_file(Path::new(&path), Path::new(&out_dir), mode, kind, keep_inst, cuda_enabled, &|p| {
+    let out = pipeline::process_file(Path::new(&path), Path::new(&out_dir), mode, kind, keep_inst, true, cuda_enabled, &|p| {
         let _ = app.emit("sep-progress", p.clamp(0.0, 1.0));
         !cancel.load(Ordering::SeqCst)
     })

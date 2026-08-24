@@ -31,3 +31,4 @@ HaramLite Downloads/
 .env
 /src-tauri/target/
 /font/تعليمات استخدام الخط.md
+src-tauri/vc_redist.x64.exe

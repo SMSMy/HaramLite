@@ -100,6 +100,7 @@ pub fn process_file(
     mode: Mode,
     kind: OutKind,
     keep_instrumental: bool,
+    keep_vocals: bool,
     use_cuda: bool,
     progress: &dyn Fn(f32) -> bool,
 ) -> Result<PipelineOutput, PipelineError> {
@@ -206,12 +207,24 @@ pub fn process_file(
                     }
                     Ok(())
                 };
-                encode_one(&mut vocals_path)?;
-                final_vocals = Some(vocals_path);
+                
+                if keep_vocals {
+                    encode_one(&mut vocals_path)?;
+                    final_vocals = Some(vocals_path);
+                } else {
+                    let _ = std::fs::remove_file(&vocals_path);
+                    final_vocals = None;
+                }
+                
                 if let Some(ip) = &mut instrumental_path {
                     encode_one(ip)?;
                 }
                 tracing::info!(target: "pipe", "encoded stems to {}", fmt.as_str());
+            } else {
+                if !keep_vocals {
+                    let _ = std::fs::remove_file(&vocals_path);
+                    final_vocals = None;
+                }
             }
         }
     }
