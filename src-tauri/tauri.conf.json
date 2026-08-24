@@ -37,6 +37,11 @@
     "resources": {
       "../bin": "bin",
       "../models": "models"
+    },
+    "windows": {
+      "nsis": {
+        "installerHooks": "hooks.nsh"
+      }
     }
   }
 }
