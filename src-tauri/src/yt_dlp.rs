@@ -14,6 +14,16 @@ use std::process::Command;
 
 use serde::Serialize;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+fn make_cmd<S: AsRef<std::ffi::OsStr>>(program: S) -> Command {
+    let mut cmd = Command::new(program);
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+    cmd
+}
+
 const RELEASE_API: &str = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
 const SUMS_URL_SUFFIX: &str = "/releases/latest/download/SHA2-256SUMS";
 const ASSET_NAME: &str = "yt-dlp.exe";
@@ -105,7 +115,7 @@ fn write_state(st: &UpdateState) -> Result<(), YtError> {
 
 pub fn local_version() -> Option<String> {
     let exe = resolve_ytdlp()?;
-    let out = Command::new(&exe).arg("--version").output().ok()?;
+    let out = make_cmd(&exe).arg("--version").output().ok()?;
     String::from_utf8_lossy(&out.stdout).trim().to_string().into()
 }
 
@@ -298,7 +308,7 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
     if let Some(active_path) = &active {
         let _ = std::fs::copy(active_path, &backup);
     }
-    let probe = Command::new(&target).arg("--version").output();
+    let probe = make_cmd(&target).arg("--version").output();
     match probe {
         Ok(o) if o.status.success() => {
             let ver = String::from_utf8_lossy(&o.stdout).trim().to_string();
@@ -342,7 +352,7 @@ pub fn download_media(
     std::fs::create_dir_all(out_dir).map_err(|e| YtError::Io(e.to_string()))?;
 
     let tmpl = out_dir.join("%(title)s.%(ext)s");
-    let mut cmd = Command::new(&exe);
+    let mut cmd = make_cmd(&exe);
     cmd.args([
         "--newline",
         "--no-playlist",

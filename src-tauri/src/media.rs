@@ -76,8 +76,18 @@ pub fn resolve_tool(tool: &str) -> Result<PathBuf, MediaError> {
     Err(MediaError::ToolMissing(tool.to_string()))
 }
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+fn make_cmd<S: AsRef<std::ffi::OsStr>>(program: S) -> Command {
+    let mut cmd = Command::new(program);
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+    cmd
+}
+
 fn run_tool(tool_path: &Path, args: &[&str]) -> Result<String, MediaError> {
-    let out = Command::new(tool_path)
+    let out = make_cmd(tool_path)
         .args(args)
         .output()
         .map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
@@ -254,7 +264,7 @@ pub fn remux_video_with_audio(input: &Path, audio_wav: &Path, out_path: &Path) -
 }
 
 fn run_ffmpeg(ffmpeg: &Path, args: &[&str]) -> Result<(), MediaError> {
-    let out = Command::new(ffmpeg)
+    let out = make_cmd(ffmpeg)
         .args(args)
         .output()
         .map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
@@ -279,7 +289,7 @@ mod tests {
         std::fs::create_dir_all(dir).unwrap();
 
         let wav = dir.join("tone.wav");
-        let status = Command::new(&ffmpeg)
+        let status = make_cmd(&ffmpeg)
             .args([
                 "-y", "-v", "error",
                 "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
@@ -290,7 +300,7 @@ mod tests {
         assert!(status.success());
 
         let mp4_audio_only = dir.join("fake_video.mp4");
-        let status = Command::new(&ffmpeg)
+        let status = make_cmd(&ffmpeg)
             .args([
                 "-y", "-v", "error",
                 "-i", &wav.to_string_lossy(),
@@ -381,7 +391,7 @@ pub fn export_video_with_cuts(
     let out_str = out_path.to_string_lossy().into_owned();
     let fc = format!("[0:v]{chain}[v]");
 
-    let status = Command::new(&ffmpeg)
+    let status = make_cmd(&ffmpeg)
         .args([
             "-y", "-v", "error",
             "-i", &video_str,
