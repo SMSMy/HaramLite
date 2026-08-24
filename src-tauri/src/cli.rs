@@ -197,12 +197,13 @@ fn run_files(o: &CliOpts) -> i32 {
         } else {
             pipeline::OutKind::Audio { fmt: o.format }
         };
-        match pipeline::process_file(path, &out_dir, o.mode, kind, o.keep_both, &|p| {
+        match pipeline::process_file(path, &out_dir, o.mode, kind, o.keep_both, false, &|p| {
             let pct = (p * 100.0) as u32;
             if pct > last_pct.get() + 4 {
                 last_pct.set(pct);
                 eprint!("\r  [{:>3}%]", pct.min(100));
             }
+            true
         }) {
             Ok(out) => {
                 eprintln!("\r  [100%] تم في {:.1}s", t0.elapsed().as_secs_f32());

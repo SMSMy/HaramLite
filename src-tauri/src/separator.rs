@@ -167,51 +167,86 @@ struct MdxSession {
 pub static ACTIVE_PROVIDER: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 impl MdxSession {
-    fn load() -> Result<Self, SepError> {
+    fn load(use_cuda: bool) -> Result<Self, SepError> {
         let model_path = resolve_model()?;
         let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
 
-        // Globally initialize ORT with DirectML support (only succeeds the first time)
+        // Initialize ORT.
+        let mut ep_list = Vec::new();
+        if use_cuda {
+            use ort::execution_providers::{CUDAExecutionProvider, ExecutionProvider};
+            ep_list.push(CUDAExecutionProvider::default().build());
+        }
         use ort::execution_providers::{DirectMLExecutionProvider, ExecutionProvider};
+        ep_list.push(DirectMLExecutionProvider::default().build());
+
         let _ = ort::init()
-            .with_execution_providers([DirectMLExecutionProvider::default().build()])
+            .with_execution_providers(ep_list)
             .commit();
 
-        // GPU-first: DirectML works on ANY DX12 GPU (NVIDIA/AMD/Intel) with a
-        // single lightweight DLL; CPU EP ships in the same binary as fallback.
-        // If the DML session fails to initialize we rebuild a pure-CPU one.
-        let build = |use_dml: bool| -> Result<ort::session::Session, SepError> {
+        let build = |provider_type: &str| -> Result<ort::session::Session, SepError> {
             let mut b = ort::session::Session::builder()
                 .map_err(|e| SepError::Inference(e.to_string()))?
                 .with_intra_threads(threads)
                 .map_err(|e| SepError::Inference(e.to_string()))?
-                // silence ONNX Runtime's chatty session logs
                 .with_log_level(ort::logging::LogLevel::Error)
                 .map_err(|e| SepError::Inference(e.to_string()))?;
-            if use_dml {
+
+            if provider_type == "cuda" {
+                use ort::execution_providers::{CUDAExecutionProvider, ExecutionProvider};
+                b = b.with_execution_providers([CUDAExecutionProvider::default().build()])
+                    .map_err(|e| SepError::Inference(e.to_string()))?;
+            } else if provider_type == "dml" {
                 use ort::execution_providers::{DirectMLExecutionProvider, ExecutionProvider};
                 b = b
                     .with_execution_providers([DirectMLExecutionProvider::default().build()])
                     .map_err(|e| SepError::Inference(e.to_string()))?
-                    // memory patterns are unsupported on DML
                     .with_memory_pattern(false)
                     .map_err(|e| SepError::Inference(e.to_string()))?;
             }
+
             b.commit_from_file(&model_path)
                 .map_err(|e| SepError::Inference(format!("{}: {e}", model_path.display())))
         };
 
-        let (session, provider) = match build(true) {
-            Ok(s) => {
-                tracing::info!(target: "sep", "execution provider: DirectML (GPU) ✓");
-                (s, "DirectML")
+        let mut provider_name = "CPU";
+        let session = if use_cuda {
+            match build("cuda") {
+                Ok(s) => {
+                    tracing::info!(target: "sep", "execution provider: CUDA (NVIDIA GPU) ✓");
+                    provider_name = "CUDA";
+                    s
+                }
+                Err(e) => {
+                    tracing::warn!(target: "sep", "CUDA init failed ({e}) — falling back to DirectML");
+                    match build("dml") {
+                        Ok(s) => {
+                            tracing::info!(target: "sep", "execution provider: DirectML (GPU) ✓");
+                            provider_name = "DirectML";
+                            s
+                        }
+                        Err(dml_err) => {
+                            tracing::warn!(target: "sep", "DirectML init failed ({dml_err}) — falling back to CPU");
+                            build("cpu")?
+                        }
+                    }
+                }
             }
-            Err(dml_err) => {
-                tracing::warn!(target: "sep", "DirectML init failed ({dml_err}) — falling back to CPU");
-                (build(false)?, "CPU")
+        } else {
+            match build("dml") {
+                Ok(s) => {
+                    tracing::info!(target: "sep", "execution provider: DirectML (GPU) ✓");
+                    provider_name = "DirectML";
+                    s
+                }
+                Err(dml_err) => {
+                    tracing::warn!(target: "sep", "DirectML init failed ({dml_err}) — falling back to CPU");
+                    build("cpu")?
+                }
             }
         };
-        let _ = ACTIVE_PROVIDER.set(provider.to_string());
+
+        let _ = ACTIVE_PROVIDER.set(provider_name.to_string());
         tracing::info!(target: "sep", "ONNX session ready: {}", model_path.display());
         Ok(Self { session, plan: StftPlan::new() })
     }
@@ -266,31 +301,32 @@ impl MdxSession {
 }
 
 /// demix(): overlapping-window accumulation loop, exact port of python demix.
-fn demix(session: &mut MdxSession, mix: &[Vec<f32>; 2], progress: &dyn Fn(f32)) -> Result<Vec<Vec<f32>>, SepError> {
-    let n = mix[0].len();
-    let gen_size = CHUNK_SIZE - 2 * TRIM;
-    let pad = gen_size + TRIM - (n % gen_size);
+fn demix(
+    session: &mut MdxSession,
+    mix: &[Vec<f32>; 2],
+    progress: &dyn Fn(f32) -> bool,
+) -> Result<[Vec<f32>; 2], SepError> {
+    let mixture_len = mix[0].len();
+    let n = mixture_len;
 
-    let mixture_len = TRIM + n + pad;
-    let mut mixture = [
-        vec![0.0f32; mixture_len],
-        vec![0.0f32; mixture_len],
-    ];
+    // pad exactly TRIM samples on both ends (MDX-Net requirement)
+    let padded_len = mixture_len + 2 * TRIM;
+    let mut mixture = [vec![0.0f32; padded_len], vec![0.0f32; padded_len]];
     for c in 0..2 {
         mixture[c][TRIM..TRIM + n].copy_from_slice(&mix[c]);
     }
 
     let step = ((1.0 - OVERLAP) * CHUNK_SIZE as f64) as usize;
-    let total_steps = (mixture_len + step - 1) / step;
+    let total_steps = (padded_len + step - 1) / step;
 
     // hanning window over the ACTUAL chunk length (np.hanning = symmetric)
-    let mut result = [vec![0.0f32; mixture_len], vec![0.0f32; mixture_len]];
-    let mut divider = vec![0.0f32; mixture_len];
+    let mut result = [vec![0.0f32; padded_len], vec![0.0f32; padded_len]];
+    let mut divider = vec![0.0f32; padded_len];
 
     let mut done = 0usize;
     let mut i = 0usize;
-    while i < mixture_len {
-        let end = (i + CHUNK_SIZE).min(mixture_len);
+    while i < padded_len {
+        let end = (i + CHUNK_SIZE).min(padded_len);
         let actual = end - i;
 
         // np.hanning(actual): symmetric hann
@@ -316,11 +352,12 @@ fn demix(session: &mut MdxSession, mix: &[Vec<f32>; 2], progress: &dyn Fn(f32)) 
         }
 
         done += 1;
-        progress(done as f32 / total_steps as f32);
+        if !progress(done as f32 / total_steps as f32) {
+            return Err(SepError::Inference("تم إلغاء المعالجة من قبل المستخدم.".into()));
+        }
         i += step;
     }
 
-    // result/divider then drop trim on both ends and crop to original length
     let mut source = [vec![0.0f32; n], vec![0.0f32; n]];
     for c in 0..2 {
         for j in 0..n {
@@ -329,14 +366,15 @@ fn demix(session: &mut MdxSession, mix: &[Vec<f32>; 2], progress: &dyn Fn(f32)) 
             source[c][j] = if d > 1e-9 { result[c][p] / d } else { 0.0 };
         }
     }
-    Ok(source.into_iter().map(|c| c).collect())
+    Ok(source)
 }
 
 /// Full separation: normalized stereo WAV in → vocals + instrumental WAVs out.
 pub fn separate(
     input_wav: &Path,
     out_dir: &Path,
-    progress: &dyn Fn(f32),
+    use_cuda: bool,
+    progress: &dyn Fn(f32) -> bool,
 ) -> Result<StemPaths, SepError> {
     let (left, right, sample_rate) = read_wav_stereo(input_wav)?;
     tracing::info!(target: "sep", "mix loaded: {} samples @{}", left.len(), sample_rate);
@@ -344,7 +382,7 @@ pub fn separate(
     let mut mix = [left, right];
     let peak = normalize(&mut mix);
 
-    let mut session = MdxSession::load()?;
+    let mut session = MdxSession::load(use_cuda)?;
     let vocals_src = demix(&mut session, &mix, &progress)?;
 
     // restore original scale, build secondary stem by subtraction

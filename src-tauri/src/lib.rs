@@ -127,18 +127,21 @@ async fn remux_to_mp4(video: String, audio_wav: String, out_path: String) -> Res
 #[tauri::command]
 async fn separate_file(
     app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
     path: String,
     out_dir: String,
     mode: Option<String>,
-    kind: Option<String>,           // "video" | "audio" (simplified UI)
-    quality: Option<u32>,           // video height cap (None = same as source)
-    format: Option<String>,         // advanced override (audio containers)
+    kind: Option<String>,
+    quality: Option<u32>,
+    format: Option<String>,
     keep_instrumental: Option<bool>,
+    use_cuda: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     use tauri::Emitter;
 
     let mode = mode.as_deref().and_then(Mode::parse).unwrap_or(Mode::Song);
     let keep_inst = keep_instrumental.unwrap_or(false);
+    let cuda_enabled = use_cuda.unwrap_or(false);
 
     let kind = match kind.as_deref() {
         Some("video") => pipeline::OutKind::Video { max_height: quality },
@@ -151,8 +154,18 @@ async fn separate_file(
         }
     };
 
-    let out = pipeline::process_file(Path::new(&path), Path::new(&out_dir), mode, kind, keep_inst, &|p| {
+    // Reset cancel flag before starting
+    state.cancel_flag.store(false, Ordering::SeqCst);
+    let cancel = state.cancel_flag.clone();
+
+    // In CLI mode this uses CPU-only for now, or we could pass cuda_enabled to CLI too.
+    // For GUI, we pass it down via an environment variable or just wait, `pipeline::process_file`
+    // doesn't take use_cuda! I need to modify pipeline::process_file to take use_cuda.
+    // Let me just set an environment variable or thread local?
+    // Let's modify pipeline::process_file to take `use_cuda: bool`.
+    let out = pipeline::process_file(Path::new(&path), Path::new(&out_dir), mode, kind, keep_inst, cuda_enabled, &|p| {
         let _ = app.emit("sep-progress", p.clamp(0.0, 1.0));
+        !cancel.load(Ordering::SeqCst)
     })
     .map_err(|e| e.to_string())?;
 
@@ -224,6 +237,50 @@ fn open_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+struct AppState {
+    cancel_flag: Arc<AtomicBool>,
+}
+
+#[tauri::command]
+fn cancel_process(state: tauri::State<'_, AppState>) {
+    state.cancel_flag.store(true, Ordering::SeqCst);
+    tracing::warn!(target: "app", "تم إرسال أمر الإلغاء...");
+}
+
+#[tauri::command]
+fn open_file(path: String) -> Result<(), String> {
+    let target = PathBuf::from(path);
+    if !target.exists() {
+        return Err("الملف غير موجود".into());
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", &target.to_string_lossy()])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&target)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&target)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Demonstrates the panic hook safely: the panic is captured, logged with its
 /// exact source location, and converted into a normal error for the UI.
 #[tauri::command]
@@ -248,6 +305,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(AppState {
+            cancel_flag: Arc::new(AtomicBool::new(false)),
+        })
         .setup(|app| {
             let log_dir = app
                 .path()
@@ -276,6 +336,8 @@ pub fn run() {
             get_recent_logs,
             push_log,
             open_folder,
+            open_file,
+            cancel_process,
             cause_test_panic,
             probe_media,
             path_exists,

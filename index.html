@@ -316,10 +316,17 @@
 <div class="h-4 w-px bg-border-muted"></div>
 <button class="text-clay-accent font-bold hover:bg-surface-variant/80 transition-all duration-300 apple-ease p-unit rounded font-label-md text-label-md hover:scale-105 active:scale-95 drop-shadow-sm">AR</button>
 </div>
-<div class="flex items-center gap-stack-md cursor-pointer group">
-<button class="text-on-surface-variant hover:bg-surface-variant/80 transition-all duration-300 apple-ease p-unit rounded hover:scale-110 active:scale-90 hover:text-cream-text">
+<div class="relative flex items-center gap-stack-md cursor-pointer group">
+<button id="btn-settings" class="text-on-surface-variant hover:bg-surface-variant/80 transition-all duration-300 apple-ease p-unit rounded hover:scale-110 active:scale-90 hover:text-cream-text">
 <span class="material-symbols-outlined" data-icon="settings">settings</span>
 </button>
+<div id="settings-menu" class="hidden absolute left-0 top-full mt-2 w-64 glass-effect border border-border-muted rounded-lg shadow-xl p-stack-md flex flex-col gap-stack-sm z-50 fade-in-up">
+    <h3 class="font-label-md text-clay-accent border-b border-border-muted pb-2 mb-2">الإعدادات</h3>
+    <label class="flex items-center gap-stack-sm cursor-pointer group">
+        <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-cuda" type="checkbox"/>
+        <span class="font-body-sm text-cream-text transition-colors duration-200">استخدام تسريع CUDA (NVIDIA)</span>
+    </label>
+</div>
 </div>
 </header>
 <!-- Main Content Area -->

@@ -20,7 +20,7 @@ serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "registry"] }
 tracing-appender = "0.2"
-ort = { version = "=2.0.0-rc.10", features = ["directml"] }
+ort = { version = "=2.0.0-rc.10", features = ["directml", "cuda"] }
 rustfft = "6"
 hound = "3"
 rayon = "1"
@@ -28,6 +28,10 @@ ureq = { version = "2", features = ["json"] }
 sha2 = "0.10"
 dirs = "5.0"
 tauri-plugin-dialog = "2"
+
+[[bin]]
+name = "HaramLite"
+path = "src/main.rs"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_Foundation", "Win32_Storage_FileSystem"] }

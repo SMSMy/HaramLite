@@ -472,20 +472,28 @@ function renderBatchList(): void {
       progBar.className = 'batch-prog-bar h-full bg-clay-accent w-0 rounded-full relative transition-all duration-1000 ease-linear shadow-[0_0_10px_rgba(218,119,86,0.8)]';
       progWrap.appendChild(progBar);
       
+      const actionsDiv = document.createElement('div');
+      actionsDiv.className = 'batch-actions flex gap-2 z-10 hidden mt-1';
+      
       const statusSpan = document.createElement('span');
-      statusSpan.className = 'status-text font-label-sm text-label-sm text-on-surface-variant relative z-10';
+      statusSpan.className = 'status-text font-label-sm text-label-sm text-on-surface-variant relative z-10 flex-1';
       statusSpan.textContent = 'في الانتظار';
       
-      div.append(progBg, headerDiv, progWrap, statusSpan);
+      const bottomRow = document.createElement('div');
+      bottomRow.className = 'flex justify-between items-center w-full relative z-10';
+      bottomRow.append(statusSpan, actionsDiv);
+      
+      div.append(progBg, headerDiv, progWrap, bottomRow);
       return div;
     }),
   );
 }
-function markBatchItem(file: string, status: 'ok' | 'fail' | 'run'): void {
+function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?: string): void {
   const item = document.querySelector<HTMLElement>(`#batch-list div[data-file="${CSS.escape(file)}"]`);
   if (!item) return;
   
   const statusSpan = item.querySelector('.status-text') as HTMLElement;
+  const actionsDiv = item.querySelector('.batch-actions') as HTMLElement;
   
   if (status === 'run') {
       item.className = 'batch-item running-item bg-coal-surface/80 border border-clay-accent/40 rounded p-stack-sm flex flex-col gap-unit relative overflow-hidden shadow-[0_4px_12px_-4px_rgba(218,119,86,0.2)] transition-all duration-300 opacity-100';
@@ -494,7 +502,14 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run'): void {
       item.querySelector('.batch-prog-wrap')?.classList.remove('hidden');
       if (statusSpan) {
           statusSpan.textContent = 'جاري المعالجة...';
-          statusSpan.className = 'status-text font-label-sm text-label-sm text-clay-accent animate-pulse relative z-10';
+          statusSpan.className = 'status-text font-label-sm text-label-sm text-clay-accent animate-pulse relative z-10 flex-1';
+      }
+      if (actionsDiv) {
+          actionsDiv.innerHTML = `<button class="text-error hover:text-red-400 p-1" title="إلغاء المعالجة"><span class="material-symbols-outlined text-sm" data-icon="cancel">cancel</span></button>`;
+          actionsDiv.classList.remove('hidden');
+          actionsDiv.querySelector('button')?.addEventListener('click', () => {
+              invoke('cancel_process').catch(console.error);
+          });
       }
   } else if (status === 'ok') {
       item.className = 'batch-item bg-tertiary-container/20 border border-tertiary/40 rounded p-stack-sm flex flex-col gap-unit relative overflow-hidden transition-all duration-300 opacity-100';
@@ -503,7 +518,23 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run'): void {
       item.querySelector('.batch-prog-wrap')?.classList.add('hidden');
       if (statusSpan) {
           statusSpan.textContent = '✓ مكتمل';
-          statusSpan.className = 'status-text font-label-sm text-label-sm text-tertiary relative z-10';
+          statusSpan.className = 'status-text font-label-sm text-label-sm text-tertiary relative z-10 flex-1';
+      }
+      if (actionsDiv && resultPath) {
+          const folderPath = outDirOf(resultPath);
+          actionsDiv.innerHTML = `
+            <button class="btn-play text-tertiary hover:text-green-300 p-1 bg-surface-container rounded" title="فتح الملف">
+              <span class="material-symbols-outlined text-sm" data-icon="play_arrow">play_arrow</span>
+            </button>
+            <button class="btn-folder text-tertiary hover:text-green-300 p-1 bg-surface-container rounded" title="فتح المجلد">
+              <span class="material-symbols-outlined text-sm" data-icon="folder_open">folder_open</span>
+            </button>
+          `;
+          actionsDiv.classList.remove('hidden');
+          actionsDiv.querySelector('.btn-play')?.addEventListener('click', () => invoke('open_file', { path: resultPath }).catch(console.error));
+          actionsDiv.querySelector('.btn-folder')?.addEventListener('click', () => invoke('open_folder', { path: folderPath }).catch(console.error));
+      } else if (actionsDiv) {
+          actionsDiv.classList.add('hidden');
       }
   } else if (status === 'fail') {
       item.className = 'batch-item bg-error-container/20 border border-error/40 rounded p-stack-sm flex flex-col gap-unit relative overflow-hidden transition-all duration-300 opacity-100';
@@ -512,8 +543,9 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run'): void {
       item.querySelector('.batch-prog-wrap')?.classList.add('hidden');
       if (statusSpan) {
           statusSpan.textContent = '✗ فشل';
-          statusSpan.className = 'status-text font-label-sm text-label-sm text-error relative z-10';
+          statusSpan.className = 'status-text font-label-sm text-label-sm text-error relative z-10 flex-1';
       }
+      if (actionsDiv) actionsDiv.classList.add('hidden');
   }
 }
 
@@ -521,6 +553,7 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run'): void {
 type SepOpts = { outKind: 'audio' | 'video'; quality?: number; advFmt?: string };
 
 async function runSeparationFor(path: string, keepInst: boolean, o: SepOpts): Promise<SepResult> {
+  const useCuda = localStorage.getItem('hl.cuda') === '1';
   const res = await invoke<SepResult>('separate_file', {
     path,
     outDir: outDirOf(path),
@@ -529,6 +562,7 @@ async function runSeparationFor(path: string, keepInst: boolean, o: SepOpts): Pr
     quality: o.quality ?? null,
     format: o.advFmt ?? null,
     keepInstrumental: keepInst,
+    useCuda: useCuda,
   });
   return res;
 }
@@ -583,8 +617,9 @@ function wireSeparate(): void {
       markBatchItem(f, 'run');
       setBatchCounter(done, total);
       try {
-        await runSeparationFor(f, keepInst, { outKind, quality, advFmt });
-        markBatchItem(f, 'ok');
+        const res = await runSeparationFor(f, keepInst, { outKind, quality, advFmt });
+        const resultPath = res.video || res.vocals || res.instrumental || undefined;
+        markBatchItem(f, 'ok', resultPath);
       } catch (e) {
         markBatchItem(f, 'fail');
         failures.push(`${f} — ${e}`);
@@ -631,7 +666,8 @@ async function runOne(
     if (res.video) lines.push(`فيديو: ${res.video}`);
     result.textContent = lines.join('\n');
     result.classList.remove('hidden');
-    markBatchItem(path, 'ok');
+    const resultPath = res.video || res.vocals || res.instrumental || undefined;
+    markBatchItem(path, 'ok', resultPath);
   } catch (e) {
     result.textContent = `فشل الفصل: ${e}`;
     result.classList.remove('hidden');
@@ -708,8 +744,34 @@ function wireOpenFolder(): void {
   });
 }
 
+function wireSettings(): void {
+  const btnSettings = document.getElementById('btn-settings');
+  const menu = document.getElementById('settings-menu');
+  const cudaCheckbox = document.getElementById('setting-cuda') as HTMLInputElement;
+
+  if (cudaCheckbox) {
+    cudaCheckbox.checked = localStorage.getItem('hl.cuda') === '1';
+    cudaCheckbox.addEventListener('change', (e) => {
+      localStorage.setItem('hl.cuda', (e.target as HTMLInputElement).checked ? '1' : '0');
+    });
+  }
+
+  if (btnSettings && menu) {
+    btnSettings.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.classList.toggle('hidden');
+    });
+    document.addEventListener('click', (e) => {
+      if (!menu.contains(e.target as Node) && !btnSettings.contains(e.target as Node)) {
+        menu.classList.add('hidden');
+      }
+    });
+  }
+}
+
 function wire(): void {
   wireLang();
+  wireSettings();
 
   window.addEventListener('error', (ev) =>
     invoke('push_log', { level: 'error', message: `JS error: ${ev.message}` }));
