@@ -1,0 +1,10 @@
+<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Board body -->
+  <rect x="3" y="10" width="18" height="11" rx="2" fill="currentColor"/>
+
+  <!-- Open clapper bar (hinged at left, lifted open at right) -->
+  <polygon points="3,10 3,6 21,3 21,7" fill="currentColor"/>
+
+  <!-- Hinge pivot -->
+  <circle cx="3.5" cy="8" r="1.1" fill="currentColor"/>
+</svg>

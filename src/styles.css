@@ -1,0 +1,62 @@
+/* ─── Thmanyah typeface (per font/ guidelines) ─────────────────────────── */
+@font-face {
+  font-family: "Thmanyah Sans";
+  src: url("./assets/fonts/thmanyahsans-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Thmanyah Sans";
+  src: url("./assets/fonts/thmanyahsans-Medium.otf") format("opentype");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Thmanyah Sans";
+  src: url("./assets/fonts/thmanyahsans-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Thmanyah Serif Display";
+  src: url("./assets/fonts/thmanyahserifdisplay-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Thmanyah Serif Display";
+  src: url("./assets/fonts/thmanyahserifdisplay-Black.otf") format("opentype");
+  font-weight: 900;
+  font-display: swap;
+}
+
+.lv-ERROR { color: #ffb4ab; }
+.lv-WARN { color: #F3AE35; }
+.lv-INFO { color: #5ddac8; }
+.lv-DEBUG { color: #c9c6c2; }
+.lv-ts { color: #93a1bd; }
+
+/* ─── Thmanyah font stylistic sets ─── */
+.mursala-text {
+  font-feature-settings: "salt" 1;
+}
+
+.kashida-text {
+  font-feature-settings: "ss01" 1;
+}
+
+/* ─── Custom Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(31, 29, 27, 0.5); 
+}
+::-webkit-scrollbar-thumb {
+  background: #55433d; 
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #DA7756; 
+}
