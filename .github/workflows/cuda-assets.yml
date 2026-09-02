@@ -81,7 +81,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $work = Join-Path $env:RUNNER_TEMP 'cuda-runtime'
-          if (-not (gh release view assets-v1 --json tagName -q .tagName 2>$null)) {
-            gh release create assets-v1 --title "Repair assets (stable)" --notes "مصادر معالج الإصلاح الذاتي — لا تحذف هذا الإصدار."
+          $repo = 'SMSMy/HaramLite'  # -R: this job has no checkout, so gh needs the repo explicitly
+          if (-not (gh release view assets-v1 -R $repo --json tagName -q .tagName 2>$null)) {
+            gh release create assets-v1 -R $repo --title "Repair assets (stable)" --notes "مصادر معالج الإصلاح الذاتي — لا تحذف هذا الإصدار."
           }
-          gh release upload assets-v1 (Get-ChildItem (Join-Path $work 'bin') -Filter '*.dll').FullName (Join-Path $work 'cuda-runtime-manifest.json') --clobber
+          gh release upload assets-v1 -R $repo (Get-ChildItem (Join-Path $work 'bin') -Filter '*.dll').FullName (Join-Path $work 'cuda-runtime-manifest.json') --clobber
