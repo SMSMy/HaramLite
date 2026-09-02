@@ -57,7 +57,7 @@ jobs:
           if (-not $c12) { throw "cudnn windows entry missing cuda12 variant" }
           Invoke-WebRequest "https://developer.download.nvidia.com/compute/cudnn/redist/$($c12.relative_path)" -OutFile (Join-Path $work 'cudnn.zip')
           Expand-Archive (Join-Path $work 'cudnn.zip') -DestinationPath (Join-Path $work 'cudnn') -Force
-          foreach ($dll in @('cudnn64_9.dll','cudnn_ops_infer64_9.dll','cudnn_cnn_infer64_9.dll','cudnn_adv_infer64_9.dll')) {
+          foreach ($dll in @('cudnn64_9.dll','cudnn_ops64_9.dll','cudnn_cnn64_9.dll','cudnn_adv64_9.dll')) {
             $src = Get-ChildItem (Join-Path $work 'cudnn') -Recurse -Filter $dll | Select-Object -First 1
             if (-not $src) { throw "cuDNN zip missing $dll — wrong version or layout" }
             Copy-Item $src.FullName (Join-Path $bin $dll)

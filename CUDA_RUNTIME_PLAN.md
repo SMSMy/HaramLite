@@ -18,9 +18,13 @@ ONNX Runtime بمزوّد CUDA يحتاج **cublas + cuDNN** معاً (نماذ�
 | `cublas64_12.dll` | الجبر الخطي (GEMM) | إلزامي |
 | `cublasLt64_12.dll` | cublasLt (المسار الأسرع) | إلزامي |
 | `cudnn64_9.dll` | واجهة cuDNN الرئيسية | إلزامي |
-| `cudnn_ops_infer64_9.dll` | عمليات cuDNN الأساسية | إلزامي |
-| `cudnn_cnn_infer64_9.dll` | نواة الالتفاف CNN | إلزامي (قلب MDX-Net) |
-| `cudnn_adv_infer64_9.dll` | عمليات متقدمة (اختياري لكن موصى به) | موصى به |
+| `cudnn_ops64_9.dll` | عمليات cuDNN الأساسية | إلزامي |
+| `cudnn_cnn64_9.dll` | نواة الالتفاف CNN | إلزامي (قلب MDX-Net) |
+| `cudnn_adv64_9.dll` | عمليات متقدمة (اختياري لكن موصى به) | موصى به |
+
+> **ملاحظة تحقق ميداني:** أسماء cuDNN 9 الحقيقية على ويندوز **بلا لاحقة
+> `_infer`** (تلك كانت صيغة cuDNN 8) — تحققت من محتوى زيب redistrib الرسمي
+> (`cudnn-windows-x86_64-9.12.0.46_cuda12-archive.zip`).
 
 **ملاحظة معمارية مهمة (مكتشفة بالفحص):** في بناءنا الحالي مكتبات ONNX Runtime
 **مربوطة ربطاً ثابتاً** داخل `HaramLite.exe` (لا يوجد `onnxruntime.dll` منفصل —

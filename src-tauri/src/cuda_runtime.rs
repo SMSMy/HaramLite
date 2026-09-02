@@ -10,15 +10,17 @@
 use std::path::{Path, PathBuf};
 
 /// الملفات السبعة التي يحمّلها مزوّد CUDA وقت التشغيل (الشرط 1 — كاملة:
-/// cublas + cudart + cuDNN بأجزائه).
+/// cublas + cudart + cuDNN بأجزائه). أسماء cuDNN 9 الحقيقية على ويندوز
+/// بلا لاحقة `_infer` (تلك كانت صيغة cuDNN 8) — تحققت من محتوى زيب
+/// redistrib الرسمي.
 pub const CUDA_FILES: &[&str] = &[
     "cudart64_12.dll",
     "cublas64_12.dll",
     "cublasLt64_12.dll",
     "cudnn64_9.dll",
-    "cudnn_ops_infer64_9.dll",
-    "cudnn_cnn_infer64_9.dll",
-    "cudnn_adv_infer64_9.dll",
+    "cudnn_ops64_9.dll",
+    "cudnn_cnn64_9.dll",
+    "cudnn_adv64_9.dll",
 ];
 
 const MANIFEST_ASSET: &str = "cuda-runtime-manifest.json";
