@@ -97,13 +97,21 @@ fn chrono_now() -> String {
     format!("[{secs}]")
 }
 
+/// Current session's log directory — used by the panic hook for a
+/// SYNCHRONOUS crash-file fallback (see install_panic_hook).
+static LOG_DIR: OnceLock<PathBuf> = OnceLock::new();
+
 /// Install logging + panic capture. Returns the log directory.
 pub fn init(log_dir: PathBuf) -> PathBuf {
     let _ = std::fs::create_dir_all(&log_dir);
+    let _ = LOG_DIR.set(log_dir.clone());
     let file_appender = tracing_appender::rolling::daily(&log_dir, "haramlite.log");
 
     let (file_writer, _guard) = tracing_appender::non_blocking(file_appender);
-    // Leak the guard so the writer lives for the whole process.
+    // Leak the guard so the writer lives for the whole process. Note: even a
+    // stored static guard would never get a Drop at process exit (statics are
+    // not dropped), so crash forensics rely on the panic hook's synchronous
+    // fallback file instead (audit finding).
     std::mem::forget(_guard);
 
     let file_layer = tracing_fmt::layer()
@@ -134,6 +142,7 @@ pub fn init_cli() {
 
     let dir = dirs_data().join("logs");
     let _ = std::fs::create_dir_all(&dir);
+    let _ = LOG_DIR.set(dir.clone());
     let file_appender = tracing_appender::rolling::daily(&dir, "haramlite.log");
     let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
     std::mem::forget(guard);
@@ -193,6 +202,28 @@ fn install_panic_hook() {
             "PANIC at {location}: {payload} — backtrace:\n{}",
             std::backtrace::Backtrace::force_capture()
         );
+
+        // SYNCHRONOUS forensic fallback (audit): the non_blocking buffer is
+        // lost when the process dies (main-thread panic → abort), which is
+        // exactly why the random crashes left no trace. Write the panic line
+        // straight to a dedicated crash file — it survives process death.
+        if let Some(dir) = LOG_DIR.get() {
+            let secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let crash = dir.join("haramlite-crash.log");
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&crash)
+            {
+                use std::io::Write;
+                let _ = writeln!(f, "[{secs}] PANIC at {location}: {payload}");
+                let _ = writeln!(f, "{}", std::backtrace::Backtrace::force_capture());
+                let _ = f.flush();
+            }
+        }
         default_hook(info);
     }));
 }
@@ -210,5 +241,29 @@ pub fn push_line(level: &str, message: &str) {
         "warn" => tracing::warn!(target: "frontend", "{message}"),
         "debug" => tracing::debug!(target: "frontend", "{message}"),
         _ => tracing::info!(target: "frontend", "{message}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Crash forensics: the panic hook must write a SYNCHRONOUS line to
+    /// haramlite-crash.log that survives process death (the non_blocking
+    /// buffer would be lost on abort — the exact reason silent crashes
+    /// left no trace before).
+    #[test]
+    fn panic_hook_writes_sync_crash_file() {
+        let dir = std::env::temp_dir().join(format!("hl_panic_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = init(dir.clone());
+        let _ = std::panic::catch_unwind(|| panic!("hook test marker"));
+        let crash = dir.join("haramlite-crash.log");
+        let content = std::fs::read_to_string(&crash).unwrap_or_default();
+        assert!(
+            content.contains("hook test marker"),
+            "crash file must contain the panic line, got: {content}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

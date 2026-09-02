@@ -192,7 +192,7 @@ fn repair_component(app: tauri::AppHandle, key: String) -> Result<String, String
 }
 
 #[tauri::command]
-async fn probe_media(path: String) -> Result<media::MediaInfo, String> {
+fn probe_media(path: String) -> Result<media::MediaInfo, String> {
     media::probe(Path::new(&path)).map_err(|e| e.to_string())
 }
 
@@ -208,7 +208,7 @@ fn path_is_dir(path: String) -> bool {
 }
 
 #[tauri::command]
-async fn extract_audio(path: String, format: String, out_dir: String) -> Result<String, String> {
+fn extract_audio(path: String, format: String, out_dir: String) -> Result<String, String> {
     let out = media::extract_audio(Path::new(&path), &format, Path::new(&out_dir))
         .map_err(|e| e.to_string())?;
     tracing::info!(target: "media", "extracted {format}: {}", out.display());
@@ -216,7 +216,7 @@ async fn extract_audio(path: String, format: String, out_dir: String) -> Result<
 }
 
 #[tauri::command]
-async fn remux_to_mp4(video: String, audio_wav: String, out_path: String) -> Result<String, String> {
+fn remux_to_mp4(video: String, audio_wav: String, out_path: String) -> Result<String, String> {
     let out = media::remux_video_with_audio(
         Path::new(&video),
         Path::new(&audio_wav),
@@ -407,7 +407,9 @@ fn cuda_status() -> serde_json::Value {
 
 /// CUDA_RUNTIME_PLAN: download + verify + install the CUDA runtime on first
 /// enable. Progress and completion arrive as `cuda-install` / `cuda-install-done`
-/// events; any failure leaves DirectML untouched (condition 3).
+/// events; any failure leaves DirectML untouched (condition 3). The worker's
+/// body is panic-guarded and ALWAYS emits a done event, so the UI can never
+/// hang on the progress bar (audit).
 #[tauri::command]
 async fn install_cuda_runtime(app: tauri::AppHandle) -> Result<(), String> {
     use tauri::Emitter;
@@ -415,12 +417,18 @@ async fn install_cuda_runtime(app: tauri::AppHandle) -> Result<(), String> {
     std::thread::Builder::new()
         .name("cuda-install".into())
         .spawn(move || {
-            let res = crate::cuda_runtime::install(&|name, p| {
-                let _ = handle.emit(
-                    "cuda-install",
-                    serde_json::json!({ "file": name, "pct": p.clamp(0.0, 1.0) }),
-                );
-            });
+            let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::cuda_runtime::install(&|name, p| {
+                    let _ = handle.emit(
+                        "cuda-install",
+                        serde_json::json!({ "file": name, "pct": p.clamp(0.0, 1.0) }),
+                    );
+                })
+            }));
+            let res = match res {
+                Ok(r) => r,
+                Err(_) => Err("عطل داخلي غير متوقع أثناء التنزيل".to_string()),
+            };
             let _ = handle.emit(
                 "cuda-install-done",
                 serde_json::json!({ "ok": res.is_ok(), "error": res.err().unwrap_or_default() }),
