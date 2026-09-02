@@ -28,23 +28,34 @@ jobs:
           $bin = Join-Path $work 'bin'
           New-Item -ItemType Directory -Force -Path $bin | Out-Null
 
-          # 1) CUDA redist (cudart + cublas + cublasLt) via NVIDIA's redist JSON
+          # 1) CUDA redist (cudart + cublas/cublasLt) — components keyed
+          #    cuda_cudart / libcublas, each with windows-x86_64.relative_path
           $cu = Invoke-RestMethod "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_$CUDA_VER.json"
-          foreach ($part in @('cudart','cublas')) {
+          foreach ($part in @('cuda_cudart','libcublas')) {
             $meta = $cu.$part
             if (-not $meta) { throw "redistrib_$CUDA_VER.json missing $part" }
-            foreach ($rel in $meta.windows_relative_paths) {
-              if ($rel -match 'x64[\\/](cudart64_12\.dll|cublas64_12\.dll|cublasLt64_12\.dll)$') {
-                Invoke-WebRequest "https://developer.download.nvidia.com/compute/cuda/redist/$rel" -OutFile (Join-Path $bin (Split-Path $rel -Leaf))
-              }
+            $win = $meta.'windows-x86_64'
+            if (-not $win) { throw "$part has no windows-x86_64 entry" }
+            $zip = Join-Path $work "$part.zip"
+            Invoke-WebRequest "https://developer.download.nvidia.com/compute/cuda/redist/$($win.relative_path)" -OutFile $zip
+            $ex = Join-Path $work $part
+            Expand-Archive $zip -DestinationPath $ex -Force
+            $wanted = if ($part -eq 'cuda_cudart') { @('cudart64_12.dll') }
+                      else { @('cublas64_12.dll','cublasLt64_12.dll') }
+            foreach ($dll in $wanted) {
+              $src = Get-ChildItem $ex -Recurse -Filter $dll | Select-Object -First 1
+              if (-not $src) { throw "$part zip missing $dll — wrong version or layout" }
+              Copy-Item $src.FullName (Join-Path $bin $dll)
             }
           }
 
-          # 2) cuDNN redist zip (cudnn64_9 + ops/cnn/adv infer)
+          # 2) cuDNN redist zip — windows entry is keyed by cuda variant
           $cd = Invoke-RestMethod "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_$CUDNN_VER.json"
-          $zipRel = $cd.cudnn.windows_relative_paths | Where-Object { $_ -match 'cudnn-windows-x86_64.*\.zip$' } | Select-Object -First 1
-          if (-not $zipRel) { throw "redistrib_$CUDNN_VER.json missing cudnn windows zip" }
-          Invoke-WebRequest "https://developer.download.nvidia.com/compute/cudnn/redist/$zipRel" -OutFile (Join-Path $work 'cudnn.zip')
+          $win = $cd.cudnn.'windows-x86_64'
+          if (-not $win) { throw "redistrib_$CUDNN_VER.json missing cudnn windows entry" }
+          $c12 = $win.cuda12
+          if (-not $c12) { throw "cudnn windows entry missing cuda12 variant" }
+          Invoke-WebRequest "https://developer.download.nvidia.com/compute/cudnn/redist/$($c12.relative_path)" -OutFile (Join-Path $work 'cudnn.zip')
           Expand-Archive (Join-Path $work 'cudnn.zip') -DestinationPath (Join-Path $work 'cudnn') -Force
           foreach ($dll in @('cudnn64_9.dll','cudnn_ops_infer64_9.dll','cudnn_cnn_infer64_9.dll','cudnn_adv_infer64_9.dll')) {
             $src = Get-ChildItem (Join-Path $work 'cudnn') -Recurse -Filter $dll | Select-Object -First 1
