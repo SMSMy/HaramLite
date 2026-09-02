@@ -106,32 +106,65 @@ pub fn compute_kept_ranges(l: &[f32], r: &[f32], sr: u32, cfg: &SilenceConfig) -
 }
 
 /// In-place silence removal on stereo buffers. Returns removed fraction 0..1.
+/// The production path (effects.rs) calls [`cut_silence_with_ranges`] directly
+/// to reuse already-computed ranges; this entry point stays for CLI/future
+/// callers and is exercised by the tests.
+#[allow(dead_code)]
 pub fn cut_silence(l: &mut Vec<f32>, r: &mut Vec<f32>, sr: u32, cfg: &SilenceConfig) -> f32 {
-    let before = l.len().min(r.len());
     let ranges = compute_kept_ranges(l, r, sr, cfg);
-    if ranges.is_empty() { return 0.0; }
+    cut_silence_with_ranges(l, r, sr, cfg, &ranges)
+}
+
+/// Apply a cut using ranges already computed by [`compute_kept_ranges`].
+/// Audit R-5: callers that need the ranges anyway (e.g. for mirroring cuts on
+/// the video track) pass them in instead of running the whole detection pass twice.
+pub fn cut_silence_with_ranges(
+    l: &mut Vec<f32>,
+    r: &mut Vec<f32>,
+    sr: u32,
+    cfg: &SilenceConfig,
+    ranges: &[(usize, usize)],
+) -> f32 {
+    let before = l.len().min(r.len());
+    if ranges.is_empty() {
+        return 0.0;
+    }
 
     let fade = (cfg.fade_ms as usize * sr as usize / 1000).max(2);
     let mut nl = Vec::with_capacity(before);
     let mut nr = Vec::with_capacity(before);
 
-    for (start, end) in &ranges {
+    for (idx, (start, end)) in ranges.iter().enumerate() {
         let a = (*start).min(l.len());
         let b = (*end).min(l.len());
         if b <= a {
             continue;
         }
+        let seg_start = nl.len();
         nl.extend_from_slice(&l[a..b]);
         nr.extend_from_slice(&r[a..b]);
 
-        // short fades at both edges of each KEPT range boundary that was a cut
-        let head = fade.min(nl.len());
-        for k in 0..head {
-            let g = (k + 1) as f32 / head as f32;
-            let li = nl.len() - head + k;
-            let ri = nr.len() - head + k;
-            nl[li] *= g;
-            nr[ri] *= g;
+        // Short fades at every INTERIOR cut boundary to avoid clicks:
+        // fade-IN at the start of a segment that follows a cut, fade-OUT at
+        // the end of a segment that precedes a cut. (The old code applied a
+        // rising fade to the END of every segment — clicks stayed and endings
+        // bulged. The file's own true start/end is left untouched.)
+        let head = fade.min(b - a);
+        if idx > 0 {
+            for k in 0..head {
+                let g = (k + 1) as f32 / head as f32;
+                nl[seg_start + k] *= g;
+                nr[seg_start + k] *= g;
+            }
+        }
+        if idx + 1 < ranges.len() {
+            for k in 0..head {
+                let g = (head - k) as f32 / head as f32;
+                let li = nl.len() - 1 - k;
+                let ri = nr.len() - 1 - k;
+                nl[li] *= g;
+                nr[ri] *= g;
+            }
         }
     }
 

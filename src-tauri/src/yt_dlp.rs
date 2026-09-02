@@ -12,8 +12,6 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use serde::Serialize;
-
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -25,7 +23,6 @@ fn make_cmd<S: AsRef<std::ffi::OsStr>>(program: S) -> Command {
 }
 
 const RELEASE_API: &str = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
-const SUMS_URL_SUFFIX: &str = "/releases/latest/download/SHA2-256SUMS";
 const ASSET_NAME: &str = "yt-dlp.exe";
 const USER_AGENT: &str = concat!("HaramLite/", env!("CARGO_PKG_VERSION"));
 const CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
@@ -322,7 +319,7 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
             if ver != release.tag {
                 tracing::warn!(target: "ytdlp", "post-install version mismatch: {ver} != {}", release.tag);
             }
-            if let Some(ap) = &active {
+            if let Some(_ap) = &active {
                 let _ = std::fs::remove_file(&backup);
             }
             write_state(&UpdateState { checked_at: now_secs(), version: ver.clone() }).ok();
@@ -350,25 +347,49 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
 
 /// Download `url` media (bestaudio muxed; no playlists) into out_dir.
 /// Returns the finished file path. Progress parsed from `--newline` output.
+/// The progress closure returns false to abort (kills the child process).
 pub fn download_media(
     url: &str,
     out_dir: &Path,
-    progress: &dyn Fn(f32),
+    progress: &dyn Fn(f32) -> bool,
+) -> Result<PathBuf, YtError> {
+    download_media_inner(url, out_dir, progress, false)
+}
+
+fn download_media_inner(
+    url: &str,
+    out_dir: &Path,
+    progress: &dyn Fn(f32) -> bool,
+    force: bool,
 ) -> Result<PathBuf, YtError> {
     let exe = resolve_ytdlp().ok_or(YtError::NotFound)?;
     std::fs::create_dir_all(out_dir).map_err(|e| YtError::Io(e.to_string()))?;
 
     let tmpl = out_dir.join("%(title)s.%(ext)s");
     let mut cmd = make_cmd(&exe);
-    cmd.args([
-        "--newline",
-        "--no-playlist",
-        "--windows-filenames",
-        "-f", "bv*+ba/b",
-        "--merge-output-format", "mp4",
-        "-o", &tmpl.to_string_lossy(),
-        url,
-    ]);
+    let mut args: Vec<String> = vec![
+        "--newline".into(),
+        "--no-playlist".into(),
+        "--windows-filenames".into(),
+        "-f".into(),
+        "bv*+ba/b".into(),
+        "--merge-output-format".into(),
+        "mp4".into(),
+        "-o".into(),
+        tmpl.to_string_lossy().into_owned(),
+        // definitive output path: yt-dlp prints it prefixed — detecting the
+        // line by its UNIQUE prefix instead of `!contains('[')` (video titles
+        // and folder names commonly contain brackets, which used to drop the
+        // authoritative line and force re-downloads).
+        "--print".into(),
+        "after_move:HARAMLITE_OUT:%(filepath)s".into(),
+    ];
+    if force {
+        args.push("--force-overwrites".into());
+    }
+    args.push(url.to_string());
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    cmd.args(&arg_refs);
 
     let mut child = cmd
         .stdout(std::process::Stdio::piped())
@@ -399,6 +420,7 @@ pub fn download_media(
     // Raw byte lines + lossy decode: YouTube titles / console codepages break
     // strict UTF-8 readers.
     let mut raw: Vec<u8> = Vec::with_capacity(256);
+    let mut printed_path: Option<PathBuf> = None;
     loop {
         raw.clear();
         match reader.read_until(b'\n', &mut raw) {
@@ -407,17 +429,38 @@ pub fn download_media(
             Err(e) => return Err(YtError::Io(e.to_string())),
         }
         let line = String::from_utf8_lossy(&raw);
-        // "[download]  42.3% of ..." and "[Merger]/[ExtractAudio] Destination: <path>"
+        let trimmed = line.trim();
+        // authoritative: prefixed path line emitted by `--print`
+        if let Some(path) = trimmed.strip_prefix("HARAMLITE_OUT:") {
+            printed_path = Some(PathBuf::from(path));
+            continue;
+        }
+        // Order matters: "[download] <path> has already been downloaded" ALSO
+        // starts with "[download] " — handle it BEFORE the percentage parser.
+        if let Some(path) = parse_already_downloaded(&line) {
+            last_file = Some(PathBuf::from(path));
+            continue;
+        }
+        // "[Merger] Merging formats into \"<final path>\"": the merged file.
+        if let Some(path) = parse_merger_dest(&line) {
+            last_file = Some(PathBuf::from(path));
+            continue;
+        }
+        // "[download] Destination: <part path>" — also starts with "[download]"
+        // so it MUST be checked before the percentage branch, which swallows it.
+        if let Some(dest) = line.split("Destination:").nth(1) {
+            last_file = Some(PathBuf::from(dest.trim()));
+            continue;
+        }
+        // "[download]  42.3% of ..." — percentage progress
         if let Some(rest) = line.strip_prefix("[download]") {
             let pct_txt = rest.split_whitespace().find(|t| t.ends_with('%')).unwrap_or("");
             if let Ok(p) = pct_txt.trim_end_matches('%').parse::<f32>() {
-                progress((p / 100.0).clamp(0.0, 1.0));
-            }
-        } else if let Some(dest) = line.split("Destination:").nth(1) {
-            last_file = Some(PathBuf::from(dest.trim()));
-        } else if let Some(already) = line.split("has already been downloaded").next() {
-            if already.len() != line.len() {
-                last_file = Some(PathBuf::from(already.trim()));
+                let p = (p / 100.0).clamp(0.0, 1.0);
+                if !progress(p) {
+                    let _ = child.kill();
+                    return Err(YtError::Io("أُلغي التنزيل من قبل المستخدم".into()));
+                }
             }
         }
     }
@@ -427,22 +470,24 @@ pub fn download_media(
         return Err(YtError::Io(format!("yt-dlp خرج بـ{status}")));
     }
 
+    // The `--print after_move:filepath` line is authoritative.
+    if let Some(f) = printed_path.filter(|f| f.is_file()) {
+        return Ok(f);
+    }
     if let Some(f) = last_file.filter(|f| f.is_file()) {
         return Ok(f);
     }
-    // fallback: newest media file in dir
-    let found = std::fs::read_dir(out_dir)
-        .ok()
-        .and_then(|rd| {
-            rd.flatten()
-                .filter(|e| {
-                    let ext = e.path().extension().map(|x| x.to_string_lossy().to_lowercase());
-                    matches!(ext.as_deref(), Some("mp4") | Some("mkv") | Some("webm") | Some("m4a"))
-                })
-                .max_by_key(|e| e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH))
-                .map(|e| e.path())
-        });
-    found.ok_or(YtError::NotFound)
+    // Bug A follow-up: a skip line can carry a path that no longer exists on
+    // disk (title/sanitization drift — e.g. yt-dlp printed a name without the
+    // fullwidth quotes the file actually has). NEVER guess from the folder;
+    // instead force a REAL download and take its fresh destination.
+    if !force {
+        tracing::warn!(target: "ytdlp", "مسار «منزّل بالفعل» غير موجود على القرص — إعادة تنزيل إجباري");
+        return download_media_inner(url, out_dir, progress, true);
+    }
+    Err(YtError::Io(
+        "yt-dlp نجح لكن تعذر تحديد ملف الناتج من مخرجه — أعد المحاولة".into(),
+    ))
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -456,6 +501,23 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
+/// Parse a yt-dlp "--newline" skip line:
+/// `[download] C:\...\file.mp4 has already been downloaded` → Some(path).
+/// Returns None for every other line (incl. progress and Destination lines).
+fn parse_already_downloaded(line: &str) -> Option<&str> {
+    let rest = line.strip_prefix("[download] ")?;
+    let (path, _) = rest.split_once(" has already been downloaded")?;
+    let path = path.trim();
+    (!path.is_empty()).then_some(path)
+}
+
+/// "[Merger] Merging formats into \"C:\...\final.mp4\"" → Some(path).
+fn parse_merger_dest(line: &str) -> Option<&str> {
+    let rest = line.split("Merging formats into").nth(1)?;
+    let p = rest.trim().trim_matches('"').trim();
+    (!p.is_empty()).then_some(p)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -467,6 +529,29 @@ mod tests {
         let got = parse_sums_for(fixture, "yt-dlp.exe").expect("digest");
         assert_eq!(got, "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a");
         assert!(parse_sums_for("short  yt-dlp.exe", "yt-dlp.exe").is_none());
+    }
+
+    #[test]
+    fn already_downloaded_line_parses_path() {
+        let line = "[download] C:\\Videos\\HaramLite\\song.mp4 has already been downloaded";
+        assert_eq!(
+            parse_already_downloaded(line),
+            Some("C:\\Videos\\HaramLite\\song.mp4")
+        );
+        // regression: the line MUST NOT be swallowed by the percentage parser
+        assert_eq!(parse_already_downloaded("[download]  42.3% of 100MiB"), None);
+        assert_eq!(parse_already_downloaded("[Merger] Merging formats into \"x.mp4\""), None);
+        assert_eq!(parse_already_downloaded("[download] Destination: C:\\x.mp4"), None);
+    }
+
+    #[test]
+    fn merger_line_parses_final_path() {
+        let line = "[Merger] Merging formats into \"C:\\Videos\\HaramLite\\song.mp4\"";
+        assert_eq!(
+            parse_merger_dest(line),
+            Some("C:\\Videos\\HaramLite\\song.mp4")
+        );
+        assert_eq!(parse_merger_dest("[download] Destination: C:\\x.mp4"), None);
     }
 
     #[test]

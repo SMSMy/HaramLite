@@ -36,22 +36,29 @@ fn block_ms(channel_filtered: &[f32]) -> f64 {
 
 /// Integrated gated loudness of stereo (L,R). Weights: L/R = 1.0.
 pub fn integrated_lufs(l: &[f32], r: &[f32], sr: u32) -> f32 {
-    let mut kl = KWeight::new(sr);
-    let mut kr = KWeight::new(sr);
-
     let block = (sr as usize * 2) / 5; // 400 ms
-    let hop = sr as usize / 4; // 100 ms
+    let hop = sr as usize / 10; // 100 ms — 75% overlap per ITU-R BS.1770
     if l.len() < block {
         return -70.0;
     }
 
+    // Audit R-3: K-weight the WHOLE channel first. The shelf/high-pass are
+    // stateful IIRs — running them per overlapping window made their state
+    // jump 300ms back in time every 100ms hop, corrupting every measurement.
+    let mut kl = KWeight::new(sr);
+    let mut kr = KWeight::new(sr);
+    let fl: Vec<f32> = l.iter().map(|&v| kl.process(v)).collect();
+    let fr: Vec<f32> = r.iter().map(|&v| kr.process(v)).collect();
+
+    // Keep LINEAR mean-square power per window here. Gating must average
+    // POWER and convert to dB only at the end (ITU-R BS.1770): averaging the
+    // per-window LUFS (dB) values biases the measurement low and makes
+    // normalization over-amplify dynamic material.
     let mut blocks: Vec<f64> = Vec::new();
     let mut start = 0usize;
     while start + block <= l.len() {
-        let seg_l: Vec<f32> = l[start..start + block].iter().map(|v| kl.process(*v)).collect();
-        let seg_r: Vec<f32> = r[start..start + block].iter().map(|v| kr.process(*v)).collect();
-        let z = block_ms(&seg_l) + block_ms(&seg_r);
-        blocks.push(-0.691 + 10.0 * (z.max(1e-20)).log10());
+        let z = block_ms(&fl[start..start + block]) + block_ms(&fr[start..start + block]);
+        blocks.push(z.max(1e-20));
         start += hop;
     }
 
@@ -59,20 +66,22 @@ pub fn integrated_lufs(l: &[f32], r: &[f32], sr: u32) -> f32 {
         return -70.0;
     }
 
-    // absolute gate −70 LUFS
-    let abs_gated: Vec<f64> = blocks.iter().cloned().filter(|b| *b > -70.0).collect();
+    // absolute gate −70 LUFS ⇔ power > 10^((−70 + 0.691) / 10)
+    let abs_gate_z = 10f64.powf((-70.0 + 0.691) / 10.0);
+    let abs_gated: Vec<f64> = blocks.iter().cloned().filter(|z| *z > abs_gate_z).collect();
     if abs_gated.is_empty() {
         return -70.0;
     }
-    let mean_abs = abs_gated.iter().sum::<f64>() / abs_gated.len() as f64;
-    let rel_threshold = mean_abs - 10.0;
+    let mean_z = abs_gated.iter().sum::<f64>() / abs_gated.len() as f64;
 
-    // relative gate −10 LU below ungated-mean
+    // relative gate −10 LU below ungated-mean ⇔ z > mean_z / 10
+    // (−10 LU ⇔ power/10, since LUFS = −0.691 + 10·log10(z))
+    let rel_threshold_z = mean_z / 10.0;
     let rel_gated: Vec<f64> =
-        abs_gated.iter().cloned().filter(|b| *b > rel_threshold).collect();
-    let mean_rel = rel_gated.iter().sum::<f64>() / rel_gated.len().max(1) as f64;
+        abs_gated.iter().cloned().filter(|z| *z > rel_threshold_z).collect();
+    let final_z = rel_gated.iter().sum::<f64>() / rel_gated.len().max(1) as f64;
 
-    (mean_rel as f32)
+    (-0.691 + 10.0 * final_z.log10()) as f32
 }
 
 /// Apply gain so integrated loudness == target; returns applied gain in dB.
@@ -134,5 +143,52 @@ mod tests {
         normalize_to_target(&mut l, &mut r, sr, -14.0);
         let peak = l.iter().fold(0.0f32, |m, v| m.max(*v));
         assert!(peak > 0.18 && peak < 1.05, "peak after normalize = {peak}");
+    }
+
+    #[test]
+    fn kweight_runs_continuously_not_per_window() {
+        // Impulse placed exactly on a 100ms hop boundary. The pre-R-3 code
+        // re-filtered every window with zero state, so the window STARTING at
+        // the impulse saw a different energy than the continuous run. This
+        // asserts the public function matches the continuous pipeline exactly.
+        let sr = 44100u32;
+        let n = sr as usize * 2;
+        let mut l = vec![0.0f32; n];
+        let mut r = vec![0.0f32; n];
+        let at = sr as usize / 10; // 100 ms — a hop boundary
+        l[at] = 0.9;
+        r[at] = 0.9;
+
+        let measured = integrated_lufs(&l, &r, sr);
+
+        // reference: continuous filtering + identical windowing/gating
+        let mut kl = KWeight::new(sr);
+        let mut kr = KWeight::new(sr);
+        let fl: Vec<f32> = l.iter().map(|&v| kl.process(v)).collect();
+        let fr: Vec<f32> = r.iter().map(|&v| kr.process(v)).collect();
+        let block = (sr as usize * 2) / 5;
+        let hop = sr as usize / 10;
+        let mut blocks: Vec<f64> = Vec::new();
+        let mut start = 0usize;
+        while start + block <= n {
+            let z = block_ms(&fl[start..start + block]) + block_ms(&fr[start..start + block]);
+            blocks.push(z.max(1e-20));
+            start += hop;
+        }
+        let abs_gate_z = 10f64.powf((-70.0 + 0.691) / 10.0);
+        let abs_gated: Vec<f64> = blocks.iter().cloned().filter(|z| *z > abs_gate_z).collect();
+        let mean_z = abs_gated.iter().sum::<f64>() / abs_gated.len().max(1) as f64;
+        let rel_gated: Vec<f64> =
+            abs_gated.iter().cloned().filter(|z| *z > mean_z / 10.0).collect();
+        let expected = -0.691
+            + 10.0
+                * (rel_gated.iter().sum::<f64>() / rel_gated.len().max(1) as f64)
+                    .max(1e-20)
+                    .log10();
+
+        assert!(
+            (measured as f64 - expected).abs() < 1e-6,
+            "integrated_lufs diverged from continuous filtering: {measured} vs {expected}"
+        );
     }
 }

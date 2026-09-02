@@ -20,7 +20,10 @@ impl Comb {
         let y = self.buf[self.idx];
         self.store = y * self.damp2 + self.store * self.damp1;
         self.buf[self.idx] = x + self.store * self.feedback;
-        self.idx = (self.idx + 1) % self.buf.len();
+        self.idx += 1;
+        if self.idx >= self.buf.len() {
+            self.idx = 0; // audit R-4: branch beats per-sample `%` (idiv)
+        }
         y
     }
 }
@@ -42,7 +45,10 @@ impl Allpass {
         let b = self.buf[self.idx];
         let y = -x + b;
         self.buf[self.idx] = x + b * self.feedback;
-        self.idx = (self.idx + 1) % self.buf.len();
+        self.idx += 1;
+        if self.idx >= self.buf.len() {
+            self.idx = 0; // audit R-4: branch beats per-sample `%` (idiv)
+        }
         y
     }
 }
@@ -129,6 +135,7 @@ impl PingpongDelay {
         let _ = self.time_ms; // captured at construction
         let n = l.len();
         let fb = self.feedback;
+        let len = self.buf_l.len(); // audit R-4: constant, avoids per-sample `%`
         for i in 0..n {
             let dl = self.buf_l[self.idx];
             let dr = self.buf_r[self.idx];
@@ -140,7 +147,10 @@ impl PingpongDelay {
             l[i] += dl * self.mix;
             r[i] += dr * self.mix;
 
-            self.idx = (self.idx + 1) % self.buf_l.len();
+            self.idx += 1;
+            if self.idx >= len {
+                self.idx = 0;
+            }
         }
     }
 }

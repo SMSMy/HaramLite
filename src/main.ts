@@ -2,6 +2,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import * as dialog from '@tauri-apps/plugin-dialog';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { check as checkUpdate } from '@tauri-apps/plugin-updater';
+import dingUrl from './assets/ding.wav';
 
 type LogLine = { ts: string; level: string; target: string; message: string };
 type MediaInfo = {
@@ -52,6 +55,52 @@ const i18n = {
     err_not_found: '✗ المسار غير موجود — تأكد من الصحة',
     err_is_dir: '✗ هذا مجلد وليس ملفاً — اختر ملفاً داخل المجلد',
     err_no_audio: '⚠ لا يوجد مسار صوتي في هذا الملف',
+    set_notify: 'إشعارات الانتهاء + صوت خفيف',
+    btn_about: 'حول البرنامج',
+    btn_report: 'الإبلاغ عن مشكلة',
+    about_title: 'حول HaramLite',
+    about_ok: 'حسناً',
+    about_dev: 'التطوير: فريق HaramMute',
+    about_credits: 'أهل الفضل',
+    about_ok_modal: 'حسناً',
+    preview_label: 'معاينة سريعة',
+    preview_hint_song: '⚠ عينة جودة الفصل فقط — لا تمثل قصّ الصمت النهائي',
+    preview_hint_clip: 'عينة مطابقة للمخرج النهائي',
+    notify_done: 'اكتملت المعالجة',
+    notify_fail: 'فشلت المعالجة',
+    notify_batch_done: 'اكتملت الدفعة',
+    btn_repair: 'فحص وإصلاح المكونات',
+    btn_upd: 'التحقق من التحديثات',
+    repair_title: 'مكوّنات ناقصة',
+    repair_desc: 'بعض مكوّنات التشغيل مفقودة (حذف يدوي أو نسخة محمولة). سيتم تنزيلها تلقائياً من GitHub والتحقق من بصمتها قبل التثبيت.',
+    repair_all: 'إصلاح الكل',
+    repair_later: 'لاحقاً',
+    repair_one: 'إصلاح',
+    repair_done: 'تم الإصلاح بنجاح',
+    repair_all_ok: 'كل المكونات موجودة ✓',
+    upd_checking: 'جارٍ التحقق من التحديثات...',
+    upd_none: 'أنت على أحدث إصدار ✓',
+    upd_avail: 'يتوفر تحديث جديد:',
+    upd_ask: 'تنزيله وتثبيته الآن؟',
+    upd_downloaded: 'تم تثبيت التحديث — أعد تشغيل التطبيق',
+    upd_error: 'تعذر التحقق من التحديث',
+    upd_portable_note: 'ملاحظة: التحديث الذاتي والإشعارات النظامية يتطلبان التثبيت عبر المثبت — النسخة المحمولة تستخدم صفحة الإصدارات.',
+    watch_enable: 'تفعيل مجلد المراقبة',
+    watch_pick: 'اختيار المجلد',
+    watch_mode_label: 'وضع المعالجة:',
+    watch_size_label: 'حجم أقصى للمراقبة (MB):',
+    watch_rescan_label: 'فاصل المسح الدوري (ثانية):',
+    watch_status_on: 'نشطة',
+    watch_status_off: 'غير مفعّلة',
+    watch_no_folder: 'اختر مجلداً أولاً',
+    watch_toast_done: 'اكتملت معالجة ملف مراقَب',
+    watch_toast_fail: 'فشلت معالجة ملف مراقَب',
+    btn_bridge: 'تفعيل التكامل مع المتصفح',
+    cuda_missing_text: 'كرت NVIDIA لديك مدعوم، لكن مكتبات تسريع CUDA غير منزّلة. فعّل الخيار وسينزّلها التطبيق تلقائياً.',
+    cuda_ready: '✓ بيئة CUDA جاهزة — المعالجة ستكون أسرع على الكرت',
+    cuda_downloading: 'جارٍ تنزيل مكتبات تسريع CUDA…',
+    cuda_download_failed: 'تعذر تنزيل مكتبات CUDA — سيبقى DirectML نشطاً. أعد المحاولة لاحقاً',
+    cuda_banner_enable: 'كرت NVIDIA لديك مدعوم! فعّل تسريع CUDA من الإعدادات — سيُنزّل التطبيق المكتبات تلقائياً (تنزيل لمرة واحدة).',
   },
   en: {
     actions_title: 'Diagnostics',
@@ -82,6 +131,52 @@ const i18n = {
     err_not_found: '✗ Path not found — please verify',
     err_is_dir: '✗ That is a folder — pick a file inside it',
     err_no_audio: '⚠ No audio track in this file',
+    set_notify: 'Completion notifications + sound',
+    btn_about: 'About',
+    btn_report: 'Report an issue',
+    about_title: 'About HaramLite',
+    about_ok: 'OK',
+    about_dev: 'Developed by the HaramMute team',
+    about_credits: 'Credits',
+    about_ok_modal: 'OK',
+    preview_label: 'Quick preview',
+    preview_hint_song: '⚠ Separation quality sample only — not the final silence cut',
+    preview_hint_clip: 'Sample identical to the final output',
+    notify_done: 'Processing complete',
+    notify_fail: 'Processing failed',
+    notify_batch_done: 'Batch complete',
+    btn_repair: 'Check & repair components',
+    btn_upd: 'Check for updates',
+    repair_title: 'Missing components',
+    repair_desc: 'Some runtime components are missing (manual deletion or a portable copy). They will be downloaded from GitHub and hash-verified before installation.',
+    repair_all: 'Repair all',
+    repair_later: 'Later',
+    repair_one: 'Repair',
+    repair_done: 'Repaired successfully',
+    repair_all_ok: 'All components present ✓',
+    upd_checking: 'Checking for updates…',
+    upd_none: 'You are up to date ✓',
+    upd_avail: 'Update available:',
+    upd_ask: 'Download and install now?',
+    upd_downloaded: 'Update installed — restart the app',
+    upd_error: 'Update check failed',
+    upd_portable_note: 'Note: self-update and system notifications require the installer build — portable copies use the releases page.',
+    watch_enable: 'Enable watch folder',
+    watch_pick: 'Choose folder',
+    watch_mode_label: 'Processing mode:',
+    watch_size_label: 'Max watch file size (MB):',
+    watch_rescan_label: 'Periodic rescan (seconds):',
+    watch_status_on: 'Active',
+    watch_status_off: 'Disabled',
+    watch_no_folder: 'Pick a folder first',
+    watch_toast_done: 'Watched file processed',
+    watch_toast_fail: 'Watched file failed',
+    btn_bridge: 'Enable browser integration',
+    cuda_missing_text: 'Your NVIDIA GPU is supported, but the CUDA acceleration libraries are not downloaded yet. Enable the option and the app will download them automatically.',
+    cuda_ready: '✓ CUDA is ready — processing will be faster on the GPU',
+    cuda_downloading: 'Downloading CUDA acceleration libraries…',
+    cuda_download_failed: 'Could not download the CUDA libraries — DirectML stays active. Try again later',
+    cuda_banner_enable: 'Your NVIDIA GPU is supported! Enable CUDA acceleration in Settings — the app downloads the libraries automatically (one-time download).',
   },
 } as const;
 
@@ -138,13 +233,26 @@ function nearBottom(): boolean {
 
 let logOpen = localStorage.getItem('hl.log_open') === '1';
 
+// Audit F-1: the backend pushes new lines via the `log-line` event; this
+// local buffer is the rendering source of truth (no more 700ms polling).
+const logBuffer: LogLine[] = [];
+
 async function refresh(): Promise<void> {
   if (!logOpen) return;
   try {
-    renderLogs(await invoke<LogLine[]>('get_recent_logs', { limit: 500 }));
+    logBuffer.length = 0;
+    logBuffer.push(...(await invoke<LogLine[]>('get_recent_logs', { limit: 500 })));
+    renderLogs(logBuffer);
   } catch (e) {
     console.error('get_recent_logs failed', e);
   }
+}
+
+function pushLogLine(line: LogLine): void {
+  if (!logOpen) return;
+  logBuffer.push(line);
+  if (logBuffer.length > 500) logBuffer.splice(0, logBuffer.length - 500);
+  renderLogs(logBuffer);
 }
 
 function wireLogToggle(): void {
@@ -175,8 +283,258 @@ let lastProbeOk = false;
 let currentMode: 'song' | 'clip' = 'song';
 let batchQueue: string[] = [];
 let batchRunning = false;
+let singleRunning = false; // F-4: the separate button doubles as cancel
 
-function setVerdict(el: HTMLElement | null, html: string, isBad = false): void {
+/* ── quick preview (Sprint B1) ──────────────────────────────────────── */
+let previewEnabled = false;
+let previewSeconds = 15;
+let appVersion = '';
+
+/* ── notifications (Sprint B2) ──────────────────────────────────────── */
+let toastTimer: number | undefined;
+function showToast(msg: string): void {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  if (toastTimer) window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => el.classList.add('hidden'), 5000);
+}
+// F-7: one reusable Audio element — avoid leaking a new object per ding.
+const ding = new Audio(dingUrl);
+function playDing(): void {
+  try {
+    ding.currentTime = 0;
+    void ding.play();
+  } catch {
+    /* sound is a nicety — never let it break the flow */
+  }
+}
+/** System notification + soft sound; falls back to an in-app toast when
+ *  the OS notification is unavailable (e.g. portable Windows without an
+ *  AUMID/Start Menu shortcut). */
+async function notify(title: string, body: string): Promise<void> {
+  if (localStorage.getItem('hl.notify') !== '1') return;
+  playDing();
+  try {
+    await invoke('notify_done', { title, body });
+  } catch {
+    showToast(`${title} — ${body}`);
+  }
+}
+function fileBaseName(p: string): string {
+  return p.split(/[\\/]/).pop() ?? p;
+}
+
+/* ── smart CUDA hint (Sprint C2-style UX) ───────────────────────────── */
+function showCudaHint(text: string): void {
+  const hint = document.getElementById('cuda-hint');
+  if (!hint) return;
+  if (text) {
+    const span = document.getElementById('cuda-hint-text');
+    if (span) span.textContent = text;
+    hint.classList.remove('hidden');
+  } else {
+    hint.classList.add('hidden');
+  }
+}
+
+/** Permanent green banner above the mode cards: shown as long as an NVIDIA
+ *  GPU is supported and the CUDA toggle is OFF. The libraries self-download
+ *  on first enable, so the message is the same whether they're ready or not. */
+async function updateCudaBanner(): Promise<void> {
+  const banner = document.getElementById('cuda-banner');
+  const text = document.getElementById('cuda-banner-text');
+  if (!banner || !text) return;
+  const cudaOn = localStorage.getItem('hl.cuda') === '1';
+  if (cudaOn) {
+    banner.classList.add('hidden');
+    return;
+  }
+  const st = await invoke<{ nvidia: boolean; cuda: boolean }>('cuda_status').catch(() => null);
+  if (st && st.nvidia) {
+    text.textContent = t('cuda_banner_enable');
+    banner.classList.remove('hidden');
+  } else {
+    banner.classList.add('hidden');
+  }
+}
+
+/* ── visible pipeline stages (Sprint C2) ────────────────────────────── */
+const STAGE_NAMES: Record<string, { ar: string; en: string }> = {
+  normalize: { ar: 'توحيد الصوت', en: 'Normalizing' },
+  separate: { ar: 'فصل الصوت', en: 'Separating' },
+  effects: { ar: 'المؤثرات', en: 'Effects' },
+  encode: { ar: 'الترميز', en: 'Encoding' },
+};
+function hideStageLine(): void {
+  document.getElementById('stage-line')?.classList.add('hidden');
+}
+
+/* ── unified settings sync (Sprint D1) ──────────────────────────────── */
+type RustSettings = Record<string, unknown>;
+let settingsSyncTimer: number | undefined;
+function collectSettings(): RustSettings {
+  return {
+    lang,
+    cuda: localStorage.getItem('hl.cuda') === '1',
+    notify: localStorage.getItem('hl.notify') === '1',
+    preview: localStorage.getItem('hl.preview') === '1',
+    preview_seconds: Number(localStorage.getItem('hl.preview_seconds')) || 15,
+    keep_instrumental: localStorage.getItem('hl.keep_inst') === '1',
+    log_open: logOpen,
+    watch_enabled: localStorage.getItem('hl.watch') === '1',
+    watch_path: localStorage.getItem('hl.watch_path') || null,
+    watch_mode: localStorage.getItem('hl.watch_mode') || 'song',
+    watch_out_kind: 'auto',
+    watch_max_size_mb: Number(localStorage.getItem('hl.watch_max_mb')) || 2048,
+    watch_rescan_secs: Number(localStorage.getItem('hl.watch_rescan')) || 60,
+  };
+}
+function pushSettings(): void {
+  if (settingsSyncTimer) window.clearTimeout(settingsSyncTimer);
+  settingsSyncTimer = window.setTimeout(() => {
+    invoke('set_settings', { value: collectSettings() }).catch((e) =>
+      console.error('set_settings failed', e));
+  }, 300);
+}
+
+/** One-time seed: Rust settings → localStorage (fresh installs / migration). */
+async function seedSettings(): Promise<void> {
+  try {
+    const s = await invoke<RustSettings>('get_settings');
+    if (!s || typeof s !== 'object') return;
+    const bools: [keyof RustSettings, string][] = [
+      ['cuda', 'hl.cuda'], ['notify', 'hl.notify'], ['preview', 'hl.preview'],
+      ['keep_instrumental', 'hl.keep_inst'], ['watch_enabled', 'hl.watch'],
+    ];
+    for (const [k, ls] of bools) {
+      if (localStorage.getItem(ls) === null && s[k] !== undefined) {
+        localStorage.setItem(ls, s[k] ? '1' : '0');
+      }
+    }
+    const strs: [keyof RustSettings, string][] = [
+      ['watch_mode', 'hl.watch_mode'], ['lang', 'hl.lang'],
+    ];
+    for (const [k, ls] of strs) {
+      if (localStorage.getItem(ls) === null && typeof s[k] === 'string') {
+        localStorage.setItem(ls, s[k] as string);
+      }
+    }
+    const nums: [keyof RustSettings, string][] = [
+      ['preview_seconds', 'hl.preview_seconds'], ['watch_max_size_mb', 'hl.watch_max_mb'],
+      ['watch_rescan_secs', 'hl.watch_rescan'],
+    ];
+    for (const [k, ls] of nums) {
+      if (localStorage.getItem(ls) === null && typeof s[k] === 'number') {
+        localStorage.setItem(ls, String(s[k]));
+      }
+    }
+    if (localStorage.getItem('hl.watch_path') === null && typeof s.watch_path === 'string') {
+      localStorage.setItem('hl.watch_path', s.watch_path as string);
+    }
+  } catch {
+    /* browser dev / backend unavailable */
+  }
+}
+
+/* ── watch folder wiring (Sprint D2) ────────────────────────────────── */
+function wireWatchSettings(): void {
+  const cb = document.getElementById('setting-watch') as HTMLInputElement | null;
+  if (!cb) return;
+  const opts = document.getElementById('watch-options');
+  const pathEl = document.getElementById('watch-path');
+  const statusEl = document.getElementById('watch-status');
+  const modeSel = document.getElementById('watch-mode') as HTMLSelectElement | null;
+  const maxInput = document.getElementById('watch-max-size') as HTMLInputElement | null;
+  const rescanInput = document.getElementById('watch-rescan') as HTMLInputElement | null;
+
+  const sync = () => {
+    const on = cb.checked;
+    const path = localStorage.getItem('hl.watch_path') || '';
+    opts?.classList.toggle('hidden', !on);
+    if (pathEl) pathEl.textContent = path || (on ? t('watch_no_folder') : '');
+    if (statusEl) {
+      const hasPath = !!path;
+      statusEl.textContent = on
+        ? (hasPath ? `${t('watch_status_on')} ✓` : t('watch_no_folder'))
+        : t('watch_status_off');
+      statusEl.className = on && hasPath
+        ? 'font-label-sm text-label-sm text-tertiary'
+        : 'font-label-sm text-label-sm text-warn-yellow';
+    }
+  };
+
+  cb.checked = localStorage.getItem('hl.watch') === '1';
+  cb.addEventListener('change', () => {
+    localStorage.setItem('hl.watch', cb.checked ? '1' : '0');
+    pushSettings();
+    sync();
+  });
+
+  document.getElementById('btn-watch-folder')?.addEventListener('click', async () => {
+    const picked = await dialog.open({ directory: true });
+    if (typeof picked === 'string' && picked) {
+      localStorage.setItem('hl.watch_path', picked);
+      pushSettings();
+      sync();
+    }
+  });
+
+  if (modeSel) {
+    modeSel.value = localStorage.getItem('hl.watch_mode') || 'song';
+    modeSel.addEventListener('change', () => {
+      localStorage.setItem('hl.watch_mode', modeSel.value);
+      pushSettings();
+    });
+  }
+  if (maxInput) {
+    maxInput.value = localStorage.getItem('hl.watch_max_mb') || '2048';
+    maxInput.addEventListener('change', () => {
+      localStorage.setItem('hl.watch_max_mb', maxInput.value || '2048');
+      pushSettings();
+    });
+  }
+  if (rescanInput) {
+    rescanInput.value = localStorage.getItem('hl.watch_rescan') || '60';
+    rescanInput.addEventListener('change', () => {
+      localStorage.setItem('hl.watch_rescan', rescanInput.value || '60');
+      pushSettings();
+    });
+  }
+
+  // live events from the Rust watch service
+  void listen<{ path: string; reason: string }>('watch-skip', (ev) => {
+    showToast(`⏭ ${ev.payload.path} — ${ev.payload.reason}`);
+    invoke('push_log', { level: 'warn', message: `watch skip: ${ev.payload.path}: ${ev.payload.reason}` });
+  });
+  void listen<{ path: string; ok: boolean; seconds?: number; error?: string }>('watch-done', (ev) => {
+    const p = ev.payload;
+    showToast(p.ok ? `✓ ${t('watch_toast_done')}: ${p.path}` : `✗ ${t('watch_toast_fail')}: ${p.path}`);
+    if (localStorage.getItem('hl.notify') === '1') playDing();
+    invoke('push_log', {
+      level: p.ok ? 'info' : 'error',
+      message: p.ok ? `watch done: ${p.path} (${p.seconds?.toFixed(1)}s)` : `watch failed: ${p.path}: ${p.error}`,
+    });
+  });
+
+  sync();
+}
+
+/** Render a verdict line as PLAIN TEXT. Never accepts markup: error messages
+ *  embed backend text / file paths (e.g. failed probe_media), so innerHTML
+ *  here is an XSS sink — a file named `<img onerror=...>.mp3` would execute
+ *  in the WebView. */
+function setVerdict(el: HTMLElement | null, text: string, isBad = false): void {
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('text-error', isBad);
+  el.classList.toggle('text-on-surface-variant', !isBad);
+}
+
+/** Rich verdict variant — ONLY for static, trusted markup written in this
+ *  file. Callers must never interpolate user/backend data into `html`. */
+function setVerdictHtml(el: HTMLElement | null, html: string, isBad = false): void {
   if (!el) return;
   el.innerHTML = html;
   el.classList.toggle('text-error', isBad);
@@ -248,14 +606,10 @@ async function runProbe(rawPath?: string): Promise<MediaInfo | null> {
     const kindSel = document.querySelector<HTMLElement>('.kind-card.selected');
     const outKind = (kindSel?.dataset.kind as 'audio' | 'video') ?? 'video';
     const word = outKind === 'video' ? 'فيديو' : 'صوت';
-    setVerdict(v!, `نوع الإخراج: <span class="bg-clay-accent/20 text-clay-accent px-1.5 py-0.5 rounded font-bold mr-1 inline-block">${word}</span>`, false);
+    setVerdictHtml(v!, `نوع الإخراج: <span class="bg-clay-accent/20 text-clay-accent px-1.5 py-0.5 rounded font-bold mr-1 inline-block">${word}</span>`, false);
 
     lastProbeOk = true;
     sepBtnEl().disabled = false;
-
-    // F4: MP4 option only for real video inputs
-    const mp4opt = document.querySelector<HTMLSelectElement>('#fmt-select option[value="mp4video"]');
-    if (mp4opt) mp4opt.disabled = !info.has_video;
 
     invoke('push_log', { level: 'info', message: `probe ok: ${currentMediaPath}` });
     return info;
@@ -312,6 +666,7 @@ function wireSecretSettings(): void {
     cb.checked = localStorage.getItem('hl.keep_inst') === '1';
     cb.addEventListener('change', () => {
       localStorage.setItem('hl.keep_inst', cb.checked ? '1' : '0');
+      pushSettings();
       invoke('push_log', { level: 'info', message: `keep_instrumental = ${cb.checked}` });
     });
   }
@@ -330,8 +685,46 @@ function wireModes(): void {
         sepLabel.innerHTML = t(key);
       }
       invoke('push_log', { level: 'info', message: `mode → ${currentMode}` });
+      refreshPreviewHint();
     });
   });
+}
+
+/* ── quick preview controls (Sprint B1) ─────────────────────────────── */
+function refreshPreviewHint(): void {
+  const toggle = document.getElementById('preview-toggle') as HTMLInputElement | null;
+  const sel = document.getElementById('preview-duration') as HTMLSelectElement | null;
+  const hint = document.getElementById('preview-hint');
+  if (!toggle || !sel || !hint) return;
+  sel.classList.toggle('hidden', !toggle.checked);
+  hint.textContent = toggle.checked
+    ? (currentMode === 'song' ? t('preview_hint_song') : t('preview_hint_clip'))
+    : '';
+}
+function wirePreview(): void {
+  const toggle = document.getElementById('preview-toggle') as HTMLInputElement | null;
+  const sel = document.getElementById('preview-duration') as HTMLSelectElement | null;
+  if (!toggle || !sel) return;
+  toggle.addEventListener('change', () => {
+    previewEnabled = toggle.checked;
+    localStorage.setItem('hl.preview', previewEnabled ? '1' : '0');
+    pushSettings();
+    refreshPreviewHint();
+  });
+  sel.addEventListener('change', () => {
+    previewSeconds = Number(sel.value) || 15;
+    localStorage.setItem('hl.preview_seconds', String(previewSeconds));
+    pushSettings();
+  });
+  // restore persisted state
+  toggle.checked = localStorage.getItem('hl.preview') === '1';
+  previewEnabled = toggle.checked;
+  const saved = Number(localStorage.getItem('hl.preview_seconds'));
+  if (saved === 10 || saved === 15 || saved === 30) {
+    sel.value = String(saved);
+    previewSeconds = saved;
+  }
+  refreshPreviewHint();
 }
 
 function wireKinds(): void {
@@ -344,7 +737,7 @@ function wireKinds(): void {
       const v = document.getElementById('media-verdict');
       if (v) {
         const word = card.dataset.kind === 'video' ? 'فيديو' : 'صوت';
-        v.innerHTML = `نوع الإخراج: <span class="bg-clay-accent/20 text-clay-accent px-1.5 py-0.5 rounded font-bold mr-1 inline-block">${word}</span>`;
+        setVerdictHtml(v, `نوع الإخراج: <span class="bg-clay-accent/20 text-clay-accent px-1.5 py-0.5 rounded font-bold mr-1 inline-block">${word}</span>`);
       }
       
       invoke('push_log', { level: 'info', message: `kind → ${card.dataset.kind}` });
@@ -382,7 +775,7 @@ async function ingestFiles(files: string[]): Promise<void> {
   if (files.length === 0) return;
   
   if (files.length === 1) {
-    stopBatch();
+    await stopBatch();
     const info = await runProbe(files[0]);
     if (info) updateQualityOptions(info.has_video ? info.height ?? null : null);
     // Add to batch queue to show history visually
@@ -397,7 +790,7 @@ async function ingestFiles(files: string[]): Promise<void> {
   const kindSel = document.querySelector<HTMLElement>('.kind-card.selected');
   const outKind = (kindSel?.dataset.kind as 'audio' | 'video') ?? 'video';
   const word = outKind === 'video' ? 'فيديو' : 'صوت';
-  setVerdict(probeEl(), `نوع الإخراج: <span class="bg-clay-accent/20 text-clay-accent px-1.5 py-0.5 rounded font-bold mr-1 inline-block">${word}</span>`, false);
+  setVerdictHtml(probeEl(), `نوع الإخراج: <span class="bg-clay-accent/20 text-clay-accent px-1.5 py-0.5 rounded font-bold mr-1 inline-block">${word}</span>`, false);
   invoke('push_log', { level: 'info', message: `batch queued: ${batchQueue.length} files` });
 }
 
@@ -405,10 +798,15 @@ function updateQualityOptions(srcHeight: number | null): void {
   const wrap = document.getElementById('q-wrap');
   const sel = document.getElementById('quality-select') as HTMLSelectElement | null;
   const videoCard = document.getElementById('kind-video');
-  if (!wrap || !sel || !videoCard) return;
 
   // Video kind only makes sense for real video inputs; dim it otherwise.
-  videoCard.classList.toggle('dimmed', srcHeight === null);
+  // This MUST run before any early return: the Lite UI has no
+  // `quality-select`, so the old `if (!wrap || !sel || !videoCard) return;`
+  // skipped the dimming entirely and let users pick MP4 video for audio-only
+  // files (guaranteed ffmpeg failure).
+  if (videoCard) videoCard.classList.toggle('dimmed', srcHeight === null);
+  if (!wrap || !sel) return;
+
   if (srcHeight === null) {
     sel.replaceChildren();
     return;
@@ -432,11 +830,20 @@ function updateQualityOptions(srcHeight: number | null): void {
 
 /* ── batch engine (F5): sequential, continue-on-fail ────────────────── */
 let batchAbort = false;
-function stopBatch(): void {
+/** Stop the batch AND the backend job behind it. Without cancel_process the
+ *  Rust pipeline keeps grinding (ghost processing) and `batchRunning` stays
+ *  true until it finishes — the next "فصل" click then cancels instead of
+ *  starting. */
+async function stopBatch(): Promise<void> {
   batchAbort = true;
   batchQueue = [];
   document.getElementById('batch-list')?.classList.add('hidden');
   document.getElementById('batch-counter')?.classList.add('hidden');
+  try {
+    await invoke('cancel_process');
+  } catch (e) {
+    console.error('cancel_process failed', e);
+  }
 }
 function setBatchCounter(done: number, total: number): void {
   const el = document.getElementById('batch-counter');
@@ -519,7 +926,7 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?:
       item.querySelector('.batch-pct')?.classList.add('hidden');
       item.querySelector('.batch-prog-wrap')?.classList.add('hidden');
       if (statusSpan) {
-          statusSpan.textContent = '✓ مكتمل';
+          statusSpan.textContent = previewEnabled ? '✓ مكتمل (عينة)' : '✓ مكتمل';
           statusSpan.className = 'status-text font-label-sm text-label-sm text-tertiary relative z-10 flex-1';
       }
       if (actionsDiv && resultPath) {
@@ -565,29 +972,65 @@ async function runSeparationFor(path: string, keepInst: boolean, o: SepOpts): Pr
     format: o.advFmt ?? null,
     keepInstrumental: keepInst,
     useCuda: useCuda,
+    previewSeconds: previewEnabled ? previewSeconds : null,
   });
   return res;
 }
 
 function wireSeparate(): void {
   const result = sepResultEl();
+  let stageHideTimer: number | undefined; // F-5: one pending hide at a time
 
+  // F-2: cache the active batch item + its children — sep-progress fires at
+  // very high frequency and used to run 4 DOM queries per event.
+  let cachedItem: HTMLElement | null = null;
+  let cachedBg: HTMLElement | null = null;
+  let cachedBar: HTMLElement | null = null;
+  let cachedText: HTMLElement | null = null;
   void listen<number>('sep-progress', (ev) => {
     const pct = Math.round(ev.payload * 100);
     const activeItem = document.querySelector<HTMLElement>('.batch-item.running-item');
-    if (activeItem) {
-      const bg = activeItem.querySelector('.batch-prog-bg') as HTMLElement;
-      const bar = activeItem.querySelector('.batch-prog-bar') as HTMLElement;
-      const text = activeItem.querySelector('.batch-pct') as HTMLElement;
-      if (bg) bg.style.inlineSize = `${pct}%`;
-      if (bar) bar.style.inlineSize = `${pct}%`;
-      if (text) text.textContent = `${pct}%`;
+    if (activeItem !== cachedItem) {
+      cachedItem = activeItem;
+      cachedBg = activeItem ? activeItem.querySelector<HTMLElement>('.batch-prog-bg') : null;
+      cachedBar = activeItem ? activeItem.querySelector<HTMLElement>('.batch-prog-bar') : null;
+      cachedText = activeItem ? activeItem.querySelector<HTMLElement>('.batch-pct') : null;
     }
+    if (cachedBg) cachedBg.style.inlineSize = `${pct}%`;
+    if (cachedBar) cachedBar.style.inlineSize = `${pct}%`;
+    if (cachedText) cachedText.textContent = `${pct}%`;
+    if (ev.payload >= 1.0) {
+      // F-5: clear any pending hide so the NEXT batch file's stage line
+      // isn't hidden by the PREVIOUS file's 1200ms timer.
+      if (stageHideTimer) window.clearTimeout(stageHideTimer);
+      stageHideTimer = window.setTimeout(hideStageLine, 1200);
+    }
+  });
+
+  // Sprint C2: visible pipeline stages (توحيد ← فصل ← مؤثرات ← ترميز)
+  void listen<{ stage: string; pct: number }>('sep-stage', (ev) => {
+    const line = document.getElementById('stage-line');
+    const name = document.getElementById('stage-name');
+    const bar = document.getElementById('stage-bar');
+    const pctEl = document.getElementById('stage-pct');
+    if (!line || !name || !bar || !pctEl) return;
+    line.classList.remove('hidden');
+    const pct = Math.round(ev.payload.pct * 100);
+    name.textContent = STAGE_NAMES[ev.payload.stage]?.[lang] ?? ev.payload.stage;
+    bar.style.inlineSize = `${pct}%`;
+    pctEl.textContent = `${pct}%`;
   });
 
   sepBtnEl()?.addEventListener('click', async () => {
     if (batchRunning) {
+      // F-3: abort the file being processed NOW, not just the ones after it
       batchAbort = true;
+      void invoke('cancel_process');
+      return;
+    }
+    if (singleRunning) {
+      // F-4: the separate button doubles as a cancel button for single runs
+      void invoke('cancel_process');
       return;
     }
     const keepInst = (document.getElementById('keep-inst') as HTMLInputElement)?.checked ?? false;
@@ -622,10 +1065,12 @@ function wireSeparate(): void {
         const res = await runSeparationFor(f, keepInst, { outKind, quality, advFmt });
         const resultPath = res.video || res.vocals || res.instrumental || undefined;
         markBatchItem(f, 'ok', resultPath);
+        void notify(t('notify_done'), fileBaseName(f));
       } catch (e) {
         markBatchItem(f, 'fail');
         failures.push(`${f} — ${e}`);
         invoke('push_log', { level: 'error', message: `batch item failed: ${f}: ${e}` });
+        void notify(t('notify_fail'), fileBaseName(f));
       }
       done += 1;
       setBatchCounter(done, total);
@@ -646,6 +1091,7 @@ function wireSeparate(): void {
       level: failures.length ? 'warn' : 'info',
       message: `batch finished: ${total - failures.length}/${total}`,
     });
+    void notify(t('notify_batch_done'), `${total - failures.length}/${total} ✓`);
   });
 
 }
@@ -657,7 +1103,10 @@ async function runOne(
   result: HTMLElement,
 ): Promise<void> {
   const btn = sepBtnEl();
-  btn.disabled = true;
+  singleRunning = true;
+  const prevHtml = btn.innerHTML;
+  btn.disabled = false; // F-4: stays clickable — it is now the cancel button
+  btn.textContent = '⏹ إلغاء';
   result.classList.add('hidden');
   markBatchItem(path, 'run');
   try {
@@ -670,13 +1119,18 @@ async function runOne(
     result.classList.remove('hidden');
     const resultPath = res.video || res.vocals || res.instrumental || undefined;
     markBatchItem(path, 'ok', resultPath);
+    void notify(t('notify_done'), fileBaseName(path));
   } catch (e) {
-    result.textContent = `فشل الفصل: ${e}`;
+    const msg = String(e);
+    result.textContent = msg.includes('إلغاء') ? 'أُلغيت المعالجة.' : `فشل الفصل: ${e}`;
     result.classList.remove('hidden');
     markBatchItem(path, 'fail');
     invoke('push_log', { level: 'error', message: `separate failed: ${e}` });
+    void notify(t('notify_fail'), fileBaseName(path));
   } finally {
+    singleRunning = false;
     btn.disabled = false;
+    btn.innerHTML = prevHtml;
   }
 }
 
@@ -750,11 +1204,81 @@ function wireSettings(): void {
   const btnSettings = document.getElementById('btn-settings');
   const menu = document.getElementById('settings-menu');
   const cudaCheckbox = document.getElementById('setting-cuda') as HTMLInputElement;
+  const notifyCheckbox = document.getElementById('setting-notify') as HTMLInputElement;
+
+  // CUDA_RUNTIME_PLAN: progress + completion of the self-download.
+  void listen<{ file: string; pct: number }>('cuda-install', (ev) => {
+    showCudaHint(`${t('cuda_downloading')} ${ev.payload.file} — ${Math.round(ev.payload.pct * 100)}%`);
+  });
+  void listen<{ ok: boolean; error?: string }>('cuda-install-done', (ev) => {
+    const cb = document.getElementById('setting-cuda') as HTMLInputElement | null;
+    if (ev.payload.ok) {
+      localStorage.setItem('hl.cuda', '1');
+      if (cb) cb.checked = true;
+      showCudaHint(t('cuda_ready'));
+      invoke('push_log', { level: 'info', message: 'مكتبات CUDA ثُبّتت بنجاح ✓' });
+    } else {
+      // condition 3: fallback — DirectML stays active, nothing breaks.
+      // Show the backend's own explanation (e.g. "not published yet").
+      localStorage.setItem('hl.cuda', '0');
+      if (cb) cb.checked = false;
+      showCudaHint(ev.payload.error || t('cuda_download_failed'));
+      invoke('push_log', { level: 'error', message: `فشل تنزيل CUDA: ${ev.payload.error}` });
+    }
+    if (cb) cb.disabled = false;
+    pushSettings();
+    void updateCudaBanner();
+  });
 
   if (cudaCheckbox) {
     cudaCheckbox.checked = localStorage.getItem('hl.cuda') === '1';
-    cudaCheckbox.addEventListener('change', (e) => {
-      localStorage.setItem('hl.cuda', (e.target as HTMLInputElement).checked ? '1' : '0');
+    cudaCheckbox.addEventListener('change', async (e) => {
+      const checked = (e.target as HTMLInputElement).checked;
+      if (checked) {
+        const st = await invoke<{ nvidia: boolean; cuda: boolean }>('cuda_status').catch(() => null);
+        if (st && !st.nvidia) {
+          cudaCheckbox.checked = false;
+          localStorage.setItem('hl.cuda', '0');
+          showCudaHint('');
+          pushSettings();
+          return;
+        }
+        if (st && st.cuda) {
+          showCudaHint(t('cuda_ready'));
+          localStorage.setItem('hl.cuda', '1');
+          pushSettings();
+          void updateCudaBanner();
+          return;
+        }
+        // runtime missing → one-time self-download, box stays checked while disabled
+        cudaCheckbox.disabled = true;
+        showCudaHint(`${t('cuda_downloading')} 0%`);
+        invoke('install_cuda_runtime').catch((err) => {
+          cudaCheckbox.disabled = false;
+          cudaCheckbox.checked = false;
+          localStorage.setItem('hl.cuda', '0');
+          showCudaHint(t('cuda_download_failed'));
+          pushSettings();
+          console.error('install_cuda_runtime failed', err);
+        });
+        return;
+      }
+      showCudaHint('');
+      localStorage.setItem('hl.cuda', '0');
+      pushSettings();
+      void updateCudaBanner();
+    });
+  }
+  document.getElementById('cuda-banner-btn')?.addEventListener('click', () => {
+    // the banner leads to the Settings toggle — no external downloads
+    btnSettings?.click();
+  });
+
+  if (notifyCheckbox) {
+    notifyCheckbox.checked = localStorage.getItem('hl.notify') === '1';
+    notifyCheckbox.addEventListener('change', (e) => {
+      localStorage.setItem('hl.notify', (e.target as HTMLInputElement).checked ? '1' : '0');
+      pushSettings();
     });
   }
 
@@ -771,6 +1295,262 @@ function wireSettings(): void {
   }
 }
 
+/* ── about + report (Sprint B3/B4) ──────────────────────────────────── */
+function fillAbout(): void {
+  const body = document.getElementById('about-body');
+  if (!body) return;
+  const credits = [
+    'UVR-MDX-NET-Voc_FT — نموذج الفصل (63MB، تشغيل محلي كامل)',
+    'ONNX Runtime — محرك الاستدلال (CPU / DirectML / CUDA)',
+    'FFmpeg / ffprobe — الفحص والمعالجة والترميز',
+    'yt-dlp — تنزيل الوسائط',
+    'Thmanyah Typeface — الخط العربي',
+    'Material Symbols — الأيقونات',
+  ];
+  body.innerHTML = `
+    <div class="flex items-center gap-unit">
+      <span class="font-bold text-clay-accent">HaramLite</span>
+      <span id="about-version" class="bg-clay-accent/20 text-clay-accent px-1.5 py-0.5 rounded font-bold">v${appVersion || '—'}</span>
+    </div>
+    <p>${t('about_dev')} — أداة رأي تعمل محلياً 100% حفاظاً على الخصوصية.</p>
+    <div class="mt-2">
+      <div class="font-bold text-on-surface-variant mb-1">${t('about_credits')}:</div>
+      <ul class="flex flex-col gap-unit text-on-surface-variant text-xs leading-relaxed">
+        ${credits.map((c) => `<li>• ${c}</li>`).join('')}
+      </ul>
+    </div>`;
+}
+function wireAbout(): void {
+  const overlay = document.getElementById('about-overlay');
+  const open = () => {
+    fillAbout();
+    overlay?.classList.remove('hidden');
+  };
+  document.getElementById('btn-about')?.addEventListener('click', open);
+  document.getElementById('about-close')?.addEventListener('click', () => overlay?.classList.add('hidden'));
+  document.getElementById('about-ok')?.addEventListener('click', () => overlay?.classList.add('hidden'));
+  overlay?.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.classList.add('hidden');
+  });
+}
+function wireReport(): void {
+  document.getElementById('btn-report')?.addEventListener('click', () => {
+    void openUrl('https://github.com/SMSMy/HaramLite/issues/new').catch((e) =>
+      console.error('open issues page failed', e));
+  });
+}
+
+/* ── repair wizard (Sprint C1) ──────────────────────────────────────── */
+type HealthRow = { key: string; label: string; ok: boolean; path: string | null };
+
+async function fetchHealth(): Promise<HealthRow[]> {
+  try {
+    const r = await invoke<HealthRow[]>('health_check_cmd');
+    return Array.isArray(r) ? r : [];
+  } catch {
+    return [];
+  }
+}
+
+async function renderRepairList(): Promise<HealthRow[]> {
+  const list = document.getElementById('repair-list');
+  const rows = await fetchHealth();
+  if (!list) return rows;
+  list.replaceChildren(...rows.map((row) => {
+    const div = document.createElement('div');
+    div.className = 'flex items-center justify-between gap-unit font-body-sm text-sm';
+    const left = document.createElement('span');
+    left.textContent = (row.ok ? '✓ ' : '✗ ') + row.label;
+    left.className = row.ok ? 'text-tertiary' : 'text-error';
+    div.appendChild(left);
+    if (!row.ok) {
+      const btn = document.createElement('button');
+      btn.textContent = t('repair_one');
+      btn.className = 'text-clay-accent hover:text-primary-container font-label-sm text-label-sm cursor-pointer';
+      btn.addEventListener('click', () => void repairOne(row.key));
+      div.appendChild(btn);
+    }
+    return div;
+  }));
+  return rows;
+}
+
+async function repairOne(key: string): Promise<void> {
+  const wrap = document.getElementById('repair-progress-wrap');
+  const bar = document.getElementById('repair-progress');
+  const res = document.getElementById('repair-result');
+  wrap?.classList.remove('hidden');
+  if (bar) bar.style.inlineSize = '0%';
+  try {
+    await invoke<string>('repair_component', { key });
+    if (res) {
+      res.textContent = `✓ ${t('repair_done')}`;
+      res.className = 'font-body-sm text-sm text-tertiary';
+      res.classList.remove('hidden');
+    }
+    await renderRepairList();
+  } catch (e) {
+    if (res) {
+      res.textContent = `✗ ${String(e).slice(0, 200)}`;
+      res.className = 'font-body-sm text-sm text-error';
+      res.classList.remove('hidden');
+    }
+    invoke('push_log', { level: 'error', message: `repair failed: ${e}` });
+  } finally {
+    if (bar) bar.style.inlineSize = '100%';
+    window.setTimeout(() => wrap?.classList.add('hidden'), 800);
+  }
+}
+
+async function repairAll(): Promise<void> {
+  const rows = await fetchHealth();
+  const missing = rows.filter((r) => !r.ok);
+  for (const row of missing) {
+    await repairOne(row.key);
+  }
+  const after = await fetchHealth();
+  if (after.length && after.every((r) => r.ok)) {
+    showToast(t('repair_all_ok'));
+    document.getElementById('repair-overlay')?.classList.add('hidden');
+    void notify(t('repair_all_ok'), '');
+  }
+}
+
+function wireRepair(): void {
+  const overlay = document.getElementById('repair-overlay');
+  const open = async () => {
+    const rows = await renderRepairList();
+    if (rows.some((r) => !r.ok)) overlay?.classList.remove('hidden');
+    else showToast(t('repair_all_ok'));
+  };
+  document.getElementById('btn-repair-open')?.addEventListener('click', () => void open());
+  document.getElementById('repair-close')?.addEventListener('click', () => overlay?.classList.add('hidden'));
+  document.getElementById('repair-cancel')?.addEventListener('click', () => overlay?.classList.add('hidden'));
+  document.getElementById('repair-all')?.addEventListener('click', () => void repairAll());
+  overlay?.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.classList.add('hidden');
+  });
+  void listen<number>('repair-progress', (ev) => {
+    const bar = document.getElementById('repair-progress');
+    const wrap = document.getElementById('repair-progress-wrap');
+    if (bar && wrap) {
+      wrap.classList.remove('hidden');
+      bar.style.inlineSize = `${Math.round(ev.payload * 100)}%`;
+    }
+  });
+}
+
+/** Startup gate: if any component is missing, open the repair wizard. */
+async function autoHealthCheck(): Promise<void> {
+  const rows = await fetchHealth();
+  if (rows.length === 0) return; // backend unavailable (e.g. browser dev) — skip
+  if (rows.some((r) => !r.ok)) {
+    await renderRepairList();
+    document.getElementById('repair-overlay')?.classList.remove('hidden');
+    invoke('push_log', {
+      level: 'warn',
+      message: `مكونات ناقصة: ${rows.filter((r) => !r.ok).map((r) => r.key).join(', ')}`,
+    });
+  }
+}
+
+/* ── auto-updater (Sprint C2) ───────────────────────────────────────── */
+let updateCheckRunning = false;
+async function manualUpdateCheck(): Promise<void> {
+  if (updateCheckRunning) return;
+  updateCheckRunning = true;
+  showToast(t('upd_checking'));
+  try {
+    const update = await checkUpdate();
+    if (!update) {
+      showToast(t('upd_none'));
+      return;
+    }
+    const ok = window.confirm(`${t('upd_avail')} v${update.version}\n\n${t('upd_ask')}`);
+    if (!ok) return;
+    showToast(t('upd_checking'));
+    let received = 0;
+    let total = 0;
+    await update.downloadAndInstall((ev) => {
+      if (ev.event === 'Started') {
+        total = (ev.data as { contentLength?: number }).contentLength ?? 0;
+      } else if (ev.event === 'Progress') {
+        received += (ev.data as { chunkLength: number }).chunkLength;
+        const pct = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 0;
+        showToast(`${t('upd_checking')} ${pct}%`);
+      }
+    });
+    showToast(t('upd_downloaded'));
+  } catch (e) {
+    const msg = String(e);
+    invoke('push_log', { level: 'warn', message: `update check failed: ${msg}` });
+    showToast(`${t('upd_error')}: ${msg.slice(0, 100)}`);
+  } finally {
+    updateCheckRunning = false;
+  }
+}
+async function silentUpdateCheck(): Promise<void> {
+  try {
+    const update = await checkUpdate();
+    if (update) {
+      showToast(`${t('upd_avail')} v${update.version}`);
+      invoke('push_log', { level: 'info', message: `update available: v${update.version}` });
+    }
+  } catch (e) {
+    // dev / portable builds — expected, never fatal
+    invoke('push_log', { level: 'debug', message: `update check unavailable: ${String(e).slice(0, 120)}` });
+  }
+}
+function wireUpdater(): void {
+  document.getElementById('btn-check-update')?.addEventListener('click', () => void manualUpdateCheck());
+}
+
+/* ── browser integration (Sprint E2) ────────────────────────────────── */
+function wireBridge(): void {
+  let bridgeCardTimer: number | undefined; // F-5: one pending hide at a time
+  document.getElementById('btn-bridge')?.addEventListener('click', async () => {
+    try {
+      const r = await invoke<string>('register_native_host', { browser: 'chrome' });
+      showToast(r);
+      invoke('push_log', { level: 'info', message: r });
+    } catch (e) {
+      showToast(`✗ ${String(e).slice(0, 120)}`);
+      invoke('push_log', { level: 'error', message: `native host registration failed: ${e}` });
+    }
+  });
+  void listen<{ name: string; ok: boolean; seconds?: number; error?: string }>('bridge-done', (ev) => {
+    const p = ev.payload;
+    showToast(p.ok
+      ? `✓ ${p.name} (${p.seconds?.toFixed(1)}s)`
+      : `✗ ${p.name}: ${String(p.error ?? '').slice(0, 80)}`);
+    // completion sound for browser-initiated jobs (notification setting)
+    if (localStorage.getItem('hl.notify') === '1') playDing();
+    // completion card with a quick "open results folder" action
+    const card = document.getElementById('bridge-card');
+    const cardText = document.getElementById('bridge-card-text');
+    if (card && cardText) {
+      cardText.textContent = p.ok
+        ? `${p.name} — تم في ${p.seconds?.toFixed(1)}s`
+        : `${p.name} — ${String(p.error ?? '').slice(0, 120)}`;
+      cardText.className = p.ok
+        ? 'font-body-sm text-sm text-cream-text'
+        : 'font-body-sm text-sm text-error';
+      const openBtn = document.getElementById('bridge-card-open');
+      if (openBtn) openBtn.style.display = p.ok ? '' : 'none';
+      card.classList.remove('hidden');
+      // F-5: two jobs finishing back to back must not let the FIRST
+      // job's 8s timer hide the SECOND job's card early.
+      if (bridgeCardTimer) window.clearTimeout(bridgeCardTimer);
+      bridgeCardTimer = window.setTimeout(() => card.classList.add('hidden'), 8000);
+    }
+  });
+  const bridgeCard = document.getElementById('bridge-card');
+  document.getElementById('bridge-card-close')?.addEventListener('click', () => bridgeCard?.classList.add('hidden'));
+  document.getElementById('bridge-card-open')?.addEventListener('click', () => {
+    invoke('open_folder', { path: '' }).catch(console.error);
+  });
+}
+
 function wire(): void {
   wireLang();
   wireSettings();
@@ -780,20 +1560,6 @@ function wire(): void {
   window.addEventListener('unhandledrejection', (ev) =>
     invoke('push_log', { level: 'error', message: `JS unhandled rejection: ${String(ev.reason)}` }));
 
-  // auto-probe on Enter or paste (probe button removed — B1 simplification)
-  const autoProbe = async () => {
-    const p = pathInputEl().value;
-    if (!p.trim()) return;
-    const info = await runProbe();
-    if (info) updateQualityOptions(info.has_video ? (info.height ?? null) : null);
-    else updateQualityOptions(null);
-  };
-  pathInputEl().addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter') void autoProbe();
-  });
-  pathInputEl().addEventListener('change', () => void autoProbe());
-  pathInputEl().addEventListener('paste', () => setTimeout(() => void autoProbe(), 60));
-
   wireModes();
   wireKinds();
   wireDropzone();
@@ -801,15 +1567,26 @@ function wire(): void {
   wireUrlDownload();
   wireLogToggle();
   wireOpenFolder();
+  wirePreview();
+  wireAbout();
+  wireReport();
+  wireRepair();
+  wireUpdater();
+  wireWatchSettings();
+  wireBridge();
 }
 
 async function init(): Promise<void> {
+  // Sprint D1: seed localStorage from the Rust settings store (fresh installs)
+  await seedSettings();
+
   applyLang();
 
   wire();
   wireSecretSettings();
   try {
     const info = await invoke<{ app: string; version: string }>('ping');
+    appVersion = info.version;
     const badge = document.getElementById('version-badge');
     if (badge) badge.title = `HaramLite ${info.version}`;
     if (badge) badge.textContent = `v${info.version}`;
@@ -824,8 +1601,18 @@ async function init(): Promise<void> {
     invoke('push_log', { level: 'error', message: `yt-dlp auto-update failed: ${e}` });
   });
 
+  // Sprint C1: missing components → repair wizard; Sprint C2: silent update check
+  void autoHealthCheck();
+  void silentUpdateCheck();
+
+  // Smart CUDA advice: permanent green banner while NVIDIA is supported
+  // and the CUDA toggle is off (updates itself on every settings change)
+  void updateCudaBanner();
+
+  // Audit F-1: live log lines arrive as pushed events — no polling.
+  void listen<LogLine>('log-line', (ev) => pushLogLine(ev.payload));
+
   await refresh();
-  setInterval(refresh, 700);
 }
 
 void init();

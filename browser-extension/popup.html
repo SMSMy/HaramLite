@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <img src="icon48.png" alt="" />
+    <div>
+      <h1>HaramLite Bridge</h1>
+      <p class="sub">الجسر بين المتصفح وتطبيق HaramLite</p>
+    </div>
+  </header>
+
+  <div id="status" class="row">
+    <span class="dot" id="status-dot"></span>
+    <span id="status-text">جارٍ الفحص...</span>
+  </div>
+
+  <div class="card">
+    <p class="hint">انقر بزر الفأرة الأيمن على أي رابط أو صفحة فيديو واختر «أرسل إلى HaramLite» — سيتولى التطبيق التنزيل والمعالجة كاملة على جهازك.</p>
+  </div>
+
+  <div class="card">
+    <button id="send-page" class="primary">أرسل هذه الصفحة إلى HaramLite</button>
+    <p id="send-result" class="hint result hidden"></p>
+  </div>
+
+  <div class="card hidden" id="popup-progress">
+    <div id="popup-name" class="hint ellipsis"></div>
+    <div class="bar-wrap"><div id="popup-bar" class="bar"></div></div>
+    <div id="popup-status" class="hint"></div>
+    <div style="display:flex;gap:6px;margin-top:8px;">
+      <button id="popup-cancel" class="danger">⏹ إلغاء</button>
+      <button id="popup-open" class="primary" style="display:none;">📂 فتح مجلد النتائج</button>
+    </div>
+  </div>
+
+  <div class="card hidden" id="error-card">
+    <p id="error-text" class="error"></p>
+    <ol>
+      <li>ثبّت تطبيق HaramLite وشغّله مرة واحدة على الأقل.</li>
+      <li>من إعدادات التطبيق: فعّل «التكامل مع المتصفح».</li>
+      <li>أعد تحميل الإضافة من <code>chrome://extensions</code>.</li>
+    </ol>
+  </div>
+
+  <footer>
+    <span class="privacy">الخصوصية: لا تُرفع أي ملفات — كل المعالجة محلية.</span>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to HaramMute</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="onboarding.css">
+</head>
+<body>
+  <div class="onboarding-container">
+    <!-- Language Toggle -->
+    <button id="langToggle" class="lang-toggle-onboarding" title="Switch language">AR</button>
+
+    <!-- Header -->
+    <header class="onboarding-header">
+      <img src="icon.png" alt="HaramMute" class="onboarding-logo">
+      <h1 class="onboarding-title" data-i18n="welcomeTitle">Welcome to HaramMute</h1>
+      <p class="onboarding-subtitle" data-i18n="welcomeSubtitle">Remove background music from YouTube videos while keeping dialogue clear.</p>
+    </header>
+
+    <!-- Step 1: Preview hero (fresh installs try before choosing) -->
+    <section id="preview-hero" class="preview-hero hidden">
+      <h2 class="preview-hero-title" data-i18n="previewTryTitle">Start with YouTube</h2>
+
+      <div class="preview-hero-media">
+        <img id="preview-hero-visual" class="preview-hero-visual"
+          src="assets/onboarding-preview-hero.gif"
+          alt="" aria-hidden="true" decoding="async">
+      </div>
+
+      <p class="preview-hero-desc" data-i18n="previewTryDesc">Open any YouTube video and press the HaramMute button in the player. Background music is removed while speech stays clear.</p>
+      <button id="preview-cta-btn" class="btn-get-started btn-preview-cta">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M8 5v14l11-7z"/>
+        </svg>
+        <span data-i18n="previewCta">Open YouTube</span>
+      </button>
+      <button id="preview-skip-link" class="preview-skip-link" data-i18n="previewSkipLink">Go to setup instead</button>
+    </section>
+
+    <!-- Step 2: Choice (experiment post_preview_handoff_v2: control_two_mode vs three_tier_cards) -->
+    <div id="choice-step" class="choice-step hidden">
+    <!-- Mode Selection -->
+    <section class="mode-selection">
+      <h2 class="section-title" id="choice-title" data-i18n="chooseMode">Choose how to continue</h2>
+      <p class="section-subtitle" id="choice-subtitle" data-i18n="previewChooseSubtitle">Pick the setup that fits how you want to use HaramMute.</p>
+
+      <!-- Control variant: v1.0.10 two-mode chooser -->
+      <div id="choice-variant-control" class="hidden">
+        <div class="mode-cards" role="radiogroup" data-i18n-aria-label="processingMode" aria-label="Processing mode">
+          <!-- Cloud Mode Card -->
+          <label class="mode-card" data-mode="cloud">
+            <input type="radio" name="processing-mode" value="cloud" checked>
+            <div class="mode-card-content">
+              <div class="mode-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+                </svg>
+              </div>
+              <div class="mode-title" data-i18n="cloudMode">Online</div>
+              <ul class="mode-features">
+                <li data-i18n="cloudFeature1">Fast processing</li>
+                <li data-i18n="cloudFeature2">No GPU needed</li>
+                <li data-i18n="cloudFeature3">No setup required</li>
+              </ul>
+              <div class="mode-badge trial" data-i18n="trialBadge">Cloud plans from $4.99/mo</div>
+            </div>
+            <div class="mode-check">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+              </svg>
+            </div>
+          </label>
+
+          <!-- Local Mode Card -->
+          <label class="mode-card" data-mode="local">
+            <input type="radio" name="processing-mode" value="local">
+            <div class="mode-card-content">
+              <div class="mode-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                  <line x1="8" y1="21" x2="16" y2="21"/>
+                  <line x1="12" y1="17" x2="12" y2="21"/>
+                </svg>
+              </div>
+              <div class="mode-title" data-i18n="localMode">On Your Computer</div>
+              <ul class="mode-features">
+                <li data-i18n="localFeature1">Private - data stays on device</li>
+                <li data-i18n="localFeature2">Requires setup</li>
+                <li data-i18n="localFeature3">Free forever</li>
+              </ul>
+              <div class="mode-badge free" data-i18n="freeBadge">FREE</div>
+            </div>
+            <div class="mode-check">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+              </svg>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Treatment variant: equal Free / Pro / Max comparison -->
+      <div id="choice-variant-treatment" class="hidden">
+        <div class="premium-intro">
+          <h2 class="section-title premium-intro-title" data-i18n="premiumChoiceTitle">Keep watching without music</h2>
+          <p class="section-subtitle premium-intro-subtitle" data-i18n="premiumChoiceSubtitle">Choose how your videos get processed.</p>
+        </div>
+
+        <div class="tier-choice-cards premium-trio" role="list" data-i18n-aria-label="planTierLabel" aria-label="Plan tier">
+          <!-- Free Tier Card -->
+          <div class="mode-card tier-card tier-card-free" role="listitem">
+            <div class="mode-card-content">
+              <div class="mode-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                  <line x1="8" y1="21" x2="16" y2="21"/>
+                  <line x1="12" y1="17" x2="12" y2="21"/>
+                </svg>
+              </div>
+              <div class="tier-card-heading">
+                <div class="tier-emphasis" data-i18n="freeTierEmphasis">Private</div>
+                <div class="mode-title" data-i18n="freeTierTitle">Free</div>
+              </div>
+              <div class="tier-price">
+                <span class="tier-price-amount">$0</span>
+              </div>
+              <div class="tier-price-sub" data-i18n="tierFreeSub">Free forever</div>
+              <ul class="mode-features tier-comparison-rows">
+                <li data-i18n="freeTierFeature1">Runs on your computer</li>
+                <li data-i18n="freeTierFeature2">Desktop app required</li>
+                <li class="tier-comparison-empty" aria-hidden="true"></li>
+              </ul>
+              <button type="button" class="tier-cta tier-cta-secondary" data-tier-choice="free" data-i18n="freeRowCta">Set up free local processing</button>
+            </div>
+          </div>
+
+          <!-- Pro Tier Card -->
+          <div class="mode-card tier-card tier-card-pro" role="listitem" data-plan-tier="starter">
+            <div class="tier-flag" data-i18n="proTierBadge">Recommended</div>
+            <div class="mode-card-content">
+              <div class="mode-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+                  <path d="M13 3L8 13h5l-2 8 6-11h-5l1-7z"/>
+                </svg>
+              </div>
+              <div class="tier-card-heading">
+                <div class="tier-emphasis" data-i18n="proTierEmphasis">Fast</div>
+                <div class="mode-title" data-i18n="proTierTitle">Pro</div>
+              </div>
+              <div class="tier-price">
+                <span class="tier-price-amount">$4.99</span>
+                <span class="tier-price-period" data-i18n="perMonthShort">/mo</span>
+              </div>
+              <div class="tier-price-sub tier-price-trial" data-trial-note>3-day free trial</div>
+              <ul class="mode-features tier-comparison-rows">
+                <li data-i18n="proTierFeature1">Fast cloud processing</li>
+                <li data-i18n="proTierFeature2">No setup required</li>
+                <li data-i18n="proTierFeature3">Up to 3 hours of video per day</li>
+              </ul>
+              <button type="button" class="tier-cta tier-cta-primary" data-tier-choice="pro" data-i18n="startFreeTrial">Start Free Trial</button>
+            </div>
+          </div>
+
+          <!-- Max Tier Card -->
+          <div class="mode-card tier-card tier-card-max" role="listitem" data-plan-tier="max">
+            <div class="mode-card-content">
+              <div class="mode-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M7 8c-2.2 0-4 1.8-4 4s1.8 4 4 4c2.8 0 4.2-4 5-4s2.2 4 5 4c2.2 0 4-1.8 4-4s-1.8-4-4-4c-2.8 0-4.2 4-5 4S9.8 8 7 8z"/>
+                </svg>
+              </div>
+              <div class="tier-card-heading">
+                <div class="tier-emphasis" data-i18n="maxTierEmphasis">Unlimited</div>
+                <div class="mode-title" data-i18n="maxTierTitle">Max</div>
+              </div>
+              <div class="tier-price">
+                <span class="tier-price-amount">$14.99</span>
+                <span class="tier-price-period" data-i18n="perMonthShort">/mo</span>
+                <span class="tier-price-meta hidden">
+                  <span class="tier-price-compare">$19.99</span>
+                  <span class="plan-offer-badge" data-i18n="earlyPriceBadge">Early price</span>
+                </span>
+              </div>
+              <div class="tier-price-sub tier-price-trial" data-trial-note>3-day free trial</div>
+              <ul class="mode-features tier-comparison-rows">
+                <li data-i18n="maxTierFeature1">Fastest cloud processing</li>
+                <li data-i18n="maxTierFeature2">No setup required</li>
+                <li data-i18n="maxTierFeature3">Unlimited videos</li>
+              </ul>
+              <button type="button" class="tier-cta" data-tier-choice="max" data-i18n="startFreeTrial">Start Free Trial</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Utility strip: mode note, then quiet account recovery -->
+        <div class="premium-utility-strip">
+          <div class="premium-utility-note">
+            <span class="info-icon">i</span>
+            <span data-i18n="modeChangeNote">You can change this anytime in the extension popup.</span>
+          </div>
+          <div class="premium-utility-divider" aria-hidden="true"></div>
+          <div class="premium-utility-account">
+            <span data-i18n="alreadyHaveAccount">Already have an account? </span>
+            <button type="button" id="strip-check-subscription-btn" class="premium-utility-account-link" data-i18n="checkSubscription">Check subscription</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Info Note -->
+    <div class="info-note" id="mode-info-note">
+      <span class="info-icon">i</span>
+      <span data-i18n="modeChangeNote">You can change this anytime in the extension popup.</span>
+    </div>
+
+    <!-- Next Button (control variant only) -->
+    <button id="nextBtn" class="btn-get-started hidden">
+      <span data-i18n="next">Next</span>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="5" y1="12" x2="19" y2="12"/>
+        <polyline points="12 5 19 12 12 19"/>
+      </svg>
+    </button>
+    </div><!-- /choice-step -->
+  </div>
+
+  <!-- Trial Activation Modal -->
+  <div id="trial-modal" class="modal-overlay hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-container modal-container-pricing">
+      <div class="modal-content">
+        <!-- Close button -->
+        <button id="modal-close-btn" class="modal-close" data-i18n-aria-label="closeLabel" aria-label="Close">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+
+        <!-- State 1: Email Entry (Default) -->
+        <div id="modal-state-email" class="modal-state">
+          <div id="modal-default-icon" class="modal-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+            </svg>
+          </div>
+          <div id="modal-direct-kicker" class="modal-direct-kicker hidden"></div>
+          <h2 id="modal-email-title" class="modal-title" data-i18n="activateCloud">Activate Cloud Processing</h2>
+          <p id="modal-email-desc" class="modal-desc" data-i18n="enterEmailDesc">Enter your email to start your free trial or log in</p>
+          <div id="modal-signed-in-badge" class="modal-signed-in-badge hidden"></div>
+
+          <div id="modal-current-plan-strip" class="modal-current-plan-strip hidden">
+            <span class="modal-current-plan-strip-dot" aria-hidden="true"></span>
+            <span id="modal-current-plan-strip-text"></span>
+          </div>
+
+          <!-- Plan Selection Cards -->
+          <div class="plan-selector" id="plan-selector">
+            <div class="billing-toggle onboarding-billing-toggle" role="radiogroup" data-i18n-aria-label="billingCycleLabel" aria-label="Billing cycle">
+              <button class="billing-toggle-btn active" data-billing="monthly" type="button">
+                <span data-i18n="monthlyPlan">Monthly</span>
+              </button>
+              <button class="billing-toggle-btn" data-billing="yearly" type="button">
+                <span data-i18n="yearlyPlan">Yearly</span>
+                <span class="billing-toggle-badge" data-i18n="save17">2 months free</span>
+              </button>
+            </div>
+            <div class="plan-cards tier-plan-cards" id="modal-plan-cards" role="radiogroup" data-i18n-aria-label="planTierLabel" aria-label="Plan tier"></div>
+          </div>
+
+          <div id="modal-whats-next" class="modal-whats-next hidden">
+            <div class="modal-whats-next-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9"/>
+                <polyline points="12 7 12 12 15 14"/>
+              </svg>
+            </div>
+            <div class="modal-whats-next-body">
+              <div class="modal-whats-next-label" data-i18n="whatsNextLabel">What happens next</div>
+              <p id="modal-whats-next-text" class="modal-whats-next-text"></p>
+            </div>
+          </div>
+
+          <div id="modal-payment-chip" class="modal-payment-chip hidden">
+            <div class="modal-payment-chip-icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="5" width="20" height="14" rx="2"/>
+                <line x1="2" y1="10" x2="22" y2="10"/>
+              </svg>
+            </div>
+            <span id="modal-payment-chip-text" class="modal-payment-chip-text"></span>
+            <button id="modal-manage-payment-btn" class="modal-payment-chip-action" type="button" data-i18n="updateCard">Update</button>
+          </div>
+
+          <div id="modal-form" class="modal-form">
+            <input type="email" id="modal-email-input" placeholder="you@example.com" class="modal-input" autocomplete="email">
+            <button id="modal-continue-btn" class="modal-btn-primary">
+              <span id="modal-continue-text" data-i18n="continue">Continue</span>
+              <span id="modal-continue-spinner" class="spinner hidden"></span>
+            </button>
+          </div>
+          <p id="modal-trial-note" class="modal-trial-note" data-i18n="trialDescription">3 days free, then $4.99/month. Cancel anytime.</p>
+
+          <div id="modal-error" class="modal-error hidden"></div>
+          <div id="modal-error-actions" class="modal-error-actions hidden">
+            <button id="modal-error-action-btn" class="modal-btn-secondary" type="button"></button>
+          </div>
+
+          <div id="modal-generic-footer">
+            <div class="modal-divider"></div>
+            <div class="modal-secondary-actions">
+              <div class="modal-existing-user">
+                <span data-i18n="alreadyHaveAccount">Already have an account? </span>
+                <button id="modal-check-subscription-link" class="modal-check-link" data-i18n="checkSubscription">Check subscription</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="modal-manage-footer" class="modal-manage-footer hidden">
+            <div class="modal-existing-user">
+              <span data-i18n="managePlanSwitchPrompt">Using a different account? </span>
+              <button id="modal-manage-switch-account-btn" class="modal-check-link" data-i18n="switchAccount">Switch account</button>
+            </div>
+          </div>
+
+          <div id="modal-direct-trust" class="modal-direct-trust hidden" data-i18n="securePoweredByPolar">
+            Secure billing via Polar
+          </div>
+
+          <div id="modal-check-form" class="modal-check-form hidden">
+            <div class="modal-check-input-group">
+              <input type="email" id="modal-check-email" placeholder="you@example.com" class="modal-input" autocomplete="email">
+              <button id="modal-check-btn" class="modal-btn-secondary">
+                <span id="modal-check-text" data-i18n="checkAccess">Check</span>
+                <span id="modal-check-spinner" class="spinner hidden"></span>
+              </button>
+            </div>
+            <div id="modal-check-error" class="modal-error hidden"></div>
+          </div>
+        </div>
+
+        <!-- State 2: Loading -->
+        <div id="modal-state-loading" class="modal-state hidden">
+          <div class="modal-spinner-large"></div>
+          <p class="modal-loading-text" data-i18n="checkingAccount">Checking account...</p>
+        </div>
+
+        <!-- State 3: Success (Logged In) -->
+        <div id="modal-state-success" class="modal-state hidden">
+          <div class="modal-icon success">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          </div>
+          <h2 id="modal-success-title" class="modal-title" data-i18n="welcomeBack">Welcome back!</h2>
+          <p class="modal-email-display" id="modal-success-email"></p>
+          <div class="modal-plan-badge">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+            <span id="modal-success-plan">Cloud Pro Active</span>
+          </div>
+          <p id="modal-success-note" class="modal-success-note hidden"></p>
+
+          <button id="modal-start-btn" class="modal-btn-primary" data-i18n="startUsing">Start Using HaramMute</button>
+
+          <button id="modal-switch-account-btn" class="modal-btn-link" data-i18n="switchAccount">Switch account</button>
+        </div>
+
+        <!-- State 4: Already Subscribed (from storage) -->
+        <div id="modal-state-subscribed" class="modal-state hidden">
+          <div class="modal-icon success">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          </div>
+          <h2 class="modal-title" data-i18n="alreadySubscribed">You're already subscribed!</h2>
+          <p class="modal-email-display" id="modal-subscribed-email"></p>
+          <div class="modal-plan-badge">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+            <span id="modal-subscribed-plan">Cloud Pro Active</span>
+          </div>
+
+          <button id="modal-continue-subscribed-btn" class="modal-btn-primary" data-i18n="continue">Continue</button>
+
+          <button id="modal-switch-account-2-btn" class="modal-btn-link" data-i18n="switchAccount">Switch account</button>
+        </div>
+
+        <!-- State 5: Redirecting to Checkout -->
+        <div id="modal-state-redirect" class="modal-state hidden">
+          <div class="modal-spinner-large"></div>
+          <h2 id="modal-redirect-title" class="modal-title" data-i18n="startingTrial">Starting your free trial...</h2>
+          <p id="modal-redirect-text" class="modal-loading-text" data-i18n="redirectingCheckout">Redirecting to checkout...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Local Setup Modal -->
+  <div id="local-modal" class="modal-overlay hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-container modal-container-wide">
+      <div class="modal-content">
+        <button id="local-modal-close-btn" class="modal-close" data-i18n-aria-label="closeLabel" aria-label="Close">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+        <div class="modal-state">
+          <div class="modal-icon local-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+              <line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+          </div>
+          <h2 class="modal-title" data-i18n="localSetupTitle">Set Up Local Processing</h2>
+          <p class="modal-desc" data-i18n="localSetupDesc">Download and install the desktop app to process videos on your device.</p>
+
+          <!-- Platform Download Boxes -->
+          <div class="download-boxes">
+            <a href="http://downloads.haram-mute.com/windows/HaramMuteInstaller.exe" class="download-box" id="windows-download-btn" target="_blank" rel="noopener">
+              <div class="download-box-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/>
+                </svg>
+              </div>
+              <div class="download-box-label" data-i18n="downloadWindows">Download for Windows</div>
+            </a>
+            <div class="download-box disabled">
+              <div class="coming-soon-ribbon">Coming Soon</div>
+              <div class="download-box-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+                </svg>
+              </div>
+              <div class="download-box-label" data-i18n="downloadMac">Download for Mac</div>
+            </div>
+          </div>
+
+          <!-- Installation Steps -->
+          <div class="setup-instructions">
+            <h3 class="setup-instructions-title">Installation Steps</h3>
+            <ol class="setup-steps">
+              <li>Click the <strong>Download for Windows</strong> button above</li>
+              <li>Open <strong>HaramMuteInstaller.exe</strong> from your downloads</li>
+            </ol>
+
+            <!-- SmartScreen Warning (inline) -->
+            <div class="smartscreen-inline">
+              <div class="smartscreen-inline-header">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <span>Windows may show a SmartScreen warning - this is normal for new apps</span>
+              </div>
+              <div class="smartscreen-inline-content">
+                <video
+                  id="onboarding-smartscreen-video"
+                  class="smartscreen-video-square"
+                  src="smartscreen-tutorial.mp4"
+                  muted
+                  loop
+                  playsinline
+                  autoplay>
+                </video>
+                <div class="smartscreen-inline-steps">
+                  <span class="smartscreen-mini-step">Click <strong>"More info"</strong></span>
+                  <span>→</span>
+                  <span class="smartscreen-mini-step">then <strong>"Run anyway"</strong></span>
+                </div>
+                <div class="trust-note-small">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  </svg>
+                  <span>HaramMute is safe - warning appears for all unsigned apps</span>
+                </div>
+              </div>
+            </div>
+
+            <ol class="setup-steps" start="3">
+              <li>A setup wizard will guide you through the installation</li>
+              <li>Click <strong>Launch</strong> when installation completes</li>
+              <li>You can also start the app from the desktop shortcut or Start menu</li>
+              <li>Verify the app is running by checking for the <strong>HaramMute icon</strong> in your system tray</li>
+            </ol>
+          </div>
+
+          <button id="local-modal-done-btn" class="modal-btn-primary" data-i18n="doneSetup">Done, Start Using HaramMute</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="dist/posthog-bundle.js"></script>
+  <script src="dist/onboarding.bundle.js"></script>
+</body>
+</html>

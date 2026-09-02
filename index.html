@@ -4,308 +4,17 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>HaramLite-RS Dashboard</title>
-<script type="text/javascript" nonce="bbfb7d153f894251b67bfa44065" src="//local.adguard.org?ts=1787529241922&amp;type=content-script&amp;dmn=contribution.usercontent.google.com&amp;url=https%3A%2F%2Fcontribution.usercontent.google.com%2Fdownload%3Fc%3DCgthaWRhX2NvZGVmeBJ7Eh1hcHBfY29tcGFuaW9uX2dlbmVyYXRlZF9maWxlcxpaCiVodG1sXzAwMDY1OWJmYmM1ZmNjODAwMzU2ZWE2YTY3MzM2YmE1EgsSBxDdtf7nyx4YAZIBIwoKcHJvamVjdF9pZBIVQhM3OTQ2NjU4ODc1NDk4Nzk5MjE1%26filename%3D%26opi%3D89354086&amp;app=chrome.exe&amp;css=3&amp;js=1&amp;rel=1&amp;rji=1&amp;sbe=1&amp;stealth=1&amp;st-dnt"></script><script type="text/javascript" nonce="bbfb7d153f894251b67bfa44065" src="//local.adguard.org?ts=1787529241922&amp;name=AdGuard%20Assistant&amp;name=AdGuard%20Extra&amp;type=user-script"></script><script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+
+
+<link rel="stylesheet" href="/src/tailwind.css" />
 <link rel="stylesheet" href="/src/styles.css" />
-<style>
-        
-        /* Apple-inspired interactions & animations */
-        .apple-ease {
-            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        
-        .glass-effect {
-            background-color: rgba(31, 29, 27, 0.65);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-        }
-        
-        @keyframes shimmer {
-            100% { transform: translateX(100%); }
-        }
-        
-        .animate-shimmer {
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .animate-shimmer::after {
-            content: '';
-            position: absolute;
-            top: 0; right: 0; bottom: 0; left: 0;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
-            transform: translateX(-100%);
-            animation: shimmer 2s infinite;
-        }
-        
-        .spring-panel {
-            transition: grid-template-rows 0.5s cubic-bezier(0.4, 0, 0.2, 1), margin 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease;
-            display: grid;
-            grid-template-rows: 0fr;
-            opacity: 0;
-            margin: 0;
-        }
-        
-        .spring-panel.open {
-            grid-template-rows: 1fr;
-            opacity: 1;
-            margin-bottom: 1rem;
-        }
-        
-        .spring-panel-content {
-            overflow: hidden;
-        }
-        
-        @keyframes pulse-drag {
-            0% { box-shadow: 0 0 0 0 rgba(218, 119, 86, 0.4); }
-            70% { box-shadow: 0 0 0 15px rgba(218, 119, 86, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(218, 119, 86, 0); }
-        }
-        
-        .drag-over {
-            animation: pulse-drag 2s infinite;
-            border-color: #DA7756 !important;
-            background-color: rgba(218, 119, 86, 0.1) !important;
-            transform: scale(1.02);
-        }
-        
-        .fade-in-up {
-            opacity: 0;
-            transform: translateY(15px);
-            animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-        }
-        
-        @keyframes fadeInUp {
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        /* Log Fade In */
-        @keyframes logFadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(5px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        .animate-log-entry {
-            opacity: 0;
-            animation: logFadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-        }
-        
-        /* Staggered reveal delays */
-        .delay-100 { animation-delay: 100ms; }
-        .delay-200 { animation-delay: 200ms; }
-        .delay-300 { animation-delay: 300ms; }
-        
-        @media (prefers-reduced-motion: reduce) {
-            *, ::before, ::after {
-                animation-duration: 0.01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.01ms !important;
-                scroll-behavior: auto !important;
-            }
-        }
-    
-        .mode-card.selected {
-            border-color: rgba(218, 119, 86, 0.5) !important;
-            background-color: rgba(218, 119, 86, 0.1) !important;
-            opacity: 1 !important;
-        }
-        .mode-card:not(.selected) {
-            border-color: #2E2C29 !important;
-            background-color: transparent !important;
-            opacity: 0.7 !important;
-        }
-        .kind-card.selected {
-            background-color: rgba(218, 119, 86, 0.1) !important;
-            border-color: rgba(218, 119, 86, 0.3) !important;
-            opacity: 1 !important;
-        }
-        .kind-card:not(.selected) {
-            background-color: transparent !important;
-            border-color: transparent !important;
-            opacity: 0.5 !important;
-        }
-        #logcard.collapsed #log-view {
-            display: none !important;
-        }
-    
-</style>
-<script id="tailwind-config">
-  tailwind.config = {
-    darkMode: "class",
-    theme: {
-      extend: {
-        "colors": {
-                "coal-bg": "#1F1D1B",
-                "on-secondary-fixed": "#1c1c19",
-                "tertiary-fixed-dim": "#5ddac8",
-                "secondary-container": "#474743",
-                "on-primary": "#5d1901",
-                "tertiary-fixed": "#7cf7e4",
-                "outline-variant": "#55433d",
-                "primary": "#ffb59d",
-                "inverse-on-surface": "#32302e",
-                "warn-yellow": "#F3AE35",
-                "error-container": "#93000a",
-                "on-tertiary-container": "#00312c",
-                "secondary-fixed": "#e5e2dd",
-                "primary-container": "#da7756",
-                "inverse-surface": "#e7e1de",
-                "border-muted": "#2E2C29",
-                "on-tertiary-fixed-variant": "#005048",
-                "surface": "#151311",
-                "background": "#151311",
-                "tertiary": "#5ddac8",
-                "error": "#ffb4ab",
-                "on-background": "#e7e1de",
-                "primary-fixed-dim": "#ffb59d",
-                "primary-fixed": "#ffdbd0",
-                "secondary": "#c9c6c2",
-                "on-secondary": "#31302d",
-                "outline": "#a38c85",
-                "on-primary-fixed": "#390b00",
-                "on-tertiary": "#003731",
-                "on-surface": "#e7e1de",
-                "surface-tint": "#ffb59d",
-                "cream-text": "#F5F2ED",
-                "inverse-primary": "#994528",
-                "surface-dim": "#151311",
-                "on-secondary-container": "#b7b5b0",
-                "on-secondary-fixed-variant": "#474743",
-                "clay-accent": "#DA7756",
-                "surface-variant": "#373432",
-                "on-tertiary-fixed": "#00201c",
-                "secondary-fixed-dim": "#c9c6c2",
-                "on-error-container": "#ffdad6",
-                "on-primary-container": "#541500",
-                "on-error": "#690005",
-                "surface-container-high": "#2c2a27",
-                "on-surface-variant": "#dbc1b9",
-                "surface-container": "#211f1d",
-                "surface-container-lowest": "#100e0c",
-                "surface-container-highest": "#373432",
-                "tertiary-container": "#00a494",
-                "on-primary-fixed-variant": "#7b2f13",
-                "coal-surface": "#141413",
-                "surface-container-low": "#1d1b19",
-                "surface-bright": "#3b3936"
-        },
-        "borderRadius": {
-                "DEFAULT": "0.125rem",
-                "lg": "0.25rem",
-                "xl": "0.5rem",
-                "full": "0.75rem"
-        },
-        "spacing": {
-                "margin-mobile": "16px",
-                "gutter": "16px",
-                "stack-md": "16px",
-                "unit": "4px",
-                "margin-desktop": "32px",
-                "stack-lg": "24px",
-                "stack-sm": "8px"
-        },
-        "fontFamily": {
-                "headline-lg-mobile": [
-                        "Thmanyah Serif Display"
-                ],
-                "body-md": [
-                        "Thmanyah Sans"
-                ],
-                "body-lg": [
-                        "Thmanyah Sans"
-                ],
-                "headline-xl": [
-                        "Thmanyah Serif Display"
-                ],
-                "label-md": [
-                        "Thmanyah Sans"
-                ],
-                "label-sm": [
-                        "Thmanyah Sans"
-                ],
-                "headline-lg": [
-                        "Thmanyah Serif Display"
-                ],
-                "mono-code": [
-                        "monospace"
-                ]
-        },
-        "fontSize": {
-                "headline-lg-mobile": [
-                        "24px",
-                        {
-                                "lineHeight": "1.3",
-                                "fontWeight": "700"
-                        }
-                ],
-                "body-md": [
-                        "16px",
-                        {
-                                "lineHeight": "1.5",
-                                "fontWeight": "400"
-                        }
-                ],
-                "body-lg": [
-                        "18px",
-                        {
-                                "lineHeight": "1.6",
-                                "fontWeight": "500"
-                        }
-                ],
-                "headline-xl": [
-                        "36px",
-                        {
-                                "lineHeight": "1.2",
-                                "fontWeight": "900"
-                        }
-                ],
-                "label-md": [
-                        "14px",
-                        {
-                                "lineHeight": "1.2",
-                                "letterSpacing": "0.05em",
-                                "fontWeight": "600"
-                        }
-                ],
-                "label-sm": [
-                        "12px",
-                        {
-                                "lineHeight": "1.2",
-                                "fontWeight": "500"
-                        }
-                ],
-                "headline-lg": [
-                        "28px",
-                        {
-                                "lineHeight": "1.3",
-                                "fontWeight": "700"
-                        }
-                ],
-                "mono-code": [
-                        "13px",
-                        {
-                                "lineHeight": "1.5",
-                                "fontWeight": "400"
-                        }
-                ]
-        }
-},
-    },
-  }
-</script>
 </head>
 <body class="bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PGRlZnM+PHBhdHRlcm4gaWQ9ImEiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4wMykiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjYSkiLz48L3N2Zz4=')] bg-coal-surface text-cream-text h-screen flex flex-col font-body-md text-body-md overflow-hidden relative" style="background-attachment: fixed;">
 <!-- TopAppBar -->
 <header class="glass-effect border-b border-border-muted flex justify-between items-center w-full px-gutter py-stack-md max-w-full docked full-width top-0 z-50">
 <div class="flex items-center gap-stack-md">
 <h1 class="font-headline-xl text-headline-xl font-black text-clay-accent tracking-tight drop-shadow-md">HaramLite</h1>
-<span class="bg-surface-container text-on-surface-variant px-stack-sm py-unit rounded font-label-sm text-label-sm border border-border-muted cursor-pointer select-none transition-all duration-300 apple-ease hover:bg-surface-variant hover:scale-105 active:scale-95" id="version-badge">v0.8.2-beta</span>
+<span class="bg-surface-container text-on-surface-variant px-stack-sm py-unit rounded font-label-sm text-label-sm border border-border-muted cursor-pointer select-none transition-all duration-300 apple-ease hover:bg-surface-variant hover:scale-105 active:scale-95" id="version-badge">v0.2.0</span>
 </div>
 <div class="absolute left-1/2 transform -translate-x-1/2 opacity-80 pointer-events-none hidden md:block">
 <p class="font-body-lg text-cream-text text-sm font-semibold tracking-wide">الموسيقى لا تليق بقلبٍ يريد <span class="kashida-text text-clay-accent">الطمأنينة</span>.</p>
@@ -326,6 +35,57 @@
         <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-cuda" type="checkbox"/>
         <span class="font-body-sm text-cream-text transition-colors duration-200">استخدام تسريع CUDA (NVIDIA)</span>
     </label>
+    <div id="cuda-hint" class="hidden flex flex-col gap-unit bg-tertiary/10 border border-tertiary/30 rounded p-unit mt-1">
+        <span id="cuda-hint-text" class="font-label-sm text-label-sm text-tertiary leading-relaxed"></span>
+    </div>
+    <label class="flex items-center gap-stack-sm cursor-pointer group">
+        <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-notify" type="checkbox"/>
+        <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="set_notify">إشعارات الانتهاء + صوت خفيف</span>
+    </label>
+    <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
+        <h4 class="font-label-sm text-label-sm text-on-surface-variant">📁 مجلد المراقبة</h4>
+        <label class="flex items-center gap-stack-sm cursor-pointer group">
+            <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-watch" type="checkbox"/>
+            <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="watch_enable">تفعيل مجلد المراقبة</span>
+        </label>
+        <div id="watch-options" class="hidden flex flex-col gap-stack-sm">
+            <button id="btn-watch-folder" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
+                <span class="material-symbols-outlined text-sm" data-icon="folder_open">folder_open</span>
+                <span class="font-body-sm" data-i18n="watch_pick">اختيار المجلد</span>
+            </button>
+            <span id="watch-path" class="font-label-sm text-label-sm text-on-surface-variant truncate" dir="ltr"></span>
+            <div class="flex items-center gap-stack-sm">
+                <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="watch_mode_label">وضع المعالجة:</span>
+                <select id="watch-mode" class="form-select bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent cursor-pointer">
+                    <option value="song">أغنية</option>
+                    <option value="clip">مقطع عادي</option>
+                </select>
+            </div>
+            <span id="watch-status" class="font-label-sm text-label-sm text-on-surface-variant"></span>
+        </div>
+    </div>
+    <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
+        <button id="btn-about" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
+            <span class="material-symbols-outlined text-sm" data-icon="info">info</span>
+            <span class="font-body-sm" data-i18n="btn_about">حول البرنامج</span>
+        </button>
+        <button id="btn-report" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
+            <span class="material-symbols-outlined text-sm" data-icon="bug_report">bug_report</span>
+            <span class="font-body-sm" data-i18n="btn_report">الإبلاغ عن مشكلة</span>
+        </button>
+        <button id="btn-repair-open" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
+            <span class="material-symbols-outlined text-sm" data-icon="build">build</span>
+            <span class="font-body-sm" data-i18n="btn_repair">فحص وإصلاح المكونات</span>
+        </button>
+        <button id="btn-check-update" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
+            <span class="material-symbols-outlined text-sm" data-icon="system_update">system_update</span>
+            <span class="font-body-sm" data-i18n="btn_upd">التحقق من التحديثات</span>
+        </button>
+        <button id="btn-bridge" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
+            <span class="material-symbols-outlined text-sm" data-icon="extension">extension</span>
+            <span class="font-body-sm" data-i18n="btn_bridge">تفعيل التكامل مع المتصفح</span>
+        </button>
+    </div>
 </div>
 </div>
 </header>
@@ -333,6 +93,12 @@
 <main class="flex-1 flex flex-row flex-nowrap overflow-hidden relative z-10">
 <!-- Center Dashboard -->
 <div class="flex-1 overflow-y-auto p-stack-lg flex flex-col gap-stack-lg" id="dashboard-container">
+<!-- Permanent CUDA advice banner (visible while NVIDIA supported & CUDA off) -->
+<div id="cuda-banner" class="hidden flex items-center gap-stack-sm bg-tertiary/10 border border-tertiary/30 rounded-lg p-stack-md fade-in-up">
+<span class="material-symbols-outlined text-tertiary" data-icon="bolt">bolt</span>
+<span id="cuda-banner-text" class="font-body-sm text-sm text-tertiary flex-1 leading-relaxed"></span>
+<button id="cuda-banner-btn" class="bg-tertiary/20 text-tertiary border border-tertiary/40 rounded px-stack-sm py-unit font-label-sm text-label-sm cursor-pointer hover:bg-tertiary/30 transition-colors flex-shrink-0">⚙ الإعدادات</button>
+</div>
 <!-- Mode Selection -->
 <div class="grid grid-cols-2 gap-stack-md fade-in-up">
 <button id="mode-song" data-mode="song" class="mode-card selected glass-effect border-[1.5px] border-clay-accent/50 bg-clay-accent/10 rounded-lg p-stack-lg flex flex-col items-center justify-center gap-unit transition-all duration-300 apple-ease hover:bg-clay-accent/20 hover:-translate-y-1 hover:shadow-[0_8px_20px_-8px_rgba(218,119,86,0.4)] active:scale-[0.98]">
@@ -366,6 +132,14 @@
 <option value="wav">WAV</option>
 <option value="flac">FLAC</option>
 </select>
+</div>
+<div class="flex items-center gap-stack-sm">
+<span class="font-label-md text-on-surface-variant" data-i18n="watch_size_label">حجم أقصى للمراقبة (MB):</span>
+<input id="watch-max-size" type="number" min="100" step="100" value="2048" class="form-input w-24 bg-coal-surface border border-border-muted rounded px-stack-sm py-unit text-cream-text focus:outline-none focus:border-clay-accent font-body-md"/>
+</div>
+<div class="flex items-center gap-stack-sm">
+<span class="font-label-md text-on-surface-variant" data-i18n="watch_rescan_label">فاصل المسح الدوري (ثانية):</span>
+<input id="watch-rescan" type="number" min="10" step="10" value="60" class="form-input w-20 bg-coal-surface border border-border-muted rounded px-stack-sm py-unit text-cream-text focus:outline-none focus:border-clay-accent font-body-md"/>
 </div>
 </div>
 </div>
@@ -411,6 +185,27 @@
     <p id="dl-result" class="hidden text-clay-accent text-sm mt-2"></p>
     
 </div>
+</div>
+<!-- Quick Preview (Sprint B1) -->
+<div class="flex items-center gap-stack-sm bg-coal-surface/40 p-stack-sm rounded border border-border-muted fade-in-up delay-200">
+    <label class="flex items-center gap-stack-sm cursor-pointer group flex-shrink-0">
+        <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="preview-toggle" type="checkbox"/>
+        <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="preview_label">معاينة سريعة</span>
+    </label>
+    <select id="preview-duration" class="hidden form-select bg-coal-surface border border-border-muted rounded px-stack-sm py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent cursor-pointer">
+        <option value="10">10 ث</option>
+        <option value="15" selected>15 ث</option>
+        <option value="30">30 ث</option>
+    </select>
+    <span id="preview-hint" class="font-label-sm text-label-sm text-warn-yellow flex-1"></span>
+</div>
+<!-- Visible pipeline stages (Sprint C2) -->
+<div id="stage-line" class="hidden flex items-center gap-stack-sm font-label-sm text-label-sm text-on-surface-variant fade-in-up delay-200">
+    <span id="stage-name" class="text-clay-accent font-bold">فصل الصوت</span>
+    <div class="flex-1 h-1.5 bg-border-muted rounded-full overflow-hidden">
+        <div id="stage-bar" class="h-full bg-clay-accent/70 w-0 rounded-full transition-all duration-300"></div>
+    </div>
+    <span id="stage-pct" class="w-10 text-left" dir="ltr">0%</span>
 </div>
 <!-- Action Button -->
 <button class="kashida-text mt-auto w-full bg-clay-accent text-coal-surface font-headline-lg text-headline-lg py-stack-md rounded-lg flex justify-center items-center gap-stack-md transition-all duration-300 apple-ease hover:bg-primary-container hover:-translate-y-1 hover:shadow-[0_12px_24px_-8px_rgba(218,119,86,0.6)] active:scale-[0.98] active:shadow-md fade-in-up delay-300 group" id="btn-separate">
@@ -464,7 +259,7 @@
         <span class="material-symbols-outlined text-sm" data-icon="terminal">terminal</span>
         سجل الأحداث / Activity Log
     </span>
-    <label class="autoscroll text-xs text-on-surface-variant hover:text-cream-text transition-colors flex items-center gap-unit cursor-pointer" onclick="event.stopPropagation()">
+    <label class="autoscroll text-xs text-on-surface-variant hover:text-cream-text transition-colors flex items-center gap-unit cursor-pointer">
         <input type="checkbox" id="autoscroll" class="form-checkbox h-3 w-3 text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent focus:ring-offset-coal-surface transition-all duration-200" checked /> المتابعة التلقائية
     </label>
 </div>
@@ -488,6 +283,54 @@
 <div class="flex gap-stack-sm hover:bg-surface-variant/40 transition-colors duration-200 px-unit py-1 rounded cursor-text animate-log-entry" style="animation-delay: 400ms;">
 <span class="text-tertiary font-bold drop-shadow-sm">[INFO]</span>
 <span>Initialization complete. Ready.</span>
+</div>
+</div>
+</div>
+
+<!-- About modal (Sprint B3) -->
+<div id="about-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+<div class="glass-effect border border-border-muted rounded-xl p-stack-lg w-96 max-w-[90vw] flex flex-col gap-stack-md fade-in-up" style="animation-duration: 0.25s;">
+<div class="flex justify-between items-center">
+<h3 class="font-label-md text-label-md text-clay-accent" data-i18n="about_title">حول HaramLite</h3>
+<button id="about-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit rounded cursor-pointer" title="إغلاق">
+<span class="material-symbols-outlined text-sm" data-icon="close">close</span>
+</button>
+</div>
+<div id="about-body" class="flex flex-col gap-unit font-body-sm text-sm text-cream-text leading-relaxed"></div>
+<button id="about-ok" class="self-end bg-surface-container text-cream-text border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high transition-all duration-300 font-label-sm text-label-sm cursor-pointer" data-i18n="about_ok">حسناً</button>
+</div>
+</div>
+<!-- In-app toast (fallback when system notification is unavailable) -->
+<div id="toast" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-[110] bg-surface-container border border-clay-accent/40 rounded px-stack-md py-stack-sm text-cream-text font-body-sm text-sm shadow-xl"></div>
+
+<!-- Bridge completion card (browser-initiated jobs) -->
+<div id="bridge-card" class="hidden fixed bottom-4 right-4 z-[110] glass-effect border border-border-muted rounded-xl p-stack-md flex flex-col gap-unit shadow-xl max-w-xs">
+<div class="flex justify-between items-center">
+<span class="font-label-sm text-label-sm text-clay-accent font-bold">🎵 اكتمل طلب المتصفح</span>
+<button id="bridge-card-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit cursor-pointer">✕</button>
+</div>
+<span id="bridge-card-text" class="font-body-sm text-sm text-cream-text"></span>
+<button id="bridge-card-open" class="bg-clay-accent text-coal-surface rounded px-stack-sm py-unit font-label-sm text-label-sm font-bold self-start hover:bg-primary-container transition-all duration-300 cursor-pointer">📂 فتح مجلد النتائج</button>
+</div>
+
+<!-- Repair wizard (Sprint C1) -->
+<div id="repair-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+<div class="glass-effect border border-border-muted rounded-xl p-stack-lg w-[28rem] max-w-[92vw] flex flex-col gap-stack-md fade-in-up" style="animation-duration: 0.25s;">
+<div class="flex justify-between items-center">
+<h3 class="font-label-md text-label-md text-clay-accent" data-i18n="repair_title">مكوّنات ناقصة</h3>
+<button id="repair-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit rounded cursor-pointer" title="إغلاق">
+<span class="material-symbols-outlined text-sm" data-icon="close">close</span>
+</button>
+</div>
+<p class="font-body-sm text-sm text-on-surface-variant leading-relaxed" data-i18n="repair_desc">بعض مكوّنات التشغيل مفقودة (حذف يدوي أو نسخة محمولة). سيتم تنزيلها تلقائياً من GitHub والتحقق من بصمتها قبل التثبيت.</p>
+<div id="repair-list" class="flex flex-col gap-unit"></div>
+<div id="repair-progress-wrap" class="hidden h-1.5 bg-border-muted rounded-full overflow-hidden">
+<div id="repair-progress" class="h-full bg-clay-accent w-0 rounded-full transition-all duration-300"></div>
+</div>
+<div id="repair-result" class="hidden font-body-sm text-sm"></div>
+<div class="flex justify-end gap-stack-sm">
+<button id="repair-cancel" class="bg-coal-surface text-on-surface-variant border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high transition-all duration-300 font-label-sm text-label-sm cursor-pointer" data-i18n="repair_later">لاحقاً</button>
+<button id="repair-all" class="bg-clay-accent text-coal-surface px-stack-md py-stack-sm rounded font-label-sm text-label-sm font-bold hover:bg-primary-container transition-all duration-300 cursor-pointer" data-i18n="repair_all">إصلاح الكل</button>
 </div>
 </div>
 </div>

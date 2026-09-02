@@ -1,0 +1,34 @@
+{
+   "action": {
+      "default_popup": "popup.html",
+      "default_title": "HaramMute"
+   },
+   "author": "md.alganzory@gmail.com",
+   "background": {
+      "service_worker": "dist/background.bundle.js"
+   },
+   "content_scripts": [ {
+      "js": [ "soundtouch.js", "dist/posthog-content-bundle.js", "dist/content.bundle.js" ],
+      "matches": [ "https://www.youtube.com/*" ]
+   } ],
+   "content_security_policy": {
+      "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://us.i.posthog.com https://us-assets.i.posthog.com https://api.haram-mute.com http://127.0.0.1:8765 http://127.0.0.1:8766 http://127.0.0.1:8767 http://127.0.0.1:8768;"
+   },
+   "description": "Remove background music from videos with one click. Keep the dialogue, lose the music.",
+   "host_permissions": [ "http://127.0.0.1:8765/*", "http://127.0.0.1:8766/*", "http://127.0.0.1:8767/*", "http://127.0.0.1:8768/*", "http://localhost:8765/*", "http://localhost:8766/*", "http://localhost:8767/*", "http://localhost:8768/*" ],
+   "icons": {
+      "128": "icon128.png",
+      "16": "icon16.png",
+      "48": "icon48.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwKonlA4TatsTxNVSq739MrNTAhu/kX6pPXhAznT5ihLnOEwjfy9A6FTy059U3+YO+Ty4sixZcYj+OzYLSbWOkdiH2MF5IJjsIvFi9NQK91PawwnFdMeJSw+g1hNHSwP+QRrsKD6ETBCV2B2SfEY8oVERbXRghdPLt841i+ICzcNeCTfZAdEN4V3Zyg6UdOG/pJnRejDacvzUkcB9Mbd0vBt/nGm8HqQPXbOHw5w3HD433Rjaztd75FP3bOCi0ElKIACpaJMzRUY/17u/TaEP7B4YtRRry5V8yKCrI7B8upzyHPyJ35siasY8HdrZcUfBg2UNRP+QWdZPApbBvvl2QwIDAQAB",
+   "manifest_version": 3,
+   "name": "HaramMute - Remove Background Music from YouTube Videos",
+   "permissions": [ "storage" ],
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "1.0.15",
+   "web_accessible_resources": [ {
+      "matches": [ "\u003Call_urls>" ],
+      "resources": [ "dist/posthog-content-bundle.js", "ding.wav", "icon.png", "icon16.png", "icon48.png", "icon128.png", "icon_loading.gif" ]
+   } ]
+}

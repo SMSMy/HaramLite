@@ -197,14 +197,14 @@ fn run_files(o: &CliOpts) -> i32 {
         } else {
             pipeline::OutKind::Audio { fmt: o.format }
         };
-        match pipeline::process_file(path, &out_dir, o.mode, kind, o.keep_both || o.keep_inst_only, !o.keep_inst_only, false, &|p| {
+        match pipeline::process_file(path, &out_dir, o.mode, kind, o.keep_both || o.keep_inst_only, !o.keep_inst_only, false, None, &|p| {
             let pct = (p * 100.0) as u32;
             if pct > last_pct.get() + 4 {
                 last_pct.set(pct);
                 eprint!("\r  [{:>3}%]", pct.min(100));
             }
             true
-        }) {
+        }, &|_, _| {}) {
             Ok(out) => {
                 eprintln!("\r  [100%] تم في {:.1}s", t0.elapsed().as_secs_f32());
                 if !o.keep_inst_only {
@@ -269,6 +269,7 @@ pub fn entry(args: &[String]) -> i32 {
         eprintln!("▶ تنزيل: {url}");
         match crate::yt_dlp::download_media(url, Path::new(&out_dir), &|p| {
             eprint!("\r  [{:>3}%]", (p * 100.0) as u32);
+            true
         }) {
             Ok(path) => {
                 eprintln!("\r  [100%]");

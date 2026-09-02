@@ -1,0 +1,67 @@
+body {
+  margin: 0;
+  padding: 0;
+  width: 320px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: #151311;
+  color: #f5f2ed;
+  font-size: 13px;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #2e2c29;
+  background: rgba(31, 29, 27, 0.65);
+}
+header img { width: 32px; height: 32px; }
+h1 { margin: 0; font-size: 15px; color: #da7756; }
+.sub { margin: 2px 0 0; font-size: 11px; color: #a38c85; }
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+}
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #f3ae35; }
+.dot.ok { background: #5ddac8; }
+.dot.bad { background: #ffb4ab; }
+.card { padding: 0 14px 10px; }
+.hint { margin: 0; color: #dbc1b9; line-height: 1.6; }
+.error { color: #ffb4ab; margin: 0 0 6px; }
+ol { margin: 4px 0 0; padding-inline-start: 18px; color: #a38c85; line-height: 1.7; }
+code { background: #211f1d; padding: 1px 5px; border-radius: 3px; }
+.hidden { display: none; }
+button.primary {
+  width: 100%;
+  height: 38px;
+  border-radius: 19px;
+  border: 1px solid #da7756;
+  background: rgba(218, 119, 86, 0.15);
+  color: #ffb59d;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.primary:hover { background: rgba(218, 119, 86, 0.28); }
+.result { margin-top: 8px; }
+.result.ok { color: #5ddac8; }
+.result.bad { color: #ffb4ab; }
+.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-wrap { height: 6px; background: #2e2c29; border-radius: 3px; overflow: hidden; margin: 8px 0 6px; }
+.bar { height: 100%; width: 0%; background: #da7756; transition: width .45s; }
+button.danger {
+  flex: 1;
+  height: 34px;
+  border-radius: 17px;
+  border: 1px solid #ffb4ab;
+  background: rgba(255, 180, 171, 0.1);
+  color: #ffb4ab;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+#popup-progress .primary { flex: 2; height: 34px; border-radius: 17px; }
+footer { padding: 10px 14px; border-top: 1px solid #2e2c29; }
+.privacy { font-size: 11px; color: #a38c85; }

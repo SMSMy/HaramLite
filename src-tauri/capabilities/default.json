@@ -7,6 +7,9 @@
     "core:default",
     "opener:default",
     "opener:allow-open-path",
-    "dialog:default"
+    "opener:allow-open-url",
+    "dialog:default",
+    "notification:default",
+    "updater:default"
   ]
 }

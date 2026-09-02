@@ -1,2 +1,4 @@
-[target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static"]
+# Sprint C fix: removed `+crt-static`. The prebuilt ONNX Runtime libraries
+# (libort_sys) expect the dynamic UCRT (`__imp_*` imports), and the NSIS
+# installer already bundles & installs vc_redist.x64.exe for exactly this.
+# Dynamic CRT + bundled VC++ redist is the intended release design.

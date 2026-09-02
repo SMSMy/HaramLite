@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HaramMute</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-brand">
+        <img src="icon.png" alt="HaramMute" class="header-logo">
+        <span class="header-title" data-i18n="appName">HaramMute</span>
+      </div>
+      <div class="header-actions">
+        <button id="langToggle" class="lang-toggle" title="Switch language">AR</button>
+      </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="tool" data-i18n="tool">Tool</button>
+      <button class="tab-btn" data-tab="about" data-i18n="about">About</button>
+      <button class="tab-btn" data-tab="contact" data-i18n="contact">Contact</button>
+    </nav>
+
+    <!-- Content Area -->
+    <main class="content">
+      <!-- Tool Tab -->
+      <section id="tool-tab" class="tab-content active">
+        <!-- Mode Selector -->
+        <div class="mode-selector">
+          <div class="mode-selector-label" data-i18n="processingMode">Processing Mode</div>
+          <div class="mode-selector-cards">
+            <button class="mode-card-mini active" data-mode="cloud" id="mode-cloud">
+              <svg class="mode-card-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+              </svg>
+              <span data-i18n="cloud">Cloud</span>
+            </button>
+            <button class="mode-card-mini" data-mode="local" id="mode-local">
+              <svg class="mode-card-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                <line x1="8" y1="21" x2="16" y2="21"/>
+                <line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+              <span data-i18n="local">Local</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Cloud Subscription Section (only shown when cloud mode is selected) -->
+        <div id="subscription-section" class="subscription-section hidden">
+          <!-- Subscribed State (Active paid subscription) -->
+          <div id="subscribed-state" class="hidden">
+            <div class="subscription-badge active">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                <polyline points="22 4 12 14.01 9 11.01"/>
+              </svg>
+              <span id="subscription-plan-text" data-i18n="cloudProActive">Cloud Pro Active</span>
+            </div>
+            <div class="subscription-email" id="subscribed-email"></div>
+            <button id="logout-btn" class="btn-link" data-i18n="switchAccount">Switch account</button>
+            <button class="btn btn-primary change-plan-btn" style="margin-top: 10px;">
+              <span data-i18n="changePlan">Change Plan</span>
+            </button>
+            <button id="manage-subscription-btn" class="btn btn-secondary" style="margin-top: 10px;">
+              <span data-i18n="manageBilling">Manage Billing</span>
+            </button>
+          </div>
+
+          <!-- Trialing State (Active trial) -->
+          <div id="trialing-state" class="hidden">
+            <div class="subscription-badge trial">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              <span id="trial-status-text" data-i18n="trialActive">Trial Active</span>
+              <span class="trial-days-badge" id="trial-days-remaining"></span>
+            </div>
+            <div class="subscription-email" id="trialing-email"></div>
+            <button id="trial-logout-btn" class="btn-link" data-i18n="switchAccount">Switch account</button>
+            <button class="btn btn-primary change-plan-btn" style="margin-top: 10px;">
+              <span data-i18n="changePlan">Change Plan</span>
+            </button>
+            <button id="manage-subscription-btn" class="btn btn-secondary" style="margin-top: 10px;">
+              <span data-i18n="manageBilling">Manage Billing</span>
+            </button>
+          </div>
+
+          <!-- Not Subscribed State (Trial CTA) -->
+          <div id="not-subscribed-state">
+            <div class="trial-cta">
+              <div class="trial-cta-title" data-i18n="chooseCloudPlan">Choose your cloud plan</div>
+
+              <div class="billing-toggle" id="trial-billing-toggle" role="radiogroup" data-i18n-aria-label="billingCycleLabel" aria-label="Billing cycle">
+                <button class="billing-toggle-btn active" data-billing="monthly">
+                  <span data-i18n="monthlyPlan">Monthly</span>
+                </button>
+                <button class="billing-toggle-btn" data-billing="yearly">
+                  <span data-i18n="yearlyPlan">Yearly</span>
+                  <span class="billing-toggle-badge" data-i18n="save17">2 months free</span>
+                </button>
+              </div>
+
+              <div id="trial-plan-cards" class="trial-plan-cards" role="radiogroup" data-i18n-aria-label="planTierLabel" aria-label="Plan tier"></div>
+              <div class="trial-cta-desc" data-i18n="trialDescription">3-day free trial, then your selected plan. Cancel anytime.</div>
+              <div class="trial-email-group">
+                <input type="email" id="trial-email-input" placeholder="you@example.com" class="subscription-input">
+              </div>
+              <button id="start-trial-btn" class="btn btn-primary btn-block btn-trial">
+                <span id="start-trial-text" data-i18n="startFreeTrial">Start Free Trial</span>
+                <span id="start-trial-spinner" class="spinner hidden"></span>
+              </button>
+              <div id="trial-error" class="subscription-error hidden"></div>
+            </div>
+            <div class="subscription-check-existing">
+              <span data-i18n="alreadyHaveAccount">Already have an account?</span>
+              <button id="show-check-subscription-btn" class="btn-link" data-i18n="checkSubscription">Check subscription</button>
+            </div>
+            <!-- Hidden check subscription form (shown when user clicks "Check subscription") -->
+            <div id="check-subscription-form" class="hidden">
+              <div class="subscription-input-group">
+                <input type="email" id="subscription-email-input" placeholder="you@example.com" class="subscription-input">
+                <button id="check-subscription-btn" class="btn btn-secondary btn-sm">
+                  <span id="check-sub-text" data-i18n="checkAccess">Check</span>
+                  <span id="check-sub-spinner" class="spinner hidden"></span>
+                </button>
+              </div>
+              <div id="subscription-error" class="subscription-error hidden"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Connected State -->
+        <div id="connected-state" class="hidden">
+          <div class="status-banner connected">
+            <div class="status-icon success">✓</div>
+            <div class="status-text">
+              <div class="status-title" data-i18n="ready">Ready</div>
+              <div class="status-subtitle">
+                <span class="status-dot"></span>
+                <span data-i18n="connectedToServer">Connected to server</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-box">
+            <div class="info-box-icon">🎬</div>
+            <div class="info-box-title" data-i18n="goToVideoTitle">You're all set!</div>
+            <div class="info-box-desc" data-i18n="goToVideoDesc">
+              Go to any YouTube video and click the HaramMute button to remove background music while keeping the dialogue clear.
+            </div>
+            <div class="platforms-badge">
+              <span data-i18n="supportedPlatforms">Supported: YouTube</span>
+            </div>
+          </div>
+
+          <div class="info-box" style="margin-top: 12px; background: rgba(26, 27, 65, 0.05);">
+            <div class="info-box-icon">🔔</div>
+            <div class="info-box-title">Audio Notification</div>
+            <div class="info-box-desc" style="font-size: 12px;">
+              You'll hear a ding sound when processing is complete, so you can browse other tabs while waiting.
+            </div>
+          </div>
+        </div>
+
+        <!-- Disconnected State -->
+        <div id="disconnected-state">
+          <div class="status-banner disconnected">
+            <div class="status-icon warning">!</div>
+            <div class="status-text">
+              <div class="status-title" data-i18n="setupRequired">Setup Required</div>
+              <div class="status-subtitle" data-i18n="notConnected">Not connected to server</div>
+            </div>
+          </div>
+
+          <!-- Platform Selector -->
+          <div class="platform-selector">
+            <div class="platform-selector-label">Select your platform</div>
+            <div class="platform-buttons">
+              <button class="platform-btn active" data-platform="windows" id="platform-windows">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/>
+                </svg>
+                <span>Windows</span>
+              </button>
+              <button class="platform-btn disabled" data-platform="macos" id="platform-macos" disabled>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+                </svg>
+                <span>macOS</span>
+                <span class="coming-soon-badge">Coming Soon</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Windows Installation Steps -->
+          <div id="windows-install-steps">
+            <div class="card install-steps-card">
+              <div class="card-header">
+                <div class="card-number">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/>
+                  </svg>
+                </div>
+                <div class="card-title">Windows Installation</div>
+              </div>
+
+              <!-- Download Button -->
+              <a href="http://downloads.haram-mute.com/windows/HaramMuteInstaller.exe"
+                 class="btn btn-primary btn-block btn-sm"
+                 download
+                 style="margin-bottom: 8px;">
+                <span>Download for Windows</span>
+                <span>↓</span>
+              </a>
+
+              <!-- Steps List -->
+              <ol class="popup-install-steps">
+                <li>Open the installer from your downloads</li>
+              </ol>
+
+              <!-- SmartScreen Warning Inline -->
+              <div class="smartscreen-popup-inline">
+                <div class="smartscreen-popup-header">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                  </svg>
+                  <span>SmartScreen Warning</span>
+                </div>
+                <div class="smartscreen-popup-content">
+                  <video
+                    id="smartscreen-video"
+                    class="smartscreen-video-popup"
+                    src="smartscreen-tutorial.mp4"
+                    muted
+                    loop
+                    playsinline
+                    autoplay>
+                  </video>
+                  <div class="smartscreen-popup-steps">
+                    <span class="smartscreen-popup-step">Click <strong>"More info"</strong></span>
+                    <span>→</span>
+                    <span class="smartscreen-popup-step">then <strong>"Run anyway"</strong></span>
+                  </div>
+                  <div class="smartscreen-popup-trust">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    <span>Safe - warning shows for all new apps</span>
+                  </div>
+                </div>
+              </div>
+
+              <ol class="popup-install-steps" start="2">
+                <li>Follow the setup wizard</li>
+                <li>Click <strong>Launch</strong> when done</li>
+                <li>Verify the app is running in your <strong>system tray</strong></li>
+              </ol>
+            </div>
+          </div>
+
+          <!-- Check Connection Button -->
+          <button id="checkConnectionBtn" class="btn btn-secondary btn-block">
+            <span id="checkBtnText" data-i18n="checkConnection">Check Connection</span>
+            <span id="checkBtnSpinner" class="spinner hidden"></span>
+          </button>
+        </div>
+      </section>
+
+      <!-- About Tab -->
+      <section id="about-tab" class="tab-content">
+        <div class="about-section">
+          <h2 class="about-title" data-i18n="aboutTitle">About HaramMute</h2>
+          <p class="about-text" data-i18n="aboutDesc1">
+            HaramMute is a browser extension that removes background music from videos while preserving dialogue and speech.
+          </p>
+          <p class="about-text" data-i18n="aboutDesc2">
+            It works like an adblocker, but for music. No complex software, no file uploads - just a browser extension that works.
+          </p>
+        </div>
+
+        <div class="about-section">
+          <h2 class="about-title" data-i18n="howItWorks">How it works</h2>
+          <p class="about-text" data-i18n="howItWorksDesc">
+            When you click HaramMute on a video, we use AI-powered audio separation to isolate vocals from background music. The processing happens locally on your desktop for privacy and speed.
+          </p>
+        </div>
+      </section>
+
+      <!-- Contact Tab -->
+      <section id="contact-tab" class="tab-content">
+        <h2 class="about-title" data-i18n="contactTitle">Contact Us</h2>
+
+        <div class="contact-card">
+
+          <!-- Contact Form -->
+          <form id="contactForm" class="contact-form">
+            <label class="form-label" data-i18n="contactFormTitle">Send feedback</label>
+            <div>
+              <div class="form-label" data-i18n="contactTypeLabel">Bug or suggestion?</div>
+              <div class="radio-group">
+                <label class="radio-option">
+                  <input type="radio" name="feedbackType" value="Bug" checked>
+                  <span data-i18n="contactTypeBug">Bug</span>
+                </label>
+                <label class="radio-option">
+                  <input type="radio" name="feedbackType" value="Suggestion">
+                  <span data-i18n="contactTypeSuggestion">Suggestion</span>
+                </label>
+              </div>
+            </div>
+            <label class="form-label" for="detailsInput" data-i18n="contactDetailsLabel">Details</label>
+            <textarea
+              id="detailsInput"
+              class="form-textarea"
+              data-i18n-placeholder="contactDetailsPlaceholder"
+              placeholder="Tell us what happened..."
+              required
+            ></textarea>
+            <label class="form-label" for="emailInput" data-i18n="contactEmailLabel">Email for contact</label>
+            <input
+              id="emailInput"
+              type="email"
+              class="form-input"
+              data-i18n-placeholder="contactEmailPlaceholder"
+              placeholder="you@example.com"
+              required
+            >
+            <p class="form-note" data-i18n="contactScreenshotNote">
+              You can attach a screenshot after the form opens (Google sign-in required for uploads).
+            </p>
+            <button type="submit" id="submitBtn" class="btn btn-secondary btn-block">
+              <span id="submitBtnText" data-i18n="contactSubmitButton">Open Google Form</span>
+              <span id="submitBtnSpinner" class="spinner hidden"></span>
+            </button>
+            <div id="formStatus" class="form-status hidden"></div>
+          </form>
+          <div class="contact-divider"></div>
+          <a href="https://haram-mute.com" target="_blank" class="btn btn-outline btn-block contact-website-link" data-i18n="contactWebsiteCta">
+            Visit haram-mute.com
+          </a>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script src="dist/posthog-bundle.js"></script>
+  <script src="dist/popup.bundle.js"></script>
+</body>
+</html>

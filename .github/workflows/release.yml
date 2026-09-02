@@ -1,0 +1,80 @@
+name: Release
+
+# Sprint C3 — builds the NSIS installer + updater artifacts (latest.json + .sig)
+# and publishes the self-repair assets (bin/*.exe, models/*.onnx) used by the
+# in-app repair wizard (repair.rs → assets-v1 release).
+#
+# Secrets required in repo settings:
+#   TAURI_SIGNING_PRIVATE_KEY          → content of the local `updater.key`
+#   (optional) TAURI_SIGNING_PRIVATE_KEY_PASSWORD → only if a password was set
+#
+# ⚠ The updater.key file is gitignored — never commit it.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend deps
+        run: pnpm install
+
+      - name: Download VC++ redist (bundled into installer)
+        run: pnpm exec node ./scripts/fetch_redist.js
+
+      - name: Build & publish Tauri release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'HaramLite v__VERSION__'
+          releaseBody: 'التثبيت عبر NSIS. النسخة المحمولة لا تدعم التحديث الذاتي — استخدم صفحة الإصدارات.'
+          releaseDraft: false
+          prerelease: false
+          updaterJsonPreferNsis: true
+
+      - name: Publish self-repair assets (assets-v1, idempotent)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $files = @('bin/ffmpeg.exe','bin/ffprobe.exe','bin/yt-dlp.exe','models/UVR-MDX-NET-Voc_FT.onnx')
+          if (-not (gh release view assets-v1 --json tagName -q .tagName 2>$null)) {
+            gh release create assets-v1 $files --title "Repair assets (stable)" --notes "مصادر معالج الإصلاح الذاتي — لا تحذف هذا الإصدار."
+          } else {
+            Write-Host "assets-v1 already exists — skipping (repair manifest is pinned by SHA-256)"
+          }
+      # NOTE: CUDA runtime assets are published by the standalone workflow
+      # `.github/workflows/cuda-assets.yml` (workflow_dispatch, GITHUB_TOKEN
+      # only) — independent of this release's signing secrets.

@@ -60,3 +60,153 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #DA7756; 
 }
+
+/* ─── Material Symbols Outlined (self-hosted — Sprint A2, offline 100%) ─── */
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+  src: url("./assets/fonts/material-symbols-outlined.woff2") format('woff2');
+}
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Apple-inspired interactions & animations (moved out of index.html — Sprint A3) ─── */
+.apple-ease {
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-effect {
+    background-color: rgba(31, 29, 27, 0.65);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+}
+
+@keyframes shimmer {
+    100% { transform: translateX(100%); }
+}
+
+.animate-shimmer {
+    position: relative;
+    overflow: hidden;
+}
+
+.animate-shimmer::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0; bottom: 0; left: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+    transform: translateX(-100%);
+    animation: shimmer 2s infinite;
+}
+
+.spring-panel {
+    transition: grid-template-rows 0.5s cubic-bezier(0.4, 0, 0.2, 1), margin 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease;
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    margin: 0;
+}
+
+.spring-panel.open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    margin-bottom: 1rem;
+}
+
+.spring-panel-content {
+    overflow: hidden;
+}
+
+@keyframes pulse-drag {
+    0% { box-shadow: 0 0 0 0 rgba(218, 119, 86, 0.4); }
+    70% { box-shadow: 0 0 0 15px rgba(218, 119, 86, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(218, 119, 86, 0.4); }
+}
+
+.drag-over {
+    animation: pulse-drag 2s infinite;
+    border-color: #DA7756 !important;
+    background-color: rgba(218, 119, 86, 0.1) !important;
+    transform: scale(1.02);
+}
+
+.fade-in-up {
+    opacity: 0;
+    transform: translateY(15px);
+    animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes fadeInUp {
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Log Fade In */
+@keyframes logFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-log-entry {
+    opacity: 0;
+    animation: logFadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Staggered reveal delays */
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+.mode-card.selected {
+    border-color: rgba(218, 119, 86, 0.5) !important;
+    background-color: rgba(218, 119, 86, 0.1) !important;
+    opacity: 1 !important;
+}
+.mode-card:not(.selected) {
+    border-color: #2E2C29 !important;
+    background-color: transparent !important;
+    opacity: 0.7 !important;
+}
+.kind-card.selected {
+    background-color: rgba(218, 119, 86, 0.1) !important;
+    border-color: rgba(218, 119, 86, 0.3) !important;
+    opacity: 1 !important;
+}
+.kind-card:not(.selected) {
+    background-color: transparent !important;
+    border-color: transparent !important;
+    opacity: 0.5 !important;
+}
+#logcard.collapsed #log-view {
+    display: none !important;
+}

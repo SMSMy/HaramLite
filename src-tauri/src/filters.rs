@@ -28,18 +28,6 @@ impl Biquad {
         )
     }
 
-    /// RBJ peaking EQ (dB gain, musical Q).
-    pub fn peaking(sr: f32, freq: f32, q: f32, gain_db: f32) -> Self {
-        let a = 10f64.powf(gain_db as f64 / 40.0);
-        let w0 = 2.0 * std::f64::consts::PI * freq as f64 / sr as f64;
-        let (s, c) = w0.sin_cos();
-        let alpha = s / (2.0 * q as f64);
-        Self::from_coeffs(
-            1.0 + alpha * a, -2.0 * c, 1.0 - alpha * a,
-            1.0 + alpha / a, -2.0 * c, 1.0 - alpha / a,
-        )
-    }
-
     /// RBJ high-shelf (+gain_db above corner freq), S=1 — K-weighting stage 1.
     pub fn high_shelf(sr: u32, freq: f32, gain_db: f32) -> Self {
         let a = 10f64.powf(gain_db as f64 / 40.0);
@@ -65,6 +53,8 @@ impl Biquad {
         y
     }
 
+    /// Block-processing convenience API (exercised by tests).
+    #[cfg(test)]
     pub fn process_block(&mut self, data: &mut [f32]) {
         for v in data.iter_mut() {
             *v = self.process(*v);

@@ -102,21 +102,33 @@ pub fn process_file(
     keep_instrumental: bool,
     keep_vocals: bool,
     use_cuda: bool,
+    preview_seconds: Option<f32>,
     progress: &dyn Fn(f32) -> bool,
+    stage: &dyn Fn(&str, f32),
 ) -> Result<PipelineOutput, PipelineError> {
     let started = std::time::Instant::now();
     let work_dir = out_dir.join("_haramlite_work");
+    // Sprint B1: preview = quality sample of the first N seconds; every
+    // output file carries the `_preview` tag so it can never be mistaken
+    // for the final artifact.
+    let name_tag = if preview_seconds.is_some() { "_preview" } else { "" };
 
-    // Stage 1 — repair & normalize whatever came in
+    // Stage 1 — repair & normalize whatever came in (Sprint C2: visible stages)
+    stage("normalize", 0.0);
     if !progress(0.02) { return Err(err("تم إلغاء المعالجة من قبل المستخدم.")); }
     let normalized =
-        media::normalize_for_engine(input, &work_dir).map_err(err)?;
+        media::normalize_for_engine_limited(input, &work_dir, preview_seconds).map_err(err)?;
+    stage("normalize", 1.0);
     tracing::info!(target: "pipe", "normalized: {}", normalized.display());
 
     // Stage 2 — separation
-    let stage = |p: f32| progress(0.05 + p * 0.85);
+    let sep_progress = |p: f32| {
+        stage("separate", p);
+        progress(0.05 + p * 0.85)
+    };
     let stems =
-        separator::separate(&normalized, out_dir, use_cuda, &stage).map_err(err)?;
+        separator::separate(&normalized, out_dir, use_cuda, &sep_progress).map_err(err)?;
+    stage("separate", 1.0);
     let _ = std::fs::remove_dir_all(&work_dir);
 
     // Stage 3 — song mode: enhancement chain (M3) applied ONTO the vocals stem
@@ -124,12 +136,14 @@ pub fn process_file(
     let mut kept_ranges: Vec<(f64, f64)> = Vec::new();
     if matches!(mode, Mode::Song) {
         if !progress(0.92) { return Err(err("تم إلغاء المعالجة من قبل المستخدم.")); }
+        stage("effects", 0.0);
         tracing::info!(target: "pipe", "Starting DSP phase (CPU bound) for audio enhancement...");
         let tmp_enhanced = out_dir.join("_haramlite_enhanced.wav");
         kept_ranges = crate::effects::enhance_song_file(&stems.vocals, &tmp_enhanced, &Default::default())
             .map_err(err)?;
         // replace raw vocals with the enhanced version
         std::fs::rename(&tmp_enhanced, &vocals_path).map_err(err)?;
+        stage("effects", 1.0);
     }
 
     // Probe the ORIGINAL input once for video routing decisions.
@@ -150,13 +164,13 @@ pub fn process_file(
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "audio".into());
     {
-        let new_vocals = vocals_path.with_file_name(format!("{orig_stem}_(Vocals)_haramlite.wav"));
+        let new_vocals = vocals_path.with_file_name(format!("{orig_stem}_(Vocals)_haramlite{name_tag}.wav"));
         if new_vocals != vocals_path {
             std::fs::rename(&vocals_path, &new_vocals).map_err(err)?;
             vocals_path = new_vocals;
         }
         if let Some(ip) = &mut instrumental_path {
-            let new_i = ip.with_file_name(format!("{orig_stem}_(Instrumental)_haramlite.wav"));
+            let new_i = ip.with_file_name(format!("{orig_stem}_(Instrumental)_haramlite{name_tag}.wav"));
             if new_i != *ip {
                 std::fs::rename(&*ip, &new_i).map_err(err)?;
                 *ip = new_i;
@@ -176,7 +190,8 @@ pub fn process_file(
     match actual_kind {
         OutKind::Video { max_height } => {
             if !progress(0.97) { return Err(err("تم إلغاء المعالجة من قبل المستخدم.")); }
-            let vid_target = out_dir.join(format!("{orig_stem}_(Clean)_haramlite.mp4"));
+            stage("encode", 0.0);
+            let vid_target = out_dir.join(format!("{orig_stem}_(Clean)_haramlite{name_tag}.mp4"));
             let ranges_for_video: &[(f64, f64)] =
                 if matches!(mode, Mode::Song) { &kept_ranges } else { &[] };
             media::export_video_with_cuts(
@@ -188,6 +203,7 @@ pub fn process_file(
             )
             .map_err(err)?;
             let _ = std::fs::remove_file(&vocals_path);
+            stage("encode", 1.0);
             tracing::info!(target: "pipe", "video output: {}", vid_target.display());
             video_out = Some(vid_target);
             final_vocals = None;
@@ -195,7 +211,8 @@ pub fn process_file(
         OutKind::Audio { fmt } => {
             if fmt != OutFormat::Wav {
                 if !progress(0.96) { return Err(err("تم إلغاء المعالجة من قبل المستخدم.")); }
-                let mut encode_one = |p: &mut PathBuf| -> Result<(), PipelineError> {
+                stage("encode", 0.0);
+                let encode_one = |p: &mut PathBuf| -> Result<(), PipelineError> {
                     let encoded = media::extract_audio(p, fmt.as_str(), out_dir).map_err(err)?;
                     let _ = std::fs::remove_file(&*p);
                     let clean = p.with_extension(fmt.as_str());
@@ -219,6 +236,7 @@ pub fn process_file(
                 if let Some(ip) = &mut instrumental_path {
                     encode_one(ip)?;
                 }
+                stage("encode", 1.0);
                 tracing::info!(target: "pipe", "encoded stems to {}", fmt.as_str());
             } else {
                 if !keep_vocals {
@@ -245,7 +263,7 @@ pub fn process_file(
 pub fn health_check() -> Result<Vec<(String, bool, String)>, String> {
     let mut rows = Vec::new();
 
-    for tool in ["ffmpeg", "ffprobe"] {
+    for tool in ["ffmpeg", "ffprobe", "yt-dlp"] {
         let ok = media::resolve_tool(tool).is_ok();
         rows.push((tool.to_string(), ok, String::new()));
     }

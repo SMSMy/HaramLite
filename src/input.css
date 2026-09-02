@@ -1,0 +1,6 @@
+/* Sprint A1 — Tailwind entry point, built locally by the tailwindcss CLI.
+   Generated output: src/tailwind.css (minified, committed to dist bundle).
+   Custom app CSS stays in src/styles.css and is linked separately. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

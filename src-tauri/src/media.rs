@@ -187,21 +187,40 @@ fn ext_lower(path: &Path) -> String {
 
 /// Always produce the clean 44.1 kHz stereo WAV the separation engine
 /// consumes, whatever mess came in (drops fake/cover video streams).
+/// (Exercised by tests; the pipeline uses [`normalize_for_engine_limited`].)
+#[cfg(test)]
 pub fn normalize_for_engine(input: &Path, work_dir: &Path) -> Result<PathBuf, MediaError> {
+    normalize_for_engine_limited(input, work_dir, None)
+}
+
+/// Same as [`normalize_for_engine`] but optionally truncated to the first
+/// `max_seconds` of audio (Sprint B1 — quick preview). The ffmpeg `-t`
+/// limit sits before the output argument so only the head is decoded.
+pub fn normalize_for_engine_limited(
+    input: &Path,
+    work_dir: &Path,
+    max_seconds: Option<f32>,
+) -> Result<PathBuf, MediaError> {
     let ffmpeg = resolve_tool("ffmpeg")?;
     std::fs::create_dir_all(work_dir).map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
     let stem = input.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "input".into());
     let out = work_dir.join(format!("normalized_{stem}.wav"));
+    let input_str = input.to_string_lossy().into_owned();
+    let out_str = out.to_string_lossy().into_owned();
 
-    run_ffmpeg(
-        &ffmpeg,
-        &[
-            "-y", "-v", "error",
-            "-i", &input.to_string_lossy(),
-            "-vn", "-ac", "2", "-ar", "44100", "-c:a", "pcm_s16le",
-            &out.to_string_lossy(),
-        ],
-    )?;
+    let t_arg = max_seconds.map(|s| format!("{s:.3}"));
+    let mut args: Vec<&str> = vec![
+        "-y", "-v", "error",
+        "-i", &input_str,
+    ];
+    if let Some(t) = &t_arg {
+        args.push("-t");
+        args.push(t.as_str());
+    }
+    args.extend_from_slice(&["-vn", "-ac", "2", "-ar", "44100", "-c:a", "pcm_s16le"]);
+    args.push(&out_str);
+
+    run_ffmpeg(&ffmpeg, &args)?;
     if !out.is_file() {
         return Err(MediaError::InvalidOutput(format!("لم يُنتج ffmpeg ملفًا: {}", out.display())));
     }

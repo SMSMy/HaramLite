@@ -12,7 +12,7 @@
 
 use std::path::Path;
 
-use crate::{dynamics::{Compressor, Limiter}, filters::{Biquad, Exciter}, loudness::normalize_to_target, reverb_delay::{Freeverb, PingpongDelay}, silence::{cut_silence, SilenceConfig}};
+use crate::{dynamics::{Compressor, Limiter}, filters::{Biquad, Exciter}, loudness::normalize_to_target, reverb_delay::{Freeverb, PingpongDelay}, silence::{cut_silence_with_ranges, SilenceConfig}};
 
 pub struct SongEffectsConfig {
     pub highpass_hz: f32,
@@ -81,9 +81,10 @@ pub fn enhance_song(
     // 5) dynamics
     Compressor::new(sr, cfg.comp_threshold_db, cfg.comp_ratio).process(l, r);
 
-    // 6) silence cut (songs only) — capture ranges for video mirroring
+    // 6) silence cut (songs only) — capture ranges for video mirroring.
+    // Ranges are computed ONCE and reused for the cut (audit R-5).
     let kept_ranges = crate::silence::compute_kept_ranges(l, r, sr, &cfg.silence);
-    let removed = cut_silence(l, r, sr, &cfg.silence);
+    let removed = cut_silence_with_ranges(l, r, sr, &cfg.silence, &kept_ranges);
     tracing::info!(target: "dsp", "silence cut removed {:.1}%", removed * 100.0);
     let ranges_sec: Vec<(f64, f64)> =
         kept_ranges.iter().map(|(a, b)| (*a as f64 / s as f64, *b as f64 / s as f64)).collect();

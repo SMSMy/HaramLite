@@ -1,0 +1,76 @@
+name: Publish CUDA runtime assets
+
+# CUDA_RUNTIME_PLAN — publishes the seven CUDA runtime DLLs + their
+# self-describing manifest to the assets-v1 release, so the app's one-click
+# self-download works. Runs with ONLY the auto-provided GITHUB_TOKEN —
+# deliberately independent of the release workflow's signing secrets, so it
+# can be run at any time from the Actions tab.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - name: Assemble CUDA runtime (cublas + cudart + cuDNN)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # pinned to match the ORT build bundled in the app (CUDA 12.x / cuDNN 9.x)
+          $CUDA_VER  = '12.8.2'
+          $CUDNN_VER = '9.12.0'   # bump together with the ort crate if needed
+          $work = Join-Path $env:RUNNER_TEMP 'cuda-runtime'
+          New-Item -ItemType Directory -Force -Path $work | Out-Null
+          $bin = Join-Path $work 'bin'
+          New-Item -ItemType Directory -Force -Path $bin | Out-Null
+
+          # 1) CUDA redist (cudart + cublas + cublasLt) via NVIDIA's redist JSON
+          $cu = Invoke-RestMethod "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_$CUDA_VER.json"
+          foreach ($part in @('cudart','cublas')) {
+            $meta = $cu.$part
+            if (-not $meta) { throw "redistrib_$CUDA_VER.json missing $part" }
+            foreach ($rel in $meta.windows_relative_paths) {
+              if ($rel -match 'x64[\\/](cudart64_12\.dll|cublas64_12\.dll|cublasLt64_12\.dll)$') {
+                Invoke-WebRequest "https://developer.download.nvidia.com/compute/cuda/redist/$rel" -OutFile (Join-Path $bin (Split-Path $rel -Leaf))
+              }
+            }
+          }
+
+          # 2) cuDNN redist zip (cudnn64_9 + ops/cnn/adv infer)
+          $cd = Invoke-RestMethod "https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_$CUDNN_VER.json"
+          $zipRel = $cd.cudnn.windows_relative_paths | Where-Object { $_ -match 'cudnn-windows-x86_64.*\.zip$' } | Select-Object -First 1
+          if (-not $zipRel) { throw "redistrib_$CUDNN_VER.json missing cudnn windows zip" }
+          Invoke-WebRequest "https://developer.download.nvidia.com/compute/cudnn/redist/$zipRel" -OutFile (Join-Path $work 'cudnn.zip')
+          Expand-Archive (Join-Path $work 'cudnn.zip') -DestinationPath (Join-Path $work 'cudnn') -Force
+          foreach ($dll in @('cudnn64_9.dll','cudnn_ops_infer64_9.dll','cudnn_cnn_infer64_9.dll','cudnn_adv_infer64_9.dll')) {
+            $src = Get-ChildItem (Join-Path $work 'cudnn') -Recurse -Filter $dll | Select-Object -First 1
+            if (-not $src) { throw "cuDNN zip missing $dll — wrong version or layout" }
+            Copy-Item $src.FullName (Join-Path $bin $dll)
+          }
+
+          # 3) self-describing manifest (name + sha256 per file)
+          $manifest = [ordered]@{ files = @() }
+          foreach ($f in Get-ChildItem $bin -Filter '*.dll' | Sort-Object Name) {
+            $hash = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $manifest.files += [ordered]@{ name = $f.Name; sha256 = $hash }
+          }
+          $manifestPath = Join-Path $work 'cuda-runtime-manifest.json'
+          $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path $manifestPath -Encoding utf8NoBOM
+
+          Write-Host "assembled $(@($manifest.files).Count) CUDA runtime files"
+          Get-Content $manifestPath
+
+      - name: Upload to assets-v1 (create if missing)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $work = Join-Path $env:RUNNER_TEMP 'cuda-runtime'
+          if (-not (gh release view assets-v1 --json tagName -q .tagName 2>$null)) {
+            gh release create assets-v1 --title "Repair assets (stable)" --notes "مصادر معالج الإصلاح الذاتي — لا تحذف هذا الإصدار."
+          }
+          gh release upload assets-v1 (Get-ChildItem (Join-Path $work 'bin') -Filter '*.dll').FullName (Join-Path $work 'cuda-runtime-manifest.json') --clobber

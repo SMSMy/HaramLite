@@ -166,24 +166,44 @@ struct MdxSession {
 /// Name of the execution provider the active session uses ("DirectML"/"CPU").
 pub static ACTIVE_PROVIDER: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
+/// Audit R-2 (corrected): commit the ORT environment ONCE at startup with NO
+/// env-level providers. Session-level `with_execution_providers` takes
+/// precedence over the environment's anyway (ort docs), and registering the
+/// same provider at BOTH levels made every DML session fail with
+/// "already been registered" → silent CPU fallback. Session-level
+/// registration is per-session-options, so it is repeatable across files and
+/// picks CUDA/DML exactly where the original working code did it.
+static ORT_ENV_INIT: std::sync::Once = std::sync::Once::new();
+
+/// Commit the ORT environment once (idempotent). Call at startup BEFORE any
+/// separation — including the watch folder's first sweep.
+pub fn init_ort_env() {
+    ORT_ENV_INIT.call_once(|| {
+        match ort::init().commit() {
+            Ok(_) => tracing::info!(target: "sep", "ORT environment committed"),
+            Err(e) => tracing::error!(target: "sep", "ORT environment commit failed: {e}"),
+        }
+    });
+}
+
 impl MdxSession {
     fn load(use_cuda: bool) -> Result<Self, SepError> {
         let model_path = resolve_model()?;
         let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
 
-        // Initialize ORT.
-        let mut ep_list = Vec::new();
-        if use_cuda {
-            use ort::execution_providers::{CUDAExecutionProvider, ExecutionProvider};
-            ep_list.push(CUDAExecutionProvider::default().build());
+        // Audit R-2 (corrected): the environment is committed once at startup
+        // with NO providers; every session registers its own (CUDA/DML) on its
+        // own options — no conflicts. CUDA_RUNTIME_PLAN (condition 3): only
+        // attempt CUDA when the self-downloaded runtime DLLs actually exist —
+        // otherwise skip straight to DirectML with an honest warning (a CUDA
+        // session build would "succeed" on CPU while the log claimed CUDA).
+        let try_cuda = use_cuda && crate::cuda_runtime::is_available();
+        if use_cuda && !try_cuda {
+            tracing::warn!(
+                target: "sep",
+                "CUDA طُلبت لكن مكتبات تشغيل CUDA غير مثبتة — سيُستخدم DirectML"
+            );
         }
-        use ort::execution_providers::{DirectMLExecutionProvider, ExecutionProvider};
-        ep_list.push(DirectMLExecutionProvider::default().build());
-
-        let _ = ort::init()
-            .with_execution_providers(ep_list)
-            .commit();
-
         let build = |provider_type: &str| -> Result<ort::session::Session, SepError> {
             let mut b = ort::session::Session::builder()
                 .map_err(|e| SepError::Inference(e.to_string()))?
@@ -193,11 +213,11 @@ impl MdxSession {
                 .map_err(|e| SepError::Inference(e.to_string()))?;
 
             if provider_type == "cuda" {
-                use ort::execution_providers::{CUDAExecutionProvider, ExecutionProvider};
+                use ort::execution_providers::CUDAExecutionProvider;
                 b = b.with_execution_providers([CUDAExecutionProvider::default().build()])
                     .map_err(|e| SepError::Inference(e.to_string()))?;
             } else if provider_type == "dml" {
-                use ort::execution_providers::{DirectMLExecutionProvider, ExecutionProvider};
+                use ort::execution_providers::DirectMLExecutionProvider;
                 b = b
                     .with_execution_providers([DirectMLExecutionProvider::default().build()])
                     .map_err(|e| SepError::Inference(e.to_string()))?
@@ -209,25 +229,28 @@ impl MdxSession {
                 .map_err(|e| SepError::Inference(format!("{}: {e}", model_path.display())))
         };
 
+        let t_session = std::time::Instant::now();
         let mut provider_name = "CPU";
-        let session = if use_cuda {
+        let session = if try_cuda {
             match build("cuda") {
                 Ok(s) => {
-                    tracing::info!(target: "sep", "execution provider: CUDA (NVIDIA GPU) ✓");
+                    tracing::info!(target: "sep", "execution provider: CUDA (NVIDIA GPU) ✓ ({:.1}s)", t_session.elapsed().as_secs_f32());
                     provider_name = "CUDA";
                     s
                 }
                 Err(e) => {
-                    tracing::warn!(target: "sep", "CUDA init failed ({e}) — falling back to DirectML");
+                    tracing::warn!(target: "sep", "CUDA init failed after {:.1}s ({e}) — falling back to DirectML", t_session.elapsed().as_secs_f32());
                     match build("dml") {
                         Ok(s) => {
-                            tracing::info!(target: "sep", "execution provider: DirectML (GPU) ✓");
+                            tracing::info!(target: "sep", "execution provider: DirectML (GPU) ✓ ({:.1}s)", t_session.elapsed().as_secs_f32());
                             provider_name = "DirectML";
                             s
                         }
                         Err(dml_err) => {
                             tracing::warn!(target: "sep", "DirectML init failed ({dml_err}) — falling back to CPU");
-                            build("cpu")?
+                            let s = build("cpu")?;
+                            tracing::info!(target: "sep", "execution provider: CPU ✓ ({:.1}s)", t_session.elapsed().as_secs_f32());
+                            s
                         }
                     }
                 }
@@ -235,7 +258,7 @@ impl MdxSession {
         } else {
             match build("dml") {
                 Ok(s) => {
-                    tracing::info!(target: "sep", "execution provider: DirectML (GPU) ✓");
+                    tracing::info!(target: "sep", "execution provider: DirectML (GPU) ✓ ({:.1}s)", t_session.elapsed().as_secs_f32());
                     provider_name = "DirectML";
                     s
                 }
@@ -247,7 +270,7 @@ impl MdxSession {
         };
 
         let _ = ACTIVE_PROVIDER.set(provider_name.to_string());
-        tracing::info!(target: "sep", "ONNX session ready: {}", model_path.display());
+        tracing::info!(target: "sep", "ONNX session ready in {:.1}s: {}", t_session.elapsed().as_secs_f32(), model_path.display());
         Ok(Self { session, plan: StftPlan::new() })
     }
 
@@ -449,7 +472,7 @@ mod tests {
         .expect("separation failed");
 
         for stem in [&stems.vocals, &stems.instrumental] {
-            let (cl, cr, sr) = read_wav_stereo(stem).unwrap();
+            let (cl, _cr, sr) = read_wav_stereo(stem).unwrap();
             assert_eq!(sr, 44100);
             assert_eq!(cl.len(), len, "{} length mismatch", stem.display());
             let energy: f32 = cl.iter().map(|v| v * v).sum();
@@ -457,5 +480,27 @@ mod tests {
         }
 
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// CUDA_RUNTIME_PLAN (condition 3): requesting CUDA on a machine without
+    /// the runtime DLLs must yield a WORKING session (DirectML/CPU fallback),
+    /// never a panic or a CUDA-flavored failure.
+    #[test]
+    fn cuda_request_without_runtime_falls_back_gracefully() {
+        if crate::cuda_runtime::is_available() {
+            // machine HAS the runtime: plain CUDA session should also work
+            match MdxSession::load(true) {
+                Ok(_) => {}
+                Err(e) => panic!("cuda session failed on a cuda-ready machine: {e}"),
+            }
+        } else {
+            match MdxSession::load(true) {
+                Ok(_) => {} // DML or CPU — fine
+                Err(SepError::Inference(e)) if e.to_lowercase().contains("cuda") => {
+                    panic!("must fall back, not fail with a CUDA error: {e}")
+                }
+                Err(e) => panic!("unexpected error: {e}"),
+            }
+        }
     }
 }

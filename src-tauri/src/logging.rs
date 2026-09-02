@@ -24,6 +24,15 @@ fn buffer() -> &'static SharedBuffer {
     BUF.get_or_init(|| Arc::new(Mutex::new(VecDeque::with_capacity(CAPACITY))))
 }
 
+/// Tauri app handle hooked by `attach_emitter` — each new log line is pushed
+/// to the UI as a `log-line` event (audit F-1: replaces the frontend polling
+/// `get_recent_logs` every 700ms). Empty in CLI mode.
+static EMITTER: OnceLock<tauri::AppHandle> = OnceLock::new();
+
+pub fn attach_emitter(app: tauri::AppHandle) {
+    let _ = EMITTER.set(app);
+}
+
 struct MemoryLayer;
 
 impl<S> Layer<S> for MemoryLayer
@@ -49,7 +58,11 @@ where
             if buf.len() >= CAPACITY {
                 buf.pop_front();
             }
-            buf.push_back(line);
+            buf.push_back(line.clone());
+        }
+        if let Some(app) = EMITTER.get() {
+            use tauri::Emitter;
+            let _ = app.emit("log-line", &line);
         }
     }
 }
