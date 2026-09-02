@@ -488,15 +488,45 @@ fn cause_test_panic() -> Result<String, String> {
     }
 }
 
+/// Crash forensics: a marker written at boot and removed on graceful exit.
+/// If it survives to the NEXT boot, the previous session was killed without
+/// a clean shutdown (the user reported random silent crashes — this turns
+/// them into visible evidence).
+fn crash_marker_path() -> Option<PathBuf> {
+    dirs::data_dir().map(|d| d.join("com.harammute.haramlite").join("session.lock"))
+}
+
+fn note_previous_crash() {
+    if let Some(marker) = crash_marker_path() {
+        if marker.is_file() {
+            let prev = std::fs::read_to_string(&marker).unwrap_or_default();
+            tracing::warn!(
+                target: "app",
+                "⚠ الجلسة السابقة انتهت فجأة دون إغلاق رشيق{} — راجع نهاية السجل السابق",
+                if prev.trim().is_empty() { String::new() } else { format!(" (بدأت: {})", prev.trim()) }
+            );
+        }
+        let started = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let _ = std::fs::write(&marker, started.to_string());
+    }
+}
+
+fn clear_crash_marker() {
+    if let Some(marker) = crash_marker_path() {
+        let _ = std::fs::remove_file(marker);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // CUDA_RUNTIME_PLAN (الشرط 2): مسار بحث DLL قبل أي خيط وأي تهيئة ORT
     cuda_runtime::ensure_dll_path();
     let show_rx = take_single_instance();
     set_explicit_aumid();
-
     let shared_settings = Arc::new(Mutex::new(settings::Settings::default()));
-
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -532,6 +562,7 @@ pub fn run() {
                 .join("logs");
             let shown = logging::init(log_dir);
             tracing::info!(target: "app", "HaramLite v{} starting — logs in {}", env!("CARGO_PKG_VERSION"), shown.display());
+            note_previous_crash();
             // Audit F-1: push log lines to the UI as events instead of the
             // frontend polling get_recent_logs every 700ms.
             logging::attach_emitter(app.handle().clone());
@@ -608,6 +639,12 @@ pub fn run() {
             cuda_status,
             install_cuda_runtime
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                // graceful shutdown → next boot must NOT see the marker
+                clear_crash_marker();
+            }
+        });
 }

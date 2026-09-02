@@ -1269,10 +1269,6 @@ function wireSettings(): void {
       void updateCudaBanner();
     });
   }
-  document.getElementById('cuda-banner-btn')?.addEventListener('click', () => {
-    // the banner leads to the Settings toggle — no external downloads
-    btnSettings?.click();
-  });
 
   if (notifyCheckbox) {
     notifyCheckbox.checked = localStorage.getItem('hl.notify') === '1';

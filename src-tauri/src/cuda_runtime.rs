@@ -122,20 +122,45 @@ pub fn install(progress: &dyn Fn(&str, f32)) -> Result<(), String> {
         }
     }
 
-    // 2) كل ملف: تنزيل مؤقت → SHA-256 → نقل ذري
+    // 2) كل ملف: إن كان موجوداً وبصمته سليمة → تخطَّه (لا إعادة تنزيل بعد
+    //    انهيار مفاجئ)؛ وإلا تنزيل مؤقت → SHA-256 → نقل ذري.
     let total = manifest.files.len();
     for (idx, entry) in manifest.files.iter().enumerate() {
         let base = idx as f32 / total as f32;
         let span = 1.0 / total as f32;
+        let dest = dir.join(&entry.name);
+        if file_matches(&dest, &entry.sha256) {
+            progress(&entry.name, base + span);
+            continue;
+        }
         download_verified(
             &format!("{}/{}", crate::repair::ASSET_BASE, entry.name),
-            &dir.join(&entry.name),
+            &dest,
             &entry.sha256,
             &|p| progress(&entry.name, base + p * span),
         )?;
     }
     progress("done", 1.0);
     Ok(())
+}
+
+/// ملف موجود على القرص وبصمته تطابق المتوقع؟
+fn file_matches(path: &Path, expected_sha: &str) -> bool {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let Ok(mut f) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut hasher = Sha256::new();
+    let mut chunk = [0u8; 256 * 1024];
+    loop {
+        match f.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => hasher.update(&chunk[..n]),
+            Err(_) => return false,
+        }
+    }
+    format!("{:x}", hasher.finalize()).eq_ignore_ascii_case(expected_sha.trim())
 }
 
 fn download_verified(
