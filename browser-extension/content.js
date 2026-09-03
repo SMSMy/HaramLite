@@ -254,7 +254,9 @@
 
   // Audit E-3: YouTube is an SPA — navigation rebuilds the player controls
   // and the button vanishes. Re-inject on `yt-navigate-finish` AND watch the
-  // DOM for rebuilt controls (MutationObserver) instead of a one-shot timer.
+  // player container (NOT document.body — a body-wide subtree observer fires
+  // on every progress-bar/comment mutation and drains CPU). Fall back to body
+  // only if the player isn't there yet.
   let injectScheduled = false;
   function scheduleInject() {
     if (injectScheduled) return;
@@ -265,8 +267,10 @@
     }, 200);
   }
   window.addEventListener('yt-navigate-finish', scheduleInject);
+  window.addEventListener('yt-page-data-updated', scheduleInject);
+  const watchRoot = document.querySelector('#movie_player') || document.body;
   const domObserver = new MutationObserver(scheduleInject);
-  domObserver.observe(document.body, { childList: true, subtree: true });
+  domObserver.observe(watchRoot, { childList: true, subtree: true });
 
   let tries = 0;
   const timer = setInterval(() => {

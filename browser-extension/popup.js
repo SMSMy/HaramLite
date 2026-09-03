@@ -126,10 +126,24 @@ openBtn.addEventListener('click', () => {
   native({ type: 'open_folder' }).catch(() => {});
 });
 
-// if a job is already running when the popup opens, show its progress too
+// if a job is already running when the popup opens, show its progress too;
+// otherwise show the LAST completed result (audit: opening right after a
+// finished job used to show only the bare "connected" status).
 native({ type: 'status' })
   .then((r) => {
     const st = (r && r.state) || {};
-    if (st.running) pollProgress();
+    if (st.running) {
+      pollProgress();
+      return;
+    }
+    if (st.last && st.last.ok) {
+      progCard.classList.remove('hidden');
+      progBar.style.width = '100%';
+      progName.textContent = st.last.name || '';
+      cancelBtn.style.display = 'none';
+      progStatus.textContent = `✓ آخر معالجة: اكتملت في ${(st.last.seconds || 0).toFixed(1)} ثانية`;
+      progStatus.style.color = '#5ddac8';
+      openBtn.style.display = 'block';
+    }
   })
   .catch(() => {});

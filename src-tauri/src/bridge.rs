@@ -77,10 +77,19 @@ pub fn write_state_throttled(v: &serde_json::Value) {
 }
 
 pub fn read_state() -> serde_json::Value {
-    std::fs::read_to_string(state_path())
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or(serde_json::json!({ "running": null, "last": null }))
+    // Audit: the writer replaces the file atomically (tmp + rename); on
+    // Windows a read hitting the rename instant can fail with Access Denied.
+    // Retry briefly before falling back to an empty state (prevents the
+    // in-page progress bar from flickering).
+    for _ in 0..3 {
+        if let Ok(s) = std::fs::read_to_string(state_path()) {
+            if let Ok(v) = serde_json::from_str(&s) {
+                return v;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    serde_json::json!({ "running": null, "last": null })
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -417,13 +426,25 @@ fn bridge_loop(app: tauri::AppHandle, settings: Arc<Mutex<Settings>>, dir: PathB
     }
 }
 
+/// ONE shared dedup set for the whole process (module-level so both
+/// `seen_before` and `forget_seen` see the same data).
+static SEEN: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
 /// Session-scoped duplicate guard: repeated clicks on the same video must
 /// not re-download and re-process it (the user's 5 clicks → 5×20 minutes).
 fn seen_before(url: &str) -> bool {
-    static SEEN: Mutex<Option<HashSet<String>>> = Mutex::new(None);
     let mut guard = SEEN.lock().unwrap_or_else(|p| p.into_inner());
     let set = guard.get_or_insert_with(HashSet::new);
     !set.insert(url.to_string())
+}
+
+/// Audit: a FAILED request must be retryable in the same session — remove
+/// its URL from the dedup set (download errors, cancels, processing errors).
+fn forget_seen(url: &str) {
+    let mut guard = SEEN.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some(set) = guard.as_mut() {
+        set.remove(url);
+    }
 }
 
 fn handle_request(
@@ -530,6 +551,8 @@ fn handle_request(
                 Err(e) => {
                     let cancelled = CANCEL.load(Ordering::SeqCst);
                     tracing::warn!(target: "bridge", "فشل طلب المتصفح: {}: {e}", file_label);
+                    // Audit: a failed job must be retryable in this session
+                    forget_seen(url);
                     write_state(&serde_json::json!({
                         "running": null,
                         "queue": 0,
@@ -546,6 +569,8 @@ fn handle_request(
         Err(e) => {
             let cancelled = CANCEL.load(Ordering::SeqCst);
             tracing::warn!(target: "bridge", "فشل تنزيل رابط المتصفح: {e}");
+            // Audit: a failed download must be retryable in this session
+            forget_seen(url);
             write_state(&serde_json::json!({
                 "running": null,
                 "queue": 0,

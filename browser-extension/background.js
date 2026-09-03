@@ -70,11 +70,21 @@ function sendNative(message) {
       .then((p) => {
         replyQueue.push({ resolve, reject });
         // Safety net: a hung host must not leave callers waiting forever.
+        // Audit: on timeout the host may STILL reply later — a late reply
+        // would be dequeued by the NEXT request (reply-order desync). Kill
+        // the port so onDisconnect drains and rejects the whole queue, and
+        // the next call reconnects fresh.
         setTimeout(() => {
           const i = replyQueue.findIndex((entry) => entry.resolve === resolve);
           if (i >= 0) {
             replyQueue.splice(i, 1);
             reject(new Error('host reply timeout'));
+            try {
+              port.disconnect();
+            } catch {
+              /* already gone */
+            }
+            port = null;
           }
         }, 10000);
         try {

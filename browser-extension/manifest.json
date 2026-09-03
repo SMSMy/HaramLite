@@ -4,7 +4,7 @@
   "version": "0.2.0",
   "description": "أرسل روابط الفيديو إلى تطبيق HaramLite للمعالجة المحلية الكاملة على جهازك — بلا رفع لأي سحابة.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmDkCm4QQoBGoDZnAHJc7zc4zsH69FEgt8UKUcFh6GiovD31BwUS/6+11g/C+070UnKM2zU/zOUpgRGNTOtZXWTi6uf1AdhRv+Udya6PUogfThIoNv9mWDnrl2c7hkx5FV0s7qx/dMbkrdbz1Fclt3EiadxaP36xDCQy3imrKEBjF+OBWFYWnJmeZyRxAmF3fIWZ7quQ/AgwPsMR3jRCEbTk84Yb0wsViod+b4mxmSbdlJZmWpnnVfNPOUhG69M6MHyAPK94bC0giiYq05J3GTzHdQSnH6wDseh06oeM+t/CS/+Aw0ElcQoRylPSo150czz4kuwKofbWLxbUbkAgQuQIDAQAB",
-  "permissions": ["contextMenus", "nativeMessaging", "storage", "tabs"],
+  "permissions": ["contextMenus", "nativeMessaging", "tabs"],
   "background": {
     "service_worker": "background.js"
   },
