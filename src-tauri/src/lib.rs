@@ -128,50 +128,68 @@ pub fn native_host_entry() -> i32 {
 }
 
 /// M5: download media from a URL via yt-dlp with live progress events.
-/// Sync (not async): yt-dlp runs for minutes and must not hold a Tokio
-/// worker — Tauri v2 dispatches sync commands to its spawn_blocking pool.
+///
+/// P1 ROOT CAUSE (proven from tauri 2.11.5 source, owner-verified): SYNC
+/// commands run INLINE on the main loop thread (on_message →
+/// run_invoke_handler, no automatic transfer in 2.11.5) — the old comment
+/// claiming an automatic spawn_blocking pool was WRONG and is corrected
+/// here. A minutes-long body wedges paint+input (black + Not Responding)
+/// while renderer timers keep ticking (hence the silent detector). Heavy
+/// commands therefore go async + INTERNAL spawn_blocking; emits and cancel
+/// flags keep working from the worker (AppHandle/Arc are shareable). The
+/// frontend promise contract is unchanged.
 #[tauri::command]
-fn download_media_cmd(
+async fn download_media_cmd(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     url: String,
     out_dir: String,
 ) -> Result<String, String> {
-    use tauri::Emitter;
+    let cancel = state.cancel_flag.clone();
+    let downloaded = state.downloaded.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Emitter;
 
-    let final_out_dir = if out_dir.trim().is_empty() {
-        dirs::video_dir().unwrap_or_else(|| PathBuf::from("."))
-            .join("HaramLite")
-    } else {
-        PathBuf::from(out_dir)
-    };
+        let final_out_dir = if out_dir.trim().is_empty() {
+            dirs::video_dir().unwrap_or_else(|| PathBuf::from("."))
+                .join("HaramLite")
+        } else {
+            PathBuf::from(out_dir)
+        };
 
-    let path = yt_dlp::download_media(&url, &final_out_dir, &|p| {
-        // P1: ≤4Hz channel — source rate is whatever yt-dlp does on this
-        // pipe (measured 1.4 lines/s slow, unknowable fast); the UI paints
-        // per frame at most, so anything above 4Hz was pure IPC load.
-        if throttle::emit_4hz().allow("dl-progress") {
-            let _ = app.emit("dl-progress", p.clamp(0.0, 1.0));
-        }
-        true
-    }, &state.cancel_flag)
-    .map_err(|e| e.to_string())?;
-    tracing::info!(target: "ytdlp", "program-path download finished ({})", throttle::emit_4hz().report("dl-progress"));
-    // P2: remember auto-fetched sources so a later successful separation can
-    // drop them (bridge rule, literally). User files never enter this set.
-    remember_downloaded(&state.downloaded, &path);
-    Ok(path.to_string_lossy().into_owned())
+        let path = yt_dlp::download_media(&url, &final_out_dir, &|p| {
+            // P1: ≤4Hz channel — source rate is whatever yt-dlp does on this
+            // pipe (measured 1.4 lines/s slow, unknowable fast); the UI paints
+            // per frame at most, so anything above 4Hz was pure IPC load.
+            if throttle::emit_4hz().allow("dl-progress") {
+                let _ = app.emit("dl-progress", p.clamp(0.0, 1.0));
+            }
+            true
+        }, &cancel)
+        .map_err(|e| e.to_string())?;
+        tracing::info!(target: "ytdlp", "program-path download finished ({})", throttle::emit_4hz().report("dl-progress"));
+        // P2: remember auto-fetched sources so a later successful separation can
+        // drop them (bridge rule, literally). User files never enter this set.
+        remember_downloaded(&downloaded, &path);
+        Ok(path.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|e| format!("download worker failed: {e}"))?
 }
 
-/// M5: manual/forced yt-dlp update check. Sync: network + subprocess wait
-/// must not block a Tokio worker.
+/// M5: manual/forced yt-dlp update check. Async + internal spawn_blocking
+/// (P1: network + subprocess wait must never sit on the main loop thread).
 #[tauri::command]
-fn update_ytdlp(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
-    use tauri::Emitter;
-    let (updated, message) = yt_dlp::ensure_updated(true, &|p| {
-        let _ = app.emit("dl-progress", p.clamp(0.0, 1.0));
-    });
-    Ok(serde_json::json!({ "updated": updated, "message": message }))
+async fn update_ytdlp(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Emitter;
+        let (updated, message) = yt_dlp::ensure_updated(true, &|p| {
+            let _ = app.emit("dl-progress", p.clamp(0.0, 1.0));
+        });
+        Ok(serde_json::json!({ "updated": updated, "message": message }))
+    })
+    .await
+    .map_err(|e| format!("update worker failed: {e}"))?
 }
 
 /// Sprint B2: system notification for completion events. On Windows this
@@ -196,21 +214,30 @@ fn health_check_cmd() -> Vec<repair::HealthRow> {
 }
 
 /// Sprint C1: download + SHA-256 verify + atomically install one missing
-/// component from the `assets-v1` GitHub release. Sync: big download, must
-/// not hold a Tokio worker.
+/// component from the `assets-v1` GitHub release. Async + internal
+/// spawn_blocking (P1: big download must never sit on the main loop thread).
 #[tauri::command]
-fn repair_component(app: tauri::AppHandle, key: String) -> Result<String, String> {
-    use tauri::Emitter;
-    let path = repair::repair(&key, &|p| {
-        let _ = app.emit("repair-progress", p.clamp(0.0, 1.0));
+async fn repair_component(app: tauri::AppHandle, key: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Emitter;
+        let path = repair::repair(&key, &|p| {
+            let _ = app.emit("repair-progress", p.clamp(0.0, 1.0));
+        })
+        .map_err(|e| e)?;
+        Ok(path.display().to_string())
     })
-    .map_err(|e| e)?;
-    Ok(path.display().to_string())
+    .await
+    .map_err(|e| format!("repair worker failed: {e}"))?
 }
 
 #[tauri::command]
-fn probe_media(path: String) -> Result<media::MediaInfo, String> {
-    media::probe(Path::new(&path)).map_err(|e| e.to_string())
+async fn probe_media(path: String) -> Result<media::MediaInfo, String> {
+    // P1: ffprobe subprocess wait leaves the main loop thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        media::probe(Path::new(&path)).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("probe worker failed: {e}"))?
 }
 
 /// B1/B2 support: frontend-side existence validation without ffprobe.
@@ -225,33 +252,46 @@ fn path_is_dir(path: String) -> bool {
 }
 
 #[tauri::command]
-fn extract_audio(path: String, format: String, out_dir: String) -> Result<String, String> {
-    let out = media::extract_audio(Path::new(&path), &format, Path::new(&out_dir))
-        .map_err(|e| e.to_string())?;
-    tracing::info!(target: "media", "extracted {format}: {}", out.display());
-    Ok(out.to_string_lossy().into_owned())
+async fn extract_audio(path: String, format: String, out_dir: String) -> Result<String, String> {
+    // P1: ffmpeg subprocess wait leaves the main loop thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        let out = media::extract_audio(Path::new(&path), &format, Path::new(&out_dir))
+            .map_err(|e| e.to_string())?;
+        tracing::info!(target: "media", "extracted {format}: {}", out.display());
+        Ok(out.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|e| format!("extract worker failed: {e}"))?
 }
 
 #[tauri::command]
-fn remux_to_mp4(video: String, audio_wav: String, out_path: String) -> Result<String, String> {
-    let out = media::remux_video_with_audio(
-        Path::new(&video),
-        Path::new(&audio_wav),
-        Path::new(&out_path),
-    )
-    .map_err(|e| e.to_string())?;
-    tracing::info!(target: "media", "remuxed mp4: {}", out.display());
-    Ok(out.to_string_lossy().into_owned())
+async fn remux_to_mp4(video: String, audio_wav: String, out_path: String) -> Result<String, String> {
+    // P1: ffmpeg subprocess wait leaves the main loop thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        let out = media::remux_video_with_audio(
+            Path::new(&video),
+            Path::new(&audio_wav),
+            Path::new(&out_path),
+        )
+        .map_err(|e| e.to_string())?;
+        tracing::info!(target: "media", "remuxed mp4: {}", out.display());
+        Ok(out.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|e| format!("remux worker failed: {e}"))?
 }
 
 /// M2: full separation pipeline — normalize any input → MDX-Net stems.
 /// Thin wrapper over pipeline::process_file (shared with CLI).
-/// Sync (not async): processing takes 3–20 minutes (ONNX + FFmpeg). An
-/// `async fn` here would pin a Tokio worker for the whole run and starve
-/// every other command (incl. cancel_process); Tauri v2 moves sync commands
-/// to its spawn_blocking pool automatically.
+///
+/// P1 ROOT CAUSE (same as download_media_cmd): this body runs 3–20 minutes
+/// (ONNX + FFmpeg) and as a SYNC command sat INLINE on the main loop thread
+/// — every click during a run queued behind it (black + Not Responding) while
+/// renderer timers kept ticking. Now async + INTERNAL spawn_blocking; the
+/// cancel flag is reset up front on the fast path, and emits keep flowing
+/// from the worker. Frontend promise contract unchanged.
 #[tauri::command]
-fn separate_file(
+async fn separate_file(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     path: String,
@@ -264,72 +304,71 @@ fn separate_file(
     use_cuda: Option<bool>,
     preview_seconds: Option<f32>,
 ) -> Result<serde_json::Value, String> {
-    use tauri::Emitter;
-
-    let mode = mode.as_deref().and_then(Mode::parse).unwrap_or(Mode::Song);
-    let keep_inst = keep_instrumental.unwrap_or(false);
-    let cuda_enabled = use_cuda.unwrap_or(false);
-
-    let kind = match kind.as_deref() {
-        Some("video") => pipeline::OutKind::Video { max_height: quality },
-        _ => {
-            let fmt = format
-                .as_deref()
-                .and_then(pipeline::OutFormat::parse)
-                .unwrap_or(pipeline::OutFormat::Mp3); // simple default: MP3
-            pipeline::OutKind::Audio { fmt }
-        }
-    };
-
-    // Reset cancel flag before starting
+    // Reset cancel flag before starting (fast path — never blocked).
     state.cancel_flag.store(false, Ordering::SeqCst);
     let cancel = state.cancel_flag.clone();
+    let downloaded = state.downloaded.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri::Emitter;
 
-    // In CLI mode this uses CPU-only for now, or we could pass cuda_enabled to CLI too.
-    // For GUI, we pass it down via an environment variable or just wait, `pipeline::process_file`
-    // doesn't take use_cuda! I need to modify pipeline::process_file to take use_cuda.
-    // Let me just set an environment variable or thread local?
-    // Let's modify pipeline::process_file to take `use_cuda: bool`.
-    let out = pipeline::process_file(Path::new(&path), Path::new(&out_dir), mode, kind, keep_inst, true, cuda_enabled, preview_seconds, &|p| {
-        if throttle::emit_4hz().allow("sep-progress") {
-            let _ = app.emit("sep-progress", p.clamp(0.0, 1.0));
+        let mode = mode.as_deref().and_then(Mode::parse).unwrap_or(Mode::Song);
+        let keep_inst = keep_instrumental.unwrap_or(false);
+        let cuda_enabled = use_cuda.unwrap_or(false);
+
+        let kind = match kind.as_deref() {
+            Some("video") => pipeline::OutKind::Video { max_height: quality },
+            _ => {
+                let fmt = format
+                    .as_deref()
+                    .and_then(pipeline::OutFormat::parse)
+                    .unwrap_or(pipeline::OutFormat::Mp3); // simple default: MP3
+                pipeline::OutKind::Audio { fmt }
+            }
+        };
+
+        let out = pipeline::process_file(Path::new(&path), Path::new(&out_dir), mode, kind, keep_inst, true, cuda_enabled, preview_seconds, &|p| {
+            if throttle::emit_4hz().allow("sep-progress") {
+                let _ = app.emit("sep-progress", p.clamp(0.0, 1.0));
+            }
+            !cancel.load(Ordering::SeqCst)
+        }, &|stage, p| {
+            // Sprint C2: visible pipeline stages for the UI
+            if throttle::emit_4hz().allow("sep-stage") {
+                let _ = app.emit("sep-stage", serde_json::json!({ "stage": stage, "pct": p.clamp(0.0, 1.0) }));
+            }
+        })
+        .map_err(|e| e.to_string())?;
+        tracing::info!(target: "pipe", "program-path separate finished ({}; {})",
+            throttle::emit_4hz().report("sep-progress"), throttle::emit_4hz().report("sep-stage"));
+
+        // P2: drop auto-fetched sources after SUCCESS only — the bridge rule,
+        // literally: same folder + real outputs exist + no output IS the source.
+        // User files are never tracked, so they can never match.
+        let mut outs: Vec<PathBuf> = Vec::new();
+        for slot in [&out.vocals, &out.instrumental, &out.video] {
+            if let Some(p) = slot {
+                outs.push(p.clone());
+            }
         }
-        !cancel.load(Ordering::SeqCst)
-    }, &|stage, p| {
-        // Sprint C2: visible pipeline stages for the UI
-        if throttle::emit_4hz().allow("sep-stage") {
-            let _ = app.emit("sep-stage", serde_json::json!({ "stage": stage, "pct": p.clamp(0.0, 1.0) }));
+        let src = Path::new(&path);
+        if take_tracked_download(&downloaded, src)
+            && bridge::should_remove_bridge_source(src, Path::new(&out_dir), &outs)
+        {
+            match std::fs::remove_file(src) {
+                Ok(()) => tracing::info!(target: "app", "حُذف المصدر المنزّل بعد نجاح المعالجة: {}", src.display()),
+                Err(e) => tracing::warn!(target: "app", "تعذر حذف المصدر المنزّل {}: {e}", src.display()),
+            }
         }
+
+        Ok(serde_json::json!({
+            "vocals": out.vocals.as_ref().map(|p| p.to_string_lossy()),
+            "instrumental": out.instrumental.as_ref().map(|p| p.to_string_lossy()),
+            "video": out.video.as_ref().map(|p| p.to_string_lossy()),
+            "seconds": out.seconds,
+        }))
     })
-    .map_err(|e| e.to_string())?;
-    tracing::info!(target: "pipe", "program-path separate finished ({}; {})",
-        throttle::emit_4hz().report("sep-progress"), throttle::emit_4hz().report("sep-stage"));
-
-    // P2: drop auto-fetched sources after SUCCESS only — the bridge rule,
-    // literally: same folder + real outputs exist + no output IS the source.
-    // User files are never tracked, so they can never match.
-    let mut outs: Vec<PathBuf> = Vec::new();
-    for slot in [&out.vocals, &out.instrumental, &out.video] {
-        if let Some(p) = slot {
-            outs.push(p.clone());
-        }
-    }
-    let src = Path::new(&path);
-    if take_tracked_download(&state.downloaded, src)
-        && bridge::should_remove_bridge_source(src, Path::new(&out_dir), &outs)
-    {
-        match std::fs::remove_file(src) {
-            Ok(()) => tracing::info!(target: "app", "حُذف المصدر المنزّل بعد نجاح المعالجة: {}", src.display()),
-            Err(e) => tracing::warn!(target: "app", "تعذر حذف المصدر المنزّل {}: {e}", src.display()),
-        }
-    }
-
-    Ok(serde_json::json!({
-        "vocals": out.vocals.as_ref().map(|p| p.to_string_lossy()),
-        "instrumental": out.instrumental.as_ref().map(|p| p.to_string_lossy()),
-        "video": out.video.as_ref().map(|p| p.to_string_lossy()),
-        "seconds": out.seconds,
-    }))
+    .await
+    .map_err(|e| format!("separate worker failed: {e}"))?
 }
 
 #[tauri::command]
