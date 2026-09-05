@@ -19,6 +19,7 @@ mod session;
 mod settings;
 mod silence;
 mod stft;
+mod throttle;
 mod v1proto;
 mod watch_service;
 mod yt_dlp;
@@ -146,10 +147,16 @@ fn download_media_cmd(
     };
 
     let path = yt_dlp::download_media(&url, &final_out_dir, &|p| {
-        let _ = app.emit("dl-progress", p.clamp(0.0, 1.0));
+        // P1: ≤4Hz channel — source rate is whatever yt-dlp does on this
+        // pipe (measured 1.4 lines/s slow, unknowable fast); the UI paints
+        // per frame at most, so anything above 4Hz was pure IPC load.
+        if throttle::emit_4hz().allow("dl-progress") {
+            let _ = app.emit("dl-progress", p.clamp(0.0, 1.0));
+        }
         true
     }, &state.cancel_flag)
     .map_err(|e| e.to_string())?;
+    tracing::info!(target: "ytdlp", "program-path download finished ({})", throttle::emit_4hz().report("dl-progress"));
     // P2: remember auto-fetched sources so a later successful separation can
     // drop them (bridge rule, literally). User files never enter this set.
     remember_downloaded(&state.downloaded, &path);
@@ -284,13 +291,19 @@ fn separate_file(
     // Let me just set an environment variable or thread local?
     // Let's modify pipeline::process_file to take `use_cuda: bool`.
     let out = pipeline::process_file(Path::new(&path), Path::new(&out_dir), mode, kind, keep_inst, true, cuda_enabled, preview_seconds, &|p| {
-        let _ = app.emit("sep-progress", p.clamp(0.0, 1.0));
+        if throttle::emit_4hz().allow("sep-progress") {
+            let _ = app.emit("sep-progress", p.clamp(0.0, 1.0));
+        }
         !cancel.load(Ordering::SeqCst)
     }, &|stage, p| {
         // Sprint C2: visible pipeline stages for the UI
-        let _ = app.emit("sep-stage", serde_json::json!({ "stage": stage, "pct": p.clamp(0.0, 1.0) }));
+        if throttle::emit_4hz().allow("sep-stage") {
+            let _ = app.emit("sep-stage", serde_json::json!({ "stage": stage, "pct": p.clamp(0.0, 1.0) }));
+        }
     })
     .map_err(|e| e.to_string())?;
+    tracing::info!(target: "pipe", "program-path separate finished ({}; {})",
+        throttle::emit_4hz().report("sep-progress"), throttle::emit_4hz().report("sep-stage"));
 
     // P2: drop auto-fetched sources after SUCCESS only — the bridge rule,
     // literally: same folder + real outputs exist + no output IS the source.

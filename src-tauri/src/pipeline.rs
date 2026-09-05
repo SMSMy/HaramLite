@@ -187,6 +187,21 @@ pub fn process_file(
     // Held for the whole run: any second path attempting this file gets a
     // clean skip instead of a concurrent double separation.
     let _claim = claim_processing(input)?;
+    // P1 autopsy: time every stage transition. The wrapper shadows the
+    // caller's callback — zero changes at the dozen call sites below, and
+    // the log now shows exactly where a run's wall time goes.
+    let last_mark = std::cell::Cell::new(started);
+    let stage = &|name: &str, p: f32| {
+        let now = std::time::Instant::now();
+        let since_mark = now.duration_since(last_mark.get()).as_secs_f32();
+        last_mark.set(now);
+        tracing::info!(
+            target: "pipe",
+            "stage {name} {p:.2} (+{since_mark:.1}s, total {:.1}s)",
+            now.duration_since(started).as_secs_f32()
+        );
+        stage(name, p);
+    };
     let work_dir = out_dir.join("_haramlite_work");
     // Sprint B1: preview = quality sample of the first N seconds; every
     // output file carries the `_preview` tag so it can never be mistaken

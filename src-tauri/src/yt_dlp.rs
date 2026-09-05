@@ -564,6 +564,48 @@ fn download_media_inner(
     let exe = resolve_ytdlp().ok_or(YtError::NotFound)?;
     std::fs::create_dir_all(out_dir).map_err(|e| YtError::Io(e.to_string()))?;
 
+    // P1 autopsy: the program download path had ZERO log lines, so a stall
+    // here was indistinguishable from a dead process. This guard logs timed
+    // boundaries (start / first progress / last progress / end + line count)
+    // on EVERY exit path via Drop — including cancel, stall-kill and errors.
+    struct DlSpan {
+        t0: std::time::Instant,
+        first_progress: Option<std::time::Instant>,
+        last_progress: std::time::Instant,
+        lines: u64,
+        url_host: String,
+    }
+    impl Drop for DlSpan {
+        fn drop(&mut self) {
+            let total = self.t0.elapsed().as_secs_f32();
+            match self.first_progress {
+                Some(f) => tracing::info!(
+                    target: "ytdlp",
+                    "download span: {} lines, first-progress +{:.1}s, last +{:.1}s, end +{:.1}s ({})",
+                    self.lines,
+                    f.duration_since(self.t0).as_secs_f32(),
+                    self.last_progress.duration_since(self.t0).as_secs_f32(),
+                    total,
+                    self.url_host,
+                ),
+                None => tracing::warn!(
+                    target: "ytdlp",
+                    "download span: NO progress lines in {:.1}s ({})",
+                    total, self.url_host,
+                ),
+            }
+        }
+    }
+    let host = url.split('/').nth(2).unwrap_or("url").to_string();
+    let mut span = DlSpan {
+        t0: std::time::Instant::now(),
+        first_progress: None,
+        last_progress: std::time::Instant::now(),
+        lines: 0,
+        url_host: host,
+    };
+    tracing::info!(target: "ytdlp", "download start: {}", url);
+
     // 1) metadata first: no id → no safe slot → fail loudly before downloading.
     let meta = fetch_meta(&exe, url)?;
 
@@ -715,6 +757,13 @@ fn download_media_inner(
         while tail.len() > 40 {
             tail.pop_front();
         }
+        // P1: feed the span guard (line count + first/last progress instants).
+        span.lines += 1;
+        let now_line = std::time::Instant::now();
+        if span.first_progress.is_none() {
+            span.first_progress = Some(now_line);
+        }
+        span.last_progress = now_line;
         // Any output at all resets the stall watchdog.
         if let Ok(mut t) = activity.lock() {
             *t = std::time::Instant::now();
