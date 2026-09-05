@@ -78,6 +78,83 @@ fn err<E: std::fmt::Display>(e: E) -> PipelineError {
     PipelineError(e.to_string())
 }
 
+/// Cross-path mutual exclusion (functional gap H-1): GUI single/batch,
+/// bridge, watch and CLI ALL funnel through `process_file` — one lockfile
+/// registry here covers every path with a single integration point, so the
+/// same file can never be separated twice concurrently (double GPU, duplicate
+/// outputs, cross-cancel confusion).
+fn locks_dir() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_default()
+        .join("com.harammute.haramlite")
+        .join("locks")
+}
+
+fn lock_name_for(input: &Path) -> PathBuf {
+    use sha2::{Digest, Sha256};
+    // Canonicalize so `.\a.mp3`, `A.MP3` and absolute forms hash identically.
+    let canon = input
+        .canonicalize()
+        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default().join(input));
+    let mut h = Sha256::new();
+    h.update(canon.to_string_lossy().as_bytes());
+    locks_dir().join(format!("{:x}.lock", h.finalize()))
+}
+
+/// Exclusive processing claim, released on drop (even on panic-unwind,
+/// which is what makes it crash-safe where in-memory sets are not).
+pub(crate) struct ProcessingClaim {
+    path: PathBuf,
+}
+
+impl Drop for ProcessingClaim {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// Stale locks (older than 12h — necessarily a killed run, since no job may
+/// legally span that) are reclaimed instead of wedging the file forever.
+const STALE_LOCK_SECS: u64 = 12 * 3600;
+
+fn claim_processing(input: &Path) -> Result<ProcessingClaim, PipelineError> {
+    let dir = locks_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| PipelineError(format!("تعذر مجلد الأقفال: {e}")))?;
+    let lock = lock_name_for(input);
+    match std::fs::OpenOptions::new().write(true).create_new(true).open(&lock) {
+        Ok(mut f) => {
+            use std::io::Write;
+            let _ = writeln!(
+                f,
+                "{} {}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0)
+            );
+            Ok(ProcessingClaim { path: lock })
+        }
+        Err(_) => {
+            let stale = std::fs::metadata(&lock)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| std::time::SystemTime::now().duration_since(t).ok())
+                .map(|age| age.as_secs() > STALE_LOCK_SECS)
+                .unwrap_or(false);
+            if stale {
+                let _ = std::fs::remove_file(&lock);
+                // One retry only: a second collision is a live owner.
+                return match std::fs::OpenOptions::new().write(true).create_new(true).open(&lock) {
+                    Ok(_) => Ok(ProcessingClaim { path: lock }),
+                    Err(_) => Err(PipelineError("الملف قيد المعالجة حالياً — تخطي".into())),
+                };
+            }
+            Err(PipelineError("الملف قيد المعالجة حالياً — تخطي".into()))
+        }
+    }
+}
+
 pub struct PipelineOutput {
     pub vocals: Option<PathBuf>,
     /// None unless the hidden "keep instrumental" option is enabled.
@@ -107,6 +184,9 @@ pub fn process_file(
     stage: &dyn Fn(&str, f32),
 ) -> Result<PipelineOutput, PipelineError> {
     let started = std::time::Instant::now();
+    // Held for the whole run: any second path attempting this file gets a
+    // clean skip instead of a concurrent double separation.
+    let _claim = claim_processing(input)?;
     let work_dir = out_dir.join("_haramlite_work");
     // Sprint B1: preview = quality sample of the first N seconds; every
     // output file carries the `_preview` tag so it can never be mistaken
@@ -116,8 +196,13 @@ pub fn process_file(
     // Stage 1 — repair & normalize whatever came in (Sprint C2: visible stages)
     stage("normalize", 0.0);
     if !progress(0.02) { return Err(err("تم إلغاء المعالجة من قبل المستخدم.")); }
+    // Audit 2026-09-03: scratch must not outlive a failed run (tens of MB
+    // per failure used to accumulate in the user's output folder).
     let normalized =
-        media::normalize_for_engine_limited(input, &work_dir, preview_seconds).map_err(err)?;
+        media::normalize_for_engine_limited(input, &work_dir, preview_seconds).map_err(|e| {
+            let _ = std::fs::remove_dir_all(&work_dir);
+            err(e)
+        })?;
     stage("normalize", 1.0);
     tracing::info!(target: "pipe", "normalized: {}", normalized.display());
 
@@ -126,8 +211,10 @@ pub fn process_file(
         stage("separate", p);
         progress(0.05 + p * 0.85)
     };
-    let stems =
-        separator::separate(&normalized, out_dir, use_cuda, &sep_progress).map_err(err)?;
+    let stems = separator::separate(&normalized, out_dir, use_cuda, &sep_progress).map_err(|e| {
+        let _ = std::fs::remove_dir_all(&work_dir);
+        err(e)
+    })?;
     stage("separate", 1.0);
     let _ = std::fs::remove_dir_all(&work_dir);
 
@@ -139,7 +226,13 @@ pub fn process_file(
         stage("effects", 0.0);
         tracing::info!(target: "pipe", "Starting DSP phase (CPU bound) for audio enhancement...");
         let tmp_enhanced = out_dir.join("_haramlite_enhanced.wav");
-        kept_ranges = crate::effects::enhance_song_file(&stems.vocals, &tmp_enhanced, &Default::default())
+        // Audit 2026-09-03: DSP checkpoints share the cancel flag AND move
+        // the progress bar (it used to freeze through the whole phase).
+        let dsp_progress = |p: f32| {
+            stage("effects", p);
+            progress(0.90 + p * 0.06)
+        };
+        kept_ranges = crate::effects::enhance_song_file(&stems.vocals, &tmp_enhanced, &Default::default(), &dsp_progress)
             .map_err(err)?;
         // replace raw vocals with the enhanced version
         std::fs::rename(&tmp_enhanced, &vocals_path).map_err(err)?;
@@ -274,4 +367,56 @@ pub fn health_check() -> Result<Vec<(String, bool, String)>, String> {
     }
 
     Ok(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Cross-path exclusion: a live claim blocks a second claimant.
+    #[test]
+    fn processing_lock_excludes_double_claim() {
+        let tmp = std::env::temp_dir().join(format!("hl_lock_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let f = tmp.join("a.mp3");
+        std::fs::write(&f, b"fake").unwrap();
+        let c1 = claim_processing(&f).expect("first claim");
+        assert!(
+            claim_processing(&f).is_err(),
+            "second concurrent claim must conflict"
+        );
+        drop(c1);
+        let _c2 = claim_processing(&f).expect("lock released on drop");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// Audit 2026-09-03: a failed run must not leave `_haramlite_work`
+    /// scratch (tens of MB) behind in the user's output folder.
+    #[test]
+    fn failed_run_leaves_no_work_dir() {
+        let tmp = std::env::temp_dir().join(format!("hl_pipe_fail_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let out = tmp.join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let missing = tmp.join("no_such_file.mp3");
+        let r = process_file(
+            &missing,
+            &out,
+            Mode::Song,
+            OutKind::Audio { fmt: OutFormat::Mp3 },
+            false,
+            true,
+            false,
+            None,
+            &|_| true,
+            &|_, _| {},
+        );
+        assert!(r.is_err(), "missing input must fail");
+        assert!(
+            !out.join("_haramlite_work").exists(),
+            "scratch dir must be cleaned on failure"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }

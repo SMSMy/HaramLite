@@ -126,6 +126,7 @@ pub fn native_host_entry() -> i32 {
 #[tauri::command]
 fn download_media_cmd(
     app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
     url: String,
     out_dir: String,
 ) -> Result<String, String> {
@@ -141,7 +142,7 @@ fn download_media_cmd(
     let path = yt_dlp::download_media(&url, &final_out_dir, &|p| {
         let _ = app.emit("dl-progress", p.clamp(0.0, 1.0));
         true
-    })
+    }, &state.cancel_flag)
     .map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().into_owned())
 }
@@ -395,7 +396,7 @@ fn register_native_host(app: tauri::AppHandle, browser: String) -> Result<String
 }
 
 /// Smart CUDA toggle support: NVIDIA GPU present? runtime DLLs ready?
-/// `cuda: true` means the seven runtime files sit in the app's bin folder
+/// `cuda: true` means the sixteen runtime files sit in the app's bin folder
 /// (self-downloaded) — the UI offers the one-click install when false.
 #[tauri::command]
 fn cuda_status() -> serde_json::Value {
@@ -442,6 +443,19 @@ async fn install_cuda_runtime(app: tauri::AppHandle) -> Result<(), String> {
 fn cancel_process(state: tauri::State<'_, AppState>) {
     state.cancel_flag.store(true, Ordering::SeqCst);
     tracing::warn!(target: "app", "تم إرسال أمر الإلغاء...");
+}
+
+/// Functional gap: cancel a running BROWSER job from the desktop UI.
+#[tauri::command]
+fn cancel_bridge_job() -> Result<(), String> {
+    bridge::cancel_via_gui()
+}
+
+/// Functional gap: cancel the file the WATCH folder is processing right now
+/// (the watcher thread itself keeps running).
+#[tauri::command]
+fn cancel_watch_file() {
+    watch_service::cancel_current();
 }
 
 #[tauri::command]
@@ -528,6 +542,43 @@ fn clear_crash_marker() {
     }
 }
 
+/// Functional gap: kill-mid-run staging files (`*.download` next to
+/// binaries/tools) were never cleaned and accumulated forever. Live runs
+/// always write-then-rename within one process lifetime, so anything with
+/// this suffix found at boot is by definition an orphan.
+fn cleanup_crash_leftovers() {
+    let mut roots: Vec<PathBuf> = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            roots.push(parent.join("bin"));
+            roots.push(parent.join("models"));
+        }
+    }
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        roots.push(PathBuf::from(local).join("com.harammute.haramlite").join("tools"));
+    }
+    // NOTE: per-file work dirs (`_haramlite_work/`) live next to user media
+    // in unknown folders, so they cannot be swept globally — instead their
+    // scratch FILES now carry the `_haramlite_` infix (media.rs) so the watch
+    // folder at least never mistakes them for new inputs.
+    let mut stack = roots;
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            if p.extension().and_then(|x| x.to_str()) == Some("download") {
+                let _ = std::fs::remove_file(&p);
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // CUDA_RUNTIME_PLAN (الشرط 2): مسار بحث DLL قبل أي خيط وأي تهيئة ORT
@@ -571,6 +622,7 @@ pub fn run() {
             let shown = logging::init(log_dir);
             tracing::info!(target: "app", "HaramLite v{} starting — logs in {}", env!("CARGO_PKG_VERSION"), shown.display());
             note_previous_crash();
+            cleanup_crash_leftovers();
             // Audit F-1: push log lines to the UI as events instead of the
             // frontend polling get_recent_logs every 700ms.
             logging::attach_emitter(app.handle().clone());
@@ -629,6 +681,8 @@ pub fn run() {
             open_folder,
             open_file,
             cancel_process,
+            cancel_bridge_job,
+            cancel_watch_file,
             cause_test_panic,
             probe_media,
             path_exists,

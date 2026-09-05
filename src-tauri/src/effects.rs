@@ -49,14 +49,18 @@ impl Default for SongEffectsConfig {
 }
 
 /// Apply the full song chain in-place on stereo buffers.
+/// `progress` maps 0..1 across the stages and returns false to abort
+/// (audit 2026-09-03: cancel used to look dead through the whole DSP phase).
 /// Returns kept ranges in SECONDS (for mirroring cuts on the video track).
 pub fn enhance_song(
     l: &mut Vec<f32>,
     r: &mut Vec<f32>,
     sr: u32,
     cfg: &SongEffectsConfig,
+    progress: &dyn Fn(f32) -> bool,
 ) -> Result<Vec<(f64, f64)>, String> {
     let s = sr as f32;
+    let cancelled = "تم إلغاء المعالجة من قبل المستخدم.".to_string();
 
     // 1) de-muffle
     let mut hp_l = Biquad::highpass(s, cfg.highpass_hz);
@@ -64,6 +68,9 @@ pub fn enhance_song(
     for i in 0..l.len().min(r.len()) {
         l[i] = hp_l.process(l[i]);
         r[i] = hp_r.process(r[i]);
+    }
+    if !progress(0.05) {
+        return Err(cancelled);
     }
 
     // 2) exciter
@@ -73,13 +80,25 @@ pub fn enhance_song(
         l[i] = ex_l.process(l[i]);
         r[i] = ex_r.process(r[i]);
     }
+    if !progress(0.12) {
+        return Err(cancelled);
+    }
 
     // 3+4) space & width
     Freeverb::new(sr, cfg.reverb_room, cfg.reverb_mix).process(l, r);
+    if !progress(0.35) {
+        return Err(cancelled);
+    }
     PingpongDelay::new(sr, cfg.delay_ms, cfg.delay_feedback, cfg.delay_mix).process(l, r);
+    if !progress(0.50) {
+        return Err(cancelled);
+    }
 
     // 5) dynamics
     Compressor::new(sr, cfg.comp_threshold_db, cfg.comp_ratio).process(l, r);
+    if !progress(0.62) {
+        return Err(cancelled);
+    }
 
     // 6) silence cut (songs only) — capture ranges for video mirroring.
     // Ranges are computed ONCE and reused for the cut (audit R-5).
@@ -88,13 +107,22 @@ pub fn enhance_song(
     tracing::info!(target: "dsp", "silence cut removed {:.1}%", removed * 100.0);
     let ranges_sec: Vec<(f64, f64)> =
         kept_ranges.iter().map(|(a, b)| (*a as f64 / s as f64, *b as f64 / s as f64)).collect();
+    if !progress(0.75) {
+        return Err(cancelled);
+    }
 
     // 7) loudness
     let gain_db = normalize_to_target(l, r, sr, cfg.target_lufs);
     tracing::info!(target: "dsp", "loudness gain {gain_db:+.2} dB → {} LUFS", cfg.target_lufs);
+    if !progress(0.88) {
+        return Err(cancelled);
+    }
 
     // 8) ceiling
     Limiter::new(sr, 5.0, cfg.ceiling_db).process(l, r);
+    if !progress(1.0) {
+        return Err(cancelled);
+    }
 
     Ok(ranges_sec)
 }
@@ -105,10 +133,11 @@ pub fn enhance_song_file(
     wav_path: &Path,
     out_path: &Path,
     cfg: &SongEffectsConfig,
+    progress: &dyn Fn(f32) -> bool,
 ) -> Result<Vec<(f64, f64)>, String> {
     let (mut l, mut r, sr) =
         crate::separator::read_wav_stereo(wav_path).map_err(|e| e.to_string())?;
-    let ranges = enhance_song(&mut l, &mut r, sr, cfg)?;
+    let ranges = enhance_song(&mut l, &mut r, sr, cfg, progress)?;
     crate::separator::write_wav_stereo_f32_pub(out_path, &l, &r, sr)
         .map_err(|e| e.to_string())?;
     Ok(ranges)
@@ -129,7 +158,7 @@ mod tests {
     fn full_chain_stays_finite_and_hits_target() {
         let sr = 44100u32;
         let (mut l, mut r) = stereo_tone(sr, 4.0, 0.5);
-        enhance_song(&mut l, &mut r, sr, &SongEffectsConfig::default()).expect("chain");
+        enhance_song(&mut l, &mut r, sr, &SongEffectsConfig::default(), &|_| true).expect("chain");
 
         assert_eq!(l.len(), r.len());
         assert!(l.iter().all(|v| v.is_finite()));
@@ -137,5 +166,14 @@ mod tests {
         assert!(peak <= 0.9 + 0.02, "limiter ceiling violated: {peak}");
         let lufs = crate::loudness::integrated_lufs(&l, &r, sr);
         assert!((lufs - (-14.0)).abs() < 1.2, "post-chain loudness {lufs}");
+    }
+
+    /// Audit 2026-09-03: DSP must honor cancel between stages.
+    #[test]
+    fn enhance_song_honors_cancel() {
+        let sr = 44100u32;
+        let (mut l, mut r) = stereo_tone(sr, 4.0, 0.5);
+        let r = enhance_song(&mut l, &mut r, sr, &SongEffectsConfig::default(), &|_| false);
+        assert!(r.is_err(), "immediate cancel must abort the chain");
     }
 }

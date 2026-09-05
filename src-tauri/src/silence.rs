@@ -38,9 +38,16 @@ fn window_rms(l: &[f32], r: &[f32], win: usize) -> Vec<f32> {
     (0..count)
         .map(|w| {
             let s = w * win;
+            // Audit 2026-09-03: a single NaN/Inf sample (rogue model output
+            // or float-WAV oddity) must never poison the whole measurement —
+            // treat non-finite as loud (+inf) so it is never cut, never NaN.
             let sum: f32 = l[s..s + win].iter().chain(r[s..s + win].iter())
-                .map(|v| v * v).sum();
-            (sum / (win * 2) as f32).sqrt()
+                .map(|v| if v.is_finite() { v * v } else { f32::INFINITY }).sum();
+            if sum.is_finite() {
+                (sum / (win * 2) as f32).sqrt()
+            } else {
+                f32::INFINITY
+            }
         })
         .collect()
 }
@@ -51,9 +58,11 @@ pub fn compute_kept_ranges(l: &[f32], r: &[f32], sr: u32, cfg: &SilenceConfig) -
     let win = (sr as usize / 20).max(64); // 50 ms windows
     let rms = window_rms(l, r, win);
 
-    // adaptive threshold: 90th percentile × factor, clamped by absolute floor
+    // adaptive threshold: 90th percentile × factor, clamped by absolute floor.
+    // Audit 2026-09-03: total_cmp can never panic (the old partial_cmp unwrap
+    // died on one NaN and took the whole bridge/watch thread with it).
     let mut sorted = rms.clone();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    sorted.sort_by(|a, b| a.total_cmp(b));
     let p90 = sorted.get((sorted.len() as f32 * 0.9) as usize).copied().unwrap_or(1.0);
     let floor = 10f32.powf(cfg.absolute_floor_db / 20.0);
     let threshold = (p90 * cfg.relative_threshold).max(floor);
@@ -211,6 +220,28 @@ mod tests {
         let removed = cut_silence(&mut l, &mut r, sr, &SilenceConfig::default());
         assert!(removed < 0.02, "should not cut loud content: {removed}");
         assert_eq!(l.len(), sr as usize * 3);
+    }
+
+    /// Audit 2026-09-03: NaN/Inf anywhere in the buffers must never panic
+    /// (it used to kill the bridge-worker/watch thread via sort unwrap).
+    #[test]
+    fn nan_never_panics_and_never_cuts() {
+        let sr = 44100u32;
+        let mut l = vec![0.4f32; sr as usize * 2];
+        let mut r = vec![0.4f32; sr as usize * 2];
+        l[sr as usize] = f32::NAN;
+        r[100] = f32::INFINITY;
+        r[200] = f32::NEG_INFINITY;
+        // must complete without panicking (the old sort unwrap died here)
+        let ranges = compute_kept_ranges(&l, &r, sr, &SilenceConfig::default());
+        let removed = cut_silence_with_ranges(&mut l, &mut r, sr, &SilenceConfig::default(), &ranges);
+        assert!(removed.is_finite() && (0.0..=1.0).contains(&removed));
+        // all-loud buffers with spikes: nothing cut
+        let mut l2 = vec![0.5f32; sr as usize * 3];
+        let mut r2 = l2.clone();
+        l2[10] = f32::NAN;
+        let removed2 = cut_silence(&mut l2, &mut r2, sr, &SilenceConfig::default());
+        assert!(removed2 < 0.02, "spikes must not trigger cuts: {removed2}");
     }
 
     #[test]

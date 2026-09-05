@@ -208,23 +208,50 @@ function sanitizePath(raw: string): string {
 const view = document.getElementById('log-view') as HTMLDivElement;
 const autoscroll = document.getElementById('autoscroll') as HTMLInputElement;
 
+/* UI freeze fix: the old code repainted up to 500 rows on EVERY log event
+ * (ORT emits dozens/sec during inference). Now: incremental append capped at
+ * MAX_RENDERED_ROWS, coalesced to one paint per animation frame. */
+const MAX_RENDERED_ROWS = 150;
+let logTotal = 0; // ever-incrementing id of buffered lines
+let renderedUpTo = 0; // logTotal already painted
+let logFrameQueued = false;
+function logLineNode(line: LogLine): HTMLDivElement {
+  const div = document.createElement('div');
+  const lvl = document.createElement('span');
+  lvl.className = `lv-${line.level}`;
+  lvl.textContent = `${line.ts} ${line.level.padEnd(5)} `;
+  const body = document.createElement('span');
+  body.textContent = `[${line.target}] ${line.message}`;
+  div.append(lvl, body);
+  return div;
+}
 function renderLogs(lines: LogLine[]): void {
-  const stick = nearBottom();
+  // Full repaint of the visible tail (drawer open / manual refresh).
+  const tail = lines.slice(-MAX_RENDERED_ROWS);
   const frag = document.createDocumentFragment();
-  for (const line of lines) {
-    const div = document.createElement('div');
-    const lvl = document.createElement('span');
-    lvl.className = `lv-${line.level}`;
-    lvl.textContent = `${line.ts} ${line.level.padEnd(5)} `;
-    const body = document.createElement('span');
-    body.textContent = `[${line.target}] ${line.message}`;
-    div.append(lvl, body);
-    frag.appendChild(div);
-  }
+  for (const line of tail) frag.appendChild(logLineNode(line));
   view.replaceChildren(frag);
-  if (stick && autoscroll.checked) {
-    view.scrollTop = view.scrollHeight;
-  }
+  renderedUpTo = logTotal;
+  if (autoscroll.checked) view.scrollTop = view.scrollHeight;
+}
+function scheduleLogPaint(): void {
+  if (logFrameQueued || !logOpen) return;
+  logFrameQueued = true;
+  requestAnimationFrame(() => {
+    logFrameQueued = false;
+    if (!logOpen) return;
+    if (renderedUpTo > logTotal) { renderLogs(logBuffer); return; }
+    const stick = nearBottom();
+    const have = logTotal - renderedUpTo;
+    const inBuf = Math.min(have, logBuffer.length);
+    const startIdx = logBuffer.length - inBuf;
+    const frag = document.createDocumentFragment();
+    for (let i = startIdx; i < logBuffer.length; i++) frag.appendChild(logLineNode(logBuffer[i]));
+    view.appendChild(frag);
+    renderedUpTo = logTotal;
+    while (view.childElementCount > MAX_RENDERED_ROWS) view.firstElementChild?.remove();
+    if (stick && autoscroll.checked) view.scrollTop = view.scrollHeight;
+  });
 }
 
 function nearBottom(): boolean {
@@ -240,8 +267,10 @@ const logBuffer: LogLine[] = [];
 async function refresh(): Promise<void> {
   if (!logOpen) return;
   try {
+    const fresh = await invoke<LogLine[]>('get_recent_logs', { limit: 500 });
     logBuffer.length = 0;
-    logBuffer.push(...(await invoke<LogLine[]>('get_recent_logs', { limit: 500 })));
+    logBuffer.push(...fresh);
+    logTotal += fresh.length;
     renderLogs(logBuffer);
   } catch (e) {
     console.error('get_recent_logs failed', e);
@@ -252,7 +281,8 @@ function pushLogLine(line: LogLine): void {
   if (!logOpen) return;
   logBuffer.push(line);
   if (logBuffer.length > 500) logBuffer.splice(0, logBuffer.length - 500);
-  renderLogs(logBuffer);
+  logTotal += 1;
+  scheduleLogPaint();
 }
 
 function wireLogToggle(): void {
@@ -326,6 +356,22 @@ function fileBaseName(p: string): string {
   return p.split(/[\\/]/).pop() ?? p;
 }
 
+/* ── UI freeze forensics ────────────────────────────────────────────── */
+// If the renderer event loop ever stalls, leave a dated trace in the backend
+// log — turns future "the app froze" reports into quantified data (when and
+// how long) instead of guesses. Costs one timer tick per second.
+function startStallDetector(): void {
+  let lastBeat = Date.now();
+  window.setInterval(() => {
+    const now = Date.now();
+    const gap = now - lastBeat;
+    lastBeat = now;
+    if (gap > 5000) {
+      invoke('push_log', { level: 'warn', message: `UI thread stalled ~${Math.round(gap / 1000)}s` });
+    }
+  }, 1000);
+}
+
 /* ── smart CUDA hint (Sprint C2-style UX) ───────────────────────────── */
 function showCudaHint(text: string): void {
   const hint = document.getElementById('cuda-hint');
@@ -374,6 +420,8 @@ function hideStageLine(): void {
 /* ── unified settings sync (Sprint D1) ──────────────────────────────── */
 type RustSettings = Record<string, unknown>;
 let settingsSyncTimer: number | undefined;
+/** Hook filled by wireWatchSettings so external settings changes can repaint. */
+let refreshWatchUi: (() => void) | null = null;
 function collectSettings(): RustSettings {
   return {
     lang,
@@ -453,6 +501,7 @@ function wireWatchSettings(): void {
     const on = cb.checked;
     const path = localStorage.getItem('hl.watch_path') || '';
     opts?.classList.toggle('hidden', !on);
+    document.getElementById('btn-watch-cancel')?.classList.toggle('hidden', !on);
     if (pathEl) pathEl.textContent = path || (on ? t('watch_no_folder') : '');
     if (statusEl) {
       const hasPath = !!path;
@@ -503,6 +552,10 @@ function wireWatchSettings(): void {
     });
   }
 
+  document.getElementById('btn-watch-cancel')?.addEventListener('click', () => {
+    invoke('cancel_watch_file').catch((e) => console.error('cancel_watch_file failed', e));
+  });
+
   // live events from the Rust watch service
   void listen<{ path: string; reason: string }>('watch-skip', (ev) => {
     showToast(`⏭ ${ev.payload.path} — ${ev.payload.reason}`);
@@ -518,6 +571,7 @@ function wireWatchSettings(): void {
     });
   });
 
+  refreshWatchUi = sync;
   sync();
 }
 
@@ -837,8 +891,14 @@ let batchAbort = false;
 async function stopBatch(): Promise<void> {
   batchAbort = true;
   batchQueue = [];
+  batchStatus.clear();
+  localStorage.removeItem('hl.batch');
   document.getElementById('batch-list')?.classList.add('hidden');
   document.getElementById('batch-counter')?.classList.add('hidden');
+  // Phantom-cancel fix: stopBatch runs on EVERY single-file ingest, and it
+  // used to fire cancel_process (and its scary backend WARN line) even with
+  // nothing running. Only signal when a job actually exists to abort.
+  if (!batchRunning && !singleRunning) return;
   try {
     await invoke('cancel_process');
   } catch (e) {
@@ -851,6 +911,13 @@ function setBatchCounter(done: number, total: number): void {
   el.classList.remove('hidden');
   el.textContent = `📦 الدفعة: ${done}/${total}`;
 }
+/** Batch rows must never shrink inside the flex column (30 files squeezed
+ *  into slivers) and off-screen rows skip rendering (content-visibility). */
+function styleBatchItem(div: HTMLElement): void {
+  div.classList.add('shrink-0');
+  div.style.contentVisibility = 'auto';
+  div.style.containIntrinsicSize = 'auto 96px';
+}
 function renderBatchList(): void {
   const ul = document.getElementById('batch-list');
   if (!ul) return;
@@ -860,6 +927,7 @@ function renderBatchList(): void {
       const div = document.createElement('div');
       div.dataset.file = f;
       div.className = 'batch-item bg-coal-surface/40 border border-border-muted rounded p-stack-sm flex flex-col gap-unit opacity-60 transition-all duration-300 apple-ease cursor-default relative overflow-hidden';
+      styleBatchItem(div);
       
       const progBg = document.createElement('div');
       progBg.className = 'absolute inset-0 bg-clay-accent/10 w-0 transition-all duration-1000 ease-linear batch-prog-bg hidden';
@@ -896,10 +964,58 @@ function renderBatchList(): void {
       return div;
     }),
   );
+  batchStatus.clear();
+  for (const f of batchQueue) batchStatus.set(f, 'pending');
+  saveBatchState();
+}
+
+/* ── batch persistence (functional gap: memory-only queue) ──────────── */
+// The queue (+ per-item status) survives close/crash; completion or an
+// explicit stop clears it. Resume re-queues only pending/failed items —
+/// never reprocesses finished ones.
+type BatchItemState = 'pending' | 'run' | 'ok' | 'fail';
+const batchStatus = new Map<string, BatchItemState>();
+function saveBatchState(): void {
+  try {
+    if (batchQueue.length) {
+      localStorage.setItem('hl.batch', JSON.stringify(
+        batchQueue.map((f) => ({ f, s: batchStatus.get(f) ?? 'pending' })),
+      ));
+    } else localStorage.removeItem('hl.batch');
+  } catch { /* storage full/blocked — queue simply stays volatile */ }
+}
+function restoreBatchState(): void {
+  let items: { f: string; s: BatchItemState }[] = [];
+  try {
+    const raw = localStorage.getItem('hl.batch');
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      const arr = Array.isArray(parsed) ? parsed : [];
+      items = arr
+        .map((it) => typeof it === 'string'
+          ? { f: it, s: 'pending' as BatchItemState }
+          : { f: (it as { f?: unknown }).f, s: (it as { s?: unknown }).s })
+        .filter((it): it is { f: string; s: BatchItemState } =>
+          typeof it.f === 'string' && (it.s === 'pending' || it.s === 'run' || it.s === 'fail' || it.s === 'ok'));
+    }
+  } catch { items = []; }
+  const files = items.filter((it) => it.s !== 'ok').map((it) => it.f);
+  const skipped = items.length - files.length;
+  if (!files.length) {
+    if (items.length) localStorage.removeItem('hl.batch');
+    return;
+  }
+  batchQueue = files;
+  renderBatchList();
+  setBatchCounter(0, batchQueue.length);
+  showToast(`⏸ دفعة منقطعة (${files.length}${skipped ? `، تخطي ${skipped} منجزة` : ''}) — اضغط فصل للاستئناف`);
+  invoke('push_log', { level: 'warn', message: `batch restored after restart: ${files.length} files (${skipped} done skipped)` });
 }
 function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?: string): void {
+  batchStatus.set(file, status);
   const item = document.querySelector<HTMLElement>(`#batch-list div[data-file="${CSS.escape(file)}"]`);
-  if (!item) return;
+  if (!item) { saveBatchState(); return; }
+  styleBatchItem(item); // className swaps below wipe classes — re-apply after each
   
   const statusSpan = item.querySelector('.status-text') as HTMLElement;
   const actionsDiv = item.querySelector('.batch-actions') as HTMLElement;
@@ -954,11 +1070,43 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?:
           statusSpan.textContent = '✗ فشل';
           statusSpan.className = 'status-text font-label-sm text-label-sm text-error relative z-10 flex-1';
       }
-      if (actionsDiv) actionsDiv.classList.add('hidden');
+      // Functional gap: a transient failure used to be a dead end — offer
+      // a per-item retry instead of forcing a manual queue rebuild.
+      if (actionsDiv) {
+          actionsDiv.innerHTML = `<button class="text-tertiary hover:text-green-300 p-1 bg-surface-container rounded" title="إعادة المحاولة"><span class="material-symbols-outlined text-sm" data-icon="refresh">refresh</span></button>`;
+          actionsDiv.classList.remove('hidden');
+          actionsDiv.querySelector('button')?.addEventListener('click', () => void retryBatchItem(file));
+      }
   }
+  styleBatchItem(item); // className swaps above wipe it — restore last
+  saveBatchState();
+}
+
+/** Re-run one failed batch item with the last used separation options. */
+let lastSepOpts: SepOpts | null = null;
+async function retryBatchItem(file: string): Promise<void> {
+  const kindSel = document.querySelector<HTMLElement>('.kind-card.selected');
+  const o: SepOpts = lastSepOpts ?? {
+    outKind: (kindSel?.dataset.kind as 'audio' | 'video') ?? 'audio',
+  };
+  const keepInst = (document.getElementById('keep-inst') as HTMLInputElement)?.checked ?? false;
+  const result = sepResultEl();
+  if (!result) return;
+  markBatchItem(file, 'run');
+  await runOne(file, keepInst, o, result);
 }
 
 /* ── separation (single + batch) ────────────────────────────────────── */
+// Coalesce high-frequency backend events to one DOM paint per frame.
+const rafPending = new Set<string>();
+function coalesceRaf(key: string, fn: () => void): void {
+  if (rafPending.has(key)) return;
+  rafPending.add(key);
+  requestAnimationFrame(() => {
+    rafPending.delete(key);
+    fn();
+  });
+}
 type SepOpts = { outKind: 'audio' | 'video'; quality?: number; advFmt?: string };
 
 async function runSeparationFor(path: string, keepInst: boolean, o: SepOpts): Promise<SepResult> {
@@ -987,8 +1135,10 @@ function wireSeparate(): void {
   let cachedBg: HTMLElement | null = null;
   let cachedBar: HTMLElement | null = null;
   let cachedText: HTMLElement | null = null;
-  void listen<number>('sep-progress', (ev) => {
-    const pct = Math.round(ev.payload * 100);
+  let lastSepPct = 0;
+  let lastStage: { stage: string; pct: number } | null = null;
+  const paintSepProgress = () => {
+    const pct = Math.round(lastSepPct * 100);
     const activeItem = document.querySelector<HTMLElement>('.batch-item.running-item');
     if (activeItem !== cachedItem) {
       cachedItem = activeItem;
@@ -999,26 +1149,35 @@ function wireSeparate(): void {
     if (cachedBg) cachedBg.style.inlineSize = `${pct}%`;
     if (cachedBar) cachedBar.style.inlineSize = `${pct}%`;
     if (cachedText) cachedText.textContent = `${pct}%`;
-    if (ev.payload >= 1.0) {
+    if (lastSepPct >= 1.0) {
       // F-5: clear any pending hide so the NEXT batch file's stage line
       // isn't hidden by the PREVIOUS file's 1200ms timer.
       if (stageHideTimer) window.clearTimeout(stageHideTimer);
       stageHideTimer = window.setTimeout(hideStageLine, 1200);
     }
+  };
+  void listen<number>('sep-progress', (ev) => {
+    lastSepPct = ev.payload;
+    coalesceRaf('sep-progress', paintSepProgress);
   });
 
   // Sprint C2: visible pipeline stages (توحيد ← فصل ← مؤثرات ← ترميز)
-  void listen<{ stage: string; pct: number }>('sep-stage', (ev) => {
+  const paintSepStage = () => {
+    if (!lastStage) return;
     const line = document.getElementById('stage-line');
     const name = document.getElementById('stage-name');
     const bar = document.getElementById('stage-bar');
     const pctEl = document.getElementById('stage-pct');
     if (!line || !name || !bar || !pctEl) return;
     line.classList.remove('hidden');
-    const pct = Math.round(ev.payload.pct * 100);
-    name.textContent = STAGE_NAMES[ev.payload.stage]?.[lang] ?? ev.payload.stage;
+    const pct = Math.round(lastStage.pct * 100);
+    name.textContent = STAGE_NAMES[lastStage.stage]?.[lang] ?? lastStage.stage;
     bar.style.inlineSize = `${pct}%`;
     pctEl.textContent = `${pct}%`;
+  };
+  void listen<{ stage: string; pct: number }>('sep-stage', (ev) => {
+    lastStage = ev.payload;
+    coalesceRaf('sep-stage', paintSepStage);
   });
 
   sepBtnEl()?.addEventListener('click', async () => {
@@ -1046,11 +1205,13 @@ function wireSeparate(): void {
         setVerdict(probeEl(), 'أفلت ملفاً أو اختره أولاً — سيُفحص تلقائياً', true);
         return;
       }
+      lastSepOpts = { outKind, quality, advFmt };
       await runOne(currentMediaPath, keepInst, { outKind, quality, advFmt }, result!);
       return;
     }
 
     // batch path
+    lastSepOpts = { outKind, quality, advFmt };
     batchRunning = true;
     batchAbort = false;
     sepBtnEl().textContent = '⏸ إيقاف';
@@ -1091,6 +1252,10 @@ function wireSeparate(): void {
       level: failures.length ? 'warn' : 'info',
       message: `batch finished: ${total - failures.length}/${total}`,
     });
+    // A finished batch (even partially failed — failures keep retry buttons)
+    // is no longer "interrupted": drop the persisted queue.
+    if (batchAbort || failures.length === 0) localStorage.removeItem('hl.batch');
+    else saveBatchState();
     void notify(t('notify_batch_done'), `${total - failures.length}/${total} ✓`);
   });
 
@@ -1143,8 +1308,12 @@ function wireUrlDownload(): void {
   const res = document.getElementById('dl-result');
   const upd = document.getElementById('btn-upd-ytdlp') as HTMLButtonElement;
 
+  let lastDlPct = 0;
   void listen<number>('dl-progress', (ev) => {
-    if (bar) bar.style.inlineSize = `${Math.round(ev.payload * 100)}%`;
+    lastDlPct = ev.payload;
+    coalesceRaf('dl-progress', () => {
+      if (bar) bar.style.inlineSize = `${Math.round(lastDlPct * 100)}%`;
+    });
   });
 
   btn?.addEventListener('click', async () => {
@@ -1289,6 +1458,142 @@ function wireSettings(): void {
       }
     });
   }
+
+  // Functional gap: `settings-changed` was emitted but never listened to, so
+  // an external edit of settings.json was silently clobbered. Converge the
+  // read-only indicators on backend truth (safe with the 300ms push
+  // debounce: rapid local toggles collapse into one push before any echo).
+  void listen<RustSettings>('settings-changed', (ev) => {
+    const s = ev.payload;
+    if (!s || typeof s !== 'object') return;
+    if (typeof s.cuda === 'boolean') {
+      localStorage.setItem('hl.cuda', s.cuda ? '1' : '0');
+      const cb = document.getElementById('setting-cuda') as HTMLInputElement | null;
+      if (cb) cb.checked = s.cuda;
+      void updateCudaBanner();
+    }
+    if (typeof s.notify === 'boolean') {
+      localStorage.setItem('hl.notify', s.notify ? '1' : '0');
+      const cb = document.getElementById('setting-notify') as HTMLInputElement | null;
+      if (cb) cb.checked = s.notify;
+    }
+    if (typeof s.watch_enabled === 'boolean') {
+      localStorage.setItem('hl.watch', s.watch_enabled ? '1' : '0');
+      const cb = document.getElementById('setting-watch') as HTMLInputElement | null;
+      if (cb) cb.checked = s.watch_enabled;
+    }
+    if (typeof s.watch_path === 'string') localStorage.setItem('hl.watch_path', s.watch_path);
+    refreshWatchUi?.();
+  });
+}
+
+/* ── unified external-jobs feed (functional gap: invisible externals) ─── */
+type ExtKind = 'bridge' | 'watch';
+interface ExtRow { kind: ExtKind; name: string; detail: string; pct: number | null }
+const extJobs = new Map<string, ExtRow>();
+let extSig = '';
+function renderExtJobs(): void {
+  const list = document.getElementById('ext-list');
+  if (!list) return;
+  const sig = [...extJobs.values()]
+    .map((j) => `${j.kind}|${j.name}|${j.detail}|${j.pct === null ? '-' : Math.round(j.pct * 100)}`)
+    .join('~');
+  if (sig === extSig) return; // progress ticks at high frequency — skip no-ops
+  extSig = sig;
+  list.replaceChildren();
+  if (!extJobs.size) {
+    const s = document.createElement('span');
+    s.id = 'ext-empty';
+    s.className = 'font-label-sm text-label-sm text-on-surface-variant opacity-60';
+    s.textContent = 'لا وظائف خارجية جارية';
+    list.appendChild(s);
+    return;
+  }
+  for (const job of extJobs.values()) {
+    const row = document.createElement('div');
+    row.className = 'bg-coal-surface/40 border border-border-muted rounded p-stack-sm flex flex-col gap-unit';
+    const top = document.createElement('div');
+    top.className = 'flex justify-between items-center gap-unit';
+    const name = document.createElement('span');
+    name.className = 'font-label-sm text-label-sm text-cream-text truncate flex-1';
+    name.dir = 'ltr';
+    name.textContent = `${job.kind === 'bridge' ? '🌐' : '📁'} ${job.name}`;
+    const cancel = document.createElement('button');
+    cancel.className = 'text-error hover:text-red-400 p-1 flex-shrink-0 font-label-sm text-label-sm';
+    cancel.title = 'إلغاء';
+    cancel.textContent = '⏹';
+    cancel.addEventListener('click', () => {
+      invoke(job.kind === 'bridge' ? 'cancel_bridge_job' : 'cancel_watch_file')
+        .catch((e) => console.error('ext cancel failed', e));
+    });
+    top.append(name, cancel);
+    row.appendChild(top);
+    if (job.pct !== null) {
+      const wrap = document.createElement('div');
+      wrap.className = 'h-1.5 bg-border-muted rounded-full overflow-hidden';
+      const bar = document.createElement('div');
+      bar.className = 'h-full bg-clay-accent rounded-full';
+      bar.style.inlineSize = `${Math.round(job.pct * 100)}%`;
+      wrap.appendChild(bar);
+      row.appendChild(wrap);
+    }
+    const detail = document.createElement('span');
+    detail.className = 'font-label-sm text-label-sm text-on-surface-variant';
+    detail.textContent = job.detail;
+    row.appendChild(detail);
+    list.appendChild(row);
+  }
+}
+function wireExtJobs(): void {
+  void listen<{ name: string; queue?: number }>('bridge-start', (ev) => {
+    extJobs.set(`bridge:${ev.payload.name}`, {
+      kind: 'bridge', name: ev.payload.name,
+      detail: `تنزيل/فصل عبر المتصفح…${ev.payload.queue ? ` (في الطابور: ${ev.payload.queue})` : ''}`,
+      pct: null,
+    });
+    renderExtJobs();
+  });
+  void listen<{ name: string }>('bridge-done', () => {
+    for (const key of [...extJobs.keys()]) {
+      if (key.startsWith('bridge:')) extJobs.delete(key);
+    }
+    renderExtJobs();
+  });
+  // Global progress bars also move during bridge jobs — mirror them unless a
+  // GUI job owns the bar right now (avoids cross-talk on overlap).
+  void listen<number>('dl-progress', (ev) => {
+    if (singleRunning || batchRunning) return;
+    for (const job of extJobs.values()) {
+      if (job.kind === 'bridge' && job.pct === null) job.pct = ev.payload * 0.2;
+    }
+    renderExtJobs();
+  });
+  void listen<number>('sep-progress', (ev) => {
+    if (singleRunning || batchRunning) return;
+    for (const job of extJobs.values()) {
+      if (job.kind === 'bridge') job.pct = 0.2 + ev.payload * 0.8;
+    }
+    renderExtJobs();
+  });
+  void listen<{ path: string }>('watch-start', (ev) => {
+    extJobs.set(`watch:${ev.payload.path}`, {
+      kind: 'watch', name: ev.payload.path, detail: 'معالجة ملف مراقب…', pct: 0,
+    });
+    renderExtJobs();
+  });
+  void listen<{ path: string; pct: number }>('watch-progress', (ev) => {
+    const job = extJobs.get(`watch:${ev.payload.path}`);
+    if (job) {
+      job.pct = ev.payload.pct;
+      job.detail = 'معالجة ملف مراقب…';
+      renderExtJobs();
+    }
+  });
+  void listen<{ path: string }>('watch-done', (ev) => {
+    extJobs.delete(`watch:${ev.payload.path}`);
+    renderExtJobs();
+  });
+  renderExtJobs();
 }
 
 /* ── about + report (Sprint B3/B4) ──────────────────────────────────── */
@@ -1505,10 +1810,14 @@ function wireUpdater(): void {
 function wireBridge(): void {
   let bridgeCardTimer: number | undefined; // F-5: one pending hide at a time
   document.getElementById('btn-bridge')?.addEventListener('click', async () => {
+    // Audit 2026-09-03: register every supported browser — the backend
+    // accepts 'firefox' but the UI hardcoded 'chrome', leaving Firefox
+    // users with no way to enable the integration.
     try {
-      const r = await invoke<string>('register_native_host', { browser: 'chrome' });
-      showToast(r);
-      invoke('push_log', { level: 'info', message: r });
+      const r1 = await invoke<string>('register_native_host', { browser: 'chrome' });
+      const r2 = await invoke<string>('register_native_host', { browser: 'firefox' });
+      showToast(`${r1}\n${r2}`);
+      invoke('push_log', { level: 'info', message: `${r1} / ${r2}` });
     } catch (e) {
       showToast(`✗ ${String(e).slice(0, 120)}`);
       invoke('push_log', { level: 'error', message: `native host registration failed: ${e}` });
@@ -1548,6 +1857,7 @@ function wireBridge(): void {
 }
 
 function wire(): void {
+  startStallDetector();
   wireLang();
   wireSettings();
 
@@ -1570,6 +1880,7 @@ function wire(): void {
   wireUpdater();
   wireWatchSettings();
   wireBridge();
+  wireExtJobs();
 }
 
 async function init(): Promise<void> {
@@ -1580,6 +1891,7 @@ async function init(): Promise<void> {
 
   wire();
   wireSecretSettings();
+  restoreBatchState();
   try {
     const info = await invoke<{ app: string; version: string }>('ping');
     appVersion = info.version;
@@ -1590,12 +1902,11 @@ async function init(): Promise<void> {
     console.error(e);
   }
   
-  // Auto-update yt-dlp in the background
-  invoke<{ updated: boolean; message: string }>('update_ytdlp').then((r) => {
-    invoke('push_log', { level: 'info', message: r.message });
-  }).catch((e) => {
-    invoke('push_log', { level: 'error', message: `yt-dlp auto-update failed: ${e}` });
-  });
+  // Audit 2026-09-03: no forced yt-dlp update here — the backend
+  // `ytdlp-update` thread already checks on its 24h cadence, and a second
+  // forced updater raced it on the same files at every boot. Manual updates
+  // stay on the yt-dlp button (wireUrlDownload).
+  void 0;
 
   // Sprint C1: missing components → repair wizard; Sprint C2: silent update check
   void autoHealthCheck();

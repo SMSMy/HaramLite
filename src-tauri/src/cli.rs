@@ -267,10 +267,11 @@ pub fn entry(args: &[String]) -> i32 {
     if let Some(url) = &opts.url {
         let out_dir = opts.out_dir.clone().unwrap_or_else(|| ".".into());
         eprintln!("▶ تنزيل: {url}");
+        let never_cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         match crate::yt_dlp::download_media(url, Path::new(&out_dir), &|p| {
             eprint!("\r  [{:>3}%]", (p * 100.0) as u32);
             true
-        }) {
+        }, &never_cancel) {
             Ok(path) => {
                 eprintln!("\r  [100%]");
                 println!("تم التنزيل: {}", path.display());

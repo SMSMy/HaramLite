@@ -62,6 +62,7 @@
                 </select>
             </div>
             <span id="watch-status" class="font-label-sm text-label-sm text-on-surface-variant"></span>
+            <button id="btn-watch-cancel" class="hidden text-error hover:text-red-400 font-label-sm text-label-sm p-unit rounded hover:bg-surface-variant/30 cursor-pointer transition-colors">⏹ إلغاء الملف الجاري</button>
         </div>
     </div>
     <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
@@ -185,19 +186,6 @@
     
 </div>
 </div>
-<!-- Quick Preview (Sprint B1) -->
-<div class="flex items-center gap-stack-sm bg-coal-surface/40 p-stack-sm rounded border border-border-muted fade-in-up delay-200">
-    <label class="flex items-center gap-stack-sm cursor-pointer group flex-shrink-0">
-        <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="preview-toggle" type="checkbox"/>
-        <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="preview_label">معاينة سريعة</span>
-    </label>
-    <select id="preview-duration" class="hidden form-select bg-coal-surface border border-border-muted rounded px-stack-sm py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent cursor-pointer">
-        <option value="10">10 ث</option>
-        <option value="15" selected>15 ث</option>
-        <option value="30">30 ث</option>
-    </select>
-    <span id="preview-hint" class="font-label-sm text-label-sm text-warn-yellow flex-1"></span>
-</div>
 <!-- Visible pipeline stages (Sprint C2) -->
 <div id="stage-line" class="hidden flex items-center gap-stack-sm font-label-sm text-label-sm text-on-surface-variant fade-in-up delay-200">
     <span id="stage-name" class="text-clay-accent font-bold">فصل الصوت</span>
@@ -246,6 +234,15 @@
 <span class="font-label-sm text-label-sm text-cream-text truncate" dir="ltr">podcast_ep44.wav</span>
 </div>
 <span class="font-label-sm text-label-sm text-on-surface-variant">في الانتظار</span>
+</div>
+</div>
+<div class="p-stack-md border-t border-border-muted">
+<h3 class="font-label-md text-label-md text-clay-accent flex items-center gap-stack-sm mb-2">
+<span class="material-symbols-outlined text-sm" data-icon="lan">lan</span>
+                    وظائف خارجية
+                </h3>
+<div id="ext-list" class="flex flex-col gap-unit">
+<span id="ext-empty" class="font-label-sm text-label-sm text-on-surface-variant opacity-60">لا وظائف خارجية جارية</span>
 </div>
 </div>
 </aside>

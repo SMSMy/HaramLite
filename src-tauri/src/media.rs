@@ -204,7 +204,10 @@ pub fn normalize_for_engine_limited(
     let ffmpeg = resolve_tool("ffmpeg")?;
     std::fs::create_dir_all(work_dir).map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
     let stem = input.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "input".into());
-    let out = work_dir.join(format!("normalized_{stem}.wav"));
+    // Functional gap: scratch must be recognizable as ours — the old
+    // `normalized_*` name passed the watch folder's `candidate_ok` filter,
+    // so a killed run's leftovers were reprocessed as fresh inputs.
+    let out = work_dir.join(format!("_haramlite_normalized_{stem}.wav"));
     let input_str = input.to_string_lossy().into_owned();
     let out_str = out.to_string_lossy().into_owned();
 
@@ -409,6 +412,12 @@ pub fn export_video_with_cuts(
     let audio_str = audio.to_string_lossy().into_owned();
     let out_str = out_path.to_string_lossy().into_owned();
     let fc = format!("[0:v]{chain}[v]");
+    // Same breathing room as ORT inference: all-core x264 starved the window
+    // compositor into blackouts during long exports.
+    let enc_threads = crate::separator::inference_threads(
+        std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
+    );
+    let enc_threads_str = enc_threads.to_string();
 
     let status = make_cmd(&ffmpeg)
         .args([
@@ -418,6 +427,7 @@ pub fn export_video_with_cuts(
             "-filter_complex", &fc,
             "-map", "[v]", "-map", "1:a",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+            "-threads", &enc_threads_str,
             "-c:a", "aac", "-b:a", "256k",
             "-shortest",
             &out_str,

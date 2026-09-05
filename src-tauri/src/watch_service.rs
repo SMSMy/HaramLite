@@ -26,8 +26,57 @@ pub fn init(app: tauri::AppHandle) {
 
 struct WatchHandle {
     stop: Arc<AtomicBool>,
+    /// Abort only the file being processed right now (the watcher thread
+    /// itself keeps running). Reset after every file by the watch loop.
+    cancel_file: Arc<AtomicBool>,
     join: Option<std::thread::JoinHandle<()>>,
     fingerprint: String,
+}
+
+/// Cancel the currently processing watched file, if any (functional gap:
+/// the watch path used to have no cancel affordance at all).
+pub fn cancel_current() {
+    let handle = HANDLE.get_or_init(|| Mutex::new(None));
+    if let Some(h) = handle.lock().unwrap().as_ref() {
+        h.cancel_file.store(true, Ordering::SeqCst);
+        tracing::warn!(target: "watch", "أُرسل إلغاء ملف المراقبة الجاري");
+    }
+}
+
+/// Persistent done-set: inputs already processed in EARLIER sessions must not
+/// be reprocessed on every boot (functional gap: hours wasted + outputs
+/// overwritten). Keyed by the same `key_of` (path|size|mtime); namespaced by
+/// the settings fingerprint so a mode/quality change re-runs everything once.
+fn done_path() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_default()
+        .join("com.harammute.haramlite")
+        .join("watch_done.json")
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct DoneSet {
+    fp: String,
+    keys: HashSet<String>,
+}
+
+fn load_done_keys_at(path: &Path, fp: &str) -> HashSet<String> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<DoneSet>(&s).ok())
+        .filter(|d| d.fp == fp)
+        .map(|d| d.keys)
+        .unwrap_or_default()
+}
+
+fn save_done_keys_at(path: &Path, fp: &str, keys: &HashSet<String>) {
+    let d = DoneSet { fp: fp.into(), keys: keys.clone() };
+    if let Ok(bytes) = serde_json::to_vec(&d) {
+        let tmp = path.with_extension("tmp");
+        if std::fs::write(&tmp, bytes).is_ok() {
+            let _ = std::fs::rename(&tmp, &path);
+        }
+    }
 }
 
 const MEDIA_EXTS: &[&str] = &[
@@ -126,11 +175,14 @@ fn free_bytes(_dir: &Path) -> Option<u64> {
 }
 
 /// Wait until the file size stops changing (copy/download in progress).
-fn wait_stable(p: &Path, stop: &AtomicBool) -> Result<u64, String> {
+fn wait_stable(p: &Path, stop: &AtomicBool, cancel_file: &AtomicBool) -> Result<u64, String> {
     let mut last = 0u64;
     for _ in 0..20 {
         if stop.load(Ordering::SeqCst) {
             return Err("توقف المراقبة".into());
+        }
+        if cancel_file.load(Ordering::SeqCst) {
+            return Err("أُلغي ملف المراقبة".into());
         }
         let len = std::fs::metadata(p)
             .map(|m| m.len())
@@ -167,7 +219,21 @@ fn skip(p: &Path, reason: &str) {
     );
 }
 
-fn process_watched(p: PathBuf, opts: &WatchOpts, stop: &AtomicBool) {
+/// Process one watched file. Returns true when terminally handled (done,
+/// failed, or guard-rejected → remember and never retry this session) and
+/// false when transient (still copying, cancelled, stopped → allow retry).
+fn process_watched(
+    p: PathBuf,
+    opts: &WatchOpts,
+    stop: &AtomicBool,
+    cancel_file: &AtomicBool,
+) -> bool {
+    // A `watch-start` event feeds the unified external-jobs feed in the GUI
+    // (functional gap: external jobs used to be invisible).
+    emit(
+        "watch-start",
+        serde_json::json!({ "path": p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default() }),
+    );
     let name = p
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -179,11 +245,11 @@ fn process_watched(p: PathBuf, opts: &WatchOpts, stop: &AtomicBool) {
     // copied reads a tiny size (even 0), so the file sailed through the size
     // and free-space guards unguarded (TOCTOU). Use the settled length that
     // wait_stable returns instead of re-reading metadata.
-    let len = match wait_stable(&p, stop) {
+    let len = match wait_stable(&p, stop, cancel_file) {
         Ok(len) => len,
         Err(e) => {
             skip(&p, &e);
-            return;
+            return false;
         }
     };
 
@@ -197,7 +263,7 @@ fn process_watched(p: PathBuf, opts: &WatchOpts, stop: &AtomicBool) {
                 opts.max_mb as f64
             ),
         );
-        return;
+        return true;
     }
 
     // ── disk guard 2: free space on the output volume ──
@@ -213,7 +279,7 @@ fn process_watched(p: PathBuf, opts: &WatchOpts, stop: &AtomicBool) {
                     free as f64 / 1073741824.0
                 ),
             );
-            return;
+            return true;
         }
     }
 
@@ -231,7 +297,7 @@ fn process_watched(p: PathBuf, opts: &WatchOpts, stop: &AtomicBool) {
                 "watch-progress",
                 serde_json::json!({ "path": name, "pct": pct.clamp(0.0, 1.0) }),
             );
-            !stop.load(Ordering::SeqCst)
+            !stop.load(Ordering::SeqCst) && !cancel_file.load(Ordering::SeqCst)
         },
         &|stage, pct| {
             let _ = (stage, pct);
@@ -266,6 +332,7 @@ fn process_watched(p: PathBuf, opts: &WatchOpts, stop: &AtomicBool) {
             }
         }
     }
+    true
 }
 
 fn sweep(dir: &Path, tx: &mpsc::Sender<PathBuf>) {
@@ -283,10 +350,19 @@ fn sweep(dir: &Path, tx: &mpsc::Sender<PathBuf>) {
     }
 }
 
-fn run_watch(stop: Arc<AtomicBool>, dir: PathBuf, opts: WatchOpts) {
+fn run_watch(
+    stop: Arc<AtomicBool>,
+    cancel_file: Arc<AtomicBool>,
+    dir: PathBuf,
+    opts: WatchOpts,
+    fp: String,
+) {
     let (tx, rx) = mpsc::channel::<PathBuf>();
     let mut seen: HashSet<String> = HashSet::new();
     let mut active: HashSet<PathBuf> = HashSet::new();
+    // Persistent done-set (functional gap): inputs finished in earlier
+    // sessions are skipped — the boot sweep below must not reprocess them.
+    let mut done = load_done_keys_at(&done_path(), &fp);
 
     // initial sweep — pick up anything already sitting in the folder
     sweep(&dir, &tx);
@@ -333,17 +409,29 @@ fn run_watch(stop: Arc<AtomicBool>, dir: PathBuf, opts: WatchOpts) {
                     continue; // already being processed right now
                 }
                 let Some(key) = key_of(&path) else { continue };
+                if done.contains(&key) {
+                    continue; // finished in an earlier session — never again
+                }
                 if !seen.insert(key.clone()) {
                     continue;
                 }
                 active.insert(path.clone());
-                process_watched(path.clone(), &opts, &stop);
+                let terminal = process_watched(path.clone(), &opts, &stop, &cancel_file);
+                cancel_file.store(false, Ordering::SeqCst);
                 active.remove(&path);
                 // re-key AFTER processing: wait_stable may have settled the
                 // file at a different size — remember the final key so the
                 // next rescan does not process the same file twice.
-                if let Some(final_key) = key_of(&path) {
-                    seen.insert(final_key);
+                let final_key = key_of(&path).unwrap_or_else(|| key.clone());
+                if terminal {
+                    seen.insert(final_key.clone());
+                    done.insert(final_key);
+                    save_done_keys_at(&done_path(), &fp, &done);
+                } else {
+                    // Transient (still copying / cancelled): forget the
+                    // pre-key so a later rescan retries instead of skipping
+                    // forever (functional gap: seen-poisoning).
+                    seen.remove(&key);
                 }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -377,8 +465,6 @@ fn fingerprint(s: &Settings) -> String {
 
 /// Start / stop / restart the watch thread to match the given settings.
 pub fn apply_settings(s: &Settings) {
-    let mut guard = HANDLE.get_or_init(|| Mutex::new(None)).lock().unwrap();
-
     let should_run = s.watch_enabled
         && s
             .watch_path
@@ -387,14 +473,21 @@ pub fn apply_settings(s: &Settings) {
             .unwrap_or(false);
     let fp = fingerprint(s);
 
-    if let Some(h) = guard.as_ref() {
-        if h.fingerprint == fp {
-            return; // nothing changed
+    // Take the old handle under the lock, then join OUTSIDE it: joining a
+    // long DSP job while holding HANDLE froze every other set_settings
+    // caller behind this mutex (audit 2026-09-03).
+    let old = {
+        let mut guard = HANDLE.get_or_init(|| Mutex::new(None)).lock().unwrap();
+        if let Some(h) = guard.as_ref() {
+            if h.fingerprint == fp {
+                return; // nothing changed
+            }
         }
-    }
+        guard.take()
+    };
 
-    // stop whatever is running
-    if let Some(mut h) = guard.take() {
+    // stop whatever was running
+    if let Some(mut h) = old {
         h.stop.store(true, Ordering::SeqCst);
         if let Some(j) = h.join.take() {
             let _ = j.join();
@@ -421,13 +514,18 @@ pub fn apply_settings(s: &Settings) {
     };
     let dir = PathBuf::from(s.watch_path.clone().unwrap());
     let stop = Arc::new(AtomicBool::new(false));
+    let cancel_file = Arc::new(AtomicBool::new(false));
     let stop2 = stop.clone();
+    let cancel2 = cancel_file.clone();
+    let fp2 = fp.clone();
     let join = std::thread::Builder::new()
         .name("watch".into())
-        .spawn(move || run_watch(stop2, dir, opts))
+        .spawn(move || run_watch(stop2, cancel2, dir, opts, fp2))
         .ok();
+    let mut guard = HANDLE.get_or_init(|| Mutex::new(None)).lock().unwrap();
     *guard = Some(WatchHandle {
         stop,
+        cancel_file,
         join,
         fingerprint: fp,
     });
@@ -436,4 +534,31 @@ pub fn apply_settings(s: &Settings) {
         "watch started: {}",
         s.watch_path.as_deref().unwrap_or("")
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Functional gap: the done-set must survive a restart and must reset
+    /// when the settings fingerprint changes (new mode/quality = rerun).
+    #[test]
+    fn done_set_roundtrips_and_namespaces_by_fingerprint() {
+        let dir = std::env::temp_dir().join(format!("hl_watch_done_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("watch_done.json");
+
+        let mut keys = HashSet::new();
+        keys.insert("a|1|2".to_string());
+        save_done_keys_at(&path, "fp1", &keys);
+
+        assert!(load_done_keys_at(&path, "fp1").contains("a|1|2"));
+        assert!(
+            load_done_keys_at(&path, "fp2").is_empty(),
+            "fingerprint change must invalidate the set"
+        );
+        assert!(load_done_keys_at(&dir.join("missing.json"), "fp1").is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

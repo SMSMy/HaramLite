@@ -60,6 +60,13 @@ where
             }
             buf.push_back(line.clone());
         }
+        // UI freeze fix: ORT's arena allocator logs DOZENS of lines per
+        // second during inference, and every line used to rebuild the whole
+        // log DOM. The file layer keeps everything for forensics — the live
+        // push skips only this chatty target.
+        if event.metadata().target() == "ort::logging" {
+            return;
+        }
         if let Some(app) = EMITTER.get() {
             use tauri::Emitter;
             let _ = app.emit("log-line", &line);

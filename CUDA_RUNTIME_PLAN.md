@@ -17,23 +17,32 @@ ONNX Runtime بمزوّد CUDA يحتاج **cublas + cuDNN** معاً (نماذ�
 | `cudart64_12.dll` | CUDA Runtime الأساسي | إلزامي |
 | `cublas64_12.dll` | الجبر الخطي (GEMM) | إلزامي |
 | `cublasLt64_12.dll` | cublasLt (المسار الأسرع) | إلزامي |
+| `cufft64_11.dll` | تحويلات Fourier (تبعية مباشرة لمزود ORT — غيابها كان أول فشل مثبت) | إلزامي |
 | `cudnn64_9.dll` | واجهة cuDNN الرئيسية | إلزامي |
 | `cudnn_ops64_9.dll` | عمليات cuDNN الأساسية | إلزامي |
 | `cudnn_cnn64_9.dll` | نواة الالتفاف CNN | إلزامي (قلب MDX-Net) |
-| `cudnn_adv64_9.dll` | عمليات متقدمة (اختياري لكن موصى به) | موصى به |
+| `cudnn_adv64_9.dll` | عمليات متقدمة | إلزامي |
+| `cudnn_graph64_9.dll` | واجهة الرسم البياني (غيابها أسقط التهيئة بانهيار أصلي مثبت) | إلزامي |
+| `cudnn_heuristic64_9.dll` | اختيار المحرك الأمثل | إلزامي (ضمن المجموعة الكاملة) |
+| `cudnn_engines_precompiled64_9.dll` | محركات مسبقة التجميع | إلزامي (ضمن المجموعة الكاملة) |
+| `cudnn_engines_runtime_compiled64_9.dll` | محركات وقت التشغيل | إلزامي (ضمن المجموعة الكاملة) |
+| `cudnn_engines_tensor_ir64_9.dll` | محركات Tensor IR | إلزامي (ضمن المجموعة الكاملة) |
+| `cudnn_ext64_9.dll` | ملحقات cuDNN | إلزامي (ضمن المجموعة الكاملة) |
+| `onnxruntime_providers_shared.dll` | جسر المزودين (مطابقة 1.22.0 الدقيقة) | إلزامي |
+| `onnxruntime_providers_cuda.dll` | مزود CUDA نفسه (~322MB) | إلزامي |
 
 > **ملاحظة تحقق ميداني:** أسماء cuDNN 9 الحقيقية على ويندوز **بلا لاحقة
 > `_infer`** (تلك كانت صيغة cuDNN 8) — تحققت من محتوى زيب redistrib الرسمي
 > (`cudnn-windows-x86_64-9.12.0.46_cuda12-archive.zip`).
 
-**ملاحظة معمارية مهمة (مكتشفة بالفحص):** في بناءنا الحالي مكتبات ONNX Runtime
-**مربوطة ربطاً ثابتاً** داخل `HaramLite.exe` (لا يوجد `onnxruntime.dll` منفصل —
-لهذا حجم التنفيذي 36MB). وبالتالي **لا نحتاج ملف `onnxruntime_providers_cuda.dll`
-منفصلاً اليوم**: كود مزوّد CUDA مضمّن في التنفيذي، وهو يحمّل ملفات NVIDIA أعلاه
-ديناميكياً (LoadLibrary) عند إنشاء الجلسة.
-> قاعدة مستقبلية: إن تحولنا إلى بناء ORT الديناميكي (`load-dynamic`) لأي سبب،
-> تُضاف `onnxruntime_providers_cuda.dll` + `onnxruntime_providers_shared.dll`
-> إلى نفس الحزمة — السطر مذكور هنا حتى لا يُنسى.
+**ملاحظة معمارية مهمة (صُححت بالتجربة الميدانية):** نواة ONNX Runtime مربوطة
+ربطاً ثابتاً داخل `HaramLite.exe` (لا يوجد `onnxruntime.dll` منفصل — لهذا حجم
+التنفيذي 36MB)، **لكن مزود CUDA يُحمّل ديناميكياً عبر الجسر** (`provider bridge`)
+ويحتاج `onnxruntime_providers_shared.dll` + `onnxruntime_providers_cuda.dll`
+الحقيقيين (322MB) بالمطابقة الدقيقة (1.22.0) — الافتراض السابق بعدم حاجتهما
+كان خاطئاً وأثبتته سجلات `ProviderSharedLibrary::Ensure`. ملفات الـ0 بايت التي
+يتركها سكربت البناء بجانب التنفيذي ليست إلا دمى ربط (linker stubs) تُحذف
+ذاتياً عند الإقلاع (`ensure_dll_path`) لأنها تحجب النسخ الحقيقية.
 
 **مصدر الملفات عند الرفع:** مستودع NVIDIA الرسمي للتوزيع (cublas/cudnn redist
 zip) — يُجمَّع في خطوة CI جديدة في `release.yml` ويُرفع إلى إصدار `assets-v1`

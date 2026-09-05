@@ -166,6 +166,74 @@ struct MdxSession {
 /// Name of the execution provider the active session uses ("DirectML"/"CPU").
 pub static ACTIVE_PROVIDER: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
+// Functional fix: ORT reports execution-provider load failures ONLY as
+// tracing ERROR events while the session builder still returns Ok — the old
+// code then logged "CUDA ✓" and silently ran on CPU. This thread-local flag
+// captures the truth per build attempt via a scoped dispatcher override
+// (thread-local, so concurrent separations cannot race each other).
+thread_local! {
+    static EP_LOAD_FAILED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static EP_FIRST_ERROR: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Minimal field grabber so the FIRST ort error survives for diagnostics
+/// (the watcher intentionally hides the per-build chatter from the log).
+struct EpFieldGrab(String);
+
+impl tracing::field::Visit for EpFieldGrab {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        use std::fmt::Write;
+        let _ = write!(self.0, "{}={:?} ", field.name(), value);
+    }
+}
+
+struct EpWatchLayer;
+
+impl<S> tracing_subscriber::Layer<S> for EpWatchLayer
+where
+    S: tracing::Subscriber + for<'span> tracing_subscriber::registry::LookupSpan<'span>,
+{
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        if *event.metadata().level() == tracing::Level::ERROR
+            && event.metadata().target().starts_with("ort")
+        {
+            EP_LOAD_FAILED.with(|f| f.set(true));
+            EP_FIRST_ERROR.with(|slot| {
+                if slot.borrow().is_none() {
+                    let mut v = EpFieldGrab(String::new());
+                    event.record(&mut v);
+                    *slot.borrow_mut() =
+                        Some(format!("{} {}", event.metadata().target(), v.0));
+                }
+            });
+        }
+    }
+}
+
+/// The first captured ort error text (if any) from the last watched span.
+fn ep_first_error() -> Option<String> {
+    EP_FIRST_ERROR.with(|slot| slot.borrow().clone())
+}
+
+/// Run `f` with provider-load errors watched. Returns `(result, ep_failed)`.
+/// NOTE: events emitted inside `f` go only to the watcher (the global log
+/// loses the noisy per-build ORT chatter — errors that matter surface as the
+/// flag plus explicit warn logs by the caller).
+fn watch_ep_errors<T>(f: impl FnOnce() -> T) -> (T, bool) {
+    use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
+    EP_LOAD_FAILED.with(|f| f.set(false));
+    EP_FIRST_ERROR.with(|slot| *slot.borrow_mut() = None);
+    let sub = tracing_subscriber::registry().with(EpWatchLayer);
+    let dispatch = tracing::dispatcher::Dispatch::new(sub);
+    let _guard = tracing::dispatcher::set_default(&dispatch);
+    let r = f();
+    (r, EP_LOAD_FAILED.with(|f| f.get()))
+}
+
 /// Audit R-2 (corrected): commit the ORT environment ONCE at startup with NO
 /// env-level providers. Session-level `with_execution_providers` takes
 /// precedence over the environment's anyway (ort docs), and registering the
@@ -186,10 +254,26 @@ pub fn init_ort_env() {
     });
 }
 
+/// UI-starvation guard: ORT inference used to take ALL logical cores while
+/// x264 + DSP burned the rest, blacking out the window (DWM starvation).
+/// Keep two cores of breathing room; tiny boxes keep at least four threads
+/// so inference itself never collapses.
+pub(crate) fn inference_threads(total: usize) -> usize {
+    if total <= 4 {
+        total.max(1)
+    } else {
+        total - 2
+    }
+}
+
 impl MdxSession {
     fn load(use_cuda: bool) -> Result<Self, SepError> {
         let model_path = resolve_model()?;
-        let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+        let threads = inference_threads(
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4),
+        );
 
         // Audit R-2 (corrected): the environment is committed once at startup
         // with NO providers; every session registers its own (CUDA/DML) on its
@@ -231,42 +315,65 @@ impl MdxSession {
 
         let t_session = std::time::Instant::now();
         let mut provider_name = "CPU";
-        let session = if try_cuda {
-            match build("cuda") {
+
+        // A provider counts ONLY if ORT truly registered it: a builder Ok
+        // with a load ERROR underneath used to masquerade CPU as CUDA.
+        let attempt = |provider_type: &str| -> Option<ort::session::Session> {
+            let (res, ep_failed) = watch_ep_errors(|| build(provider_type));
+            match res {
+                Ok(s) if !ep_failed => Some(s),
                 Ok(s) => {
-                    tracing::info!(target: "sep", "execution provider: CUDA (NVIDIA GPU) ✓ ({:.1}s)", t_session.elapsed().as_secs_f32());
-                    provider_name = "CUDA";
-                    s
+                    drop(s);
+                    tracing::warn!(
+                        target: "sep",
+                        "{provider_type} بدا ناجحاً لكن مزوده لم يُحمّل — يُتجاهل بصراحة{}",
+                        ep_first_error().map(|e| format!(": {e}")).unwrap_or_default()
+                    );
+                    None
                 }
                 Err(e) => {
-                    tracing::warn!(target: "sep", "CUDA init failed after {:.1}s ({e}) — falling back to DirectML", t_session.elapsed().as_secs_f32());
-                    match build("dml") {
-                        Ok(s) => {
-                            tracing::info!(target: "sep", "execution provider: DirectML (GPU) ✓ ({:.1}s)", t_session.elapsed().as_secs_f32());
-                            provider_name = "DirectML";
-                            s
-                        }
-                        Err(dml_err) => {
-                            tracing::warn!(target: "sep", "DirectML init failed ({dml_err}) — falling back to CPU");
-                            let s = build("cpu")?;
-                            tracing::info!(target: "sep", "execution provider: CPU ✓ ({:.1}s)", t_session.elapsed().as_secs_f32());
-                            s
-                        }
-                    }
+                    tracing::warn!(target: "sep", "فشل تهيئة {provider_type} ({e})");
+                    None
                 }
             }
+        };
+        let ready = |label: &str| {
+            tracing::info!(
+                target: "sep",
+                "execution provider: {label} ✓ ({:.1}s)",
+                t_session.elapsed().as_secs_f32()
+            );
+        };
+
+        let session = if try_cuda {
+            if let Some(s) = attempt("cuda") {
+                ready("CUDA (NVIDIA GPU)");
+                provider_name = "CUDA";
+                s
+            } else if let Some(s) = attempt("dml") {
+                tracing::warn!(target: "sep", "CUDA غير صالح — التراجع لـ DirectML");
+                ready("DirectML (GPU)");
+                provider_name = "DirectML";
+                s
+            } else {
+                tracing::warn!(target: "sep", "DirectML غير صالح — التراجع لـ CPU");
+                let s = attempt("cpu").ok_or_else(|| {
+                    SepError::Inference("تعذر إنشاء جلسة الاستدلال حتى على CPU".into())
+                })?;
+                ready("CPU");
+                s
+            }
+        } else if let Some(s) = attempt("dml") {
+            ready("DirectML (GPU)");
+            provider_name = "DirectML";
+            s
         } else {
-            match build("dml") {
-                Ok(s) => {
-                    tracing::info!(target: "sep", "execution provider: DirectML (GPU) ✓ ({:.1}s)", t_session.elapsed().as_secs_f32());
-                    provider_name = "DirectML";
-                    s
-                }
-                Err(dml_err) => {
-                    tracing::warn!(target: "sep", "DirectML init failed ({dml_err}) — falling back to CPU");
-                    build("cpu")?
-                }
-            }
+            tracing::warn!(target: "sep", "DirectML init failed — falling back to CPU");
+            let s = attempt("cpu").ok_or_else(|| {
+                SepError::Inference("تعذر إنشاء جلسة الاستدلال حتى على CPU".into())
+            })?;
+            ready("CPU");
+            s
         };
 
         let _ = ACTIVE_PROVIDER.set(provider_name.to_string());
@@ -480,6 +587,131 @@ mod tests {
         }
 
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// Breathing room for the UI thread: 20→18, 8→6, tiny boxes untouched.
+    #[test]
+    fn inference_threads_leaves_air() {
+        assert_eq!(inference_threads(20), 18);
+        assert_eq!(inference_threads(8), 6);
+        assert_eq!(inference_threads(4), 4);
+        assert_eq!(inference_threads(2), 2);
+        assert_eq!(inference_threads(1), 1);
+    }
+
+    /// Functional fix: the EP watcher must catch ORT error events (the exact
+    /// signal a silently-failing CUDA registration emits) and stay quiet
+    /// otherwise — no GPU needed to prove the plumbing.
+    #[test]
+    fn ep_watcher_catches_ort_errors() {
+        let (_, failed) = watch_ep_errors(|| {
+            tracing::error!(target: "ort::execution_providers", "synthetic load failure");
+        });
+        assert!(failed, "watcher must flag ort ERROR events");
+        let (_, failed) = watch_ep_errors(|| {
+            tracing::info!(target: "sep", "quiet build");
+        });
+        assert!(!failed, "watcher must stay quiet without ort errors");
+    }
+
+    /// Live proof (needs the full 10-file runtime beside the test binary +
+    /// an NVIDIA GPU + the model; otherwise it skips loudly, never fails):
+    /// a CUDA session must build AND register with zero ort errors — this is
+    /// what caught the missing-cufft / stub-shadowing era.
+    #[test]
+    fn cuda_ep_registers_with_shipped_runtime() {
+        // Mirror production (`ensure_dll_path`): sweep exe-dir stubs recreated
+        // by every cargo build, and put our bin on the loader search path via
+        // SetDllDirectory (thread-safe API — never `set_var(PATH)` next to
+        // the harness's parallel test threads).
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(exe_dir) = exe.parent() {
+                crate::cuda_runtime::sweep_provider_stubs_in(exe_dir);
+                #[cfg(target_os = "windows")]
+                {
+                    use windows_sys::Win32::System::LibraryLoader::SetDllDirectoryW;
+                    let bin = exe_dir.join("bin");
+                    let wide: Vec<u16> = bin.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
+                    unsafe {
+                        let _ = SetDllDirectoryW(wide.as_ptr());
+                    }
+                }
+            }
+        }
+        if !crate::cuda_runtime::is_available() {
+            eprintln!("skipping live CUDA registration: runtime absent beside test binary");
+            return;
+        }
+        if !crate::cuda_runtime::nvidia_gpu_present() {
+            eprintln!("skipping live CUDA registration: no NVIDIA GPU");
+            return;
+        }
+        let model = match resolve_model() {
+            Ok(p) => p,
+            Err(_) => {
+                eprintln!("skipping live CUDA registration: model file absent");
+                return;
+            }
+        };
+        let (res, failed) = watch_ep_errors(|| {
+            (|| -> Result<ort::session::Session, SepError> {
+                let b = ort::session::Session::builder()
+                    .map_err(|e| SepError::Inference(e.to_string()))?;
+                let b = b
+                    .with_execution_providers([
+                        ort::execution_providers::CUDAExecutionProvider::default().build(),
+                    ])
+                    .map_err(|e| SepError::Inference(e.to_string()))?;
+                b.commit_from_file(&model)
+                    .map_err(|e| SepError::Inference(e.to_string()))
+            })()
+        });
+        assert!(res.is_ok(), "CUDA session must build with the full runtime");
+        assert!(
+            !failed,
+            "CUDA EP must register with zero ort errors, got: {}",
+            ep_first_error().unwrap_or_default()
+        );
+    }
+
+    /// Live end-to-end proof on real GPU silicon (ignored by default — needs
+    /// GPU + model + the 16-file runtime + ~1min). Run explicitly:
+    /// `cargo test --lib cuda_full_separation_smoke -- --ignored --nocapture`.
+    /// This is what finally closed the "slow CPU" report: honest CUDA ✓.
+    #[test]
+    #[ignore]
+    fn cuda_full_separation_smoke() {
+        if !crate::cuda_runtime::is_available() {
+            eprintln!("skipping smoke: no CUDA runtime beside test binary");
+            return;
+        }
+        if !crate::cuda_runtime::nvidia_gpu_present() {
+            eprintln!("skipping smoke: no NVIDIA GPU");
+            return;
+        }
+        let tmp = std::env::temp_dir().join(format!("hl_cuda_smoke_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let sr = 44100u32;
+        let len = sr as usize * 12;
+        let mut l = Vec::with_capacity(len);
+        let mut r = Vec::with_capacity(len);
+        for n in 0..len {
+            let t = n as f32 / sr as f32;
+            l.push(0.3 * (2.0 * std::f32::consts::PI * 220.0 * t).sin());
+            r.push(0.3 * (2.0 * std::f32::consts::PI * 330.0 * t).sin());
+        }
+        let wav = tmp.join("mix.wav");
+        write_wav_stereo_f32(&wav, &l, &r, sr).unwrap();
+        let t0 = std::time::Instant::now();
+        let stems = separate(&wav, &tmp.join("out"), true, &|_| true).expect("CUDA separation");
+        eprintln!("SMOKE: 12s audio separated on CUDA in {:.1}s", t0.elapsed().as_secs_f32());
+        for stem in [&stems.vocals, &stems.instrumental] {
+            let (cl, _, _) = read_wav_stereo(stem).unwrap();
+            let energy: f32 = cl.iter().map(|v| v * v).sum();
+            assert!(energy.is_finite() && energy > 0.0, "{} bad stem", stem.display());
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     /// CUDA_RUNTIME_PLAN (condition 3): requesting CUDA on a machine without

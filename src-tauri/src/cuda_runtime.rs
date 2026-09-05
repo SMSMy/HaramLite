@@ -2,25 +2,41 @@
 //! أي شيء إطلاقاً.
 //!
 //! عند أول تفعيل لخيار CUDA، ينزّل التطبيق منفستاً من إصدار `assets-v1`
-//! (يولّده CI عند الرفع) ثم المكتبات السبع بتحقق SHA-256 وتثبيت ذري.
+//! (يولّده CI عند الرفع) ثم المكتبات الست عشرة بتحقق SHA-256 وتثبيت ذري.
 //! ملاحظة معمارية: مكتبات ONNX Runtime مربوطة ربطاً ثابتاً داخل التنفيذي —
 //! مزوّد CUDA مضمّن فيه ويحمّل ملفات NVIDIA هذه ديناميكياً (LoadLibrary)،
 //! لذلك لا حاجة لملف `onnxruntime_providers_cuda.dll` منفصل في هذا البناء.
 
 use std::path::{Path, PathBuf};
 
-/// الملفات السبعة التي يحمّلها مزوّد CUDA وقت التشغيل (الشرط 1 — كاملة:
-/// cublas + cudart + cuDNN بأجزائه). أسماء cuDNN 9 الحقيقية على ويندوز
-/// بلا لاحقة `_infer` (تلك كانت صيغة cuDNN 8) — تحققت من محتوى زيب
-/// redistrib الرسمي.
+/// ملفات تشغيل CUDA العشرة (الشرط 1 — كاملة فعلاً هذه المرة):
+/// NVIDIA (CUDA 12.x / cuDNN 9.x) + جسر مزود ORT 1.22.
+/// الدرس المؤلم: مزود CUDA في ORT يُحمّل ديناميكياً عبر الجسر ويحتاج
+/// `cufft64_11.dll` (كان ناقصاً — أول تبعية مفقودة أبلغ عنها المحمل) ثم
+/// مكتبتي الجسر نفسيهما `onnxruntime_providers_{shared,cuda}.dll` بالنسخة
+/// المطابقة تماماً لبناء ORT المضمّن (1.22.0) — بدونهما يسقط التسجيل بصمت.
 pub const CUDA_FILES: &[&str] = &[
+    // NVIDIA: cudart + cublas(+Lt) + cuFFT + cuDNN كاملة (كل الأجزاء العشرة:
+    // أي نقص — كما حدث مع cudnn_graph — قد يسقط التهيئة بانهيار أصلي لا
+    // بـpanic، فالاكتمال هنا مسألة استقرار لا ترف).
     "cudart64_12.dll",
     "cublas64_12.dll",
     "cublasLt64_12.dll",
+    "cufft64_11.dll",
     "cudnn64_9.dll",
     "cudnn_ops64_9.dll",
     "cudnn_cnn64_9.dll",
     "cudnn_adv64_9.dll",
+    "cudnn_graph64_9.dll",
+    "cudnn_heuristic64_9.dll",
+    "cudnn_engines_precompiled64_9.dll",
+    "cudnn_engines_runtime_compiled64_9.dll",
+    "cudnn_engines_tensor_ir64_9.dll",
+    "cudnn_ext64_9.dll",
+    // ORT provider bridge (exact 1.22.0 match — keep in lockstep with
+    // `.github/workflows/cuda-assets.yml` and CUDA_RUNTIME_PLAN.md)
+    "onnxruntime_providers_shared.dll",
+    "onnxruntime_providers_cuda.dll",
 ];
 
 const MANIFEST_ASSET: &str = "cuda-runtime-manifest.json";
@@ -32,10 +48,69 @@ fn bin_dir() -> PathBuf {
     exe.parent().map(|p| p.join("bin")).unwrap_or_default()
 }
 
-/// الملفات السبعة موجودة → جلسة CUDA تستطيع تحميلها.
-pub fn is_available() -> bool {
-    let dir = bin_dir();
+/// كل الملفات موجودة في مجلد معين → جلسة CUDA تستطيع تحميلها.
+pub(crate) fn dir_has_runtime(dir: &Path) -> bool {
     CUDA_FILES.iter().all(|f| dir.join(f).is_file())
+}
+
+/// مثبت بالقياس: جسر مزود ORT لا يبحث في `bin/` (لا SetDllDirectory ولا
+/// PATH) — يحمّل مكتبتيه من مجلد التنفيذي فقط. النسخ هنا للتحميل، والفحص
+/// والتنزيل يبقيان على `bin/` وحده (مصدر واحد للحقيقة).
+pub const BRIDGE_DLLS: &[&str] = &[
+    "onnxruntime_providers_shared.dll",
+    "onnxruntime_providers_cuda.dll",
+];
+
+/// شفاء إقلاعي: إن وُجدت مكتبتا الجسر في `bin/` وغابتا عن مجلد التنفيذي
+/// انسخهما (الحالة الشائعة بعد التنزيل الذاتي). آمن للتكرار ولا يمس ملفات
+/// المستخدم — يعمل على مجلدات تُمرر صراحة ليفحصه الاختبار دون آثار جانبية.
+pub(crate) fn heal_provider_dlls_in(exe_dir: &Path, bin_dir: &Path) -> usize {
+    let mut healed = 0;
+    for name in BRIDGE_DLLS {
+        let dest = exe_dir.join(name);
+        if dest.is_file() {
+            continue;
+        }
+        let src = bin_dir.join(name);
+        if src.is_file() && std::fs::copy(&src, &dest).is_ok() {
+            healed += 1;
+        }
+    }
+    healed
+}
+
+/// الملفات العشرة موجودة → جلسة CUDA تستطيع تحميلها.
+pub fn is_available() -> bool {
+    dir_has_runtime(&bin_dir())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// الشفاء الإقلاعي: نسخ من `bin/` لمجلد التنفيذي عند الغياب فقط.
+    #[test]
+    fn provider_heal_copies_missing_only() {
+        let base = std::env::temp_dir().join(format!("hl_heal_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let exe_dir = base.join("exe");
+        let bin_dir = base.join("bin");
+        std::fs::create_dir_all(&exe_dir).unwrap();
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        for name in BRIDGE_DLLS {
+            std::fs::write(bin_dir.join(name), b"dll-bytes").unwrap();
+        }
+        assert_eq!(heal_provider_dlls_in(&exe_dir, &bin_dir), 2);
+        assert_eq!(heal_provider_dlls_in(&exe_dir, &bin_dir), 0, "second run is a no-op");
+        // A real user file at destination must never be overwritten.
+        std::fs::write(exe_dir.join(BRIDGE_DLLS[0]), b"user-bytes").unwrap();
+        assert_eq!(heal_provider_dlls_in(&exe_dir, &bin_dir), 0);
+        assert_eq!(
+            std::fs::read(exe_dir.join(BRIDGE_DLLS[0])).unwrap(),
+            b"user-bytes"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }
 
 /// هل يوجد كرت NVIDIA أصلاً؟ (`nvcuda.dll` يأتي مع تعريف الكرت)
@@ -55,7 +130,34 @@ pub fn nvidia_gpu_present() -> bool {
 /// وقبل أي خيط آخر وقبل أي تهيئة ORT. طبقتان:
 /// 1) `SetDllDirectoryW(<bin>)` — مسار بحث خاص بالعملية الحالية فقط.
 /// 2) حقن `PATH` احتياطي يغطي التحميلات غير المباشرة.
+///
+/// تنظيف ذاتي: سكربت بناء ort يترك ملفات `onnxruntime_providers_*.dll`
+/// فارغة (0 بايت) بجانب التنفيذي، وهي تحجب (shadow) النسخ الحقيقية في
+/// `bin/` لأن مجلد التنفيذي أول مسارات البحث — أي ملف 0 بايت هنا عديم
+/// الفائدة تعريفاً فيُحذف.
+/// A 0-byte provider file is useless by definition (the ort build script
+/// recreates these stubs on every build) yet it SHADOWS the real DLLs in
+/// `bin/`, because the exe dir is first in the loader search order.
+pub(crate) fn sweep_provider_stubs_in(dir: &Path) {
+    for stub in [
+        "onnxruntime_providers_shared.dll",
+        "onnxruntime_providers_cuda.dll",
+    ] {
+        let p = dir.join(stub);
+        if std::fs::metadata(&p).map(|m| m.len()).unwrap_or(1) == 0 {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+}
+
 pub fn ensure_dll_path() {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            sweep_provider_stubs_in(exe_dir);
+            // Silent by necessity: logging isn't initialized yet at this point.
+            let _ = heal_provider_dlls_in(exe_dir, &bin_dir());
+        }
+    }
     let dir = bin_dir();
     let dir_s = dir.to_string_lossy().into_owned();
     #[cfg(target_os = "windows")]
@@ -109,13 +211,9 @@ pub fn install(progress: &dyn Fn(&str, f32)) -> Result<(), String> {
         .map_err(|e| format!("منفست غير مقروء: {e}"))?;
     let manifest: Manifest =
         serde_json::from_str(&body).map_err(|e| format!("منفست تالف: {e}"))?;
-    if manifest.files.len() != CUDA_FILES.len() {
-        return Err(format!(
-            "منفست ناقص ({} من {} ملفاً)",
-            manifest.files.len(),
-            CUDA_FILES.len()
-        ));
-    }
+    // Forward-compatible: the manifest may carry MORE files than this build
+    // knows (newer runtime revision) — require only our own set, ignore extras.
+    // (A strict count check once bricked every top-up during the 7→16 migration.)
     for expected in CUDA_FILES {
         if !manifest.files.iter().any(|e| e.name == *expected) {
             return Err(format!("ينقص المنفست: {expected}"));

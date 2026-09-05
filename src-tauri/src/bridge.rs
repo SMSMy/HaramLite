@@ -23,22 +23,37 @@ use crate::pipeline::{self, Mode, OutKind};
 use crate::settings::Settings;
 
 /// Cancel flag for the currently running browser-requested job.
-static CANCEL: AtomicBool = AtomicBool::new(false);
+/// Stored as an Arc so worker/monitor threads can hold it safely.
+static CANCEL: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
+fn cancel_flag() -> Arc<AtomicBool> {
+    CANCEL
+        .get_or_init(|| Arc::new(AtomicBool::new(false)))
+        .clone()
+}
 
 pub const HOST_NAME: &str = "com.harammute.haramlite";
 pub const CHROME_EXT_ID: &str = "jchaeejligdfbkgkbgneimclkagoopig";
 pub const FIREFOX_EXT_ID: &str = "haramlite_bridge@harammute.app";
 
+/// Base data dir, overridable for tests (`HARAMLITE_DATA_DIR`) so unit tests
+/// never touch the user's real `requests/` or `bridge_state.json`.
+fn data_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("HARAMLITE_DATA_DIR") {
+        if !dir.trim().is_empty() {
+            return PathBuf::from(dir);
+        }
+    }
+    dirs::data_dir().unwrap_or_default()
+}
+
 fn requests_dir() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_default()
+    data_dir()
         .join("com.harammute.haramlite")
         .join("requests")
 }
 
 fn state_path() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_default()
+    data_dir()
         .join("com.harammute.haramlite")
         .join("bridge_state.json")
 }
@@ -236,6 +251,43 @@ fn write_request(url: &str) -> Result<String, String> {
     Ok(path.display().to_string())
 }
 
+/// Pure predicate (unit-tested): remove the auto-downloaded source only when
+/// it lives in our managed download folder AND at least one real output
+/// exists AND no output IS the source.
+fn should_remove_bridge_source(source: &Path, out_dir: &Path, outputs: &[PathBuf]) -> bool {
+    if source.parent() != Some(out_dir) {
+        return false;
+    }
+    let mut live = false;
+    for o in outputs {
+        if o == source {
+            return false;
+        }
+        if o.is_file() {
+            live = true;
+        }
+    }
+    live
+}
+
+/// GUI-initiated cancel of a browser job (functional gap: the desktop UI
+/// could never cancel one). Writes the same atomic cancel file the native
+/// host writes for `type: cancel`, so the running worker drains and stops.
+pub fn cancel_via_gui() -> Result<(), String> {
+    let dir = requests_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let path = dir.join(format!("cancel_{nanos:x}.json"));
+    let body = serde_json::to_vec(&serde_json::json!({ "type": "cancel" })).unwrap_or_default();
+    let tmp = dir.join(format!("cancel_{nanos:x}.json.tmp"));
+    std::fs::write(&tmp, body).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// If no main GUI instance is running, start one (hidden) so the request is
 /// picked up; if it IS running, its bridge_loop sees the request file anyway.
 /// Stdio is nulled so the child never inherits (and holds open) the native
@@ -280,6 +332,101 @@ fn app_already_running() -> bool {
 // Request pickup inside the RUNNING app
 // ─────────────────────────────────────────────────────────────────────
 
+/// Grace window for the cold-start race: request files newer than this are
+/// treated as "may have woken us up" and survive the startup cleanup.
+const COLD_START_GRACE_SECS: u64 = 120;
+
+/// Remove stale request files, keeping anything fresh enough to have
+/// triggered this very boot (cold start via the native host).
+fn clear_stale_requests(dir: &Path, now: std::time::SystemTime, grace_secs: u64) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let p = e.path();
+        // A file from the future (clock skew) or unreadable mtime is kept:
+        // deleting what we cannot date caused real request loss in tests.
+        let fresh = e
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .map(|t| now.duration_since(t).map(|age| age.as_secs() < grace_secs).unwrap_or(true))
+            .unwrap_or(true);
+        if !fresh {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+}
+
+/// Shared dispatch context: the watcher thread files requests here, the
+/// worker thread drains them. Extracted from the `bridge_loop` closure so it
+/// is unit-testable (audit 2026-09-03).
+struct DispatchCtx {
+    job_tx: mpsc::Sender<String>,
+    job_rx: Arc<Mutex<mpsc::Receiver<String>>>,
+    pending: Arc<AtomicUsize>,
+}
+
+/// File one request off disk and route it. The file is removed as soon as its
+/// bytes are in hand, on EVERY path — a poison (duplicate/empty/garbage) file
+/// must never survive to be re-dispatched by the 5s sweep forever.
+fn dispatch_file(path: &Path, ctx: &DispatchCtx) {
+    if path.extension().and_then(|e| e.to_str()) != Some("json") {
+        return;
+    }
+    // Unreadable (transient lock/half-rename): keep for the next sweep.
+    let Ok(data) = std::fs::read_to_string(path) else {
+        return;
+    };
+    // Bytes in hand: never re-dispatch, whatever follows.
+    let _ = std::fs::remove_file(path);
+    if data.trim().is_empty() {
+        return;
+    }
+    let Ok(msg) = serde_json::from_str::<serde_json::Value>(&data) else {
+        return;
+    };
+    let t = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    match t {
+        "cancel" => {
+            // IMMEDIATE: flip the flag — the running job aborts at its
+            // next progress checkpoint (download or separation).
+            cancel_flag().store(true, Ordering::SeqCst);
+            // Drain the queue: "cancel" must stop EVERYTHING queued, not
+            // just the current item — otherwise the worker grabs the next
+            // URL at once and starts another 20-minute job.
+            {
+                let guard = ctx.job_rx.lock().unwrap_or_else(|p| p.into_inner());
+                while guard.try_recv().is_ok() {}
+            }
+            ctx.pending.store(0, Ordering::SeqCst);
+            tracing::warn!(target: "bridge", "أُرسل أمر الإلغاء — سيتوقف العمل الجاري وفُرّغ الطابور");
+            write_state(&serde_json::json!({
+                "running": null,
+                "queue": 0,
+                "last": { "name": "—", "ok": false, "error": "أُلغيت المعالجة من قبل المستخدم" }
+            }));
+        }
+        "link" => {
+            let url = msg.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            if url.is_empty() {
+                return;
+            }
+            if seen_before(&url) {
+                tracing::warn!(target: "bridge", "طلب مكرر لنفس الرابط — تخطي: {url}");
+                write_state(&serde_json::json!({
+                    "running": null,
+                    "last": { "name": url, "ok": false, "error": "هذا الرابط طُلب من قبل في هذه الجلسة — تخطي المكرر" }
+                }));
+                return;
+            }
+            ctx.pending.fetch_add(1, Ordering::SeqCst);
+            let _ = ctx.job_tx.send(url);
+        }
+        _ => {}
+    }
+}
+
 pub fn init(app: tauri::AppHandle, settings: Arc<Mutex<Settings>>) {
     let dir = requests_dir();
     if std::fs::create_dir_all(&dir).is_err() {
@@ -288,11 +435,10 @@ pub fn init(app: tauri::AppHandle, settings: Arc<Mutex<Settings>>) {
     }
     // Browser requests are ephemeral: drop anything left over from a previous
     // session (stale clicks must not resume processing after a restart).
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        for e in entries.flatten() {
-            let _ = std::fs::remove_file(e.path());
-        }
-    }
+    // Audit 2026-09-03: a cold start TRIGGERED by a fresh request (the native
+    // host writes req_*.json THEN spawns us hidden) must not delete the very
+    // file that woke us — keep anything fresher than the grace window.
+    clear_stale_requests(&dir, std::time::SystemTime::now(), COLD_START_GRACE_SECS);
     // and reset the live state so the panel never shows a dead job
     write_state(&serde_json::json!({ "running": null, "queue": 0, "last": null }));
     std::thread::Builder::new()
@@ -311,6 +457,11 @@ fn bridge_loop(app: tauri::AppHandle, settings: Arc<Mutex<Settings>>, dir: PathB
     // cannot be drained from anywhere else.
     let job_rx = Arc::new(Mutex::new(job_rx));
     let pending = Arc::new(AtomicUsize::new(0));
+    let ctx = DispatchCtx {
+        job_tx,
+        job_rx: job_rx.clone(),
+        pending: pending.clone(),
+    };
     {
         let worker_app = app.clone();
         let worker_settings = settings.clone();
@@ -330,7 +481,26 @@ fn bridge_loop(app: tauri::AppHandle, settings: Arc<Mutex<Settings>>, dir: PathB
                     }
                 };
                 if let Some(url) = url {
-                    handle_request(&worker_app, &worker_settings, &url, &worker_pending);
+                    // Audit 2026-09-03: a panic inside one job (e.g. a NaN
+                    // sample tripping DSP) must not kill this thread forever
+                    // and wedge every later request — survive it loudly.
+                    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        handle_request(&worker_app, &worker_settings, &url, &worker_pending);
+                    }));
+                    if r.is_err() {
+                        tracing::error!(target: "bridge", "نجا العامل من عطل في مهمة — راجع سجل الانهيار؛ الطابور مستمر");
+                        forget_seen(&url);
+                        worker_pending
+                            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
+                                Some(v.saturating_sub(1))
+                            })
+                            .ok();
+                        write_state(&serde_json::json!({
+                            "running": null,
+                            "queue": 0,
+                            "last": { "name": url, "ok": false, "error": "عطل داخلي — أعد المحاولة" }
+                        }));
+                    }
                 }
             })
             .ok();
@@ -350,57 +520,7 @@ fn bridge_loop(app: tauri::AppHandle, settings: Arc<Mutex<Settings>>, dir: PathB
     })
     .ok();
 
-    let dispatch = |path: &Path| {
-        if path.extension().and_then(|e| e.to_str()) != Some("json") {
-            return;
-        }
-        let Ok(data) = std::fs::read_to_string(path) else {
-            return;
-        };
-        let Ok(msg) = serde_json::from_str::<serde_json::Value>(&data) else {
-            return;
-        };
-        let t = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
-        match t {
-            "cancel" => {
-                // IMMEDIATE: flip the flag — the running job aborts at its
-                // next progress checkpoint (download or separation).
-                CANCEL.store(true, Ordering::SeqCst);
-                // Drain the queue: "cancel" must stop EVERYTHING queued, not
-                // just the current item — otherwise the worker grabs the next
-                // URL at once and starts another 20-minute job.
-                {
-                    let guard = job_rx.lock().unwrap_or_else(|p| p.into_inner());
-                    while guard.try_recv().is_ok() {}
-                }
-                pending.store(0, Ordering::SeqCst);
-                tracing::warn!(target: "bridge", "أُرسل أمر الإلغاء — سيتوقف العمل الجاري وفُرّغ الطابور");
-                write_state(&serde_json::json!({
-                    "running": null,
-                    "queue": 0,
-                    "last": { "name": "—", "ok": false, "error": "أُلغيت المعالجة من قبل المستخدم" }
-                }));
-            }
-            "link" => {
-                let url = msg.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                if url.is_empty() {
-                    return;
-                }
-                if seen_before(&url) {
-                    tracing::warn!(target: "bridge", "طلب مكرر لنفس الرابط — تخطي: {url}");
-                    write_state(&serde_json::json!({
-                        "running": null,
-                        "last": { "name": url, "ok": false, "error": "هذا الرابط طُلب من قبل في هذه الجلسة — تخطي المكرر" }
-                    }));
-                    return;
-                }
-                pending.fetch_add(1, Ordering::SeqCst);
-                let _ = job_tx.send(url);
-            }
-            _ => {}
-        }
-        let _ = std::fs::remove_file(path);
-    };
+    let dispatch = |path: &Path| dispatch_file(path, &ctx);
 
     let Some(mut watcher) = watcher else {
         tracing::error!(target: "bridge", "فشل إنشاء مراقب الطلبات");
@@ -456,7 +576,7 @@ fn handle_request(
     use tauri::Emitter;
 
     tracing::info!(target: "bridge", "طلب من المتصفح: {url}");
-    CANCEL.store(false, Ordering::SeqCst);
+    cancel_flag().store(false, Ordering::SeqCst);
 
     let (s, notify_enabled) = {
         let s = settings.lock().unwrap_or_else(|p| p.into_inner()).clone();
@@ -473,6 +593,12 @@ fn handle_request(
         "queue": queued,
         "last": null
     }));
+    // Functional gap: external jobs were invisible to the desktop UI —
+    // announce the start so the unified jobs feed can track it.
+    let _ = app.emit(
+        "bridge-start",
+        serde_json::json!({ "name": name_label, "queue": queued }),
+    );
 
     match crate::yt_dlp::download_media(url, &out_dir, &|p| {
         let _ = app.emit("dl-progress", p.clamp(0.0, 1.0));
@@ -481,8 +607,8 @@ fn handle_request(
             "queue": queued,
             "last": null
         }));
-        !CANCEL.load(Ordering::SeqCst)
-    }) {
+        !cancel_flag().load(Ordering::SeqCst)
+    }, &cancel_flag()) {
         Ok(file) => {
             let mode = if s.watch_mode == "clip" { Mode::Clip } else { Mode::Song };
             let file_label = file
@@ -505,7 +631,7 @@ fn handle_request(
                 None,
                 &|p| {
                     let _ = app.emit("sep-progress", p.clamp(0.0, 1.0));
-                    !CANCEL.load(Ordering::SeqCst)
+                    !cancel_flag().load(Ordering::SeqCst)
                 },
                 &|stage, p| {
                     write_state_throttled(&serde_json::json!({
@@ -527,6 +653,11 @@ fn handle_request(
                         .map(|n| n.to_string_lossy().into_owned())
                         .unwrap_or_else(|| file_label.clone());
                     tracing::info!(target: "bridge", "اكتمل طلب المتصفح: {} في {:.1}s", out_name, o.seconds);
+                    // Functional gap: a finished URL stayed in SEEN forever,
+                    // so an intentional re-send in the same session was
+                    // silently skipped. Dedup now only guards the
+                    // running/queued window.
+                    forget_seen(url);
                     write_state(&serde_json::json!({
                         "running": null,
                         "queue": 0,
@@ -547,9 +678,24 @@ fn handle_request(
                             .body(&out_name)
                             .show();
                     }
+                    // The downloaded source was app-fetched cache, not user
+                    // data — drop it now that real outputs exist (it used to
+                    // pile up next to every processed video forever).
+                    let mut outs: Vec<PathBuf> = Vec::new();
+                    for slot in [&o.vocals, &o.instrumental, &o.video] {
+                        if let Some(p) = slot {
+                            outs.push(p.clone());
+                        }
+                    }
+                    if should_remove_bridge_source(&file, &out_dir, &outs) {
+                        match std::fs::remove_file(&file) {
+                            Ok(()) => tracing::info!(target: "bridge", "حُذف المصدر المؤقت بعد نجاح المعالجة: {}", file.display()),
+                            Err(e) => tracing::warn!(target: "bridge", "تعذر حذف المصدر المؤقت {}: {e}", file.display()),
+                        }
+                    }
                 }
                 Err(e) => {
-                    let cancelled = CANCEL.load(Ordering::SeqCst);
+                    let cancelled = cancel_flag().load(Ordering::SeqCst);
                     tracing::warn!(target: "bridge", "فشل طلب المتصفح: {}: {e}", file_label);
                     // Audit: a failed job must be retryable in this session
                     forget_seen(url);
@@ -567,7 +713,7 @@ fn handle_request(
             }
         }
         Err(e) => {
-            let cancelled = CANCEL.load(Ordering::SeqCst);
+            let cancelled = cancel_flag().load(Ordering::SeqCst);
             tracing::warn!(target: "bridge", "فشل تنزيل رابط المتصفح: {e}");
             // Audit: a failed download must be retryable in this session
             forget_seen(url);
@@ -706,4 +852,176 @@ pub fn register(app: &tauri::AppHandle, browser: &str) -> Result<String, String>
     Ok(format!(
         "سُجّل التكامل مع {browser_name} وتحقّق منه ✓\n⚠ أغلق المتصفح بالكامل ثم أعد فتحه لتفعيل الاتصال، ثم حمّل الإضافة من مجلد browser-extension"
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Serialize tests: they mutate the shared `HARAMLITE_DATA_DIR` env,
+    /// the global `SEEN` set and the global cancel flag.
+    static TEST_SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn nanos() -> u128 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    }
+
+    fn isolated_base(tag: &str) -> PathBuf {
+        let base = std::env::temp_dir().join(format!("hl_bridge_{}_{}", std::process::id(), tag));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("com.harammute.haramlite").join("requests")).unwrap();
+        std::env::set_var("HARAMLITE_DATA_DIR", &base);
+        base
+    }
+
+    fn teardown(base: &Path) {
+        std::env::remove_var("HARAMLITE_DATA_DIR");
+        cancel_flag().store(false, Ordering::SeqCst);
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    fn ctx_with() -> (DispatchCtx, Arc<AtomicUsize>) {
+        let (tx, rx) = mpsc::channel::<String>();
+        let pending = Arc::new(AtomicUsize::new(0));
+        let ctx = DispatchCtx {
+            job_tx: tx,
+            job_rx: Arc::new(Mutex::new(rx)),
+            pending: pending.clone(),
+        };
+        (ctx, pending)
+    }
+
+    fn write_req(name: &str, body: &str) -> PathBuf {
+        let p = requests_dir().join(name);
+        std::fs::write(&p, body).unwrap();
+        p
+    }
+
+    #[test]
+    fn duplicate_link_removed_and_queued_once() {
+        let _guard = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let base = isolated_base("dup");
+        let (ctx, pending) = ctx_with();
+        let url = format!("https://example.invalid/dup_{}", nanos());
+
+        // first delivery → queued, file gone
+        let p1 = write_req("req_1.json", &format!(r#"{{"type":"link","url":"{url}"}}"#));
+        dispatch_file(&p1, &ctx);
+        assert!(!p1.exists(), "first request file must be removed");
+        assert_eq!(pending.load(Ordering::SeqCst), 1);
+        let got = ctx
+            .job_rx
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .try_recv()
+            .expect("job must be queued");
+        assert_eq!(got, url);
+        // re-queue it so the SECOND delivery is genuinely a duplicate
+        ctx.pending.fetch_add(1, Ordering::SeqCst);
+        let _ = ctx.job_tx.send(url.clone());
+
+        // second delivery of the same URL → skipped AND removed (no 5s loop)
+        let p2 = write_req("req_2.json", &format!(r#"{{"type":"link","url":"{url}"}}"#));
+        dispatch_file(&p2, &ctx);
+        assert!(!p2.exists(), "duplicate request file must be removed, not re-logged forever");
+        // drain the re-queued job for a clean slate
+        let guard = ctx.job_rx.lock().unwrap_or_else(|p| p.into_inner());
+        while guard.try_recv().is_ok() {}
+        drop(guard);
+        teardown(&base);
+    }
+
+    #[test]
+    fn empty_and_garbage_files_removed() {
+        let _guard = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let base = isolated_base("poison");
+        let (ctx, pending) = ctx_with();
+
+        let p1 = write_req("req_empty.json", r#"{"type":"link","url":""}"#);
+        dispatch_file(&p1, &ctx);
+        assert!(!p1.exists(), "empty-url file must be removed");
+
+        let p2 = write_req("req_garbage.json", "not json {{{");
+        dispatch_file(&p2, &ctx);
+        assert!(!p2.exists(), "unparseable file must be removed");
+
+        let p3 = write_req("req_blank.json", "   \n");
+        dispatch_file(&p3, &ctx);
+        assert!(!p3.exists(), "blank file must be removed");
+
+        assert_eq!(pending.load(Ordering::SeqCst), 0);
+        teardown(&base);
+    }
+
+    #[test]
+    fn cancel_removes_file_drains_queue_zeroes_pending() {
+        let _guard = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let base = isolated_base("cancel");
+        let (ctx, pending) = ctx_with();
+
+        for i in 0..2 {
+            let url = format!("https://example.invalid/c_{}_{}", nanos(), i);
+            let p = write_req(&format!("req_q{i}.json"), &format!(r#"{{"type":"link","url":"{url}"}}"#));
+            dispatch_file(&p, &ctx);
+        }
+        assert_eq!(pending.load(Ordering::SeqCst), 2);
+
+        let pc = write_req("cancel_x.json", r#"{"type":"cancel"}"#);
+        dispatch_file(&pc, &ctx);
+        assert!(!pc.exists(), "cancel file must be removed");
+        assert_eq!(pending.load(Ordering::SeqCst), 0);
+        assert!(
+            ctx.job_rx
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .try_recv()
+                .is_err(),
+            "queue must be drained"
+        );
+        teardown(&base);
+    }
+
+    #[test]
+    fn bridge_source_removal_rules() {
+        let _guard = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let base = isolated_base("rm-src");
+        let out_dir = requests_dir().join("HaramLite");
+        std::fs::create_dir_all(&out_dir).unwrap();
+        let src = out_dir.join("song.mp4");
+        std::fs::write(&src, b"raw").unwrap();
+        let vid = out_dir.join("song_(Clean)_haramlite.mp4");
+        std::fs::write(&vid, b"clean").unwrap();
+
+        assert!(should_remove_bridge_source(&src, &out_dir, &[vid.clone()]));
+        // same file / no outputs / missing output → keep
+        assert!(!should_remove_bridge_source(&src, &out_dir, &[src.clone()]));
+        assert!(!should_remove_bridge_source(&src, &out_dir, &[]));
+        assert!(!should_remove_bridge_source(&src, &out_dir, &[out_dir.join("gone.mp4")]));
+        // outside our managed folder → never touch (user files)
+        let elsewhere = base.join("other.mp4");
+        std::fs::write(&elsewhere, b"x").unwrap();
+        assert!(!should_remove_bridge_source(&elsewhere, &out_dir, &[vid]));
+        teardown(&base);
+    }
+
+    #[test]
+    fn cold_start_grace_keeps_fresh_drops_with_zero_grace() {
+        let _guard = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let base = isolated_base("grace");
+        let dir = requests_dir();
+
+        let fresh = dir.join("req_fresh.json");
+        std::fs::write(&fresh, r#"{"type":"link","url":"https://example.invalid/fresh"}"#).unwrap();
+        // `now` AFTER the write: the file must date at-or-before it.
+        let now = std::time::SystemTime::now();
+        clear_stale_requests(&dir, now, 3600);
+        assert!(fresh.exists(), "fresh request must survive startup cleanup");
+
+        clear_stale_requests(&dir, now, 0);
+        assert!(!fresh.exists(), "with zero grace the file is stale and must go");
+        teardown(&base);
+    }
 }

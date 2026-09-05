@@ -9,8 +9,10 @@
 //!   5. run `--version`; on ANY failure restore `.previous`
 //! No tokens are embedded — public API only.
 
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -76,6 +78,13 @@ pub fn resolve_ytdlp() -> Option<PathBuf> {
 }
 
 fn state_path() -> PathBuf {
+    // Audit 2026-09-03: overridable so unit tests never touch (or leave
+    // stale) the user's real update state.
+    if let Ok(dir) = std::env::var("HARAMLITE_YTDLP_STATE_DIR") {
+        if !dir.trim().is_empty() {
+            return PathBuf::from(dir).join("update_state.json");
+        }
+    }
     let base = std::env::var("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("."));
@@ -83,6 +92,16 @@ fn state_path() -> PathBuf {
         .join("tools")
         .join("yt-dlp")
         .join("update_state.json")
+}
+
+/// Last `n` captured stdout lines, oldest first — attached to download
+/// failures so the #1 recurring user error is diagnosable (audit 2026-09-03).
+fn tail_text(tail: &VecDeque<String>, n: usize) -> String {
+    tail.iter()
+        .skip(tail.len().saturating_sub(n))
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
@@ -347,59 +366,309 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
 
 /// Download `url` media (bestaudio muxed; no playlists) into out_dir.
 /// Returns the finished file path. Progress parsed from `--newline` output.
-/// The progress closure returns false to abort (kills the child process).
+/// The progress closure returns false to abort; `cancel` is polled by a
+/// monitor thread so cancellation also works while yt-dlp is MERGING
+/// (no progress lines during that phase).
 pub fn download_media(
     url: &str,
     out_dir: &Path,
     progress: &dyn Fn(f32) -> bool,
+    cancel: &std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) -> Result<PathBuf, YtError> {
-    download_media_inner(url, out_dir, progress, false)
+    download_media_inner(url, out_dir, progress, cancel)
+}
+
+/// How long a download may go without a single stdout line before it is
+/// declared stalled, killed and failed (functional gap: stall watchdog).
+const STALL_SECS: u64 = 15 * 60;
+
+/// Video metadata needed before any byte moves: a safe deterministic slot
+/// plus a pretty display name.
+struct VideoMeta {
+    id: String,
+    title: String,
+}
+
+/// One metadata-only call. Cheap (~1s) and it decides everything downstream:
+/// without a trustworthy id there is no safe slot, so fail here loudly
+/// instead of downloading blindly into a name we cannot re-identify.
+fn fetch_meta(exe: &Path, url: &str) -> Result<VideoMeta, YtError> {
+    let out = make_cmd(exe)
+        .args([
+            "--no-playlist",
+            "--skip-download",
+            "--socket-timeout",
+            "20",
+            "--dump-single-json",
+        ])
+        .arg(url)
+        .env("PYTHONIOENCODING", "utf-8")
+        .output()
+        .map_err(|e| YtError::Net(e.to_string()))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let lines: Vec<&str> = stderr.lines().collect();
+        let start = lines.len().saturating_sub(5);
+        return Err(YtError::Net(format!(
+            "تعذر قراءة بيانات الفيديو: {}",
+            lines[start..].join(" | ")
+        )));
+    }
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .map_err(|e| YtError::Net(format!("بيانات غير مقروءة: {e}")))?;
+    let id = v
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+        return Err(YtError::Net("تعذر تحديد معرف الفيديو".into()));
+    }
+    let title = v
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    Ok(VideoMeta {
+        title: if title.is_empty() { id.clone() } else { title },
+        id,
+    })
+}
+
+/// Our own filename sanitizer, applied ONCE to a name WE then write via
+/// rename — by construction the computed name always equals the disk name.
+/// This ends the whole class where yt-dlp PRINTS `Just A Dream` but SAVES
+/// `＂Just A Dream＂` (U+FF02 one-way sanitizing on Windows): we never read
+/// yt-dlp's mind again, we only match our deterministic `hl_<id>_*` slot.
+pub fn sanitize_title(title: &str, fallback_id: &str) -> String {
+    let mut s: String = title
+        .chars()
+        .map(|c| match c {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            c if (c as u32) < 32 => '_',
+            c => c,
+        })
+        .collect();
+    // Windows forbids trailing dots/spaces (also after truncation below).
+    while s.ends_with('.') || s.ends_with(' ') {
+        s.pop();
+    }
+    let s = s.trim().to_string();
+    // Leave headroom for collision suffix + extension.
+    let mut s: String = s.chars().take(180).collect();
+    while s.ends_with('.') || s.ends_with(' ') {
+        s.pop();
+    }
+    if s.is_empty() {
+        format!("video_{fallback_id}")
+    } else {
+        s
+    }
+}
+
+/// Unique-per-attempt slot stem. The id part keeps every attempt of one video
+/// findable; the suffix keeps concurrent attempts from sharing one file
+/// (same URL from bridge + GUI at once degrades to redundant work, never to
+/// a corrupted shared file or an overwrite of user data).
+fn slot_stem(video_id: &str) -> String {
+    static ATTEMPT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = ATTEMPT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    format!("hl_{video_id}_{}_{n}", std::process::id())
+}
+
+/// Our slot files for this video (any attempt suffix), newest first.
+/// Skips transient junk (`.part`/`.ytdl`/`.tmp`) — those are never complete.
+fn find_slots(out_dir: &Path, video_id: &str) -> Vec<PathBuf> {
+    let prefix = format!("hl_{video_id}_");
+    let mut found: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(out_dir) {
+        for e in rd.flatten() {
+            let p = e.path();
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if !name.starts_with(&prefix) || !p.is_file() {
+                continue;
+            }
+            if name.ends_with(".part") || name.ends_with(".ytdl") || name.ends_with(".tmp") {
+                continue;
+            }
+            let m = e
+                .metadata()
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            found.push((m, p));
+        }
+    }
+    found.sort_by(|a, b| b.0.cmp(&a.0));
+    found.into_iter().map(|(_, p)| p).collect()
+}
+
+/// A pre-existing slot file is only reusable when it is a REAL complete
+/// media file: killed mid-merge runs leave corrupt slot files behind, so
+/// non-empty plus a valid probe with positive duration is required.
+fn slot_usable(p: &Path) -> bool {
+    if std::fs::metadata(p).map(|m| m.len()).unwrap_or(0) == 0 {
+        return false;
+    }
+    crate::media::probe(p)
+        .map(|info| info.has_audio && info.duration_secs > 0.0)
+        .unwrap_or(false)
+}
+
+/// Delete our stale slot files and transient junk (crash leftovers).
+/// Only `hl_<id>_*` matches — user files are never touched.
+fn clear_slots(out_dir: &Path, video_id: &str) {
+    let prefix = format!("hl_{video_id}_");
+    if let Ok(rd) = std::fs::read_dir(out_dir) {
+        for e in rd.flatten() {
+            let p = e.path();
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name.starts_with(&prefix) {
+                let _ = std::fs::remove_file(p);
+            }
+        }
+    }
+}
+
+/// Promote a slot file to its pretty user-facing name (computed by OUR
+/// sanitizer, so the rename target is exactly what lands on disk).
+/// Collisions resolve with the unique id suffix — never overwrite user data.
+/// A redundant twin (same video downloaded twice concurrently) is dropped in
+/// favor of the existing file.
+fn promote_slot(slot: &Path, out_dir: &Path, meta: &VideoMeta) -> Result<PathBuf, YtError> {
+    let ext = slot.extension().and_then(|e| e.to_str()).unwrap_or("mp4");
+    let stem = sanitize_title(&meta.title, &meta.id);
+    let mut dest = out_dir.join(format!("{stem}.{ext}"));
+    if dest != slot && dest.is_file() {
+        dest = out_dir.join(format!("{stem} [{}].{ext}", meta.id));
+    }
+    if dest == slot {
+        return Ok(dest);
+    }
+    if dest.is_file() {
+        let _ = std::fs::remove_file(slot);
+        return Ok(dest);
+    }
+    std::fs::rename(slot, &dest).map_err(|e| YtError::Io(format!("تعذر التسمية النهائية: {e}")))?;
+    Ok(dest)
 }
 
 fn download_media_inner(
     url: &str,
     out_dir: &Path,
     progress: &dyn Fn(f32) -> bool,
-    force: bool,
+    cancel: &std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) -> Result<PathBuf, YtError> {
+    use std::sync::atomic::Ordering;
     let exe = resolve_ytdlp().ok_or(YtError::NotFound)?;
     std::fs::create_dir_all(out_dir).map_err(|e| YtError::Io(e.to_string()))?;
 
-    let tmpl = out_dir.join("%(title)s.%(ext)s");
+    // 1) metadata first: no id → no safe slot → fail loudly before downloading.
+    let meta = fetch_meta(&exe, url)?;
+
+    // 2) fast paths with zero network beyond metadata: a usable slot from an
+    // earlier run, or a legacy title-named file from the pre-slot era.
+    if let Some(slot) = find_slots(out_dir, &meta.id).into_iter().find(|p| slot_usable(p)) {
+        return promote_slot(&slot, out_dir, &meta);
+    }
+    let legacy = out_dir.join(format!("{}.mp4", sanitize_title(&meta.title, &meta.id)));
+    if legacy.is_file() && slot_usable(&legacy) {
+        return Ok(legacy);
+    }
+
+    // 3) fresh unique slot; stale crash leftovers of ours go first.
+    clear_slots(out_dir, &meta.id);
+    let stem = slot_stem(&meta.id);
+    let tmpl = out_dir.join(format!("{stem}.%(ext)s"));
     let mut cmd = make_cmd(&exe);
-    let mut args: Vec<String> = vec![
+    // NOTE: no `--windows-filenames` and no title in `-o` anymore — the slot
+    // is id-safe by construction, so yt-dlp's sanitizer has nothing to mangle.
+    let args: Vec<String> = vec![
         "--newline".into(),
         "--no-playlist".into(),
-        "--windows-filenames".into(),
         "-f".into(),
         "bv*+ba/b".into(),
         "--merge-output-format".into(),
         "mp4".into(),
+        "--socket-timeout".into(),
+        "20".into(),
         "-o".into(),
         tmpl.to_string_lossy().into_owned(),
-        // definitive output path: yt-dlp prints it prefixed — detecting the
-        // line by its UNIQUE prefix instead of `!contains('[')` (video titles
-        // and folder names commonly contain brackets, which used to drop the
-        // authoritative line and force re-downloads).
+        // forensics only: what yt-dlp THINKS it wrote (unsanitized — feeds
+        // the failure tail, never trusted for identification).
         "--print".into(),
         "after_move:HARAMLITE_OUT:%(filepath)s".into(),
+        url.to_string(),
     ];
-    if force {
-        args.push("--force-overwrites".into());
-    }
-    args.push(url.to_string());
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     cmd.args(&arg_refs);
+    // Arabic titles: force yt-dlp's stdout to UTF-8 instead of the Windows
+    // console codepage (cp1256 on this machine) — keeps logs exact.
+    cmd.env("PYTHONIOENCODING", "utf-8");
 
-    let mut child = cmd
+    let child = cmd
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| YtError::Io(e.to_string()))?;
 
+    // Audit: `child.kill()` on Windows only kills yt-dlp.exe itself — the
+    // ffmpeg merger child becomes an orphan burning CPU. A monitor thread
+    // polls the cancel flag and kills the WHOLE process tree, which also
+    // makes cancel responsive during the merge phase (no progress lines).
+    //
+    // Audit 2026-09-03: the monitor's lifetime is the CHILD's, not the
+    // flag's — the old loop exited only on cancel, leaking one sleeper
+    // thread per successful download (callers pass process-lifetime flags)
+    // and taskkilling a possibly-recycled PID on the NEXT cancel.
+    let child_pid = child.id();
+    let child = Arc::new(Mutex::new(child));
+    // Last stdout line instant — the stall watchdog below kills a download
+    // that goes silent for STALL_SECS (no output at all, not even slow
+    // progress), so one hung subprocess can never wedge the bridge queue.
+    let activity = Arc::new(Mutex::new(std::time::Instant::now()));
+    let stalled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    {
+        // the monitor holds its OWN Arc — the flag stays alive for as long
+        // as the watcher runs, whatever the caller does afterwards
+        let cancel_flag = cancel.clone();
+        let watched = child.clone();
+        let watch_activity = activity.clone();
+        let watch_stalled = stalled.clone();
+        std::thread::Builder::new()
+            .name("ytdlp-cancel-watch".into())
+            .spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                let alive = watched
+                    .lock()
+                    .map(|mut c| matches!(c.try_wait(), Ok(None)))
+                    .unwrap_or(false);
+                if !alive {
+                    break; // child reaped/exited — nothing left to watch
+                }
+                if cancel_flag.load(Ordering::SeqCst) {
+                    kill_tree(child_pid);
+                    break;
+                }
+                let idle = watch_activity
+                    .lock()
+                    .map(|t| t.elapsed().as_secs() >= STALL_SECS)
+                    .unwrap_or(false);
+                if idle {
+                    tracing::warn!(target: "ytdlp", "جمود التنزيل (لا مخرجات منذ {STALL_SECS} ثانية) — قتل العملية");
+                    watch_stalled.store(true, Ordering::SeqCst);
+                    kill_tree(child_pid);
+                    break;
+                }
+            })
+            .ok();
+    }
+
     // Drain stderr on a side thread: an undrained pipe fills (~64KB) and
     // deadlocks the child mid-download.
-    if let Some(stderr) = child.stderr.take() {
+    let stderr = child.lock().ok().and_then(|mut c| c.stderr.take());
+    if let Some(stderr) = stderr {
         std::thread::spawn(move || {
             use std::io::Read;
             let mut r = stderr;
@@ -413,81 +682,114 @@ fn download_media_inner(
     }
 
     use std::io::BufRead;
-    let stdout = child.stdout.take().expect("stdout piped");
+    let stdout = child
+        .lock()
+        .ok()
+        .and_then(|mut c| c.stdout.take())
+        .expect("stdout piped");
     let mut reader = std::io::BufReader::new(stdout);
-    let mut last_file: Option<PathBuf> = None;
 
     // Raw byte lines + lossy decode: YouTube titles / console codepages break
     // strict UTF-8 readers.
     let mut raw: Vec<u8> = Vec::with_capacity(256);
-    let mut printed_path: Option<PathBuf> = None;
+    // Retain a tail of stdout so failures carry evidence.
+    let mut tail: VecDeque<String> = VecDeque::with_capacity(41);
     loop {
         raw.clear();
         match reader.read_until(b'\n', &mut raw) {
             Ok(0) => break,
             Ok(_) => {}
-            Err(e) => return Err(YtError::Io(e.to_string())),
+            Err(e) => {
+                // Never orphan the child (yt-dlp + its ffmpeg merger) —
+                // the old code returned here and leaked both burning CPU.
+                if let Ok(mut c) = child.lock() {
+                    kill_tree(c.id());
+                    let _ = c.wait();
+                }
+                return Err(YtError::Io(e.to_string()));
+            }
         }
         let line = String::from_utf8_lossy(&raw);
         let trimmed = line.trim();
-        // authoritative: prefixed path line emitted by `--print`
-        if let Some(path) = trimmed.strip_prefix("HARAMLITE_OUT:") {
-            printed_path = Some(PathBuf::from(path));
-            continue;
+        tail.push_back(trimmed.to_string());
+        while tail.len() > 40 {
+            tail.pop_front();
         }
-        // Order matters: "[download] <path> has already been downloaded" ALSO
-        // starts with "[download] " — handle it BEFORE the percentage parser.
-        if let Some(path) = parse_already_downloaded(&line) {
-            last_file = Some(PathBuf::from(path));
-            continue;
+        // Any output at all resets the stall watchdog.
+        if let Ok(mut t) = activity.lock() {
+            *t = std::time::Instant::now();
         }
-        // "[Merger] Merging formats into \"<final path>\"": the merged file.
-        if let Some(path) = parse_merger_dest(&line) {
-            last_file = Some(PathBuf::from(path));
-            continue;
-        }
-        // "[download] Destination: <part path>" — also starts with "[download]"
-        // so it MUST be checked before the percentage branch, which swallows it.
-        if let Some(dest) = line.split("Destination:").nth(1) {
-            last_file = Some(PathBuf::from(dest.trim()));
-            continue;
-        }
-        // "[download]  42.3% of ..." — percentage progress
+        // Identification no longer reads filenames from stdout AT ALL (the
+        // sanitization drift made every printed name untrustworthy) — only
+        // percentage progress is parsed here; the slot file below is proof.
         if let Some(rest) = line.strip_prefix("[download]") {
             let pct_txt = rest.split_whitespace().find(|t| t.ends_with('%')).unwrap_or("");
             if let Ok(p) = pct_txt.trim_end_matches('%').parse::<f32>() {
                 let p = (p / 100.0).clamp(0.0, 1.0);
                 if !progress(p) {
-                    let _ = child.kill();
+                    if let Ok(mut c) = child.lock() {
+                        kill_tree(c.id());
+                        let _ = c.wait();
+                    }
                     return Err(YtError::Io("أُلغي التنزيل من قبل المستخدم".into()));
                 }
             }
         }
     }
 
-    let status = child.wait().map_err(|e| YtError::Io(e.to_string()))?;
+    let status = child
+        .lock()
+        .map_err(|e| YtError::Io(e.to_string()))?
+        .wait()
+        .map_err(|e| YtError::Io(e.to_string()))?;
+    if stalled.load(Ordering::SeqCst) {
+        tracing::warn!(target: "ytdlp", "توقف التنزيل لانقطاع التقدم ({url}) — ذيل المخرجات:\n{}", tail_text(&tail, 30));
+        return Err(YtError::Io(format!(
+            "توقف التنزيل: لا تقدم منذ {} دقيقة — قد يكون الاتصال متجمداً\n{}",
+            STALL_SECS / 60,
+            tail_text(&tail, 12)
+        )));
+    }
     if !status.success() {
-        return Err(YtError::Io(format!("yt-dlp خرج بـ{status}")));
+        tracing::warn!(target: "ytdlp", "yt-dlp خرج بـ{status} لـ {url} — ذيل المخرجات:\n{}", tail_text(&tail, 30));
+        return Err(YtError::Io(format!(
+            "yt-dlp خرج بـ{status}\n{}",
+            tail_text(&tail, 12)
+        )));
     }
 
-    // The `--print after_move:filepath` line is authoritative.
-    if let Some(f) = printed_path.filter(|f| f.is_file()) {
-        return Ok(f);
+    // The slot file is the ONLY proof of success — no printed name, no
+    // merger line, no folder guessing. It must exist and be a real media
+    // file; anything else is a genuine failure with the tail attached.
+    find_slots(out_dir, &meta.id)
+        .into_iter()
+        .find(|p| slot_usable(p))
+        .map(|slot| promote_slot(&slot, out_dir, &meta))
+        .unwrap_or_else(|| {
+            tracing::warn!(target: "ytdlp", "نجح yt-dlp دون ملف صالح في الخانة ({url}) — ذيل المخرجات:\n{}", tail_text(&tail, 30));
+            Err(YtError::Io(format!(
+                "yt-dlp نجح دون ملف ناتج صالح — أعد المحاولة\n{}",
+                tail_text(&tail, 12)
+            )))
+        })
+}
+
+/// Kill a process and its WHOLE tree (Windows: taskkill /T /F; Unix: kill).
+/// Plain `child.kill()` leaves yt-dlp's ffmpeg merger orphaned.
+fn kill_tree(pid: u32) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/T", "/F", "/PID", &pid.to_string()])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .output();
     }
-    if let Some(f) = last_file.filter(|f| f.is_file()) {
-        return Ok(f);
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = std::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .output();
     }
-    // Bug A follow-up: a skip line can carry a path that no longer exists on
-    // disk (title/sanitization drift — e.g. yt-dlp printed a name without the
-    // fullwidth quotes the file actually has). NEVER guess from the folder;
-    // instead force a REAL download and take its fresh destination.
-    if !force {
-        tracing::warn!(target: "ytdlp", "مسار «منزّل بالفعل» غير موجود على القرص — إعادة تنزيل إجباري");
-        return download_media_inner(url, out_dir, progress, true);
-    }
-    Err(YtError::Io(
-        "yt-dlp نجح لكن تعذر تحديد ملف الناتج من مخرجه — أعد المحاولة".into(),
-    ))
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -499,23 +801,6 @@ fn now_secs() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
-}
-
-/// Parse a yt-dlp "--newline" skip line:
-/// `[download] C:\...\file.mp4 has already been downloaded` → Some(path).
-/// Returns None for every other line (incl. progress and Destination lines).
-fn parse_already_downloaded(line: &str) -> Option<&str> {
-    let rest = line.strip_prefix("[download] ")?;
-    let (path, _) = rest.split_once(" has already been downloaded")?;
-    let path = path.trim();
-    (!path.is_empty()).then_some(path)
-}
-
-/// "[Merger] Merging formats into \"C:\...\final.mp4\"" → Some(path).
-fn parse_merger_dest(line: &str) -> Option<&str> {
-    let rest = line.split("Merging formats into").nth(1)?;
-    let p = rest.trim().trim_matches('"').trim();
-    (!p.is_empty()).then_some(p)
 }
 
 #[cfg(test)]
@@ -532,30 +817,54 @@ mod tests {
     }
 
     #[test]
-    fn already_downloaded_line_parses_path() {
-        let line = "[download] C:\\Videos\\HaramLite\\song.mp4 has already been downloaded";
-        assert_eq!(
-            parse_already_downloaded(line),
-            Some("C:\\Videos\\HaramLite\\song.mp4")
-        );
-        // regression: the line MUST NOT be swallowed by the percentage parser
-        assert_eq!(parse_already_downloaded("[download]  42.3% of 100MiB"), None);
-        assert_eq!(parse_already_downloaded("[Merger] Merging formats into \"x.mp4\""), None);
-        assert_eq!(parse_already_downloaded("[download] Destination: C:\\x.mp4"), None);
+    fn sanitize_title_kills_forbidden_chars() {
+        // The reported killer: ASCII quotes must not survive (yt-dlp would
+        // save them as U+FF02 on disk while printing them raw).
+        assert_eq!(sanitize_title("Just \"A\" Dream", "abc123"), "Just _A_ Dream");
+        assert_eq!(sanitize_title("a<b>c:d/e\\f|g?h*i", "x"), "a_b_c_d_e_f_g_h_i");
+        // Windows trailing dots/spaces
+        assert_eq!(sanitize_title("song...   ", "x"), "song");
+        // empty/blank → deterministic fallback
+        assert_eq!(sanitize_title("   ", "abc123"), "video_abc123");
+        assert_eq!(sanitize_title("", "abc123"), "video_abc123");
+        // length cap leaves room for suffix + extension
+        let long = "a".repeat(500);
+        assert!(sanitize_title(&long, "x").chars().count() <= 180);
     }
 
     #[test]
-    fn merger_line_parses_final_path() {
-        let line = "[Merger] Merging formats into \"C:\\Videos\\HaramLite\\song.mp4\"";
-        assert_eq!(
-            parse_merger_dest(line),
-            Some("C:\\Videos\\HaramLite\\song.mp4")
-        );
-        assert_eq!(parse_merger_dest("[download] Destination: C:\\x.mp4"), None);
+    fn slot_stem_is_unique_and_prefixed() {
+        let a = slot_stem("dQw4w9WgXcQ");
+        let b = slot_stem("dQw4w9WgXcQ");
+        assert_ne!(a, b);
+        assert!(a.starts_with("hl_dQw4w9WgXcQ_"));
+    }
+
+    #[test]
+    fn slots_find_newest_and_skip_partials() {
+        let dir = std::env::temp_dir().join(format!("hl_ytdlp_slots_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("other.mp4"), b"x").unwrap();
+        std::fs::write(dir.join("hl_abc_1_0.mp4.part"), b"partial").unwrap();
+        std::fs::write(dir.join("hl_abc_1_0.mp4"), b"old").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(dir.join("hl_abc_2_1.mp4"), b"new").unwrap();
+
+        let found = find_slots(&dir, "abc");
+        assert_eq!(found.len(), 2, "partials and foreign files must be excluded");
+        assert!(found[0].ends_with("hl_abc_2_1.mp4"), "newest first");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn check_cadence_respects_state() {
+        // Audit 2026-09-03: isolate from the user's REAL update state.
+        let dir = std::env::temp_dir().join(format!("hl_ytdlp_state_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("HARAMLITE_YTDLP_STATE_DIR", &dir);
+
         // fresh state in the future → not due (force=false)
         write_state(&UpdateState { checked_at: now_secs(), version: "x".into() }).ok();
         assert!(!is_check_due(false));
@@ -567,5 +876,19 @@ mod tests {
         })
         .ok();
         assert!(is_check_due(false));
+
+        std::env::remove_var("HARAMLITE_YTDLP_STATE_DIR");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tail_text_keeps_last_n_lines() {
+        let mut tail: VecDeque<String> = VecDeque::new();
+        for i in 0..5 {
+            tail.push_back(format!("line{i}"));
+        }
+        assert_eq!(tail_text(&tail, 2), "line3\nline4");
+        assert_eq!(tail_text(&tail, 99).lines().count(), 5);
+        assert_eq!(tail_text(&VecDeque::new(), 12), "");
     }
 }
