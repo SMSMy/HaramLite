@@ -150,6 +150,9 @@ fn download_media_cmd(
         true
     }, &state.cancel_flag)
     .map_err(|e| e.to_string())?;
+    // P2: remember auto-fetched sources so a later successful separation can
+    // drop them (bridge rule, literally). User files never enter this set.
+    remember_downloaded(&state.downloaded, &path);
     Ok(path.to_string_lossy().into_owned())
 }
 
@@ -289,6 +292,25 @@ fn separate_file(
     })
     .map_err(|e| e.to_string())?;
 
+    // P2: drop auto-fetched sources after SUCCESS only — the bridge rule,
+    // literally: same folder + real outputs exist + no output IS the source.
+    // User files are never tracked, so they can never match.
+    let mut outs: Vec<PathBuf> = Vec::new();
+    for slot in [&out.vocals, &out.instrumental, &out.video] {
+        if let Some(p) = slot {
+            outs.push(p.clone());
+        }
+    }
+    let src = Path::new(&path);
+    if take_tracked_download(&state.downloaded, src)
+        && bridge::should_remove_bridge_source(src, Path::new(&out_dir), &outs)
+    {
+        match std::fs::remove_file(src) {
+            Ok(()) => tracing::info!(target: "app", "حُذف المصدر المنزّل بعد نجاح المعالجة: {}", src.display()),
+            Err(e) => tracing::warn!(target: "app", "تعذر حذف المصدر المنزّل {}: {e}", src.display()),
+        }
+    }
+
     Ok(serde_json::json!({
         "vocals": out.vocals.as_ref().map(|p| p.to_string_lossy()),
         "instrumental": out.instrumental.as_ref().map(|p| p.to_string_lossy()),
@@ -357,12 +379,35 @@ fn open_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 struct AppState {
     cancel_flag: Arc<AtomicBool>,
     settings: Arc<Mutex<settings::Settings>>,
+    /// P2: sources fetched via download_media_cmd this session (canonicalized
+    /// when possible). ONLY these may be auto-removed after a successful
+    /// separation — user files never enter this set, by construction.
+    downloaded: Arc<Mutex<HashSet<PathBuf>>>,
+}
+
+/// Canonicalize for set identity; fall back to the raw path (deleted or
+/// not-yet-existing files must still match).
+fn download_key(p: &Path) -> PathBuf {
+    std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
+}
+
+fn remember_downloaded(set: &Mutex<HashSet<PathBuf>>, path: &Path) {
+    if let Ok(mut s) = set.lock() {
+        s.insert(download_key(path));
+    }
+}
+
+/// Take-once: true only for a tracked auto-download (removes it so a later
+/// manual re-process of the same path is treated as a user file).
+fn take_tracked_download(set: &Mutex<HashSet<PathBuf>>, path: &Path) -> bool {
+    set.lock().map(|mut s| s.remove(&download_key(path))).unwrap_or(false)
 }
 
 /// Sprint D1: read the unified settings (Rust-backed single source of truth).
@@ -613,6 +658,7 @@ pub fn run() {
         .manage(AppState {
             cancel_flag: Arc::new(AtomicBool::new(false)),
             settings: shared_settings.clone(),
+            downloaded: Arc::new(Mutex::new(HashSet::new())),
         })
         .setup(move |app| {
             // Second launch while we run (e.g. the user double-clicks the
@@ -730,4 +776,52 @@ pub fn run() {
                 clear_crash_marker();
             }
         });
+}
+
+#[cfg(test)]
+mod p2_tests {
+    use super::*;
+
+    fn tmpdir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("hl_p2_{}_{}", std::process::id(), tag));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn tracked_download_taken_exactly_once() {
+        let set: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
+        let dir = tmpdir("once");
+        let f = dir.join("video.mp4");
+        std::fs::write(&f, b"x").unwrap();
+        assert!(!take_tracked_download(&set, &f), "untracked must never match");
+        remember_downloaded(&set, &f);
+        assert!(take_tracked_download(&set, &f), "first take hits");
+        assert!(!take_tracked_download(&set, &f), "second take misses (one-shot)");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tracked_source_uses_bridge_rule_literally() {
+        let set: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
+        let dir = tmpdir("rule");
+        let src = dir.join("dl.mp4");
+        let out = dir.join("dl_(Clean)_haramlite.mp4");
+        std::fs::write(&src, b"x").unwrap();
+        std::fs::write(&out, b"y").unwrap();
+        remember_downloaded(&set, &src);
+        // success path: tracked + same folder + live output -> delete allowed
+        assert!(take_tracked_download(&set, &src));
+        assert!(bridge::should_remove_bridge_source(&src, &dir, &[out.clone()]));
+        // output IS the source -> forbidden even if tracked
+        remember_downloaded(&set, &src);
+        assert!(take_tracked_download(&set, &src));
+        assert!(!bridge::should_remove_bridge_source(&src, &dir, &[src.clone()]));
+        // user file (never tracked) -> take fails first, nothing proceeds
+        let user = dir.join("mine.mp4");
+        std::fs::write(&user, b"z").unwrap();
+        assert!(!take_tracked_download(&set, &user));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

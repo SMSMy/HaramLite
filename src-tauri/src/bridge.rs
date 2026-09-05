@@ -254,7 +254,8 @@ fn write_request(url: &str) -> Result<String, String> {
 /// Pure predicate (unit-tested): remove the auto-downloaded source only when
 /// it lives in our managed download folder AND at least one real output
 /// exists AND no output IS the source.
-fn should_remove_bridge_source(source: &Path, out_dir: &Path, outputs: &[PathBuf]) -> bool {
+/// P2: shared literally with the GUI download path (lib.rs) — one rule.
+pub(crate) fn should_remove_bridge_source(source: &Path, out_dir: &Path, outputs: &[PathBuf]) -> bool {
     if source.parent() != Some(out_dir) {
         return false;
     }

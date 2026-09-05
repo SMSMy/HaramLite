@@ -374,6 +374,144 @@ mod tests {
 
         std::fs::remove_dir_all(&tmp).ok();
     }
+
+    // P3 tests share one process-wide env var (HARAMLITE_VIDEO_ENCODER),
+    // and Rust runs tests in parallel threads — so all three run inside ONE
+    // #[test] driver, strictly serial. Never split them apart.
+    fn p3_selection() {
+        // Env override is authoritative in both directions ...
+        std::env::set_var("HARAMLITE_VIDEO_ENCODER", "x264");
+        assert_eq!(choose_video_encoder(true), VideoEncoder::X264);
+        std::env::set_var("HARAMLITE_VIDEO_ENCODER", "nvenc");
+        assert_eq!(choose_video_encoder(false), VideoEncoder::Nvenc);
+        // ... otherwise hardware decides; garbage == auto.
+        std::env::set_var("HARAMLITE_VIDEO_ENCODER", "auto");
+        assert_eq!(choose_video_encoder(true), VideoEncoder::Nvenc);
+        assert_eq!(choose_video_encoder(false), VideoEncoder::X264);
+        std::env::set_var("HARAMLITE_VIDEO_ENCODER", "bogus-value!!");
+        assert_eq!(choose_video_encoder(true), VideoEncoder::Nvenc);
+        std::env::remove_var("HARAMLITE_VIDEO_ENCODER");
+    }
+
+    fn p3_probe_cached() {
+        if !tools_available() {
+            panic!("ffmpeg/ffprobe not found in bin/");
+        }
+        // No assert on the VALUE (CPU runners legitimately report false) —
+        // only that probing is total, cached, and deterministic.
+        let a = has_nvenc();
+        let b = has_nvenc();
+        assert_eq!(a, b, "cached probe must be stable");
+    }
+
+    /// P3 driver (serial by construction — see note above): selection rules,
+    /// probe stability, then the RTX field measurement. `-- --nocapture`
+    /// prints ENCODER-BENCH lines.
+    #[test]
+    fn p3_encoder_paths() {
+        p3_selection();
+        p3_probe_cached();
+        if !tools_available() {
+            panic!("ffmpeg/ffprobe not found in bin/");
+        }
+        let ffmpeg = resolve_tool("ffmpeg").unwrap();
+        let tmp = std::env::temp_dir().join(format!("hl_nvenc_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        // 10s 1080p30 test pattern + silent stereo track (self-contained).
+        let src = tmp.join("src.mp4");
+        let st = make_cmd(&ffmpeg)
+            .args([
+                "-y", "-v", "error",
+                "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30:duration=10",
+                "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo:d=10",
+                "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
+                "-shortest", &src.to_string_lossy(),
+            ])
+            .status()
+            .unwrap();
+        assert!(st.success(), "fixture generation");
+
+        let wav = tmp.join("a.wav");
+        let st = make_cmd(&ffmpeg)
+            .args(["-y", "-v", "error", "-i", &src.to_string_lossy(), "-vn", &wav.to_string_lossy()])
+            .status()
+            .unwrap();
+        assert!(st.success(), "audio extraction");
+
+        for forced in ["nvenc", "x264"] {
+            std::env::set_var("HARAMLITE_VIDEO_ENCODER", forced);
+            // NOTE: on a GPU-less box the nvenc-forced iteration exercises
+            // the AUTOMATIC FALLBACK path (still a valid MP4 out) — by design.
+            let out = tmp.join(format!("cut_{forced}.mp4"));
+            let t0 = std::time::Instant::now();
+            let res = export_video_with_cuts(&src, &wav, &[(1.0, 9.0)], None, &out);
+            let dt = t0.elapsed().as_secs_f32();
+            match res {
+                Ok(p) => {
+                    let len = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
+                    assert!(len > 50_000, "valid cut mp4 expected: {forced}");
+                    println!("ENCODER-BENCH {forced} ok in {dt:.1}s ({len} bytes)");
+                }
+                Err(e) => panic!("{forced} path must never hard-fail (fallback exists): {e}"),
+            }
+        }
+        std::env::remove_var("HARAMLITE_VIDEO_ENCODER");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+}
+
+/// P3: video encoder choice. NVENC offloads the re-encode from the CPU
+/// (the old all-core x264 path starved the window compositor); any NVENC
+/// failure falls back to x264 automatically — never a fatal error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VideoEncoder {
+    Nvenc,
+    X264,
+}
+
+/// Pure selection (unit-tested): explicit override wins, otherwise hardware
+/// when available. `HARAMLITE_VIDEO_ENCODER=auto|nvenc|x264` (default auto)
+/// doubles as the measurement hook for encoder benchmarks.
+pub fn choose_video_encoder(nvenc_available: bool) -> VideoEncoder {
+    match std::env::var("HARAMLITE_VIDEO_ENCODER")
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "x264" => VideoEncoder::X264,
+        "nvenc" => VideoEncoder::Nvenc,
+        _ => {
+            if nvenc_available {
+                VideoEncoder::Nvenc
+            } else {
+                VideoEncoder::X264
+            }
+        }
+    }
+}
+
+/// Probe the bundled ffmpeg for h264_nvenc (cached — one subprocess ever).
+/// False on missing ffmpeg, on CPU-only machines, and in containers without
+/// a GPU: every caller must treat Nvenc as an optimization, never a need.
+pub fn has_nvenc() -> bool {
+    static CACHED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *CACHED.get_or_init(|| {
+        let Ok(ffmpeg) = resolve_tool("ffmpeg") else {
+            return false;
+        };
+        let out = make_cmd(&ffmpeg)
+            .args(["-hide_banner", "-encoders"])
+            .output();
+        match out {
+            Ok(o) => {
+                let text = String::from_utf8_lossy(&o.stdout);
+                text.lines().any(|l| l.contains("h264_nvenc"))
+            }
+            Err(_) => false,
+        }
+    })
 }
 
 /// Rebuild a video keeping ONLY the given time ranges (seconds) of the video
@@ -419,26 +557,55 @@ pub fn export_video_with_cuts(
     );
     let enc_threads_str = enc_threads.to_string();
 
-    let status = make_cmd(&ffmpeg)
-        .args([
+    // P3: NVENC first when available (preset p4 + cq 20 ≈ veryfast/crf18
+    // class), x264 otherwise or on ANY nvenc failure (automatic fallback).
+    let first = choose_video_encoder(has_nvenc());
+    let encoders: &[VideoEncoder] = match first {
+        VideoEncoder::Nvenc => &[VideoEncoder::Nvenc, VideoEncoder::X264],
+        VideoEncoder::X264 => &[VideoEncoder::X264],
+    };
+    let mut last_err = String::new();
+    for enc in encoders {
+        let mut args: Vec<&str> = vec![
             "-y", "-v", "error",
             "-i", &video_str,
             "-i", &audio_str,
             "-filter_complex", &fc,
             "-map", "[v]", "-map", "1:a",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
-            "-threads", &enc_threads_str,
-            "-c:a", "aac", "-b:a", "256k",
-            "-shortest",
-            &out_str,
-        ])
-        .output()
-        .map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
+        ];
+        match enc {
+            VideoEncoder::Nvenc => {
+                args.extend(["-c:v", "h264_nvenc", "-preset", "p4", "-cq", "20"]);
+            }
+            VideoEncoder::X264 => {
+                args.extend([
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                    "-threads", &enc_threads_str,
+                ]);
+            }
+        }
+        args.extend(["-c:a", "aac", "-b:a", "256k", "-shortest", &out_str]);
+        let status = make_cmd(&ffmpeg)
+            .args(&args)
+            .output()
+            .map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
 
-    if !status.status.success() {
-        let err = String::from_utf8_lossy(&status.stderr);
-        tracing::error!(target: "media", "video cuts failed: {err}");
-        return Err(MediaError::InvalidOutput(err.lines().last().unwrap_or_default().into()));
+        if status.status.success() {
+            if *enc == VideoEncoder::X264 && first == VideoEncoder::Nvenc {
+                tracing::warn!(target: "media", "NVENC failed ({last_err}) — fell back to x264");
+            }
+            return Ok(out_path.to_path_buf());
+        }
+        last_err = String::from_utf8_lossy(&status.stderr)
+            .lines()
+            .last()
+            .unwrap_or_default()
+            .to_string();
+        tracing::warn!(target: "media", "video encode with {enc:?} failed: {last_err}");
     }
-    Ok(out_path.to_path_buf())
+
+    tracing::error!(target: "media", "video cuts failed: {last_err}");
+    Err(MediaError::InvalidOutput(
+        last_err.lines().last().unwrap_or_default().into(),
+    ))
 }
