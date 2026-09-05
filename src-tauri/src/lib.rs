@@ -371,6 +371,118 @@ async fn separate_file(
     .map_err(|e| format!("separate worker failed: {e}"))?
 }
 
+/// v1 player surface (songs scope): session queue truth. All instant
+/// (pure engine calls, no I/O) except `player_prepare`, which runs the real
+/// decode→map→decide path once per file. Audio output wiring is the
+/// end-to-end prototype slice — not here.
+#[tauri::command]
+fn player_open(state: tauri::State<'_, AppState>, total_secs: f64, chunk_secs: f64) -> u64 {
+    state
+        .player_sessions
+        .lock()
+        .map(|mut s| s.open(total_secs, chunk_secs))
+        .unwrap_or(u64::MAX)
+}
+
+#[tauri::command]
+fn player_status(
+    state: tauri::State<'_, AppState>,
+    id: u64,
+    pos: f64,
+) -> Result<serde_json::Value, String> {
+    let sessions = state.player_sessions.lock().map_err(|e| e.to_string())?;
+    let e = sessions.get(id).ok_or_else(|| "unknown player session".to_string())?;
+    Ok(serde_json::json!({
+        "chunks": e.chunk_count(),
+        "chunk": e.chunk_of(pos),
+        "states": e.states_snapshot(),
+        "can_start": e.can_start(),
+        "frozen": e.exhausted(pos),
+        "next_needed": e.next_needed(pos),
+    }))
+}
+
+#[tauri::command]
+fn player_advance(state: tauri::State<'_, AppState>, id: u64, pos: f64) -> Result<usize, String> {
+    let mut sessions = state.player_sessions.lock().map_err(|e| e.to_string())?;
+    let e = sessions.get_mut(id).ok_or_else(|| "unknown player session".to_string())?;
+    Ok(e.consume_through(pos))
+}
+
+#[tauri::command]
+fn player_seek(
+    state: tauri::State<'_, AppState>,
+    id: u64,
+    pos: f64,
+) -> Result<player::SeekAction, String> {
+    let sessions = state.player_sessions.lock().map_err(|e| e.to_string())?;
+    let e = sessions.get(id).ok_or_else(|| "unknown player session".to_string())?;
+    Ok(e.seek(pos))
+}
+
+#[tauri::command]
+fn player_close(state: tauri::State<'_, AppState>, id: u64) -> bool {
+    state.player_sessions.lock().map(|mut s| s.close(id)).unwrap_or(false)
+}
+
+/// Precompute the real position map of a file (decode + silence map +
+/// decision over every chunk). Async + worker (ffmpeg + full scan); returns
+/// absolute mute/duck ranges plus the per-minute cost evidence.
+/// Marks every chunk of session `id` Ready on success, so `player_status`
+/// stops reporting the stale "waiting for chunks" freeze after the map is
+/// built (field defect 3: status must reflect reality).
+#[tauri::command]
+async fn player_prepare(
+    state: tauri::State<'_, AppState>,
+    id: u64,
+    path: String,
+    chunk_secs: f64,
+) -> Result<serde_json::Value, String> {
+    // Fail fast on an unknown session — never run ffmpeg for a dead id.
+    let store = state.player_sessions.clone();
+    {
+        let sessions = store.lock().map_err(|e| e.to_string())?;
+        if sessions.get(id).is_none() {
+            return Err("unknown player session".to_string());
+        }
+    }
+    let rep = tauri::async_runtime::spawn_blocking(move || {
+        let input = PathBuf::from(&path);
+        let work = std::env::temp_dir().join(format!("hl_player_{}", std::process::id()));
+        let normalized =
+            media::normalize_for_engine_limited(&input, &work, None).map_err(|e| e.to_string())?;
+        let (l, r, sr) =
+            separator::read_wav_stereo(&normalized).map_err(|e| e.to_string())?;
+        let rep = v1proto::build_position_map(&l, &r, sr, chunk_secs, &decide::DecideConfig::default());
+        let _ = std::fs::remove_dir_all(&work);
+        Ok::<_, String>(serde_json::json!({
+            "total_secs": rep.total_audio_secs,
+            "chunks": rep.chunks,
+            "muted_fraction": rep.muted_fraction,
+            "ducked_fraction": rep.ducked_fraction,
+            "minute_cost_ms": rep.minute_cost_ms,
+        }))
+    })
+    .await
+    .map_err(|e| format!("prepare worker failed: {e}"))??;
+    // The map covers the whole file — every queued chunk is now inspectable.
+    let marked = {
+        let mut sessions = store.lock().map_err(|e| e.to_string())?;
+        match sessions.get_mut(id) {
+            Some(e) => {
+                e.mark_all_ready();
+                e.chunk_count()
+            }
+            None => return Err("unknown player session".to_string()),
+        }
+    };
+    let mut out = rep;
+    if let Some(obj) = out.as_object_mut() {
+        obj.insert("marked_ready".to_string(), serde_json::json!(marked));
+    }
+    Ok(out)
+}
+
 #[tauri::command]
 fn ping() -> serde_json::Value {
     serde_json::json!({
@@ -442,6 +554,9 @@ struct AppState {
     /// when possible). ONLY these may be auto-removed after a successful
     /// separation — user files never enter this set, by construction.
     downloaded: Arc<Mutex<HashSet<PathBuf>>>,
+    /// v1 player surfaces: queue truth per opened file (maps live in the
+    /// worker; the store keeps engines only).
+    player_sessions: Arc<Mutex<player::PlayerStore>>,
 }
 
 /// Canonicalize for set identity; fall back to the raw path (deleted or
@@ -711,6 +826,7 @@ pub fn run() {
             cancel_flag: Arc::new(AtomicBool::new(false)),
             settings: shared_settings.clone(),
             downloaded: Arc::new(Mutex::new(HashSet::new())),
+            player_sessions: Arc::new(Mutex::new(player::PlayerStore::default())),
         })
         .setup(move |app| {
             // Second launch while we run (e.g. the user double-clicks the
@@ -817,6 +933,12 @@ pub fn run() {
             register_native_host,
             unregister_native_host,
             bridge_status,
+            player_open,
+            player_status,
+            player_advance,
+            player_seek,
+            player_close,
+            player_prepare,
             cuda_status,
             install_cuda_runtime
         ])

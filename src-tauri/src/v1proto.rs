@@ -18,6 +18,7 @@ use crate::decide::{score_windows, smooth_verdicts, DecideConfig, Verdict};
 use crate::livemap::{map_chunk_silence, split_plan, MapConfig};
 
 /// One chunk's contribution to the position map.
+#[derive(serde::Serialize)]
 pub struct ChunkProto {
     pub index: usize,
     pub start_sec: f64,
@@ -231,5 +232,35 @@ mod tests {
         println!("PROTO-REPORT secs={:.1} chunks={} muted_ranges={muted_n} ducked_ranges={ducked_n} muted_frac={:.3} ducked_frac={:.3} total_ms={:.1} minute_cost_ms={:.1}",
             rep.total_audio_secs, rep.chunks.len(), rep.muted_fraction, rep.ducked_fraction, rep.total_ms, rep.minute_cost_ms);
         assert_eq!(rep.chunks.len(), 5);
+    }
+
+    /// Field safety check (4): mute rate on a pure-music song vs synthetic
+    /// ground truth. RECORDED ONLY — never gates (no threshold assert), so a
+    /// surprising rate can never redden `cargo test --lib`. Run with
+    /// `-- --nocapture` and copy SAFETY-MUTERATE-REPORT into docs/AUDIT.md.
+    #[test]
+    fn safety_pure_music_mute_rate_recorded() {
+        // 60s dense tonal mix, zero planted silence: ground truth says the
+        // songs-scope map SHOULD mute ~everything (music → Mute).
+        let mut l: Vec<f32> = Vec::new();
+        for k in 0..2 {
+            let mix: Vec<f32> = (0..SR as usize * 30)
+                .map(|i| {
+                    let t = i as f32 / SR as f32;
+                    0.3 * (2.0 * std::f32::consts::PI * (330.0 + k as f32 * 40.0) * t).sin()
+                        + 0.2 * (2.0 * std::f32::consts::PI * 497.0 * t).sin()
+                })
+                .collect();
+            l.extend(mix);
+        }
+        let r = l.clone();
+        let rep = build_position_map(&l, &r, SR, 60.0, &DecideConfig::default());
+        let muted_n: usize = rep.chunks.iter().map(|c| c.muted_ranges_sec.len()).sum();
+        let ducked_n: usize = rep.chunks.iter().map(|c| c.ducked_ranges_sec.len()).sum();
+        println!("SAFETY-MUTERATE-REPORT secs={:.1} chunks={} muted_ranges={muted_n} ducked_ranges={ducked_n} muted_frac={:.3} ducked_frac={:.3}",
+            rep.total_audio_secs, rep.chunks.len(), rep.muted_fraction, rep.ducked_fraction);
+        assert!((0.0..=1.0).contains(&rep.muted_fraction));
+        assert!((0.0..=1.0).contains(&rep.ducked_fraction));
+        assert_eq!(rep.chunks.len(), 1);
     }
 }

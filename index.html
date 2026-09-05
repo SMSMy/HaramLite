@@ -186,6 +186,33 @@
     
 </div>
 </div>
+<!-- Live player surface (v1 songs scope: session state + real maps, no audio out yet) -->
+<div id="pl-container" class="w-full">
+<div class="glass-effect border border-border-muted rounded-lg p-stack-lg flex flex-col gap-stack-md fade-in-up delay-200 hover:shadow-lg transition-shadow duration-300">
+<h3 class="font-label-md text-label-md text-cream-text" data-i18n="pl_title">المعالجة المباشرة</h3>
+<div class="flex gap-stack-sm">
+<button id="pl-file-btn" class="bg-surface-container text-cream-text border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high hover:border-on-surface-variant transition-all duration-300 apple-ease font-label-md text-label-md active:scale-95 shadow-sm" data-i18n="pl_pick">اختيار ملف</button>
+<button id="pl-prepare" class="bg-surface-container text-cream-text border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high hover:border-on-surface-variant transition-all duration-300 apple-ease font-label-md text-label-md active:scale-95 shadow-sm" data-i18n="pl_prepare">بناء الخريطة</button>
+</div>
+<span id="pl-file-name" class="font-label-sm text-label-sm text-on-surface-variant truncate" dir="ltr"></span>
+<div id="pl-chunks" class="flex flex-wrap gap-unit" role="group" aria-label="chunks"></div>
+<div id="pl-detail" class="font-label-sm text-label-sm text-cream-text bg-coal-surface/40 border border-border-muted rounded p-stack-sm min-h-8 whitespace-pre-wrap"></div>
+<div class="flex items-center gap-stack-sm">
+<span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="pl_seek">الموضع</span>
+<div class="relative flex-1 flex flex-col gap-unit">
+<input id="pl-seek" type="range" min="0" max="100" step="0.1" value="0" class="w-full accent-[#da7756] cursor-pointer"/>
+<div id="pl-ticks" class="relative h-1.5 rounded bg-coal-surface/60 border border-border-muted overflow-hidden"></div>
+</div>
+<span id="pl-pos" class="font-label-sm text-label-sm text-on-surface-variant w-20 text-left" dir="ltr">0:00</span>
+</div>
+<div class="flex flex-wrap items-center gap-stack-sm">
+<span id="pl-cur" class="font-label-sm text-label-sm text-clay-accent" dir="ltr"></span>
+<span id="pl-seek-note" class="font-label-sm text-label-sm text-on-surface-variant opacity-80" data-i18n="pl_seek_note">المنزلق للفحص فقط — لا يوجد تشغيل صوتي بعد</span>
+</div>
+<span id="pl-status" class="font-label-sm text-label-sm text-on-surface-variant"></span>
+<p id="pl-map" class="hidden text-clay-accent text-sm mt-2 whitespace-pre-wrap"></p>
+</div>
+</div>
 <!-- Visible pipeline stages (Sprint C2) -->
 <div id="stage-line" class="hidden flex items-center gap-stack-sm font-label-sm text-label-sm text-on-surface-variant fade-in-up delay-200">
     <span id="stage-name" class="text-clay-accent font-bold">فصل الصوت</span>

@@ -16,7 +16,7 @@
 #![allow(dead_code)]
 
 /// Lifecycle of one chunk inside the player queue.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum ChunkState {
     /// Queued, background worker has not finished it.
     Pending,
@@ -27,7 +27,8 @@ pub enum ChunkState {
 }
 
 /// Where a seek lands.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SeekAction {
     /// Chunk already Ready → resume instantly at this offset.
     Instant { chunk: usize, offset_sec: f64 },
@@ -144,6 +145,51 @@ impl PlayerEngine {
     pub fn can_start(&self) -> bool {
         !self.states.is_empty() && self.states[0] == ChunkState::Ready
     }
+
+    /// Full state snapshot for the surface (chunk pills). Cheap: ≤ dozens.
+    pub fn states_snapshot(&self) -> Vec<ChunkState> {
+        self.states.clone()
+    }
+
+    /// Whole-file map built → every queued chunk is inspectable.
+    /// Idempotent (Ready/Consumed stay untouched).
+    pub fn mark_all_ready(&mut self) {
+        for s in self.states.iter_mut() {
+            if *s == ChunkState::Pending {
+                *s = ChunkState::Ready;
+            }
+        }
+    }
+}
+
+/// Surface session store: one engine per opened file, keyed by id.
+/// Maps live in the worker (session.rs); the store keeps queue truth only.
+#[derive(Default)]
+pub struct PlayerStore {
+    next_id: u64,
+    docs: std::collections::HashMap<u64, PlayerEngine>,
+}
+
+impl PlayerStore {
+    pub fn open(&mut self, total_secs: f64, chunk_secs: f64) -> u64 {
+        // Approved look-ahead depth (2) lives in exactly one place.
+        let id = self.next_id;
+        self.next_id += 1;
+        self.docs.insert(id, PlayerEngine::new(total_secs, chunk_secs, 2));
+        id
+    }
+
+    pub fn get(&self, id: u64) -> Option<&PlayerEngine> {
+        self.docs.get(&id)
+    }
+
+    pub fn get_mut(&mut self, id: u64) -> Option<&mut PlayerEngine> {
+        self.docs.get_mut(&id)
+    }
+
+    pub fn close(&mut self, id: u64) -> bool {
+        self.docs.remove(&id).is_some()
+    }
 }
 
 #[cfg(test)]
@@ -226,5 +272,39 @@ mod tests {
         assert_eq!(e.seek(5.0), SeekAction::EndOfUnit);
         assert!(e.exhausted(0.0));
         assert!(!e.can_start());
+    }
+
+    #[test]
+    fn store_opens_tracks_closes_sessions() {
+        let mut st = PlayerStore::default();
+        let a = st.open(250.0, 60.0);
+        let b = st.open(30.0, 60.0);
+        assert_ne!(a, b, "ids unique");
+        assert_eq!(st.get(a).unwrap().chunk_count(), 5);
+        assert_eq!(st.get(9999).map(|_| ()), None, "unknown id");
+        st.get_mut(a).unwrap().mark_ready(0);
+        assert_eq!(st.get(a).unwrap().states_snapshot()[0], ChunkState::Ready);
+        assert!(st.close(a));
+        assert!(!st.close(a), "double close reports false");
+        assert_eq!(st.get(b).unwrap().chunk_count(), 1);
+    }
+
+    #[test]
+    fn prepare_marks_whole_file_ready_status_turns_honest() {
+        // Field defect 3: after the whole-file map is built, status must stop
+        // reporting the stale "waiting for chunks" freeze.
+        let mut e = engine();
+        assert!(e.exhausted(0.0), "pre-map → frozen is honest");
+        assert!(!e.can_start());
+        e.mark_all_ready();
+        assert!(e.can_start(), "post-map → chunk 0 Ready gates start");
+        assert!(!e.exhausted(0.0), "post-map → pos 0 inside Ready, not frozen");
+        assert!(!e.exhausted(70.0));
+        assert_eq!(e.next_needed(0.0), None, "frontier Ready → worker idles");
+        // Idempotent: Consumed history survives a second mark.
+        e.consume_through(65.0);
+        e.mark_all_ready();
+        assert_eq!(e.states_snapshot()[0], ChunkState::Consumed);
+        assert_eq!(e.states_snapshot()[1], ChunkState::Ready);
     }
 }
