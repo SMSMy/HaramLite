@@ -57,7 +57,7 @@
 
 ## للمطورين
 
-التطوير والبناء من المصدر موثق في [CONTRIBUTING.md](CONTRIBUTING.md).
+التطوير والبناء من المصدر موثق في [CONTRIBUTING.md](docs/CONTRIBUTING.md).
 
 **التقنيات:** Tauri v2 · Rust · ONNX Runtime (UVR-MDX-NET-Voc_FT) · FFmpeg · yt-dlp · TypeScript/Vite · Tailwind CSS · خط ثمانية (Thmanyah)
 
