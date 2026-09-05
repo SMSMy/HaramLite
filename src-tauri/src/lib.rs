@@ -17,6 +17,7 @@ mod separator;
 mod settings;
 mod silence;
 mod stft;
+mod v1proto;
 mod watch_service;
 mod yt_dlp;
 
