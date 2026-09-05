@@ -210,3 +210,23 @@
 #logcard.collapsed #log-view {
     display: none !important;
 }
+
+/* Production UX contract (2026-09-05): informative text is selectable with
+   I-beam (log reference), controls never are. Explicit so no future global
+   rule can silently flip either side. */
+#log-view, #batch-list, #ext-list, #about-body, #sep-result, #dl-result,
+#repair-list, #watch-path, #bridge-card-text {
+    user-select: text;
+    cursor: text;
+}
+button, select, .mode-card, .kind-card, #version-badge {
+    user-select: none;
+}
+/* In-app links (about modal): open externally via openUrl, never navigate. */
+.about-link {
+    color: #da7756;
+    cursor: pointer;
+}
+.about-link:hover {
+    text-decoration: underline;
+}
