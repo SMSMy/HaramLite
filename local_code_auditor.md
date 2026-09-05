@@ -32,7 +32,7 @@ tools:
 
 مهمتك ليست بناء ميزات، وليست إصلاح الكود، وليست اقتراح إعادة هيكلة.
 
-مهمتك هي العثور على علل حقيقية قابلة للإثبات، ثم توثيقها بدقة داخل ملف `AUDIT.md` فقط.
+مهمتك هي العثور على علل حقيقية قابلة للإثبات، ثم توثيقها بدقة داخل ملف `docs/AUDIT.md` فقط.
 
 
 
@@ -82,7 +82,7 @@ tools:
 
 
 
-راجع الوحدات بهذا الترتيب، ولا تنتقل إلى التالية إلا بعد مراجعة السابقة بعمق وتحديث `AUDIT.md`:
+راجع الوحدات بهذا الترتيب، ولا تنتقل إلى التالية إلا بعد مراجعة السابقة بعمق وتحديث `docs/AUDIT.md`:
 
 
 
@@ -150,9 +150,9 @@ tools:
 
 \- لا تعدل ملفات CI أو GitHub Actions.
 
-\- لا تنشئ أي ملف جديد سوى `AUDIT.md` إذا لم يكن موجوداً.
+\- لا تنشئ أي ملف جديد سوى `docs/AUDIT.md` إذا لم يكن موجوداً.
 
-\- لا تستبدل محتوى `AUDIT.md`.
+\- لا تستبدل محتوى `docs/AUDIT.md`.
 
 \- لا تحذف ملفات أو مجلدات.
 
@@ -222,7 +222,7 @@ tools:
 
 \- إنشاء أو تحديث ملف واحد فقط:
 
-&#x20; - `AUDIT.md` في جذر المشروع.
+&#x20; - `docs/AUDIT.md` في جذر المشروع.
 
 
 
@@ -288,7 +288,7 @@ session.lock
 
 surgical\_audit\_report.md
 
-CUDA\_RUNTIME\_PLAN.md
+docs/CUDA\_RUNTIME\_PLAN.md
 
 AUDIT.md
 
@@ -296,7 +296,7 @@ AUDIT.md
 
 
 
-أي عطل موثق سابقاً بوصفه "مُعالج" في `surgical\_audit\_report.md` أو `CUDA\_RUNTIME\_PLAN.md` لا تسجله كعطل جديد.
+أي عطل موثق سابقاً بوصفه "مُعالج" في `surgical\_audit\_report.md` أو `docs/CUDA\_RUNTIME\_PLAN.md` لا تسجله كعطل جديد.
 
 
 
@@ -310,7 +310,7 @@ AUDIT.md
 
 
 
-ملف `AUDIT.md` موجود ومُلتزم به في Git.
+ملف `docs/AUDIT.md` موجود ومُلتزم به في Git.
 
 
 
@@ -366,9 +366,9 @@ AUDIT.md
 
 \- لا تراجع كل المشروع دفعة واحدة.
 
-\- راجع وحدة واحدة بعمق، حدّث `AUDIT.md`، ثم انتقل للوحدة التالية.
+\- راجع وحدة واحدة بعمق، حدّث `docs/AUDIT.md`، ثم انتقل للوحدة التالية.
 
-\- إذا امتلأ السياق أو توقفت المراجعة، احفظ ما وصلت إليه في `AUDIT.md` واكتب بوضوح ما لم تتم مراجعته.
+\- إذا امتلأ السياق أو توقفت المراجعة، احفظ ما وصلت إليه في `docs/AUDIT.md` واكتب بوضوح ما لم تتم مراجعته.
 
 
 
@@ -472,7 +472,7 @@ Get-ChildItem -Path "browser-extension" -Filter "\*.js" -Recurse -File | ForEach
 
 1\. اقرأ `README` وأوامر التشغيل والاختبار والتكوين.
 
-2\. اقرأ `surgical\_audit\_report.md` و`CUDA\_RUNTIME\_PLAN.md` و`AUDIT.md` إن كانت موجودة.
+2\. اقرأ `surgical\_audit\_report.md` و`docs/CUDA\_RUNTIME\_PLAN.md` و`docs/AUDIT.md` إن كانت موجودة.
 
 3\. افحص سجلات التطبيق المسموح بها بحثاً عن آثار الانهيار الصامت.
 
@@ -502,7 +502,7 @@ Get-ChildItem -Path "browser-extension" -Filter "\*.js" -Recurse -File | ForEach
 
 9\. إذا كانت الأدلة غير كافية، سجله تحت "غير مؤكد" فقط.
 
-10\. بعد كل وحدة مكتملة، حدّث `AUDIT.md` قبل الانتقال إلى الوحدة التالية.
+10\. بعد كل وحدة مكتملة، حدّث `docs/AUDIT.md` قبل الانتقال إلى الوحدة التالية.
 
 
 
@@ -532,7 +532,7 @@ Get-ChildItem -Path "browser-extension" -Filter "\*.js" -Recurse -File | ForEach
 
 
 
-أضف في نهاية `AUDIT.md` فقط:
+أضف في نهاية `docs/AUDIT.md` فقط:
 
 
 
@@ -638,7 +638,7 @@ Get-ChildItem -Path "browser-extension" -Filter "\*.js" -Recurse -File | ForEach
 
 
 
-بعد تحديث `AUDIT.md`، لا تكرر التقرير كاملاً داخل المحادثة.
+بعد تحديث `docs/AUDIT.md`، لا تكرر التقرير كاملاً داخل المحادثة.
 
 
 
@@ -654,7 +654,7 @@ Get-ChildItem -Path "browser-extension" -Filter "\*.js" -Recurse -File | ForEach
 
 \- أوامر الفحص التي شغلتها ونتائجها.
 
-\- تأكيداً أنك لم تعدل أي شيء خارج `AUDIT.md`.
+\- تأكيداً أنك لم تعدل أي شيء خارج `docs/AUDIT.md`.
 
 \- ما بقي تحت قسم "لم يُراجع بعد".
 
