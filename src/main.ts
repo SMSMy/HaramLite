@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import * as dialog from '@tauri-apps/plugin-dialog';
@@ -122,6 +122,9 @@ const i18n = {
     pl_in_duck: 'داخل خفض',
     pl_in_pass: 'خارج الكتم',
     pl_ready_inspect: 'جاهز للفحص',
+    pl_play: 'تشغيل',
+    pl_pause: 'إيقاف مؤقت',
+    pl_audio_err: 'تعذر تشغيل الصوت',
     cuda_missing_text: 'كرت NVIDIA لديك مدعوم، لكن مكتبات تسريع CUDA غير منزّلة. فعّل الخيار وسينزّلها التطبيق تلقائياً.',
     cuda_ready: '✓ بيئة CUDA جاهزة — المعالجة ستكون أسرع على الكرت',
     cuda_downloading: 'جارٍ تنزيل مكتبات تسريع CUDA…',
@@ -224,6 +227,9 @@ const i18n = {
     pl_in_duck: 'inside duck',
     pl_in_pass: 'outside mute',
     pl_ready_inspect: 'Ready to inspect',
+    pl_play: 'Play',
+    pl_pause: 'Pause',
+    pl_audio_err: 'Audio playback failed',
     cuda_missing_text: 'Your NVIDIA GPU is supported, but the CUDA acceleration libraries are not downloaded yet. Enable the option and the app will download them automatically.',
     cuda_ready: '✓ CUDA is ready — processing will be faster on the GPU',
     cuda_downloading: 'Downloading CUDA acceleration libraries…',
@@ -1990,9 +1996,10 @@ function wireUpdater(): void {
 }
 
 /* ── live player surface (v1 songs scope) ─────────────────────────── */
-// Session state + REAL precomputed maps (player_prepare). Audio output
-// wiring belongs to the end-to-end prototype slice — this surface positions,
-// inspects and seeks, never plays.
+// Session state + REAL precomputed maps (player_prepare) + audio output
+// through the map (mute 0 / duck −12 dB / pass 1, 50ms anti-click ramps).
+// The surface plays the user's own file only — no live-extension path,
+// no system-WASAPI path (both closed until further notice).
 type PlChunkMap = {
   index: number;
   start_sec: number;
@@ -2018,10 +2025,23 @@ function plStateLabel(s: string): string {
   if (k === 'consumed') return t('pl_consumed');
   return t('pl_pending');
 }
-function plRangeList(ranges: [number, number][]): string {
-  if (!ranges.length) return t('pl_none');
+/** One time range, bidi-isolated: digits+colon must not reorder inside RTL. */
+function plBdiRange(parent: HTMLElement, a: number, b: number): void {
+  const el = document.createElement('bdi');
+  el.dir = 'ltr';
+  el.textContent = `${plFmt(a)}–${plFmt(b)}`;
+  parent.appendChild(el);
+}
+function plAppendRanges(parent: HTMLElement, ranges: [number, number][]): void {
+  if (!ranges.length) {
+    parent.appendChild(document.createTextNode(t('pl_none')));
+    return;
+  }
   const sep = lang === 'ar' ? '، ' : ', ';
-  return ranges.map(([a, b]) => `${plFmt(a)}–${plFmt(b)}`).join(sep);
+  ranges.forEach(([a, b], i) => {
+    if (i > 0) parent.appendChild(document.createTextNode(sep));
+    plBdiRange(parent, a, b);
+  });
 }
 /** Mute/duck range containing pos, mute wins on overlap. */
 function plRangeAt(pos: number): { kind: 'mute' | 'duck'; range: [number, number] } | null {
@@ -2070,6 +2090,7 @@ function paintPills(): void {
 function paintDetail(): void {
   const el = document.getElementById('pl-detail');
   if (!el) return;
+  el.replaceChildren();
   if (plSelected === null) {
     el.textContent = plLastStates.length ? t('pl_detail_pick') : '';
     return;
@@ -2077,12 +2098,16 @@ function paintDetail(): void {
   const idx = plSelected;
   const state = plLastStates[idx] !== undefined ? plStateLabel(plLastStates[idx]) : t('pl_none');
   const m = plMap[idx];
-  const muteTxt = m ? plRangeList(m.muted_ranges_sec) : t('pl_none');
-  const duckTxt = m ? plRangeList(m.ducked_ranges_sec) : t('pl_none');
-  const costTxt = m ? `${m.timing_ms.toFixed(1)}ms` : t('pl_none');
-  el.textContent =
-    `${t('pl_detail_title')} ${t('pl_chunk')} ${idx + 1} · ${t('pl_state')}: ${state} · ` +
-    `${t('pl_mute_ranges')}: ${muteTxt} · ${t('pl_duck_ranges')}: ${duckTxt} · ${t('pl_cost')}: ${costTxt}`;
+  el.append(
+    `${t('pl_detail_title')} ${t('pl_chunk')} ${idx + 1} · ${t('pl_state')}: ${state} · ${t('pl_mute_ranges')}: `,
+  );
+  plAppendRanges(el, m ? m.muted_ranges_sec : []);
+  el.append(` · ${t('pl_duck_ranges')}: `);
+  plAppendRanges(el, m ? m.ducked_ranges_sec : []);
+  const cost = document.createElement('bdi');
+  cost.dir = 'ltr';
+  cost.textContent = m ? `${m.timing_ms.toFixed(1)}ms` : t('pl_none');
+  el.append(` · ${t('pl_cost')}: `, cost);
 }
 function paintCur(pos: number): void {
   const el = document.getElementById('pl-cur');
@@ -2124,6 +2149,150 @@ function paintTicks(): void {
     for (const [a, b] of c.muted_ranges_sec) add(a, b, 'rgba(224,49,49,0.8)', t('pl_in_mute'));
   }
 }
+
+/* ── live audio output (v1 songs scope, end-to-end slice) ─────────────── */
+// The user's own file plays through the precomputed map: mute → 0,
+// duck → −12 dB (≈0.251), pass → 1, with fast ramps (no clicks).
+// Positions past the mapped end freeze silent — never raw unfiltered audio.
+const PL_DUCK_GAIN = 0.251;
+const PL_RAMP_SECS = 0.015;
+const PL_UI_SYNC_MS = 250;
+let plAudio: HTMLAudioElement | null = null;
+let plCtx: AudioContext | null = null;
+let plGain: GainNode | null = null;
+let plAudioSrc = '';
+let plPlaying = false;
+let plRaf = 0;
+let plLastGain = -1;
+let plLastUiSync = 0;
+function plMappedEnd(): number {
+  const last = plMap[plMap.length - 1];
+  return last ? last.start_sec + last.len_sec : 0;
+}
+/** Output gain at pos. Mute wins on overlap; past the map → 0 (freeze). */
+function plGainAt(pos: number): number {
+  if (plMappedEnd() <= 0 || pos < 0 || pos >= plMappedEnd()) return 0;
+  const hit = plRangeAt(pos);
+  if (hit === null) return 1;
+  return hit.kind === 'mute' ? 0 : PL_DUCK_GAIN;
+}
+function plPlayLabel(): void {
+  const btn = document.getElementById('pl-play') as HTMLButtonElement | null;
+  if (btn) btn.textContent = plPlaying ? t('pl_pause') : t('pl_play');
+}
+function plStopLoop(): void {
+  if (plRaf) cancelAnimationFrame(plRaf);
+  plRaf = 0;
+}
+function plStopAudio(): void {
+  plStopLoop();
+  try {
+    plAudio?.pause();
+  } catch { /* already stopped */ }
+  if (plPlaying) {
+    plPlaying = false;
+    plPlayLabel();
+  }
+  plLastGain = -1;
+}
+function plSyncSlider(pos: number): void {
+  const seekEl = document.getElementById('pl-seek') as HTMLInputElement | null;
+  if (seekEl && plDuration > 0 && document.activeElement !== seekEl) {
+    seekEl.value = String((pos / plDuration) * 100);
+  }
+  const sel = document.getElementById('pl-pos');
+  if (sel) sel.textContent = plFmt(pos);
+  paintCur(pos);
+}
+function plTick(): void {
+  plRaf = 0;
+  if (!plPlaying || !plAudio || !plCtx || !plGain) return;
+  const pos = plAudio.currentTime;
+  const g = plGainAt(pos);
+  if (g !== plLastGain) {
+    plLastGain = g;
+    plGain.gain.setTargetAtTime(g, plCtx.currentTime, PL_RAMP_SECS);
+  }
+  plSyncSlider(pos);
+  const now = performance.now();
+  if (now - plLastUiSync >= PL_UI_SYNC_MS) {
+    plLastUiSync = now;
+    void renderPlayer(pos);
+    if (plSession !== null) {
+      invoke<unknown>('player_advance', { id: plSession, pos }).catch(() => {});
+    }
+  }
+  if (pos >= plMappedEnd()) {
+    // Map exhausted → freeze silent at the edge, never raw audio.
+    plStopAudio();
+    void renderPlayer(Math.min(pos, plMappedEnd()));
+    return;
+  }
+  plRaf = requestAnimationFrame(plTick);
+}
+async function plTogglePlay(plPath: string): Promise<void> {
+  const mapEl = document.getElementById('pl-map');
+  if (plPlaying) {
+    plStopAudio();
+    if (plAudio) void renderPlayer(plAudio.currentTime);
+    return;
+  }
+  if (!plPath || plSession === null || plMap.length === 0 || plDuration <= 0) {
+    if (mapEl) {
+      mapEl.textContent = t('pl_nomap');
+      mapEl.classList.remove('hidden');
+    }
+    return;
+  }
+  try {
+    if (!plAudio) {
+      plAudio = new Audio();
+      plAudio.preload = 'auto';
+      plAudio.addEventListener('ended', () => {
+        plStopAudio();
+        plSyncSlider(plMappedEnd());
+        void renderPlayer(plMappedEnd());
+      });
+      plAudio.addEventListener('error', () => {
+        plStopAudio();
+        if (mapEl) {
+          mapEl.textContent = `✗ ${t('pl_audio_err')}`;
+          mapEl.classList.remove('hidden');
+        }
+        invoke('push_log', { level: 'error', message: 'player audio element error' });
+      });
+    }
+    if (!plCtx || !plGain) {
+      plCtx = new AudioContext();
+      const src = plCtx.createMediaElementSource(plAudio);
+      plGain = plCtx.createGain();
+      plGain.gain.value = 0;
+      src.connect(plGain).connect(plCtx.destination);
+    }
+    if (plCtx.state === 'suspended') await plCtx.resume();
+    const wantSrc = convertFileSrc(plPath);
+    if (plAudioSrc !== wantSrc) {
+      plAudioSrc = wantSrc;
+      plAudio.src = wantSrc;
+    }
+    const start = Math.min(Math.max(plCurPos(), 0), Math.max(plMappedEnd() - 0.05, 0));
+    plAudio.currentTime = start;
+    plLastGain = -1;
+    plLastUiSync = 0;
+    await plAudio.play();
+    plPlaying = true;
+    plPlayLabel();
+    plRaf = requestAnimationFrame(plTick);
+    invoke('push_log', { level: 'info', message: `player play from ${start.toFixed(1)}s` });
+  } catch (e) {
+    plStopAudio();
+    if (mapEl) {
+      mapEl.textContent = `✗ ${t('pl_audio_err')}`;
+      mapEl.classList.remove('hidden');
+    }
+    invoke('push_log', { level: 'error', message: `player play failed: ${e}` });
+  }
+}
 async function renderPlayer(pos: number): Promise<void> {
   if (plSession === null || plDuration <= 0) return;
   try {
@@ -2153,6 +2322,7 @@ function wirePlayer(): void {
   let plPath = '';
   const fileBtn = document.getElementById('pl-file-btn');
   const prepBtn = document.getElementById('pl-prepare') as HTMLButtonElement | null;
+  const playBtn = document.getElementById('pl-play') as HTMLButtonElement | null;
   const nameEl = document.getElementById('pl-file-name');
   const mapEl = document.getElementById('pl-map');
   const seekEl = document.getElementById('pl-seek') as HTMLInputElement | null;
@@ -2168,6 +2338,7 @@ function wirePlayer(): void {
     try {
       const info = await invoke<MediaInfo>('probe_media', { path: picked });
       if (!info.has_audio) return;
+      plStopAudio();
       if (plSession !== null) await invoke('player_close', { id: plSession }).catch(() => {});
       plSession = await invoke<number>('player_open', { totalSecs: info.duration_secs, chunkSecs: 60 });
       plPath = picked;
@@ -2176,6 +2347,8 @@ function wirePlayer(): void {
       plSelected = null;
       plLastStates = [];
       plLastChunk = null;
+      if (playBtn) playBtn.disabled = true;
+      plPlayLabel();
       if (nameEl) nameEl.textContent = picked.split(/[\\/]/).pop() ?? picked;
       if (mapEl) mapEl.classList.add('hidden');
       if (seekEl) { seekEl.value = '0'; }
@@ -2197,6 +2370,7 @@ function wirePlayer(): void {
       }
       return;
     }
+    plStopAudio();
     prepBtn.disabled = true;
     mapEl.textContent = t('pl_preparing');
     mapEl.classList.remove('hidden');
@@ -2210,6 +2384,7 @@ function wirePlayer(): void {
       if (rep.total_secs > 0) plDuration = rep.total_secs;
       plSelected = null;
       paintTicks();
+      if (playBtn) playBtn.disabled = false;
       const muted = rep.chunks.reduce((n, c) => n + c.muted_ranges_sec.length, 0);
       mapEl.textContent =
         `${rep.chunks.length} ${t('pl_chunks')} · ${muted} ${t('pl_muted')} · ${(rep.minute_cost_ms).toFixed(1)}ms/min`;
@@ -2229,11 +2404,17 @@ function wirePlayer(): void {
   seekEl?.addEventListener('input', () => {
     if (plDuration <= 0) return;
     const pos = (Number(seekEl.value) / 100) * plDuration;
+    if (plPlaying && plAudio) {
+      plAudio.currentTime = Math.min(pos, Math.max(plMappedEnd() - 0.05, 0));
+      plLastGain = -1;
+    }
     void renderPlayer(pos);
     if (plSession !== null) {
       invoke<unknown>('player_seek', { id: plSession, pos }).catch(console.error);
     }
   });
+
+  playBtn?.addEventListener('click', () => void plTogglePlay(plPath));
 }
 
 /* ── browser integration (Sprint E3: persistent checkbox) ───────────── */
