@@ -1,9 +1,11 @@
 mod bridge;
 mod cli;
 mod cuda_runtime;
+mod decide;
 mod dynamics;
 mod effects;
 mod filters;
+mod livemap;
 mod logging;
 mod loudness;
 mod media;

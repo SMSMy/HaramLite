@@ -38,3 +38,6 @@ src-tauri/vc_redist.x64.exe
 
 # Updater signing private key — NEVER commit (public key lives in tauri.conf.json)
 /updater.key
+
+# Third-party reference only — ideas, never code (AGPL). See inspiration/NOTES.md.
+/inspiration/1.32.2_0/
