@@ -37,7 +37,7 @@ const i18n = {
     media_title: 'الملف',
     mode_title: 'الوضع',
     mode_song: 'أغنية',
-    mode_song_desc: 'إذا كنت تعزل الموسيقى عن أغنية، اختر هذا الخيار؛ سضيف قطع الصمت ويزيل كتمة الصوت.',
+    mode_song_desc: 'إذا كنت تعزل الموسيقى عن أغنية، اختر هذا الخيار؛ سيضاف قطع الصمت ويزيل كتمة الصوت.',
     mode_clip: 'مقطع عادي',
     mode_clip_desc: 'للمقاطع التي تحتوي على متحدثين: لن يقطع الصمت، وسيزيل الموسيقى فقط.',
     fmt_label: 'صيغة الإخراج:',
@@ -60,7 +60,8 @@ const i18n = {
     btn_report: 'الإبلاغ عن مشكلة',
     about_title: 'حول HaramLite',
     about_ok: 'حسناً',
-    about_dev: 'التطوير: فريق HaramMute',
+    about_dev: 'التطوير:',
+    about_dev_rest: 'أداة مفتوحة المصدر تعمل محلياً 100% حفاظاً على الخصوصية.',
     about_credits: 'أهل الفضل',
     about_ok_modal: 'حسناً',
     preview_label: 'معاينة سريعة',
@@ -136,7 +137,8 @@ const i18n = {
     btn_report: 'Report an issue',
     about_title: 'About HaramLite',
     about_ok: 'OK',
-    about_dev: 'Developed by the HaramMute team',
+    about_dev: 'Developed by:',
+    about_dev_rest: 'A fully local open-source tool built for privacy.',
     about_credits: 'Credits',
     about_ok_modal: 'OK',
     preview_label: 'Quick preview',
@@ -430,6 +432,7 @@ function collectSettings(): RustSettings {
     preview: localStorage.getItem('hl.preview') === '1',
     preview_seconds: Number(localStorage.getItem('hl.preview_seconds')) || 15,
     keep_instrumental: localStorage.getItem('hl.keep_inst') === '1',
+    bridge_enabled: localStorage.getItem('hl.bridge') === '1',
     log_open: logOpen,
     watch_enabled: localStorage.getItem('hl.watch') === '1',
     watch_path: localStorage.getItem('hl.watch_path') || null,
@@ -455,6 +458,7 @@ async function seedSettings(): Promise<void> {
     const bools: [keyof RustSettings, string][] = [
       ['cuda', 'hl.cuda'], ['notify', 'hl.notify'], ['preview', 'hl.preview'],
       ['keep_instrumental', 'hl.keep_inst'], ['watch_enabled', 'hl.watch'],
+      ['bridge_enabled', 'hl.bridge'],
     ];
     for (const [k, ls] of bools) {
       if (localStorage.getItem(ls) === null && s[k] !== undefined) {
@@ -676,6 +680,27 @@ async function runProbe(rawPath?: string): Promise<MediaInfo | null> {
 
 function outDirOf(p: string): string {
   return p.replace(/[\\/]+[^\\/]+$/, '');
+}
+
+/* ── production hardening: silence the WebView default context menu ── */
+// Release builds ship no devtools (tauri features=[] — verified, no
+// open_devtools anywhere), but WebView2 still pops its default menu
+// (Back/Refresh/More tools…) on right-click. Suppress it app-wide EXCEPT
+// inside genuinely editable fields, where the native menu carries cut/copy/
+// paste. Read-only/disabled fields fall through to suppression.
+function wireContextMenu(): void {
+  window.addEventListener('contextmenu', (ev) => {
+    const t = ev.target as HTMLElement | null;
+    const field = t?.closest?.('input, textarea, [contenteditable="true"], [contenteditable=""]') as (HTMLInputElement | HTMLTextAreaElement | HTMLElement) | null;
+    if (field) {
+      if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+        if (!field.readOnly && !field.disabled) return;
+      } else {
+        return; // contenteditable host itself
+      }
+    }
+    ev.preventDefault();
+  });
 }
 
 /* ── wiring ─────────────────────────────────────────────────────────── */
@@ -1482,6 +1507,11 @@ function wireSettings(): void {
       const cb = document.getElementById('setting-watch') as HTMLInputElement | null;
       if (cb) cb.checked = s.watch_enabled;
     }
+    if (typeof s.bridge_enabled === 'boolean') {
+      localStorage.setItem('hl.bridge', s.bridge_enabled ? '1' : '0');
+      const cb = document.getElementById('setting-bridge') as HTMLInputElement | null;
+      if (cb) cb.checked = s.bridge_enabled;
+    }
     if (typeof s.watch_path === 'string') localStorage.setItem('hl.watch_path', s.watch_path);
     refreshWatchUi?.();
   });
@@ -1597,27 +1627,32 @@ function wireExtJobs(): void {
 }
 
 /* ── about + report (Sprint B3/B4) ──────────────────────────────────── */
+type Credit = { name: string; url?: string; ar: string; en: string };
 function fillAbout(): void {
   const body = document.getElementById('about-body');
   if (!body) return;
-  const credits = [
-    'UVR-MDX-NET-Voc_FT — نموذج الفصل (63MB، تشغيل محلي كامل)',
-    'ONNX Runtime — محرك الاستدلال (CPU / DirectML / CUDA)',
-    'FFmpeg / ffprobe — الفحص والمعالجة والترميز',
-    'yt-dlp — تنزيل الوسائط',
-    'Thmanyah Typeface — الخط العربي',
-    'Material Symbols — الأيقونات',
+  const credits: Credit[] = [
+    { name: 'UVR-MDX-NET-Voc_FT', ar: 'نموذج الفصل (63MB، تشغيل محلي كامل)', en: 'separation model (63MB, fully local)' },
+    { name: 'ONNX Runtime', ar: 'محرك الاستدلال (CPU / DirectML / CUDA)', en: 'inference engine (CPU / DirectML / CUDA)' },
+    { name: 'FFmpeg / ffprobe', ar: 'الفحص والمعالجة والترميز', en: 'probing, processing and encoding' },
+    { name: 'yt-dlp', ar: 'تنزيل الوسائط', en: 'media downloads' },
+    { name: 'Thmanyah Typeface', ar: 'الخط العربي', en: 'Arabic typeface' },
+    { name: 'Material Symbols', ar: 'الأيقونات', en: 'icons' },
+    { name: 'HaramMute', url: 'https://github.com/alganzory', ar: 'الملهم الأول', en: 'The first inspiration' },
   ];
+  const desc = (c: Credit): string => (lang === 'ar' ? c.ar : c.en);
+  const link = (text: string, url: string): string =>
+    `<span class="about-link" data-open-url="${url}">${text}</span>`;
   body.innerHTML = `
     <div class="flex items-center gap-unit">
       <span class="font-bold text-clay-accent">HaramLite</span>
       <span id="about-version" class="bg-clay-accent/20 text-clay-accent px-1.5 py-0.5 rounded font-bold">v${appVersion || '—'}</span>
     </div>
-    <p>${t('about_dev')} — أداة رأي تعمل محلياً 100% حفاظاً على الخصوصية.</p>
+    <p>${t('about_dev')} ${link('smsmy', 'https://github.com/SMSMy/HaramLite')} — ${t('about_dev_rest')}</p>
     <div class="mt-2">
       <div class="font-bold text-on-surface-variant mb-1">${t('about_credits')}:</div>
       <ul class="flex flex-col gap-unit text-on-surface-variant text-xs leading-relaxed">
-        ${credits.map((c) => `<li>• ${c}</li>`).join('')}
+        ${credits.map((c) => `<li>• ${c.url ? link(c.name, c.url) : c.name} — ${desc(c)}</li>`).join('')}
       </ul>
     </div>`;
 }
@@ -1627,6 +1662,15 @@ function wireAbout(): void {
     fillAbout();
     overlay?.classList.remove('hidden');
   };
+  // External links inside the modal (dev credit, inspiring projects):
+  // delegated once on the stable container — innerHTML re-renders freely.
+  // data-open-url only (never raw href — href would navigate the WebView
+  // itself out of the app and break it).
+  document.getElementById('about-body')?.addEventListener('click', (e) => {
+    const el = (e.target as HTMLElement).closest?.('[data-open-url]') as HTMLElement | null;
+    const url = el?.getAttribute('data-open-url');
+    if (url) void openUrl(url).catch((err) => console.error('openUrl failed', err));
+  });
   document.getElementById('btn-about')?.addEventListener('click', open);
   document.getElementById('about-close')?.addEventListener('click', () => overlay?.classList.add('hidden'));
   document.getElementById('about-ok')?.addEventListener('click', () => overlay?.classList.add('hidden'));
@@ -1806,23 +1850,53 @@ function wireUpdater(): void {
   document.getElementById('btn-check-update')?.addEventListener('click', () => void manualUpdateCheck());
 }
 
-/* ── browser integration (Sprint E2) ────────────────────────────────── */
+/* ── browser integration (Sprint E3: persistent checkbox) ───────────── */
 function wireBridge(): void {
   let bridgeCardTimer: number | undefined; // F-5: one pending hide at a time
-  document.getElementById('btn-bridge')?.addEventListener('click', async () => {
-    // Audit 2026-09-03: register every supported browser — the backend
-    // accepts 'firefox' but the UI hardcoded 'chrome', leaving Firefox
-    // users with no way to enable the integration.
+  const cb = document.getElementById('setting-bridge') as HTMLInputElement | null;
+
+  async function applyBridge(on: boolean): Promise<void> {
     try {
-      const r1 = await invoke<string>('register_native_host', { browser: 'chrome' });
-      const r2 = await invoke<string>('register_native_host', { browser: 'firefox' });
-      showToast(`${r1}\n${r2}`);
-      invoke('push_log', { level: 'info', message: `${r1} / ${r2}` });
+      if (on) {
+        // Same backend enable path as before — both browser groups.
+        const r1 = await invoke<string>('register_native_host', { browser: 'chrome' });
+        const r2 = await invoke<string>('register_native_host', { browser: 'firefox' });
+        showToast(`${r1}\n${r2}`);
+        invoke('push_log', { level: 'info', message: `${r1} / ${r2}` });
+      } else {
+        const r = await invoke<string>('unregister_native_host');
+        showToast(r);
+        invoke('push_log', { level: 'info', message: r });
+      }
+      localStorage.setItem('hl.bridge', on ? '1' : '0');
+      if (cb) cb.checked = on;
+      pushSettings();
     } catch (e) {
+      // Revert the checkbox to backend truth — never display a lie.
+      try {
+        const st = await invoke<{ enabled: boolean }>('bridge_status');
+        if (cb) cb.checked = st.enabled;
+      } catch { /* dev builds — leave as-is */ }
       showToast(`✗ ${String(e).slice(0, 120)}`);
-      invoke('push_log', { level: 'error', message: `native host registration failed: ${e}` });
+      invoke('push_log', { level: 'error', message: `bridge toggle failed: ${e}` });
     }
-  });
+  }
+
+  cb?.addEventListener('change', () => void applyBridge(!!cb.checked));
+
+  // Init: backend ground truth wins over any stale cache — status known at
+  // a glance and reconciled into settings so it survives restarts truthfully.
+  void (async () => {
+    try {
+      const st = await invoke<{ enabled: boolean }>('bridge_status');
+      if (cb) cb.checked = st.enabled;
+      if ((localStorage.getItem('hl.bridge') === '1') !== st.enabled) {
+        localStorage.setItem('hl.bridge', st.enabled ? '1' : '0');
+        pushSettings();
+        invoke('push_log', { level: 'info', message: `bridge checkbox reconciled to ${st.enabled}` });
+      }
+    } catch { /* dev/portable builds — leave unchecked */ }
+  })();
   void listen<{ name: string; ok: boolean; seconds?: number; error?: string }>('bridge-done', (ev) => {
     const p = ev.payload;
     showToast(p.ok
@@ -1858,6 +1932,7 @@ function wireBridge(): void {
 
 function wire(): void {
   startStallDetector();
+  wireContextMenu();
   wireLang();
   wireSettings();
 

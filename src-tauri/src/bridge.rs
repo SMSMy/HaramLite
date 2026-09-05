@@ -785,8 +785,89 @@ pub fn ensure_registered() {
     }
 }
 
-pub fn register(app: &tauri::AppHandle, browser: &str) -> Result<String, String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+/// All native-messaging registry locations we manage (Chrome group + Firefox).
+pub fn registry_targets() -> [&'static str; 4] {
+    [
+        r"Software\Google\Chrome\NativeMessagingHosts",
+        r"Software\Chromium\NativeMessagingHosts",
+        r"Software\Microsoft\Edge\NativeMessagingHosts",
+        r"Software\Mozilla\NativeMessagingHosts",
+    ]
+}
+
+/// Manifest location under any app-data base (pure — unit-tested).
+/// Production passes the Tauri app-data dir (same dir `register` writes).
+pub fn manifest_path_for(base: &Path) -> PathBuf {
+    base.join("native-host").join(format!("{HOST_NAME}.json"))
+}
+
+/// Pure comparison: does a registry default value point at our manifest?
+/// (`None` = missing/unreadable key — never counts as registered.)
+pub fn is_subkey_match(actual: Option<&str>, expected_manifest: &str) -> bool {
+    matches!(actual, Some(v) if v == expected_manifest)
+}
+
+/// Live integration status: the manifest must exist AND at least one
+/// registry subkey must point at it. Either half missing → disabled.
+/// (Reads the real HKCU — runtime only; tests cover the pure pieces.)
+pub fn is_registered(app: &tauri::AppHandle) -> bool {
+    let base = app.path().app_data_dir().unwrap_or_default();
+    let manifest = manifest_path_for(&base);
+    if !manifest.is_file() {
+        return false;
+    }
+    let expected = manifest.to_string_lossy().into_owned();
+    #[cfg(target_os = "windows")]
+    {
+        use winreg::enums::HKEY_CURRENT_USER;
+        use winreg::RegKey;
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        for t in registry_targets() {
+            let sub = format!("{t}\\{HOST_NAME}");
+            if let Ok(key) = hkcu.open_subkey(&sub) {
+                let actual: Result<String, _> = key.get_value("");
+                if is_subkey_match(actual.as_deref().ok(), &expected) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = expected;
+        // Non-Windows hosts have no registry: manifest presence is the status.
+        true
+    }
+}
+
+/// Disable integration: remove every registry subkey we manage (missing is
+/// fine) and delete the host manifest so startup self-heal stays quiet.
+/// Mirror of `register` — the checkbox-off path.
+pub fn unregister(app: &tauri::AppHandle) -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use winreg::enums::HKEY_CURRENT_USER;
+        use winreg::RegKey;
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        for t in registry_targets() {
+            let sub = format!("{t}\\{HOST_NAME}");
+            // Best-effort: absent keys and legacy values simply vanish.
+            if let Ok((parent, _)) = hkcu.create_subkey(t) {
+                let _ = parent.delete_value(HOST_NAME);
+            }
+            let _ = hkcu.delete_subkey(&sub);
+        }
+    }
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let manifest = manifest_path_for(&base);
+    if manifest.is_file() {
+        std::fs::remove_file(&manifest).map_err(|e| e.to_string())?;
+    }
+    Ok("أُوقف التكامل مع المتصفح — أُزيلت المفاتيح والمانيفست ✓".into())
+}
+
+pub fn register(app: &tauri::AppHandle, browser: &str) -> Result<String, String> {    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let dir = base.join("native-host");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -1023,5 +1104,21 @@ mod tests {
         clear_stale_requests(&dir, now, 0);
         assert!(!fresh.exists(), "with zero grace the file is stale and must go");
         teardown(&base);
+    }
+
+    #[test]
+    fn status_helpers_are_pure_and_honest() {
+        // Manifest location composes under any base (production passes the
+        // Tauri app-data dir — same dir `register` writes).
+        let p = manifest_path_for(Path::new(r"C:\base"));
+        assert_eq!(p.file_name().and_then(|n| n.to_str()), Some("com.harammute.haramlite.json"));
+        assert!(p.to_string_lossy().contains("native-host"));
+        // Four managed locations, stable order for logs.
+        assert_eq!(registry_targets().len(), 4);
+        // Only an exact match counts — missing/foreign never does.
+        assert!(is_subkey_match(Some(r"C:\a\com.harammute.haramlite.json"), r"C:\a\com.harammute.haramlite.json"));
+        assert!(!is_subkey_match(None, r"C:\a\com.harammute.haramlite.json"));
+        assert!(!is_subkey_match(Some(r"C:\other\host.json"), r"C:\a\com.harammute.haramlite.json"));
+        assert!(!is_subkey_match(Some(""), r"C:\a\com.harammute.haramlite.json"));
     }
 }

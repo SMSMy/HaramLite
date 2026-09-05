@@ -399,6 +399,19 @@ fn register_native_host(app: tauri::AppHandle, browser: String) -> Result<String
     bridge::register(&app, &browser)
 }
 
+/// Sprint E3: live integration status for the persistent checkbox —
+/// ground truth is manifest + registry, never the cached setting.
+#[tauri::command]
+fn bridge_status(app: tauri::AppHandle) -> serde_json::Value {
+    serde_json::json!({ "enabled": bridge::is_registered(&app) })
+}
+
+/// Sprint E3: checkbox-off path — removes keys + manifest (mirror of register).
+#[tauri::command]
+fn unregister_native_host(app: tauri::AppHandle) -> Result<String, String> {
+    bridge::unregister(&app)
+}
+
 /// Smart CUDA toggle support: NVIDIA GPU present? runtime DLLs ready?
 /// `cuda: true` means the sixteen runtime files sit in the app's bin folder
 /// (self-downloaded) — the UI offers the one-click install when false.
@@ -702,6 +715,8 @@ pub fn run() {
             get_settings,
             set_settings,
             register_native_host,
+            unregister_native_host,
+            bridge_status,
             cuda_status,
             install_cuda_runtime
         ])

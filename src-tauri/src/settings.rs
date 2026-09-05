@@ -26,6 +26,7 @@ pub struct Settings {
     pub watch_out_kind: String,   // "auto" | "video" | "audio"
     pub watch_max_size_mb: u64,   // disk guard: reject larger files
     pub watch_rescan_secs: u64,   // periodic rescan (notify misses events)
+    pub bridge_enabled: bool,     // browser-integration checkbox (Sprint E3)
 }
 
 impl Default for Settings {
@@ -44,6 +45,7 @@ impl Default for Settings {
             watch_out_kind: "auto".into(),
             watch_max_size_mb: 2048,
             watch_rescan_secs: 60,
+            bridge_enabled: false,
         }
     }
 }
