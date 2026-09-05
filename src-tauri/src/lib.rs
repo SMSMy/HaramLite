@@ -1,4 +1,5 @@
 mod bridge;
+mod calibrate;
 mod cli;
 mod cuda_runtime;
 mod decide;
