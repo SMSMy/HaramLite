@@ -15,6 +15,7 @@ mod player;
 mod repair;
 mod reverb_delay;
 mod separator;
+mod session;
 mod settings;
 mod silence;
 mod stft;

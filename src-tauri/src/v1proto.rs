@@ -80,6 +80,44 @@ fn collect_ranges(
     fused
 }
 
+/// Build one chunk's contribution (split out so the player session can
+/// produce chunks in engine-priority order instead of file order).
+/// `start`/`len` are absolute seconds; buffers hold the WHOLE unit.
+pub fn map_one_chunk(
+    l: &[f32],
+    r: &[f32],
+    sr: u32,
+    idx: usize,
+    start: f64,
+    len: f64,
+    dcfg: &DecideConfig,
+) -> ChunkProto {
+    let ct = Instant::now();
+    let mcfg = MapConfig::default();
+    let a = (start * sr as f64) as usize;
+    let b = ((start + len) * sr as f64) as usize;
+    let a = a.min(l.len().min(r.len()));
+    let b = b.min(l.len().min(r.len()));
+    let m = map_chunk_silence(&l[a..b], &r[a..b], sr, idx, start, &mcfg);
+    let scores = score_windows(&l[a..b], &r[a..b], sr, &m, dcfg);
+    let scored = scores.iter().filter(|s| !s.silent).count();
+    let skipped = scores.len() - scored;
+    let verdicts = smooth_verdicts(&scores, dcfg, dcfg.hop_secs);
+    let span_end = start + len;
+    let muted = collect_ranges(&verdicts, Verdict::Mute, span_end);
+    let ducked = collect_ranges(&verdicts, Verdict::Duck, span_end);
+    ChunkProto {
+        index: idx,
+        start_sec: start,
+        len_sec: len,
+        muted_ranges_sec: muted,
+        ducked_ranges_sec: ducked,
+        scored_windows: scored,
+        skipped_windows: skipped,
+        timing_ms: ct.elapsed().as_secs_f32() * 1000.0,
+    }
+}
+
 /// Build the position map of one in-memory audio unit.
 pub fn build_position_map(
     l: &[f32],
@@ -90,35 +128,15 @@ pub fn build_position_map(
 ) -> ProtoReport {
     let t0 = Instant::now();
     let total_audio_secs = if sr > 0 { l.len().min(r.len()) as f64 / sr as f64 } else { 0.0 };
-    let mcfg = MapConfig::default();
     let mut chunks = Vec::new();
     let mut muted_len = 0.0f64;
     let mut ducked_len = 0.0f64;
 
     for (idx, start, len) in split_plan(total_audio_secs, chunk_secs) {
-        let ct = Instant::now();
-        let a = (start * sr as f64) as usize;
-        let b = ((start + len) * sr as f64) as usize;
-        let m = map_chunk_silence(&l[a..b], &r[a..b], sr, idx, start, &mcfg);
-        let scores = score_windows(&l[a..b], &r[a..b], sr, &m, dcfg);
-        let scored = scores.iter().filter(|s| !s.silent).count();
-        let skipped = scores.len() - scored;
-        let verdicts = smooth_verdicts(&scores, dcfg, dcfg.hop_secs);
-        let span_end = start + len;
-        let muted = collect_ranges(&verdicts, Verdict::Mute, span_end);
-        let ducked = collect_ranges(&verdicts, Verdict::Duck, span_end);
-        muted_len += muted.iter().map(|(a, b)| b - a).sum::<f64>();
-        ducked_len += ducked.iter().map(|(a, b)| b - a).sum::<f64>();
-        chunks.push(ChunkProto {
-            index: idx,
-            start_sec: start,
-            len_sec: len,
-            muted_ranges_sec: muted,
-            ducked_ranges_sec: ducked,
-            scored_windows: scored,
-            skipped_windows: skipped,
-            timing_ms: ct.elapsed().as_secs_f32() * 1000.0,
-        });
+        let c = map_one_chunk(l, r, sr, idx, start, len, dcfg);
+        muted_len += c.muted_ranges_sec.iter().map(|(a, b)| b - a).sum::<f64>();
+        ducked_len += c.ducked_ranges_sec.iter().map(|(a, b)| b - a).sum::<f64>();
+        chunks.push(c);
     }
 
     let total_ms = t0.elapsed().as_secs_f32() * 1000.0;
