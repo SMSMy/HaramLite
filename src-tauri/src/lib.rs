@@ -11,6 +11,7 @@ mod logging;
 mod loudness;
 mod media;
 mod pipeline;
+mod player;
 mod repair;
 mod reverb_delay;
 mod separator;
