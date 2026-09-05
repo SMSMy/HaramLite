@@ -27,7 +27,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZEMUY4RERGREVBNjZERDUKUldUVmJhYmUzNDBmYlg4eVBsak1RdHFzc1JxdTVvMVdCbEQ2dS8rdjQvcTRCcWxMems4ZEZxNjcK",
+      "active": false,      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZEMUY4RERGREVBNjZERDUKUldUVmJhYmUzNDBmYlg4eVBsak1RdHFzc1JxdTVvMVdCbEQ2dS8rdjQvcTRCcWxMems4ZEZxNjcK",
       "endpoints": [
         "https://github.com/SMSMy/HaramLite/releases/latest/download/latest.json"
       ]
@@ -36,7 +36,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
