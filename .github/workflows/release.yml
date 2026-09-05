@@ -63,6 +63,11 @@ jobs:
           releaseDraft: false
           prerelease: false
           updaterJsonPreferNsis: true
+          # TEMPORARY (user decision 2026-09-05): updater signing deferred —
+          # TAURI_SIGNING_PRIVATE_KEY is not set yet, so skip updater artifacts
+          # to keep releases green. Revert (delete this line) when the secret
+          # is added; the in-app updater UI already degrades gracefully.
+          includeUpdaterJson: false
 
       - name: Publish self-repair assets (assets-v1, idempotent)
         shell: pwsh
