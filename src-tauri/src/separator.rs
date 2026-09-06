@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use hound::{SampleFormat, WavReader, WavSpec, WavWriter};
 
 use crate::stft::{DIM_F, HOP, StftPlan};
+use crate::{decide, livemap, silence};
 
 pub const MODEL_FILENAME: &str = "UVR-MDX-NET-Voc_FT.onnx";
 
@@ -161,6 +162,51 @@ fn normalize(mix: &mut [Vec<f32>; 2]) -> f32 {
 struct MdxSession {
     session: ort::session::Session,
     plan: StftPlan,
+}
+
+/// Expert D2د: provider truth for the bridge status (CPU-only policy).
+/// Written best-effort on every session load; the native host (a separate
+/// process that cannot see ACTIVE_PROVIDER) reads this file to announce the
+/// provider — and honest durations — to the extension page.
+pub fn provider_file() -> PathBuf {
+    provider_file_in(
+        &dirs::data_dir()
+            .unwrap_or_default()
+            .join("com.harammute.haramlite"),
+    )
+}
+
+/// Pure path join (unit-tested); production passes the app-data base.
+pub fn provider_file_in(base: &Path) -> PathBuf {
+    base.join("provider.json")
+}
+
+pub fn record_provider_in(base: &Path, name: &str) {
+    let p = provider_file_in(base);
+    if std::fs::create_dir_all(base).is_err() {
+        return;
+    }
+    let _ = std::fs::write(&p, serde_json::json!({ "provider": name }).to_string());
+}
+
+pub fn record_provider(name: &str) {
+    if let Some(base) = provider_file().parent().map(|p| p.to_path_buf()) {
+        record_provider_in(&base, name);
+    }
+}
+
+/// None on missing/corrupt file — the page treats unknown as unannounced.
+pub fn read_provider_in(path: &Path) -> Option<String> {
+    let s = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str::<serde_json::Value>(&s)
+        .ok()?
+        .get("provider")?
+        .as_str()
+        .map(|s| s.to_string())
+}
+
+pub fn read_provider() -> Option<String> {
+    read_provider_in(&provider_file())
 }
 
 /// Name of the execution provider the active session uses ("DirectML"/"CPU").
@@ -377,6 +423,7 @@ impl MdxSession {
         };
 
         let _ = ACTIVE_PROVIDER.set(provider_name.to_string());
+        record_provider(provider_name);
         tracing::info!(target: "sep", "ONNX session ready in {:.1}s: {}", t_session.elapsed().as_secs_f32(), model_path.display());
         Ok(Self { session, plan: StftPlan::new() })
     }
@@ -499,7 +546,102 @@ fn demix(
     Ok(source)
 }
 
+/// Expert D2أ/D2ب: whole-mix analysis from the normalized WAV (seconds
+/// against MDX minutes — always logged by the caller, never silent).
+/// - `dense`: sustained-music gate (≥6 consecutive conf>0.5 windows) → the
+///   clip deserves FULL MDX; sparser mixes go detect-then-mute.
+/// - `suspect`: kept (non-silence) spans ± [`SUSPECT_PAD_SECS`] padding,
+///   merged and clamped — the ONLY ranges MDX ever sees.
+pub struct MixAnalysis {
+    pub dense: bool,
+    pub suspect: Vec<(usize, usize)>,
+    pub scored_windows: usize,
+}
+
+/// Padding around every suspect span so MDX context (STFT windows, model
+/// receptive field) never starves at the edges.
+pub const SUSPECT_PAD_SECS: f64 = 2.0;
+
+pub fn analyze_mix(l: &[f32], r: &[f32], sr: u32) -> MixAnalysis {
+    let n = l.len().min(r.len());
+    let mut out = MixAnalysis { dense: false, suspect: Vec::new(), scored_windows: 0 };
+    if n == 0 || sr == 0 {
+        return out;
+    }
+    // Suspect spans from the silence map (sample-exact kept ranges).
+    let kept = silence::compute_kept_ranges(l, r, sr, &silence::SilenceConfig::default());
+    let pad = (SUSPECT_PAD_SECS * sr as f64) as usize;
+    let mut spans: Vec<(usize, usize)> = kept
+        .into_iter()
+        .map(|(a, b)| (a.saturating_sub(pad), (b + pad).min(n)))
+        .filter(|(a, b)| b > a)
+        .collect();
+    spans.sort();
+    for (a, b) in spans {
+        if let Some(last) = out.suspect.last_mut() {
+            if a <= last.1 {
+                last.1 = last.1.max(b);
+                continue;
+            }
+        }
+        out.suspect.push((a, b));
+    }
+    // Density confidences over the whole unit in 60s scoring chunks.
+    let total_secs = n as f64 / sr as f64;
+    let dcfg = decide::DecideConfig::default();
+    let mcfg = livemap::MapConfig::default();
+    let mut confs: Vec<f32> = Vec::new();
+    for (idx, start, len) in livemap::split_plan(total_secs, 60.0) {
+        let a = ((start * sr as f64) as usize).min(n);
+        let b = (((start + len) * sr as f64) as usize).min(n);
+        if b <= a {
+            continue;
+        }
+        let m = livemap::map_chunk_silence(&l[a..b], &r[a..b], sr, idx, start, &mcfg);
+        for s in decide::score_windows(&l[a..b], &r[a..b], sr, &m, &dcfg) {
+            confs.push(s.confidence);
+        }
+    }
+    out.scored_windows = confs.len();
+    out.dense = decide::sustained_music(&confs);
+    out
+}
+
+/// Paste one span's vocals into full-length output at a sample-exact offset,
+/// with a linear crossfade straddling each edge (the D2ب "eye-aligned
+/// merge"): head blends base→span over `[start, start+fade)`, tail blends
+/// span→base over `[end-fade, end)`. `fade` clamps to half the span so the
+/// two ramps never overlap. Out-of-range spans are ignored (never panic).
+pub fn splice_span(out: &mut [Vec<f32>; 2], start: usize, span: &[Vec<f32>; 2], fade: usize) {
+    let span_len = span[0].len().min(span[1].len());
+    if span_len == 0 || start >= out[0].len() || start >= out[1].len() {
+        return;
+    }
+    let span_len = span_len.min(out[0].len() - start).min(out[1].len() - start);
+    if span_len == 0 {
+        return;
+    }
+    let f = fade.min(span_len / 2).max(1);
+    for c in 0..2 {
+        for k in 0..f {
+            let t = (k + 1) as f32 / (f + 1) as f32;
+            let p = start + k;
+            out[c][p] = out[c][p] * (1.0 - t) + span[c][k] * t;
+            let q = start + span_len - 1 - k;
+            let u = (k + 1) as f32 / (f + 1) as f32;
+            out[c][q] = span[c][span_len - 1 - k] * u + out[c][q] * (1.0 - u);
+        }
+        out[c][start + f..start + span_len - f].copy_from_slice(&span[c][f..span_len - f]);
+    }
+}
+
 /// Full separation: normalized stereo WAV in → vocals + instrumental WAVs out.
+///
+/// Expert D2ب: MDX sees ONLY suspect spans (kept audio ±2s padding, merged);
+///
+/// Expert D2ب: MDX sees ONLY suspect spans (kept audio ±2s padding, merged);
+/// silence never enters the model. Spans splice back sample-exact with a
+/// 50ms crossfade straddling each edge. Empty suspect ⇒ MDX skipped entirely.
 pub fn separate(
     input_wav: &Path,
     out_dir: &Path,
@@ -511,9 +653,58 @@ pub fn separate(
 
     let mut mix = [left, right];
     let peak = normalize(&mut mix);
+    let n = mix[0].len();
 
+    // Expert scan: seconds against MDX minutes — always logged, never silent.
+    let t_scan = std::time::Instant::now();
+    let analysis = analyze_mix(&mix[0], &mix[1], sample_rate);
+    let suspect_len: usize = analysis.suspect.iter().map(|(a, b)| b - a).sum();
+    tracing::info!(
+        target: "sep",
+        "mix analysis: suspect_spans={} coverage={:.2} dense={} scored_windows={} ({:.1}s scan)",
+        analysis.suspect.len(),
+        suspect_len as f64 / n.max(1) as f64,
+        analysis.dense,
+        analysis.scored_windows,
+        t_scan.elapsed().as_secs_f32()
+    );
+
+    // Expert D2ب A/B split: session build timed APART from inference.
+    let t_build = std::time::Instant::now();
     let mut session = MdxSession::load(use_cuda)?;
-    let vocals_src = demix(&mut session, &mix, &progress)?;
+    let build_ms = t_build.elapsed().as_secs_f32() * 1000.0;
+
+    // Normalized-scale vocals; zeros outside suspect spans (silence needs no
+    // model — the instrumental-by-subtraction below then stays ~0 there too).
+    let mut vocals_src = [vec![0.0f32; n], vec![0.0f32; n]];
+    let t_inf = std::time::Instant::now();
+    if analysis.suspect.is_empty() {
+        tracing::warn!(target: "sep", "no suspect audio — MDX skipped, stems pass through");
+        vocals_src = mix.clone();
+        if !progress(1.0) {
+            return Err(SepError::Inference("تم إلغاء المعالجة من قبل المستخدم.".into()));
+        }
+    } else {
+        let fade = (sample_rate as usize / 20).max(64); // 50ms
+        let total = suspect_len.max(1) as f32;
+        let mut done = 0usize;
+        for (a, b) in &analysis.suspect {
+            let (a, b) = (*a, *b);
+            let span_mix = [mix[0][a..b].to_vec(), mix[1][a..b].to_vec()];
+            let base = done as f32 / total;
+            let w = (b - a) as f32 / total;
+            let span_voc = demix(&mut session, &span_mix, &|p| progress(base + p * w))?;
+            splice_span(&mut vocals_src, a, &span_voc, fade);
+            done += b - a;
+        }
+    }
+    let inference_ms = t_inf.elapsed().as_secs_f32() * 1000.0;
+    tracing::info!(
+        target: "sep",
+        "SEPARATE-AB-REPORT session_build_ms={build_ms:.0} inference_ms={inference_ms:.0} spans={} coverage={:.2}",
+        analysis.suspect.len(),
+        suspect_len as f64 / n.max(1) as f64
+    );
 
     // restore original scale, build secondary stem by subtraction
     let stem_name = input_wav
@@ -734,5 +925,149 @@ mod tests {
                 Err(e) => panic!("unexpected error: {e}"),
             }
         }
+    }
+
+    /// Expert D2ب: suspect spans are kept audio ±2s padding, merged; dense
+    /// tone is one span, silence splits spans, all-silence is empty + sparse.
+    #[test]
+    fn analyze_marks_suspect_spans_with_padding() {
+        let sr = 44100u32;
+        let tone = |secs: f32| -> Vec<f32> {
+            (0..(sr as f32 * secs) as usize)
+                .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / sr as f32).sin() * 0.4)
+                .collect()
+        };
+        // 10s tone / 8s silence / 10s tone → two padded spans (a 4s gap
+        // would merge under ±2s padding — the merge logic working as specified).
+        let mut l = tone(10.0);
+        l.extend(vec![0.0f32; sr as usize * 8]);
+        l.extend(tone(10.0));
+        let r = l.clone();
+        let a = analyze_mix(&l, &r, sr);
+        assert!(a.scored_windows > 0);
+        assert!(a.dense, "10s tonal runs must trip the density gate");
+        assert_eq!(a.suspect.len(), 2, "silence must split spans: {:?}", a.suspect);
+        let total = l.len();
+        // First span ≈ [0, 12.15s): tone end (10s) + keep (0.15s) + 2s pad.
+        assert!(a.suspect[0].0 == 0, "starts at file head");
+        assert!((a.suspect[0].1 as f32 / sr as f32 - 12.15).abs() < 0.6, "pad after tone: {:?}", a.suspect[0]);
+        // Second span ≈ [15.85s, 28s]: 2s pad before tone, clamped at end.
+        assert!((a.suspect[1].0 as f32 / sr as f32 - 15.85).abs() < 0.6, "pad before tone: {:?}", a.suspect[1]);
+        assert_eq!(a.suspect[1].1, total);
+        // All silence → no suspect, never dense (MDX skipped downstream).
+        let s0 = vec![0.0f32; sr as usize * 6];
+        let a0 = analyze_mix(&s0, &s0, sr);
+        assert!(a0.suspect.is_empty());
+        assert!(!a0.dense);
+        // Empty input is safe.
+        let ae = analyze_mix(&[], &[], sr);
+        assert!(ae.suspect.is_empty() && !ae.dense && ae.scored_windows == 0);
+    }
+
+    /// Expert D2ب acceptance 1/2 (alignment): the splice is sample-exact —
+    /// identical material passes through bit-identical, edges land exactly.
+    #[test]
+    fn splice_is_sample_exact() {
+        let sr = 44100u32;
+        let n = sr as usize * 4;
+        let base: Vec<f32> = (0..n).map(|i| (i as f32 * 0.001).sin()).collect();
+        let mut out = [base.clone(), base.clone()];
+        let span = [base[sr as usize..sr as usize * 3].to_vec(), base[sr as usize..sr as usize * 3].to_vec()];
+        splice_span(&mut out, sr as usize, &span, sr as usize / 20);
+        for c in 0..2 {
+            for (i, (o, b)) in out[c].iter().zip(base.iter()).enumerate() {
+                assert!((o - b).abs() < 1e-5, "sample {i} drifted: {o} vs {b}");
+            }
+        }
+    }
+
+    /// Expert D2ب acceptance 2/2 (seams): a step span splices with no click —
+    /// bounded sample-to-sample delta across both edges, interior exact.
+    #[test]
+    fn splice_seams_have_no_clicks() {
+        let sr = 44100u32;
+        let n = sr as usize * 4;
+        let mut out = [vec![0.0f32; n], vec![0.0f32; n]];
+        let span = [vec![0.5f32; sr as usize * 2], vec![0.5f32; sr as usize * 2]];
+        let start = sr as usize;
+        splice_span(&mut out, start, &span, sr as usize / 20);
+        for c in 0..2 {
+            // Interior is exactly the span material.
+            assert!((out[c][start + sr as usize / 10] - 0.5).abs() < 1e-6);
+            // Seams never jump: 50ms ramps bound every step.
+            let max_step = out[c].windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+            assert!(max_step < 0.01, "seam click: step={max_step}");
+            // Far field untouched.
+            assert_eq!(out[c][100], 0.0);
+            assert_eq!(out[c][n - 100], 0.0);
+        }
+    }
+
+    /// Expert D2ب acceptance vehicle: A/B report splitting inference-only
+    /// time from session build over a 12s unit with a silence gap (MDX sees
+    /// the suspect span only). `-- --nocapture`. Timing printed; the
+    /// sample-exact merge (output length == input length) asserted.
+    #[test]
+    fn report_separate_ab_inference_vs_build() {
+        let tmp = std::env::temp_dir().join(format!("hl_ab_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let sr = 44100u32;
+        let mut l = vec![0.0f32; sr as usize * 4];
+        for n in 0..sr as usize * 8 {
+            let t = n as f32 / sr as f32;
+            let v = 0.3 * (2.0 * std::f32::consts::PI * 330.0 * t).sin()
+                + 0.2 * (2.0 * std::f32::consts::PI * 497.0 * t).sin();
+            l.push(v);
+        }
+        let r = l.clone();
+        let len = l.len();
+        let wav = tmp.join("mix.wav");
+        write_wav_stereo_f32(&wav, &l, &r, sr).unwrap();
+
+        let t_build = std::time::Instant::now();
+        let mut session = MdxSession::load(false).expect("session must build (DML/CPU)");
+        let build_ms = t_build.elapsed().as_secs_f32() * 1000.0;
+
+        let (sl, srr, _) = read_wav_stereo(&wav).unwrap();
+        let analysis = analyze_mix(&sl, &srr, sr);
+        assert_eq!(analysis.suspect.len(), 1, "one padded span expected: {:?}", analysis.suspect);
+        let t_inf = std::time::Instant::now();
+        for (a, b) in &analysis.suspect {
+            let (a, b) = (*a, *b);
+            let span_mix = [sl[a..b].to_vec(), srr[a..b].to_vec()];
+            let _ = demix(&mut session, &span_mix, &|_| true).expect("span inference");
+        }
+        let inf_ms = t_inf.elapsed().as_secs_f32() * 1000.0;
+        let provider = ACTIVE_PROVIDER.get().cloned().unwrap_or_else(|| "?".into());
+        println!("SEPARATE-AB-REPORT provider={provider} session_build_ms={build_ms:.0} inference_ms={inf_ms:.0} spans={} scored={}",
+            analysis.suspect.len(), analysis.scored_windows);
+
+        // Full path keeps the merge sample-exact (silence passes through).
+        let stems = separate(&wav, &tmp.join("out"), false, &|_| true).expect("separation failed");
+        let (vl, _, _) = read_wav_stereo(&stems.vocals).unwrap();
+        let (il, _, _) = read_wav_stereo(&stems.instrumental).unwrap();
+        assert_eq!(vl.len(), len, "vocals length must equal input (sample-exact merge)");
+        assert_eq!(il.len(), len, "instrumental length must equal input");
+        assert!(build_ms > 0.0 && inf_ms > 0.0);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// Expert D2د: provider truth round-trips through an isolated base;
+    /// missing/corrupt files read as unknown (never panic, never lie).
+    #[test]
+    fn provider_file_roundtrips_isolated() {
+        let base = std::env::temp_dir().join(format!("hl_prov_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        assert_eq!(read_provider_in(&provider_file_in(&base)), None, "missing → unknown");
+        record_provider_in(&base, "CPU");
+        assert_eq!(read_provider_in(&provider_file_in(&base)), Some("CPU".into()));
+        record_provider_in(&base, "DirectML");
+        assert_eq!(read_provider_in(&provider_file_in(&base)), Some("DirectML".into()));
+        std::fs::write(provider_file_in(&base), b"{not json").unwrap();
+        assert_eq!(read_provider_in(&provider_file_in(&base)), None, "corrupt → unknown");
+        std::fs::write(provider_file_in(&base), b"{}").unwrap();
+        assert_eq!(read_provider_in(&provider_file_in(&base)), None, "no field → unknown");
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

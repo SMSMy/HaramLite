@@ -328,6 +328,30 @@ pub fn smooth_verdicts(
     out
 }
 
+/// Expert D2أ density gate: MORE than 3 continuous seconds of music —
+/// at least 6 consecutive decision windows above confidence 0.5 at the
+/// 0.5s hop — routes a clip to FULL MDX separation; anything sparser goes
+/// detect-then-mute. The 6-window bar is 2× the hysteresis confirmation
+/// (3 windows): same scale as the smoother, stricter régime. Silent
+/// (skipped) windows score 0.0, so real gaps honestly break the run.
+pub const DENSITY_CONF: f32 = 0.5;
+pub const DENSITY_WINDOWS: usize = 6;
+pub fn sustained_music(confidences: &[f32]) -> bool {
+    let mut run = 0usize;
+    for &c in confidences {
+        // NaN is never > threshold: corrupt scores break the run, not the gate.
+        if c > DENSITY_CONF {
+            run += 1;
+            if run >= DENSITY_WINDOWS {
+                return true;
+            }
+        } else {
+            run = 0;
+        }
+    }
+    false
+}
+
 /// Processing cost per 60s of audio from summed decision timings.
 pub fn minute_cost_ms(total_us: u64, total_audio_secs: f64) -> f32 {
     if total_audio_secs <= 0.0 {
@@ -443,6 +467,21 @@ mod tests {
         assert!(score_windows(&[], &[], SR, &m, &DecideConfig::default()).is_empty());
         assert!(smooth_verdicts(&[], &DecideConfig::default(), 0.5).is_empty());
         assert_eq!(minute_cost_ms(0, 0.0), 0.0);
+    }
+
+    /// Expert D2أ density gate: 6 consecutive conf>0.5 windows (>3s at the
+    /// 0.5s hop) → sustained music → full separation; anything less (short
+    /// jingles, broken runs, silence gaps, NaN) → detect-then-mute.
+    #[test]
+    fn density_gate_routes_by_sustained_run() {
+        assert!(sustained_music(&[0.9; 6]), "exactly 6 must pass");
+        assert!(sustained_music(&[0.1, 0.1, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.1]));
+        assert!(!sustained_music(&[0.9; 5]), "5 windows (2.5s) must not pass");
+        assert!(!sustained_music(&[0.9, 0.9, 0.9, 0.4, 0.9, 0.9, 0.9]), "broken run must not pass");
+        assert!(!sustained_music(&[0.9, 0.9, 0.0, 0.0, 0.9, 0.9, 0.9, 0.9]), "silence gap breaks it");
+        assert!(!sustained_music(&[]), "empty never dense");
+        assert!(!sustained_music(&[0.9, 0.9, 0.9, 0.9, f32::NAN, 0.9, 0.9, 0.9, 0.9]), "NaN breaks the run");
+        assert!(!sustained_music(&[0.5, 0.5, 0.5, 0.5, 0.5, 0.5]), "strictly above 0.5 required");
     }
 
     /// Slice 2 acceptance vehicle: decision cost over the SAME 270s clip as

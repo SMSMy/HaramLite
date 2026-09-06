@@ -26,6 +26,18 @@ pub enum ChunkState {
     Consumed,
 }
 
+/// Expert D2ج: silence-skip policy — TWO modes only.
+/// "Speed-up" was dropped officially: it balloons output size and chipmunks
+/// voices (recorded reason). The surface exposes exactly these two variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkipMode {
+    /// Play straight through silences.
+    Off,
+    /// Jump over silence spans with a 50ms crossfade (see silence.rs).
+    Skip,
+}
+
 /// Where a seek lands.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -128,6 +140,15 @@ impl PlayerEngine {
             ChunkState::Ready => SeekAction::Instant { chunk: idx, offset_sec: offset },
             _ => SeekAction::MiniInit { chunk: idx, offset_sec: offset },
         }
+    }
+
+    /// Expert D2ج: seek AND immediately flush the heard store — everything
+    /// strictly behind the jump turns Consumed at once, so no stale chunk
+    /// survives a seek. The target chunk itself is never flushed.
+    /// Returns the evicted count and the landing action.
+    pub fn seek_flush(&mut self, pos_sec: f64) -> (usize, SeekAction) {
+        let n = self.consume_through(pos_sec);
+        (n, self.seek(pos_sec))
     }
 
     /// Graceful-freeze signal: playback position is NOT inside Ready audio
@@ -306,5 +327,45 @@ mod tests {
         e.mark_all_ready();
         assert_eq!(e.states_snapshot()[0], ChunkState::Consumed);
         assert_eq!(e.states_snapshot()[1], ChunkState::Ready);
+    }
+
+    /// Expert D2ج: a seek flushes the heard store IMMEDIATELY — chunks
+    /// behind the jump turn Consumed at once; the landing chunk is untouched.
+    #[test]
+    fn seek_flush_evicts_heard_immediately() {
+        let mut e = engine();
+        for i in 0..4 {
+            e.mark_ready(i);
+        }
+        let (n, act) = e.seek_flush(125.0);
+        assert_eq!(n, 2, "chunks 0,1 flushed at the jump");
+        assert_eq!(act, SeekAction::Instant { chunk: 2, offset_sec: 5.0 });
+        let snap = e.states_snapshot();
+        assert_eq!(snap[0], ChunkState::Consumed);
+        assert_eq!(snap[1], ChunkState::Consumed);
+        assert_eq!(snap[2], ChunkState::Ready, "landing chunk never flushed");
+        // Second identical jump flushes nothing new (idempotent).
+        let (n2, _) = e.seek_flush(125.0);
+        assert_eq!(n2, 0);
+        // Past-end jump flushes everything and lands at End.
+        let (n3, end) = e.seek_flush(999.0);
+        assert_eq!(end, SeekAction::EndOfUnit);
+        assert!(e.states_snapshot().iter().all(|s| *s == ChunkState::Consumed));
+        assert_eq!(n3, 3, "chunks 2,3,4 flushed (0,1 already were)");
+    }
+
+    /// Expert D2ج: the skip policy is EXACTLY two modes — speed-up must not
+    /// exist. The exhaustive match below fails compilation if a third
+    /// variant is ever added without updating the surface contract.
+    #[test]
+    fn skip_policy_is_exactly_two_modes() {
+        for m in [SkipMode::Off, SkipMode::Skip] {
+            let s = match m {
+                SkipMode::Off => "off",
+                SkipMode::Skip => "skip",
+            };
+            assert!(!s.is_empty());
+        }
+        assert_ne!(SkipMode::Off, SkipMode::Skip);
     }
 }

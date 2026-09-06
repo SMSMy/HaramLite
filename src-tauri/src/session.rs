@@ -89,6 +89,14 @@ impl<'a> Session<'a> {
         self.engine.seek(pos_sec)
     }
 
+    /// Expert D2ج: seek with immediate flush — heard maps are dropped and
+    /// engine states consumed at the jump (same eviction as [`Self::advance`]
+    /// plus the landing resolution). Returns evicted map count + action.
+    pub fn seek_flush(&mut self, pos_sec: f64) -> (usize, SeekAction) {
+        let n = self.advance(pos_sec);
+        (n, self.engine.seek(pos_sec))
+    }
+
     /// Graceful-freeze signal at this playhead position.
     pub fn frozen(&self, pos_sec: f64) -> bool {
         self.engine.exhausted(pos_sec)
@@ -196,5 +204,22 @@ mod tests {
             s.produced_ms() / mins as f32
         );
         assert_eq!(s.ready_count(), 4, "chunk 0 evicted, 1..4 resident");
+    }
+
+    /// Expert D2ج: seek_flush evicts heard maps at once and lands correctly.
+    #[test]
+    fn seek_flush_drops_heard_maps_at_jump() {
+        let (l, r) = unit_270s();
+        let dcfg = DecideConfig::default();
+        let mut s = Session::new(&l, &r, SR, 60.0);
+        assert_eq!(s.process_next(0.0, &dcfg), Some(0));
+        assert_eq!(s.process_next(0.0, &dcfg), Some(1));
+        assert_eq!(s.process_next(0.0, &dcfg), Some(2));
+        let (n, act) = s.seek_flush(125.0);
+        assert_eq!(n, 2, "maps 0,1 dropped at the jump");
+        assert!(matches!(act, SeekAction::Instant { chunk: 2, .. }));
+        assert_eq!(s.ready_count(), 1, "only chunk 2 resident");
+        // Landing chunk still produces on demand (never flushed).
+        assert_eq!(s.process_next(125.0, &dcfg), Some(3));
     }
 }

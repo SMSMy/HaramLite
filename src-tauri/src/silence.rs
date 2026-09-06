@@ -22,7 +22,9 @@ impl Default for SilenceConfig {
             absolute_floor_db: -55.0,
             min_silence_ms: 800,
             keep_ms: 150,
-            fade_ms: 12,
+            // Expert D2ج: 50ms crossfade at every jump (was 12ms — too
+            // short, residual clicks survived on bright material).
+            fade_ms: 50,
         }
     }
 }
@@ -155,9 +157,12 @@ pub fn cut_silence_with_ranges(
 
         // Short fades at every INTERIOR cut boundary to avoid clicks:
         // fade-IN at the start of a segment that follows a cut, fade-OUT at
-        // the end of a segment that precedes a cut. (The old code applied a
-        // rising fade to the END of every segment — clicks stayed and endings
-        // bulged. The file's own true start/end is left untouched.)
+        // the end of a segment that precedes a cut. (The file's own true
+        // start/end is left untouched.)
+        // Expert D2ج direction fix (2026-09-06): the tail loop used
+        // `g = (head - k) / head` at `len - 1 - k`, which rises to FULL
+        // volume at the splice — a fade-IN on a pre-cut tail, i.e. the exact
+        // recorded direction fault. Tails must FALL to zero: `g = (k + 1)`.
         let head = fade.min(b - a);
         if idx > 0 {
             for k in 0..head {
@@ -168,7 +173,7 @@ pub fn cut_silence_with_ranges(
         }
         if idx + 1 < ranges.len() {
             for k in 0..head {
-                let g = (head - k) as f32 / head as f32;
+                let g = (k + 1) as f32 / head as f32;
                 let li = nl.len() - 1 - k;
                 let ri = nr.len() - 1 - k;
                 nl[li] *= g;
@@ -181,6 +186,55 @@ pub fn cut_silence_with_ranges(
     *l = nl;
     *r = nr;
     removed.clamp(0.0, 1.0)
+}
+
+/// Expert D2أ: render detect-then-mute directly on stereo buffers (no MDX):
+/// mute ranges → 0, duck ranges → −12 dB (≈0.251), with `fade_ms` linear
+/// ramps at every edge so muting itself never clicks. Mute wins overlaps.
+/// Ranges are absolute seconds; out-of-bounds ends clamp. In place.
+pub fn apply_mute_duck(
+    l: &mut [f32],
+    r: &mut [f32],
+    sr: u32,
+    mute: &[(f64, f64)],
+    duck: &[(f64, f64)],
+    fade_ms: u32,
+) {
+    let n = l.len().min(r.len());
+    if n == 0 || sr == 0 {
+        return;
+    }
+    const DUCK_GAIN: f32 = 0.251;
+    let fade = ((fade_ms as usize * sr as usize) / 1000).max(2);
+    let to_idx = |t: f64| ((t * sr as f64) as usize).min(n);
+    // Duck first, mute second so mute wins every overlap.
+    for (ranges, target) in [(duck, DUCK_GAIN), (mute, 0.0f32)] {
+        for &(a, b) in ranges {
+            if !(b > a) {
+                continue;
+            }
+            let s = to_idx(a);
+            let e = to_idx(b);
+            if e <= s || s >= n {
+                continue;
+            }
+            let f = fade.min((e - s) / 2).max(1);
+            for k in s..e {
+                // distance to the nearest edge → ramp 0..1 over `fade`
+                let d = (k - s).min(e - 1 - k) + 1;
+                let t = (d.min(f) as f32) / (f as f32);
+                // gain path target→1 at edges would click on entry; instead
+                // ramp 1→target on the way in and back on the way out:
+                // g = 1 + (target − 1) * edge_shape, edge_shape 0 at the
+                // exact boundary rising to 1 `fade` samples inside.
+                let g = 1.0 + (target - 1.0) * t;
+                if k < l.len() && k < r.len() {
+                    l[k] *= g;
+                    r[k] *= g;
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -258,5 +312,82 @@ mod tests {
         let _ = (&mut l, &mut r);
         let removed = cut_silence(&mut ll, &mut r, sr, &SilenceConfig::default());
         assert!(removed > 0.2);
+    }
+
+    /// Expert D2ج direction regression (2026-09-06): the pre-cut tail must
+    /// FALL to zero at the splice. The old `(head-k)` shape rose to full
+    /// volume at the cut — clicks on every jump. Fails pre-fix, passes post.
+    /// NOTE: DC signal (no zero crossings — a tone's phase could zero the
+    /// seam sample by luck and vacate the test) with hand-made ranges so the
+    /// fade zone sits on real audio (detection-derived ranges pad seams with
+    /// kept silence, which measures ~0 under EITHER shape and proves nothing).
+    #[test]
+    fn pre_cut_tail_falls_to_zero_at_splice() {
+        let sr = 44100u32;
+        let n = sr as usize * 4;
+        let mut l = vec![0.5f32; n];
+        let mut r = vec![0.5f32; n];
+        let cfg = SilenceConfig::default();
+        let fade = (cfg.fade_ms as usize * sr as usize / 1000).max(2);
+        // One seam at exactly 2.0s over full-scale DC.
+        let ranges = [(0usize, sr as usize * 2), (sr as usize * 2, n)];
+        cut_silence_with_ranges(&mut l, &mut r, sr, &cfg, &ranges);
+        assert_eq!(l.len(), n, "full-cover ranges change nothing");
+        // Seam edge: post-fix ≈0 (1/fade × 0.5); pre-fix full 0.5.
+        assert!(l[sr as usize * 2 - 1].abs() < 0.05, "seam edge must be ~0");
+        // Tail block envelope collapses (mean 0.25 vs mid 0.5).
+        let mean_abs = |v: &[f32]| v.iter().map(|x| x.abs()).sum::<f32>() / v.len() as f32;
+        let tail = &l[sr as usize * 2 - fade..sr as usize * 2];
+        let mid = &l[sr as usize..sr as usize * 3 / 2];
+        assert!(mean_abs(tail) / mean_abs(mid) < 0.75, "tail must fall");
+        // Post-cut head rises from zero (fade-IN intact after the fix).
+        assert!(l[sr as usize * 2].abs() < 0.05, "head must start near zero");
+        // Head fade spans exactly the configured width (50ms), not a stub.
+        assert!(fade == sr as usize / 20, "fade width must be 50ms, got {fade}");
+    }
+
+    /// Expert D2ج: the seam crossfade is 50ms by default.
+    #[test]
+    fn seam_crossfade_defaults_to_50ms() {
+        assert_eq!(SilenceConfig::default().fade_ms, 50);
+    }
+
+    /// Expert D2أ: direct mute/duck rendering — mute zeros the interior,
+    /// duck hits −12 dB, edges ramp without clicks, mute wins overlaps.
+    #[test]
+    fn direct_mute_duck_renders_cleanly() {
+        let sr = 44100u32;
+        let n = sr as usize * 4;
+        let tone: Vec<f32> = (0..n)
+            .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / sr as f32).sin() * 0.5)
+            .collect();
+        let mut l = tone.clone();
+        let mut r = tone.clone();
+        apply_mute_duck(&mut l, &mut r, sr, &[(1.0, 2.0)], &[(2.5, 3.0)], 50);
+        // mute interior is silent
+        let mid_mute = &l[(sr as usize * 3 / 2)..(sr as usize * 17 / 10)];
+        assert!(mid_mute.iter().all(|v| v.abs() < 1e-6), "mute interior must be 0");
+        // duck interior is −12 dB of the tone (peak 0.5 → 0.1255)
+        let mid_duck = &l[(sr as usize * 27 / 10)..(sr as usize * 28 / 10)];
+        let peak = mid_duck.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
+        assert!((peak - 0.5 * 0.251).abs() < 0.02, "duck peak={peak}");
+        // pass regions untouched
+        assert!((l[100] - tone[100]).abs() < 1e-6);
+        // no clicks: max sample-to-sample step stays small everywhere
+        let max_step = l.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+        assert!(max_step < 0.05, "click detected: step={max_step}");
+        assert_eq!(l.len(), n, "rendering never changes length");
+    }
+
+    /// Mute wins any duck overlap.
+    #[test]
+    fn direct_mute_wins_overlap() {
+        let sr = 44100u32;
+        let n = sr as usize * 2;
+        let mut l = vec![0.5f32; n];
+        let mut r = vec![0.5f32; n];
+        apply_mute_duck(&mut l, &mut r, sr, &[(0.5, 1.5)], &[(0.0, 2.0)], 50);
+        let mid = &l[(sr as usize * 9 / 10)..(sr as usize * 11 / 10)];
+        assert!(mid.iter().all(|v| v.abs() < 1e-6), "overlap must be silent");
     }
 }

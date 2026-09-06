@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::{media, separator};
+use crate::{decide, media, separator, silence, v1proto};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -161,6 +161,10 @@ pub struct PipelineOutput {
     pub instrumental: Option<PathBuf>,
     /// MP4 with processed audio (and cut-mirrored video) for video inputs.
     pub video: Option<PathBuf>,
+    /// Kept (content) ranges on the ORIGINAL timeline (song silence cuts;
+    /// empty for clips) — the extension page player maps its clock through
+    /// these so filtered audio stays in sync with the page video.
+    pub kept_ranges: Vec<(f64, f64)>,
     pub seconds: f32,
 }
 
@@ -221,20 +225,75 @@ pub fn process_file(
     stage("normalize", 1.0);
     tracing::info!(target: "pipe", "normalized: {}", normalized.display());
 
-    // Stage 2 — separation
+    // Stage 2 — separation.
+    // Expert D2أ: a SPARSE clip (no sustained-music run) skips MDX entirely
+    // and goes detect-then-mute: the v1 position map rendered straight onto
+    // the normalized audio. Song mode always takes full MDX (explicit user
+    // choice — songs are dense by construction).
+    let mut clip_direct_vocals: Option<PathBuf> = None;
+    if matches!(mode, Mode::Clip) {
+        let (dl, dr, dsr) = separator::read_wav_stereo(&normalized).map_err(|e| {
+            let _ = std::fs::remove_dir_all(&work_dir);
+            err(e)
+        })?;
+        let analysis = separator::analyze_mix(&dl, &dr, dsr);
+        tracing::info!(
+            target: "pipe",
+            "clip density gate: dense={} suspect_spans={} scored_windows={}",
+            analysis.dense,
+            analysis.suspect.len(),
+            analysis.scored_windows
+        );
+        if !analysis.dense {
+            tracing::info!(target: "pipe", "sparse clip — detect-then-mute, MDX skipped");
+            let rep = v1proto::build_position_map(&dl, &dr, dsr, 60.0, &decide::DecideConfig::default());
+            let mut mute: Vec<(f64, f64)> = Vec::new();
+            let mut duck: Vec<(f64, f64)> = Vec::new();
+            for c in &rep.chunks {
+                mute.extend(c.muted_ranges_sec.iter().copied());
+                duck.extend(c.ducked_ranges_sec.iter().copied());
+            }
+            let mut ml = dl;
+            let mut mr = dr;
+            silence::apply_mute_duck(&mut ml, &mut mr, dsr, &mute, &duck, 50);
+            let stem_name = normalized
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "audio".into());
+            let direct_path = out_dir.join(format!("{stem_name}_(Vocals)_haramlite.wav"));
+            separator::write_wav_stereo_f32_pub(&direct_path, &ml, &mr, dsr).map_err(|e| {
+                let _ = std::fs::remove_dir_all(&work_dir);
+                err(e)
+            })?;
+            stage("separate", 1.0);
+            if !progress(0.90) {
+                return Err(err("تم إلغاء المعالجة من قبل المستخدم."));
+            }
+            clip_direct_vocals = Some(direct_path);
+        }
+    }
     let sep_progress = |p: f32| {
         stage("separate", p);
         progress(0.05 + p * 0.85)
     };
-    let stems = separator::separate(&normalized, out_dir, use_cuda, &sep_progress).map_err(|e| {
-        let _ = std::fs::remove_dir_all(&work_dir);
-        err(e)
-    })?;
+    let (vocals_raw, instrumental_raw): (PathBuf, Option<PathBuf>) =
+        if let Some(v) = clip_direct_vocals {
+            if keep_instrumental {
+                tracing::warn!(target: "pipe", "sparse clip has no instrumental (MDX skipped) — vocals only");
+            }
+            (v, None)
+        } else {
+            let stems = separator::separate(&normalized, out_dir, use_cuda, &sep_progress).map_err(|e| {
+                let _ = std::fs::remove_dir_all(&work_dir);
+                err(e)
+            })?;
+            (stems.vocals, Some(stems.instrumental))
+        };
     stage("separate", 1.0);
     let _ = std::fs::remove_dir_all(&work_dir);
 
     // Stage 3 — song mode: enhancement chain (M3) applied ONTO the vocals stem
-    let mut vocals_path = stems.vocals.clone();
+    let mut vocals_path = vocals_raw;
     let mut kept_ranges: Vec<(f64, f64)> = Vec::new();
     if matches!(mode, Mode::Song) {
         if !progress(0.92) { return Err(err("تم إلغاء المعالجة من قبل المستخدم.")); }
@@ -247,7 +306,7 @@ pub fn process_file(
             stage("effects", p);
             progress(0.90 + p * 0.06)
         };
-        kept_ranges = crate::effects::enhance_song_file(&stems.vocals, &tmp_enhanced, &Default::default(), &dsp_progress)
+        kept_ranges = crate::effects::enhance_song_file(&vocals_path, &tmp_enhanced, &Default::default(), &dsp_progress)
             .map_err(err)?;
         // replace raw vocals with the enhanced version
         std::fs::rename(&tmp_enhanced, &vocals_path).map_err(err)?;
@@ -258,12 +317,15 @@ pub fn process_file(
     let input_info = media::probe(input).ok();
     let has_video = input_info.as_ref().map(|i| i.has_video).unwrap_or(false);
 
-    // Stage 4 — instrumental handling (hidden opt-in; default = vocals only)
-    let mut instrumental_path: Option<PathBuf> = if keep_instrumental {
-        Some(stems.instrumental.clone())
-    } else {
-        let _ = std::fs::remove_file(&stems.instrumental);
-        None
+    // Stage 4 — instrumental handling (hidden opt-in; default = vocals only).
+    // None on the sparse-clip path (no MDX ⇒ no instrumental — warned above).
+    let mut instrumental_path: Option<PathBuf> = match instrumental_raw {
+        Some(p) if keep_instrumental => Some(p),
+        Some(p) => {
+            let _ = std::fs::remove_file(&p);
+            None
+        }
+        None => None,
     };
 
     // Cosmetic: stems inherit the ORIGINAL file name, not the scratch wav.
@@ -357,14 +419,16 @@ pub fn process_file(
 
     let seconds = started.elapsed().as_secs_f32();
     progress(1.0);
-    tracing::info!(target: "pipe", "pipeline done in {seconds:.1}s");
-
-    Ok(PipelineOutput {
+    let out = PipelineOutput {
         vocals: final_vocals,
         instrumental: instrumental_path,
         video: video_out,
+        kept_ranges,
         seconds,
-    })
+    };
+    tracing::info!(target: "pipe", "pipeline done in {seconds:.1}s (kept_ranges={})", out.kept_ranges.len());
+
+    Ok(out)
 }
 
 /// Quick health check used by `--check` (CLI) and startup diagnostics (GUI).
