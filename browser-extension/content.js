@@ -157,9 +157,16 @@
     stopPoll();
     stopWatch();
     LAST = null;
+    // Field #1/#4: pause the page at once — the goal is hearing no music.
+    // Failures leave it paused with a message (YouTube's own play button
+    // resumes the original); success auto-watches (see poll).
+    const pv = pageVideo();
+    WANT_AUTO = true;
+    SENT_URL = location.href;
+    if (pv) { try { pv.pause(); } catch { /* gone */ } }
     showPanel('جاري الإرسال إلى HaramLite...');
     try {
-      const r = await native({ type: 'link', url: location.href });
+      const r = await native({ type: 'link', url: location.href, mode: 'watch' });
       if (!r || !r.ok) throw new Error(r && r.error ? r.error : 'فشل الإرسال');
       if (panelEls) {
         panelEls.status.textContent = '✓ استُلم الرابط — بدء التنزيل...';
@@ -223,8 +230,16 @@
                 seconds: st.last.seconds || 0,
                 kept: Array.isArray(st.last.kept) ? st.last.kept : null,
               };
-              panelEls.watch.style.display = 'block';
-              panelEls.reprocess.style.display = 'block';
+              // Field #1: our own job on this same page → watch at once,
+              // no questions asked. Foreign jobs keep the manual buttons.
+              if (WANT_AUTO && location.href === SENT_URL) {
+                WANT_AUTO = false;
+                void startWatch();
+              } else {
+                WANT_AUTO = false;
+                panelEls.watch.style.display = 'block';
+                panelEls.reprocess.style.display = 'block';
+              }
             } else {
               panelEls.status.textContent = '✗ ' + (st.last.error || 'فشلت المعالجة');
               panelEls.status.style.color = T.err;
@@ -257,6 +272,9 @@
   // with a clear message + file fallback. Restore is total.
   let LAST = null;
   let WATCH = null;
+  // Field issues #1/#4: this page auto-watches ITS OWN completed job only.
+  let WANT_AUTO = false;
+  let SENT_URL = null;
 
   function hexToBytes(hex) {
     const n = hex.length / 2;
@@ -284,6 +302,20 @@
       acc += Math.min(t, b) - a;
     }
     return acc;
+  }
+
+  // Field #6: where the page video must jump — inside a kept range it stays,
+  // inside a muted gap it jumps to the next kept start, past the end stays.
+  function skipVideoGaps(t, kept) {
+    if (!kept || !kept.length) return t;
+    for (const pair of kept) {
+      const a = Number(pair[0]);
+      const b = Number(pair[1]);
+      if (!(b > a)) continue;
+      if (t >= a && t < b) return t;
+      if (t < a) return a;
+    }
+    return t;
   }
 
   function pageVideo() {
@@ -382,40 +414,75 @@
       prevMuted: video.muted,
       handlers: [],
       drift: 0,
+      gap: 0,
     };
     const on = (el, ev, fn) => { el.addEventListener(ev, fn); w.handlers.push([el, ev, fn]); };
     const audioPos = () => {
       const t = mapFullToCut(video.currentTime || 0, kept);
       return Math.min(Math.max(t, 0), Math.max(audio.duration - 0.05, 0));
     };
-    on(video, 'play', () => { audio.currentTime = audioPos(); audio.play().catch(() => {}); });
+    on(video, 'play', () => {
+      // Field #2: the page player fights mute — pin it on every play.
+      if (video.muted === false) { try { video.muted = true; } catch { /* gone */ } }
+      kickAudio();
+    });
     on(video, 'pause', () => { audio.pause(); });
     on(video, 'seeking', () => { audio.currentTime = audioPos(); });
     on(video, 'ratechange', () => { audio.playbackRate = video.playbackRate || 1; });
-    on(video, 'volumechange', () => { audio.volume = video.volume; });
-    on(audio, 'ended', () => { stopWatch(); });
+    on(video, 'volumechange', () => {
+      // Field #2: volume gestures unmute the page player — pin it, then mirror.
+      if (video.muted === false) { try { video.muted = true; } catch { /* gone */ } }
+      audio.volume = video.volume;
+    });
+    on(audio, 'ended', () => {
+      // Filtered audio over: stop the picture too, or the tail would run on
+      // and restore into unmuted original audio past the map.
+      try { video.pause(); } catch { /* gone */ }
+      stopWatch();
+    });
     on(video, 'ended', () => { stopWatch(); });
     // Declared mute (expert D2د): the ORIGINAL stays muted, announced.
     video.muted = true;
     showBadge(true);
     audio.playbackRate = video.playbackRate || 1;
     audio.volume = video.volume;
+    const watchLine = () => `▶ مشاهدة مفلترة — الصوت من المعالجة المحلية${LAST && LAST.seconds ? ` (عولجت في ${LAST.seconds.toFixed(1)} ث)` : ''}`;
+    const kickAudio = () => {
+      audio.currentTime = audioPos();
+      audio.play().then(() => {
+        if (WATCH) setWatchStatus(watchLine(), T.ok);
+      }).catch(() => {
+        // No user activation (timer-started autoplay): the next press of
+        // play IS a gesture and retries through the play-handler above.
+        if (WATCH) setWatchStatus('▶ اضغط تشغيل لبدء الصوت المفلتر', T.sub);
+      });
+    };
     audio.currentTime = audioPos();
     WATCH = w;
     w.drift = setInterval(() => {
       if (!WATCH || audio.paused) return;
+      // Field #2, second pin: scripts can unmute at any time.
+      if (video.muted === false) { try { video.muted = true; } catch { /* gone */ } }
       const expect = audioPos();
       if (Math.abs(audio.currentTime - expect) > 0.35) audio.currentTime = expect;
     }, 1000);
+    // Field #6: TRUE skipping — the page video itself jumps over muted gaps
+    // (mapping audio alone only loops the seam). >0.15s jumps, 250ms cadence.
+    w.gap = setInterval(() => {
+      if (!WATCH || video.paused) return;
+      const target = skipVideoGaps(video.currentTime || 0, kept);
+      if (Math.abs(target - (video.currentTime || 0)) > 0.15) {
+        try { video.currentTime = target; } catch { /* gone */ }
+      }
+    }, 250);
     if (panelEls) {
       panelEls.stopwatch.style.display = 'block';
       panelEls.watch.style.display = 'none';
     }
-    setWatchStatus(
-      `▶ مشاهدة مفلترة — الصوت من المعالجة المحلية${LAST && LAST.seconds ? ` (عولجت في ${LAST.seconds.toFixed(1)} ث)` : ''}`,
-      T.ok,
-    );
-    if (!video.paused) audio.play().catch(() => {});
+    setWatchStatus(watchLine(), T.ok);
+    // Field #1/#4: resume both together (the video was paused at request).
+    try { await video.play(); } catch { setWatchStatus('▶ اضغط تشغيل الفيديو لبدء المشاهدة', T.sub); }
+    kickAudio();
   }
 
   function stopWatch() {
@@ -423,6 +490,7 @@
     WATCH = null;
     if (!w) return;
     if (w.drift) clearInterval(w.drift);
+    if (w.gap) clearInterval(w.gap);
     for (const [el, ev, fn] of w.handlers) {
       try { el.removeEventListener(ev, fn); } catch { /* gone */ }
     }

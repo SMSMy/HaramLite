@@ -210,7 +210,7 @@ fn handle_host_message(msg: &serde_json::Value) {
                 reply_err("empty url");
                 return;
             }
-            match write_request(url) {
+            match write_request(url, job_watch_of(msg)) {
                 Ok(path) => {
                     spawn_main_app();
                     reply_ok(serde_json::json!({ "ok": true, "queued": path }));
@@ -244,7 +244,7 @@ fn reply_err(msg: &str) {
     reply_ok(serde_json::json!({ "ok": false, "error": msg }));
 }
 
-fn write_request(url: &str) -> Result<String, String> {
+fn write_request(url: &str, watch: bool) -> Result<String, String> {
     let dir = requests_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let nanos = std::time::SystemTime::now()
@@ -252,12 +252,17 @@ fn write_request(url: &str) -> Result<String, String> {
         .unwrap_or_default()
         .as_nanos();
     let path = dir.join(format!("req_{nanos:x}.json"));
-    let body = serde_json::to_vec(&serde_json::json!({
+    let mut body = serde_json::json!({
         "type": "link",
         "url": url,
         "ts": nanos,
-    }))
-    .unwrap_or_default();
+    });
+    // Temp watch-listens ride the same file so old hosts/clients interoperate:
+    // absent mode means full-save (backward compatible both directions).
+    if watch {
+        body["mode"] = serde_json::json!("watch");
+    }
+    let body = serde_json::to_vec(&body).unwrap_or_default();
     // Atomic write (tmp + rename): notify fires on file CREATE — a direct
     // write could be picked up half-written, fail to parse, and linger
     // forever (dispatch bails before remove_file). Same pattern as write_state.
@@ -306,6 +311,21 @@ pub fn page_audio_dir() -> PathBuf {
         .unwrap_or_default()
         .join("com.harammute.haramlite")
         .join("page-audio")
+}
+
+/// Keep only `keep` inside the page-audio dir (best-effort): temp listens
+/// vanish as soon as the next one completes (field #3).
+fn sweep_page_audio_dir(keep: Option<&Path>) {
+    let dir = page_audio_dir();
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let p = e.path();
+        if Some(p.as_path()) != keep {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
 }
 
 /// Page-audio for in-page watching: the vocals mp3 reused for audio jobs;
@@ -445,9 +465,23 @@ fn clear_stale_requests(dir: &Path, now: std::time::SystemTime, grace_secs: u64)
 /// worker thread drains them. Extracted from the `bridge_loop` closure so it
 /// is unit-testable (audit 2026-09-03).
 struct DispatchCtx {
-    job_tx: mpsc::Sender<String>,
-    job_rx: Arc<Mutex<mpsc::Receiver<String>>>,
+    job_tx: mpsc::Sender<Job>,
+    job_rx: Arc<Mutex<mpsc::Receiver<Job>>>,
     pending: Arc<AtomicUsize>,
+}
+
+/// A queued browser request: full-save (default) or temp watch-listen
+/// (field #3 — audio only, temp dir, swept; never saved to the user folder).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Job {
+    url: String,
+    watch: bool,
+}
+
+/// Pure mode parse (unit-tested): only an explicit `"watch"` opts into the
+/// temp path — old clients send no mode and stay full-save.
+fn job_watch_of(msg: &serde_json::Value) -> bool {
+    msg.get("mode").and_then(|v| v.as_str()) == Some("watch")
 }
 
 /// File one request off disk and route it. The file is removed as soon as its
@@ -504,7 +538,7 @@ fn dispatch_file(path: &Path, ctx: &DispatchCtx) {
                 return;
             }
             ctx.pending.fetch_add(1, Ordering::SeqCst);
-            let _ = ctx.job_tx.send(url);
+            let _ = ctx.job_tx.send(Job { url, watch: job_watch_of(&msg) });
         }
         _ => {}
     }
@@ -534,7 +568,7 @@ fn bridge_loop(app: tauri::AppHandle, settings: Arc<Mutex<Settings>>, dir: PathB
     // ── worker thread: processes link requests SEQUENTIALLY ──
     // (the watcher loop below must never block on a 20-minute job, or
     // cancel requests would queue up behind it and never fire)
-    let (job_tx, job_rx) = mpsc::channel::<String>(); // queued URLs
+    let (job_tx, job_rx) = mpsc::channel::<Job>(); // queued requests
     // Shared receiver so the watcher thread can DRAIN the queue on cancel.
     // A plain owned Receiver sits blocked inside the worker's recv() and
     // cannot be drained from anywhere else.
@@ -555,24 +589,24 @@ fn bridge_loop(app: tauri::AppHandle, settings: Arc<Mutex<Settings>>, dir: PathB
             .spawn(move || loop {
                 // Hold the lock only around a short recv_timeout so the
                 // cancel branch can grab the same mutex to drain the queue.
-                let url = {
+                let job = {
                     let guard = worker_rx.lock().unwrap_or_else(|p| p.into_inner());
                     match guard.recv_timeout(Duration::from_millis(200)) {
-                        Ok(url) => Some(url),
+                        Ok(job) => Some(job),
                         Err(mpsc::RecvTimeoutError::Timeout) => None,
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
                     }
                 };
-                if let Some(url) = url {
+                if let Some(job) = job {
                     // Audit 2026-09-03: a panic inside one job (e.g. a NaN
                     // sample tripping DSP) must not kill this thread forever
                     // and wedge every later request — survive it loudly.
                     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        handle_request(&worker_app, &worker_settings, &url, &worker_pending);
+                        handle_request(&worker_app, &worker_settings, &job.url, job.watch, &worker_pending);
                     }));
                     if r.is_err() {
                         tracing::error!(target: "bridge", "نجا العامل من عطل في مهمة — راجع سجل الانهيار؛ الطابور مستمر");
-                        forget_seen(&url);
+                        forget_seen(&job.url);
                         worker_pending
                             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
                                 Some(v.saturating_sub(1))
@@ -581,7 +615,7 @@ fn bridge_loop(app: tauri::AppHandle, settings: Arc<Mutex<Settings>>, dir: PathB
                         write_state(&serde_json::json!({
                             "running": null,
                             "queue": 0,
-                            "last": { "name": url, "ok": false, "error": "عطل داخلي — أعد المحاولة" }
+                            "last": { "name": job.url, "ok": false, "error": "عطل داخلي — أعد المحاولة" }
                         }));
                     }
                 }
@@ -654,6 +688,7 @@ fn handle_request(
     app: &tauri::AppHandle,
     settings: &Arc<Mutex<Settings>>,
     url: &str,
+    watch: bool,
     pending: &Arc<AtomicUsize>,
 ) {
     use tauri::Emitter;
@@ -667,7 +702,14 @@ fn handle_request(
         (s, n)
     };
 
-    let out_dir = dirs::video_dir().unwrap_or_default().join("HaramLite");
+    // Field #3: temp watch-listens process audio-only inside the managed
+    // page-audio dir — nothing is ever saved to the user folder, and each
+    // completion sweeps the previous temp (deleted when no longer wanted).
+    let out_dir = if watch {
+        page_audio_dir()
+    } else {
+        dirs::video_dir().unwrap_or_default().join("HaramLite")
+    };
     let url_label = url.to_string();
     let name_label = url_label.clone();
     let queued = pending.load(Ordering::SeqCst).saturating_sub(1);
@@ -683,7 +725,7 @@ fn handle_request(
         serde_json::json!({ "name": name_label, "queue": queued }),
     );
 
-    match crate::yt_dlp::download_media(url, &out_dir, &|p| {
+    let dl_progress = |p: f32| {
         let _ = app.emit("dl-progress", p.clamp(0.0, 1.0));
         write_state_throttled(&serde_json::json!({
             "running": { "name": name_label, "stage": "download", "pct": p.clamp(0.0, 1.0) },
@@ -691,7 +733,16 @@ fn handle_request(
             "last": null
         }));
         !cancel_flag().load(Ordering::SeqCst)
-    }, &cancel_flag()) {
+    };
+    if watch {
+        tracing::info!(target: "bridge", "watch-temp request: audio-only into {}", out_dir.display());
+    }
+    let downloaded = if watch {
+        crate::yt_dlp::download_audio(url, &out_dir, &dl_progress, &cancel_flag())
+    } else {
+        crate::yt_dlp::download_media(url, &out_dir, &dl_progress, &cancel_flag())
+    };
+    match downloaded {
         Ok(file) => {
             let mode = if s.watch_mode == "clip" { Mode::Clip } else { Mode::Song };
             let file_label = file
@@ -707,8 +758,12 @@ fn handle_request(
                 &file,
                 &out_dir,
                 mode,
-                OutKind::Video { max_height: None },
-                s.keep_instrumental,
+                if watch {
+                    OutKind::Audio { fmt: crate::pipeline::OutFormat::Mp3 }
+                } else {
+                    OutKind::Video { max_height: None }
+                },
+                if watch { false } else { s.keep_instrumental },
                 true,
                 s.cuda,
                 None,
@@ -745,6 +800,10 @@ fn handle_request(
                     // ranges (the page maps its clock through them so song
                     // outputs with mirrored silence cuts stay in sync).
                     let page_audio = ensure_page_audio(&o);
+                    if watch {
+                        // Temp listens must not accumulate: keep only this job's file.
+                        sweep_page_audio_dir(page_audio.as_deref());
+                    }
                     write_state(&serde_json::json!({
                         "running": null,
                         "queue": 0,
@@ -1054,7 +1113,7 @@ mod tests {
     }
 
     fn ctx_with() -> (DispatchCtx, Arc<AtomicUsize>) {
-        let (tx, rx) = mpsc::channel::<String>();
+        let (tx, rx) = mpsc::channel::<Job>();
         let pending = Arc::new(AtomicUsize::new(0));
         let ctx = DispatchCtx {
             job_tx: tx,
@@ -1088,10 +1147,10 @@ mod tests {
             .unwrap_or_else(|p| p.into_inner())
             .try_recv()
             .expect("job must be queued");
-        assert_eq!(got, url);
+        assert_eq!(got, Job { url: url.clone(), watch: false });
         // re-queue it so the SECOND delivery is genuinely a duplicate
         ctx.pending.fetch_add(1, Ordering::SeqCst);
-        let _ = ctx.job_tx.send(url.clone());
+        let _ = ctx.job_tx.send(Job { url: url.clone(), watch: false });
 
         // second delivery of the same URL → skipped AND removed (no 5s loop)
         let p2 = write_req("req_2.json", &format!(r#"{{"type":"link","url":"{url}"}}"#));
@@ -1101,6 +1160,48 @@ mod tests {
         let guard = ctx.job_rx.lock().unwrap_or_else(|p| p.into_inner());
         while guard.try_recv().is_ok() {}
         drop(guard);
+        teardown(&base);
+    }
+
+    /// Field #3: only an explicit `"watch"` mode takes the temp path —
+    /// missing/garbage modes stay full-save (both directions compatible).
+    #[test]
+    fn watch_mode_parses_explicit_only() {
+        use serde_json::json;
+        assert!(job_watch_of(&json!({ "type": "link", "mode": "watch" })));
+        assert!(!job_watch_of(&json!({ "type": "link" })));
+        assert!(!job_watch_of(&json!({ "type": "link", "mode": "full" })));
+        assert!(!job_watch_of(&json!({ "type": "link", "mode": "" })));
+        assert!(!job_watch_of(&json!({ "type": "link", "mode": 7 })));
+        assert!(!job_watch_of(&json!({})));
+    }
+
+    /// Field #3: a watch-mode request file queues a temp job (flag survives
+    /// dispatch); a modeless file queues full-save.
+    #[test]
+    fn watch_request_dispatches_temp_job() {
+        let _guard = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let base = isolated_base("watchmode");
+        let (ctx, _pending) = ctx_with();
+        let url = format!("https://example.invalid/watch_{}", nanos());
+        let p1 = write_req("req_watch.json", &format!(r#"{{"type":"link","url":"{url}","mode":"watch"}}"#));
+        dispatch_file(&p1, &ctx);
+        let got = ctx
+            .job_rx
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .try_recv()
+            .expect("watch job must be queued");
+        assert_eq!(got, Job { url: url.clone(), watch: true });
+        let p2 = write_req("req_full.json", &format!(r#"{{"type":"link","url":"{url}x"}}"#));
+        dispatch_file(&p2, &ctx);
+        let got2 = ctx
+            .job_rx
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .try_recv()
+            .expect("full job must be queued");
+        assert!(!got2.watch);
         teardown(&base);
     }
 

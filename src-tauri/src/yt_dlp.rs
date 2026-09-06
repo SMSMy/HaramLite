@@ -364,8 +364,9 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
 // Media download via yt-dlp
 // ─────────────────────────────────────────────────────────────────────
 
-/// Download `url` media (bestaudio muxed; no playlists) into out_dir.
-/// Returns the finished file path. Progress parsed from `--newline` output.
+/// Download `url` media (full video `bv*+ba/b` muxed to mp4; no playlists)
+/// into out_dir. Returns the finished file path. Progress parsed from
+/// `--newline` output.
 /// The progress closure returns false to abort; `cancel` is polled by a
 /// monitor thread so cancellation also works while yt-dlp is MERGING
 /// (no progress lines during that phase).
@@ -375,7 +376,27 @@ pub fn download_media(
     progress: &dyn Fn(f32) -> bool,
     cancel: &std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) -> Result<PathBuf, YtError> {
-    download_media_inner(url, out_dir, progress, cancel)
+    download_media_inner(url, out_dir, progress, cancel, false)
+}
+
+/// Watch-temp download: audio only (`ba/b`, small + fast) for in-page
+/// listening — no video stream is ever fetched or saved.
+pub fn download_audio(
+    url: &str,
+    out_dir: &Path,
+    progress: &dyn Fn(f32) -> bool,
+    cancel: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> Result<PathBuf, YtError> {
+    download_media_inner(url, out_dir, progress, cancel, true)
+}
+
+/// Pure format selector (unit-tested): temp listens take audio only.
+pub fn format_selector(audio_only: bool) -> &'static str {
+    if audio_only {
+        "ba/b"
+    } else {
+        "bv*+ba/b"
+    }
 }
 
 /// How long a download may go without a single stdout line before it is
@@ -559,6 +580,7 @@ fn download_media_inner(
     out_dir: &Path,
     progress: &dyn Fn(f32) -> bool,
     cancel: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+    audio_only: bool,
 ) -> Result<PathBuf, YtError> {
     use std::sync::atomic::Ordering;
     let exe = resolve_ytdlp().ok_or(YtError::NotFound)?;
@@ -630,7 +652,7 @@ fn download_media_inner(
         "--newline".into(),
         "--no-playlist".into(),
         "-f".into(),
-        "bv*+ba/b".into(),
+        format_selector(audio_only).into(),
         "--merge-output-format".into(),
         "mp4".into(),
         "--socket-timeout".into(),
@@ -879,6 +901,13 @@ mod tests {
         // length cap leaves room for suffix + extension
         let long = "a".repeat(500);
         assert!(sanitize_title(&long, "x").chars().count() <= 180);
+    }
+
+    /// Field #3: temp watch-listens must never fetch a video stream.
+    #[test]
+    fn watch_format_is_audio_only() {
+        assert_eq!(format_selector(true), "ba/b");
+        assert_eq!(format_selector(false), "bv*+ba/b");
     }
 
     #[test]
