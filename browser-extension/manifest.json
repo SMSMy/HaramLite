@@ -19,6 +19,11 @@
     "default_popup": "popup.html",
     "default_title": "HaramLite Bridge"
   },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "haramlite_bridge@harammute.app"
+    }
+  },
   "icons": {
     "16": "icon16.png",
     "48": "icon48.png",

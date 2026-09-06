@@ -1,15 +1,20 @@
-// HaramLite Bridge — YouTube content script (B4 hybrid).
+// HaramLite Bridge — YouTube content script.
+// Decision 3 (2026-09-06): ONE button in the page requesting the file
+// pipeline (the old two-item menu, including the dead "live" entry, is
+// gone with the hidden live card). On completion the page can watch the
+// FILTERED output in sync (simplified dual-player: page video muted +
+// filtered audio element, rate/volume mirrored, clean restore).
+// No chunk streaming, no time-stretching, no telemetry — local only.
 // 1. A HaramLite button inside the player control bar (next to quality/CC).
-// 2. Click → themed menu: «معالجة كاملة وحفظ» + «استماع مباشر (قريباً)».
-// 3. Full processing → a themed mini panel pinned to the bottom of THIS
-//    video page with a live progress bar (polls the desktop bridge state).
+// 2. Click → the desktop file pipeline (download + full processing).
+// 3. Done → a themed mini panel: watch filtered in-page, or open results.
 // No trackers. All communication goes through Native Messaging.
 
 (() => {
   const HOST = 'com.harammute.haramlite';
   const BTN_ID = 'haramlite-yt-btn';
-  const MENU_ID = 'haramlite-yt-menu';
   const PANEL_ID = 'haramlite-panel';
+  const BADGE_ID = 'haramlite-watch-badge';
 
   const T = {
     bg: '#151311', panel: 'rgba(31,29,27,0.97)', border: '#2E2C29',
@@ -48,56 +53,10 @@
     btn.addEventListener('click', (ev) => {
       ev.stopPropagation();
       ev.preventDefault();
-      toggleMenu(btn);
-    });
-    return btn;
-  }
-
-  /* ── themed menu (two options) ─────────────────────────────────── */
-  let menuCloser = null;
-  function closeMenu() {
-    document.getElementById(MENU_ID)?.remove();
-    // E-7: remove the document-level click listener too — no leaks.
-    if (menuCloser) {
-      document.removeEventListener('click', menuCloser);
-      menuCloser = null;
-    }
-  }
-
-  function toggleMenu(btn) {
-    const existing = document.getElementById(MENU_ID);
-    if (existing) { existing.remove(); return; }
-    const r = btn.getBoundingClientRect();
-    const menu = document.createElement('div');
-    menu.id = MENU_ID;
-    menu.style.cssText =
-      `position:fixed;bottom:${window.innerHeight - r.top + 10}px;right:${window.innerWidth - r.right}px;` +
-      `width:232px;background:${T.panel};border:1px solid ${T.border};border-radius:10px;` +
-      `box-shadow:0 10px 28px rgba(0,0,0,.55);padding:6px;z-index:2147483001;` +
-      `font-family:Roboto,Arial,sans-serif;direction:rtl;`;
-    menu.innerHTML =
-      `<button id="hl-menu-full" style="width:100%;padding:10px 10px;background:transparent;border:none;` +
-      `color:${T.text};font-size:13px;font-weight:600;text-align:right;cursor:pointer;border-radius:6px;display:flex;gap:8px;align-items:center;">` +
-      `💾 معالجة كاملة وحفظ</button>` +
-      `<button id="hl-menu-live" style="width:100%;padding:10px 10px;background:transparent;border:none;` +
-      `color:${T.sub};font-size:13px;text-align:right;cursor:pointer;border-radius:6px;display:flex;gap:8px;align-items:center;justify-content:space-between;">` +
-      `<span>🎧 استماع مباشر بلا موسيقى</span>` +
-      `<span style="font-size:10px;background:${T.border};color:${T.sub};padding:2px 7px;border-radius:8px;">قريباً</span></button>`;
-    document.body.appendChild(menu);
-    document.getElementById('hl-menu-full').addEventListener('click', () => {
-      closeMenu();
+      // Decision 3: one button → the file pipeline directly.
       void startFull();
     });
-    document.getElementById('hl-menu-live').addEventListener('click', () => {
-      closeMenu();
-      showPanel('ميزة الاستماع المباشر قيد البناء — ستتوفر في التحديث القادم إن شاء الله', true);
-    });
-    // outside click closes
-    setTimeout(() => {
-      if (!menu.isConnected) return; // menu already gone
-      menuCloser = (e) => { if (!menu.contains(e.target)) closeMenu(); };
-      document.addEventListener('click', menuCloser);
-    }, 0);
+    return btn;
   }
 
   /* ── themed mini panel (bottom of THIS page only) ──────────────── */
@@ -120,7 +79,17 @@
         `<div style="height:6px;background:${T.border};border-radius:3px;overflow:hidden;margin-bottom:6px;">` +
         `<div id="hl-panel-bar" style="height:100%;width:0%;background:${T.accent};transition:width .45s;"></div></div>` +
         `<div id="hl-panel-status" style="font-size:12px;color:${T.text};min-height:16px;"></div>` +
-        `<div style="display:flex;gap:6px;margin-top:8px;">` +
+        `<div id="hl-panel-prov" style="font-size:11px;color:${T.sub};min-height:14px;"></div>` +
+        `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">` +
+        `<button id="hl-panel-watch" style="display:none;flex:1;padding:8px;border-radius:8px;` +
+        `border:1px solid ${T.accent};background:rgba(218,119,86,.2);color:#ffb59d;cursor:pointer;font-size:12px;font-weight:700;">` +
+        `▶ مشاهدة مفلترة في الصفحة</button>` +
+        `<button id="hl-panel-reprocess" style="display:none;flex:1;padding:8px;border-radius:8px;` +
+        `border:1px solid ${T.border};background:transparent;color:${T.sub};cursor:pointer;font-size:12px;">` +
+        `↻ معالجة كاملة</button>` +
+        `<button id="hl-panel-stopwatch" style="display:none;flex:1;padding:8px;border-radius:8px;` +
+        `border:1px solid ${T.err};background:rgba(255,180,171,.1);color:${T.err};cursor:pointer;font-size:12px;font-weight:600;">` +
+        `⏹ إيقاف المشاهدة</button>` +
         `<button id="hl-panel-open" style="display:none;flex:1;padding:8px;border-radius:8px;` +
         `border:1px solid ${T.accent};background:rgba(218,119,86,.15);color:#ffb59d;cursor:pointer;font-size:12px;font-weight:600;">` +
         `📂 فتح مجلد النتائج</button>` +
@@ -144,22 +113,40 @@
       document.getElementById('hl-panel-cancel').addEventListener('click', () => {
         native({ type: 'cancel' }).catch(() => {});
       });
+      document.getElementById('hl-panel-watch').addEventListener('click', () => {
+        void startWatch();
+      });
+      document.getElementById('hl-panel-reprocess').addEventListener('click', () => {
+        stopWatch();
+        void startFull();
+      });
+      document.getElementById('hl-panel-stopwatch').addEventListener('click', () => {
+        stopWatch();
+      });
     }
     panelEls = {
       name: panel.querySelector('#hl-panel-name'),
       bar: panel.querySelector('#hl-panel-bar'),
       status: panel.querySelector('#hl-panel-status'),
+      prov: panel.querySelector('#hl-panel-prov'),
       open: panel.querySelector('#hl-panel-open'),
       openFile: panel.querySelector('#hl-panel-open-file'),
       cancel: panel.querySelector('#hl-panel-cancel'),
+      watch: panel.querySelector('#hl-panel-watch'),
+      reprocess: panel.querySelector('#hl-panel-reprocess'),
+      stopwatch: panel.querySelector('#hl-panel-stopwatch'),
     };
     panelEls.name.textContent = '';
     panelEls.bar.style.width = '0%';
     panelEls.status.textContent = statusText;
     panelEls.status.style.color = isInfo ? T.sub : T.text;
+    panelEls.prov.textContent = '';
     panelEls.open.style.display = 'none';
     panelEls.openFile.style.display = 'none';
     panelEls.cancel.style.display = 'none';
+    panelEls.watch.style.display = 'none';
+    panelEls.reprocess.style.display = 'none';
+    panelEls.stopwatch.style.display = 'none';
   }
 
   /* ── full processing flow + live status polling ────────────────── */
@@ -168,6 +155,8 @@
 
   async function startFull() {
     stopPoll();
+    stopWatch();
+    LAST = null;
     showPanel('جاري الإرسال إلى HaramLite...');
     try {
       const r = await native({ type: 'link', url: location.href });
@@ -197,6 +186,14 @@
         const r = await native({ type: 'status' });
         fails = 0; // healthy again
         const st = (r && r.state) || {};
+        // Decision 3 + expert D2د: provider badge (CPU honesty — no live
+        // inference exists, file watching works the same; durations measured).
+        if (panelEls && panelEls.prov) {
+          const prov = r && r.provider ? String(r.provider) : '';
+          panelEls.prov.textContent = prov === 'CPU'
+            ? 'وضع CPU — المعالجة أبطأ، والمدة المقاسة تُعلن عند الاكتمال'
+            : (prov ? `المزود: ${prov}` : '');
+        }
         if (st.running) {
           sawRunning = true;
           const { name, stage, pct } = st.running;
@@ -221,6 +218,13 @@
               panelEls.status.style.color = T.ok;
               panelEls.open.style.display = 'block';
               panelEls.openFile.style.display = 'block';
+              // Decision 3: watch-filtered + manual full-process side by side.
+              LAST = {
+                seconds: st.last.seconds || 0,
+                kept: Array.isArray(st.last.kept) ? st.last.kept : null,
+              };
+              panelEls.watch.style.display = 'block';
+              panelEls.reprocess.style.display = 'block';
             } else {
               panelEls.status.textContent = '✗ ' + (st.last.error || 'فشلت المعالجة');
               panelEls.status.style.color = T.err;
@@ -241,6 +245,196 @@
         }
       }
     }, 1500);
+  }
+
+  /* ── simplified dual-player: muted page video + filtered audio ──── */
+  // The finished file pipeline left page-audio on the desktop; the page
+  // fetches it ONCE (bounded slices, size-verified — file DELIVERY, never
+  // live/chunked streaming) and plays it through an <audio> element synced
+  // to the page <video>: play/pause/seek/rate/volume mirror + drift fix.
+  // Song outputs carry kept-ranges so mirrored silence cuts stay mapped;
+  // without them the timelines must coincide (±2s) or watching is refused
+  // with a clear message + file fallback. Restore is total.
+  let LAST = null;
+  let WATCH = null;
+
+  function hexToBytes(hex) {
+    const n = hex.length / 2;
+    const out = new Uint8Array(n);
+    for (let i = 0; i < n; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+    return out;
+  }
+
+  function setWatchStatus(msg, color) {
+    if (panelEls) {
+      panelEls.status.textContent = msg;
+      panelEls.status.style.color = color || T.text;
+    }
+  }
+
+  // Full-timeline seconds → cut-timeline seconds through kept ranges.
+  function mapFullToCut(t, kept) {
+    if (!kept || !kept.length) return t;
+    let acc = 0;
+    for (const pair of kept) {
+      const a = Number(pair[0]);
+      const b = Number(pair[1]);
+      if (!(b > a)) continue;
+      if (t <= a) break;
+      acc += Math.min(t, b) - a;
+    }
+    return acc;
+  }
+
+  function pageVideo() {
+    return document.querySelector('#movie_player video') || document.querySelector('video');
+  }
+
+  async function fetchPageAudio() {
+    const parts = [];
+    let offset = 0;
+    let total = 0;
+    for (;;) {
+      const r = await native({ type: 'result_file', offset, len: 262144 });
+      const f = r && r.file;
+      if (!f || typeof f.data !== 'string') throw new Error('رد فارغ من التطبيق — أعد المحاولة');
+      total = f.total || 0;
+      parts.push(f.data);
+      offset = f.offset + f.data.length / 2;
+      if (panelEls) panelEls.bar.style.width = `${total > 0 ? Math.round((offset / total) * 100) : 0}%`;
+      if (f.done) break;
+      if (total > 0 && offset >= total) break; // safety net
+    }
+    const flat = parts.join('');
+    if (total > 0 && flat.length / 2 !== total) throw new Error('ملف ناقص — أعد المحاولة');
+    return URL.createObjectURL(new Blob([hexToBytes(flat)], { type: 'audio/mpeg' }));
+  }
+
+  function showBadge(show) {
+    let badge = document.getElementById(BADGE_ID);
+    if (show) {
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.id = BADGE_ID;
+        badge.style.cssText =
+          `position:fixed;top:64px;right:16px;z-index:2147483002;background:rgba(21,19,17,.95);` +
+          `border:1px solid ${T.accent};border-radius:10px;padding:8px 12px;color:${T.text};` +
+          `font-family:Roboto,Arial,sans-serif;font-size:12px;direction:rtl;`;
+        document.body.appendChild(badge);
+      }
+      badge.textContent = '🔇 الفيديو الأصلي مكتوم — الصوت المفلتر يعمل (كتم معلن)';
+      badge.style.display = '';
+    } else if (badge) {
+      badge.remove();
+    }
+  }
+
+  async function startWatch() {
+    if (WATCH) return;
+    const video = pageVideo();
+    if (!video) {
+      setWatchStatus('✗ لم يُعثر على فيديو الصفحة', T.err);
+      return;
+    }
+    setWatchStatus('جارٍ جلب الصوت المفلتر من التطبيق...');
+    if (panelEls) {
+      panelEls.watch.style.display = 'none';
+      panelEls.bar.style.width = '0%';
+    }
+    let url = null;
+    try {
+      url = await fetchPageAudio();
+    } catch (e) {
+      setWatchStatus('✗ ' + (e && e.message ? e.message : 'تعذر الجلب'), T.err);
+      if (panelEls) panelEls.watch.style.display = 'block';
+      return;
+    }
+    const audio = new Audio();
+    audio.preload = 'auto';
+    audio.src = url;
+    try {
+      await new Promise((resolve, reject) => {
+        const to = setTimeout(() => reject(new Error('تعذر قراءة الصوت المفلتر')), 15000);
+        audio.addEventListener('loadedmetadata', () => { clearTimeout(to); resolve(); }, { once: true });
+        audio.addEventListener('error', () => { clearTimeout(to); reject(new Error('صيغة غير مدعومة في المتصفح')); }, { once: true });
+      });
+    } catch (e) {
+      URL.revokeObjectURL(url);
+      setWatchStatus('✗ ' + e.message, T.err);
+      if (panelEls) panelEls.watch.style.display = 'block';
+      return;
+    }
+    // Duration gate: song outputs mirror silence cuts (mapped via kept);
+    // without kept-ranges the timelines must coincide.
+    const kept = LAST && LAST.kept;
+    if ((!kept || !kept.length) && video.duration && audio.duration &&
+        Math.abs(video.duration - audio.duration) > 2) {
+      URL.revokeObjectURL(url);
+      setWatchStatus('✗ إخراج مقصوص الصمت بلا خريطة — افتح الملف بدلاً من ذلك', T.err);
+      if (panelEls) {
+        panelEls.watch.style.display = 'none';
+        panelEls.openFile.style.display = 'block';
+      }
+      return;
+    }
+    const w = {
+      audio, url, video,
+      prevMuted: video.muted,
+      handlers: [],
+      drift: 0,
+    };
+    const on = (el, ev, fn) => { el.addEventListener(ev, fn); w.handlers.push([el, ev, fn]); };
+    const audioPos = () => {
+      const t = mapFullToCut(video.currentTime || 0, kept);
+      return Math.min(Math.max(t, 0), Math.max(audio.duration - 0.05, 0));
+    };
+    on(video, 'play', () => { audio.currentTime = audioPos(); audio.play().catch(() => {}); });
+    on(video, 'pause', () => { audio.pause(); });
+    on(video, 'seeking', () => { audio.currentTime = audioPos(); });
+    on(video, 'ratechange', () => { audio.playbackRate = video.playbackRate || 1; });
+    on(video, 'volumechange', () => { audio.volume = video.volume; });
+    on(audio, 'ended', () => { stopWatch(); });
+    on(video, 'ended', () => { stopWatch(); });
+    // Declared mute (expert D2د): the ORIGINAL stays muted, announced.
+    video.muted = true;
+    showBadge(true);
+    audio.playbackRate = video.playbackRate || 1;
+    audio.volume = video.volume;
+    audio.currentTime = audioPos();
+    WATCH = w;
+    w.drift = setInterval(() => {
+      if (!WATCH || audio.paused) return;
+      const expect = audioPos();
+      if (Math.abs(audio.currentTime - expect) > 0.35) audio.currentTime = expect;
+    }, 1000);
+    if (panelEls) {
+      panelEls.stopwatch.style.display = 'block';
+      panelEls.watch.style.display = 'none';
+    }
+    setWatchStatus(
+      `▶ مشاهدة مفلترة — الصوت من المعالجة المحلية${LAST && LAST.seconds ? ` (عولجت في ${LAST.seconds.toFixed(1)} ث)` : ''}`,
+      T.ok,
+    );
+    if (!video.paused) audio.play().catch(() => {});
+  }
+
+  function stopWatch() {
+    const w = WATCH;
+    WATCH = null;
+    if (!w) return;
+    if (w.drift) clearInterval(w.drift);
+    for (const [el, ev, fn] of w.handlers) {
+      try { el.removeEventListener(ev, fn); } catch { /* gone */ }
+    }
+    try { w.audio.pause(); } catch { /* gone */ }
+    try { w.video.muted = w.prevMuted; } catch { /* gone */ }
+    try { URL.revokeObjectURL(w.url); } catch { /* gone */ }
+    showBadge(false);
+    if (panelEls) {
+      panelEls.stopwatch.style.display = 'none';
+      if (LAST) panelEls.watch.style.display = 'block';
+      setWatchStatus('⏹ توقفت المشاهدة — عاد صوت الصفحة الأصلي', T.sub);
+    }
   }
 
   /* ── injection loop (SPA-safe) ─────────────────────────────────── */
@@ -267,6 +461,7 @@
     }, 200);
   }
   window.addEventListener('yt-navigate-finish', scheduleInject);
+  window.addEventListener('yt-navigate-finish', stopWatch);
   window.addEventListener('yt-page-data-updated', scheduleInject);
   const watchRoot = document.querySelector('#movie_player') || document.body;
   const domObserver = new MutationObserver(scheduleInject);

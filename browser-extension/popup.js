@@ -11,6 +11,7 @@ const progBar = document.getElementById('popup-bar');
 const progStatus = document.getElementById('popup-status');
 const cancelBtn = document.getElementById('popup-cancel');
 const openBtn = document.getElementById('popup-open');
+const progProv = document.getElementById('popup-prov');
 
 const STAGE_AR = {
   download: 'التنزيل', normalize: 'توحيد الصوت', separate: 'فصل الصوت',
@@ -60,6 +61,13 @@ function pollProgress() {
       const r = await native({ type: 'status' });
       fails = 0; // healthy again
       const st = (r && r.state) || {};
+      // Decision 3 + expert D2د: provider badge (CPU honesty — durations measured).
+      if (progProv) {
+        const prov = (r && r.provider) ? String(r.provider) : '';
+        progProv.textContent = prov === 'CPU'
+          ? 'وضع CPU — المعالجة أبطأ والمدة المقاسة تُعلن عند الاكتمال'
+          : (prov ? 'المزود: ' + prov : '');
+      }
       if (st.running) {
         sawRunning = true;
         progName.textContent = st.running.name || '';

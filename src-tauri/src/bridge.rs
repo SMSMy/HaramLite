@@ -141,7 +141,13 @@ pub fn native_host_entry() -> i32 {
 fn handle_host_message(msg: &serde_json::Value) {
     match msg.get("type").and_then(|t| t.as_str()).unwrap_or("") {
         "ping" => reply_ok(serde_json::json!({ "ok": true, "app": "HaramLite" })),
-        "status" => reply_ok(serde_json::json!({ "ok": true, "state": read_state() })),
+        "status" => reply_ok(serde_json::json!({
+            "ok": true,
+            "state": read_state(),
+            // Expert D2د: provider truth for the page CPU-only policy (the
+            // host process cannot see ACTIVE_PROVIDER — it reads the file).
+            "provider": crate::separator::read_provider(),
+        })),
         "open_folder" => {
             let dir = dirs::video_dir().unwrap_or_default().join("HaramLite");
             let _ = std::fs::create_dir_all(&dir);
@@ -212,6 +218,16 @@ fn handle_host_message(msg: &serde_json::Value) {
                 Err(e) => reply_err(&e),
             }
         }
+        "result_file" => {
+            // In-page watching: slices of the RECORDED last page-audio only
+            // (same rule as open_file — the browser never passes paths).
+            let offset = msg.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            let len = msg.get("len").and_then(|v| v.as_u64()).unwrap_or(PAGE_SLICE_MAX as u64) as usize;
+            match serve_page_audio_slice(offset, len) {
+                Ok(v) => reply_ok(serde_json::json!({ "ok": true, "file": v })),
+                Err(e) => reply_err(&e),
+            }
+        }
         other => reply_err(&format!("unknown message type: {other}")),
     }
 }
@@ -249,6 +265,72 @@ fn write_request(url: &str) -> Result<String, String> {
     std::fs::write(&tmp, body).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
     Ok(path.display().to_string())
+}
+
+/// Max binary bytes per page-audio slice: hex doubles the size and the host
+/// protocol caps messages at 1MB — 256KB binary ≈ 524KB JSON, safe margin.
+pub const PAGE_SLICE_MAX: usize = 262144;
+
+/// Pure slice (unit-tested): clamped offset, lowercase hex, done flag.
+pub fn slice_bytes(bytes: &[u8], offset: usize, len: usize) -> (usize, String, bool) {
+    let total = bytes.len();
+    let off = offset.min(total);
+    let end = (off + len.min(PAGE_SLICE_MAX)).min(total);
+    let mut hex = String::with_capacity((end - off) * 2);
+    for b in &bytes[off..end] {
+        hex.push_str(&format!("{b:02x}"));
+    }
+    (off, hex, end >= total)
+}
+
+/// Serve ONLY the recorded last page-audio (same rule as open_file — the
+/// browser never passes arbitrary paths, so an extension bug can never
+/// turn this into a file-read primitive).
+fn serve_page_audio_slice(offset: usize, len: usize) -> Result<serde_json::Value, String> {
+    let st = read_state();
+    let path = st
+        .get("last")
+        .and_then(|l| l.get("page_audio"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "لا يوجد صوت صفحة مكتمل بعد".to_string())?
+        .to_string();
+    let bytes = std::fs::read(&path).map_err(|e| format!("تعذر قراءة صوت الصفحة: {e}"))?;
+    let (off, hex, done) = slice_bytes(&bytes, offset, len);
+    Ok(serde_json::json!({ "total": bytes.len(), "offset": off, "data": hex, "done": done }))
+}
+
+/// Directory for compact in-page audio (NOT the user's folder — no clutter).
+pub fn page_audio_dir() -> PathBuf {
+    dirs::data_dir()
+        .unwrap_or_default()
+        .join("com.harammute.haramlite")
+        .join("page-audio")
+}
+
+/// Page-audio for in-page watching: the vocals mp3 reused for audio jobs;
+/// a compact mp3 extracted beside it for video jobs (the Clean MP4 is far
+/// too heavy for 1MB native messages). None ⇒ watching unavailable — the
+/// file pipeline itself is unaffected (graceful, warned).
+fn ensure_page_audio(o: &crate::pipeline::PipelineOutput) -> Option<PathBuf> {
+    if o.video.is_none() {
+        return o.vocals.clone();
+    }
+    let video = o.video.as_ref()?;
+    let dir = page_audio_dir();
+    // Sweep older page-audio first (best-effort — the folder holds one file).
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for e in entries.flatten() {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+    match crate::media::extract_audio(video, "mp3", &dir) {
+        Ok(p) => Some(p),
+        Err(e) => {
+            tracing::warn!(target: "bridge", "تعذر استخراج صوت الصفحة ({e}) — المشاهدة داخل الصفحة غير متاحة");
+            None
+        }
+    }
 }
 
 /// Pure predicate (unit-tested): remove the auto-downloaded source only when
@@ -659,12 +741,18 @@ fn handle_request(
                     // silently skipped. Dedup now only guards the
                     // running/queued window.
                     forget_seen(url);
+                    // In-page watching surface: compact page-audio + kept
+                    // ranges (the page maps its clock through them so song
+                    // outputs with mirrored silence cuts stay in sync).
+                    let page_audio = ensure_page_audio(&o);
                     write_state(&serde_json::json!({
                         "running": null,
                         "queue": 0,
                         "last": { "name": out_name, "ok": true, "seconds": o.seconds,
                                   "vocals": o.vocals.as_ref().map(|p| p.to_string_lossy().into_owned()),
-                                  "video": o.video.as_ref().map(|p| p.to_string_lossy().into_owned()) }
+                                  "video": o.video.as_ref().map(|p| p.to_string_lossy().into_owned()),
+                                  "page_audio": page_audio.as_ref().map(|p| p.to_string_lossy().into_owned()),
+                                  "kept": o.kept_ranges.clone() }
                     }));
                     let _ = app.emit(
                         "bridge-done",
@@ -1122,4 +1210,46 @@ mod tests {
         assert!(!is_subkey_match(Some(r"C:\other\host.json"), r"C:\a\com.harammute.haramlite.json"));
         assert!(!is_subkey_match(Some(""), r"C:\a\com.harammute.haramlite.json"));
     }
+
+    /// Decision 3: page-audio slices are offset-clamped, hex-encoded and
+    /// flagged done exactly at the end; oversized requests clamp to the cap.
+    #[test]
+    fn page_slices_clamp_encode_and_flag_done() {
+        let bytes: Vec<u8> = (0..1024u32).map(|i| (i % 251) as u8).collect();
+        let (off, hex, done) = slice_bytes(&bytes, 100, 64);
+        assert_eq!(off, 100);
+        assert!(!done);
+        assert_eq!(hex.len(), 128);
+        // hex round-trips byte-exact.
+        let back: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect();
+        assert_eq!(back, bytes[100..164]);
+        // Past-end offset clamps to total and reports done with empty data.
+        let (off2, hex2, done2) = slice_bytes(&bytes, 99999, 64);
+        assert_eq!((off2, done2), (1024, true));
+        assert!(hex2.is_empty());
+        // Oversized length clamps to PAGE_SLICE_MAX, staying far under 1MB.
+        let big = vec![0xABu8; PAGE_SLICE_MAX + 1000];
+        let (_, hex3, done3) = slice_bytes(&big, 0, big.len());
+        assert_eq!(hex3.len(), PAGE_SLICE_MAX * 2);
+        assert!(!done3, "clamped end stops before total");
+        assert!(hex3.len() < 1_000_000);
+    }
+
+    /// Decision 3: with no outputs at all there is simply no page-audio
+    /// (watching unavailable) — never an error, never a invented path.
+    #[test]
+    fn page_audio_absent_without_outputs() {
+        let o = crate::pipeline::PipelineOutput {
+            vocals: None,
+            instrumental: None,
+            video: None,
+            kept_ranges: Vec::new(),
+            seconds: 0.0,
+        };
+        assert!(ensure_page_audio(&o).is_none());
+    }
 }
+
