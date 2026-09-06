@@ -288,6 +288,14 @@ pub fn slice_bytes(bytes: &[u8], offset: usize, len: usize) -> (usize, String, b
     (off, hex, end >= total)
 }
 
+/// Pure reader for the completion-job URL (unit-tested): states written
+/// before the url field (or failures) yield None — never panic, never guess.
+pub fn job_url_of(last: &serde_json::Value) -> Option<&str> {
+    last.get("url")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+}
+
 /// Serve ONLY the recorded last page-audio (same rule as open_file — the
 /// browser never passes arbitrary paths, so an extension bug can never
 /// turn this into a file-read primitive).
@@ -811,7 +819,12 @@ fn handle_request(
                                   "vocals": o.vocals.as_ref().map(|p| p.to_string_lossy().into_owned()),
                                   "video": o.video.as_ref().map(|p| p.to_string_lossy().into_owned()),
                                   "page_audio": page_audio.as_ref().map(|p| p.to_string_lossy().into_owned()),
-                                  "kept": o.kept_ranges.clone() }
+                                  "kept": o.kept_ranges.clone(),
+                                  // The requesting page URL: the extension matches
+                                  // completions by video identity (output names
+                                  // derive from titles, not ids — name-matching
+                                  // would misfire). Old states lack it: None.
+                                  "url": url }
                     }));
                     let _ = app.emit(
                         "bridge-done",
@@ -1351,6 +1364,21 @@ mod tests {
             seconds: 0.0,
         };
         assert!(ensure_page_audio(&o).is_none());
+    }
+
+    /// The completion URL is readable when present and unknown otherwise —
+    /// old states (no url field), failures and garbage never match.
+    #[test]
+    fn completion_url_reads_exact_or_unknown() {
+        use serde_json::json;
+        assert_eq!(
+            job_url_of(&json!({ "url": "https://www.youtube.com/watch?v=abc123" })),
+            Some("https://www.youtube.com/watch?v=abc123")
+        );
+        assert_eq!(job_url_of(&json!({ "name": "x", "ok": true })), None);
+        assert_eq!(job_url_of(&json!({ "url": "" })), None);
+        assert_eq!(job_url_of(&json!({ "url": 7 })), None);
+        assert_eq!(job_url_of(&json!({})), None);
     }
 }
 

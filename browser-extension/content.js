@@ -1,32 +1,58 @@
 // HaramLite Bridge — YouTube content script.
-// Decision 3 (2026-09-06): ONE button in the page requesting the file
-// pipeline (the old two-item menu, including the dead "live" entry, is
-// gone with the hidden live card). On completion the page can watch the
-// FILTERED output in sync (simplified dual-player: page video muted +
-// filtered audio element, rate/volume mirrored, clean restore).
+// Two bar buttons, no panels, no questions asked:
+//   1. Download+Process — idle ("حمّل وعالج") → click starts (video paused,
+//      live % on the button) → click while busy cancels + resets → done dims
+//      ("تم التجهيز") and enables Watch.
+//   2. Watch — disabled until ready → enabled ("شاهد مفلتراً") → click
+//      applies the filter and plays (active color) → second click stops and
+//      restores the original. Manual only — nothing auto-applies.
+// Filtered watching: page video muted + filtered audio element, playback
+// rate pinned at 1x on both sides (+ player API guard), muted gaps hold the
+// audio with edge-snapped resume (no video jumping), drift backstop without
+// forced sync while stopped, clean restore. Right-click Watch for options
+// (visible gap-skip, default on + full reprocess). 2s fading toast.
 // No chunk streaming, no time-stretching, no telemetry — local only.
-// 1. A HaramLite button inside the player control bar (next to quality/CC).
-// 2. Click → the desktop file pipeline (download + full processing).
-// 3. Done → a themed mini panel: watch filtered in-page, or open results.
 // No trackers. All communication goes through Native Messaging.
 
 (() => {
-  const HOST = 'com.harammute.haramlite';
-  const BTN_ID = 'haramlite-yt-btn';
-  const PANEL_ID = 'haramlite-panel';
-  const BADGE_ID = 'haramlite-watch-badge';
+  const BTN_PROC = 'haramlite-yt-proc';
+  const BTN_WATCH = 'haramlite-yt-watch';
+  const MENU_ID = 'haramlite-yt-watchmenu';
+  const TOAST_ID = 'haramlite-toast';
 
   const T = {
-    bg: '#151311', panel: 'rgba(31,29,27,0.97)', border: '#2E2C29',
+    panel: 'rgba(31,29,27,0.97)', border: '#2E2C29',
     accent: '#DA7756', text: '#F5F2ED', sub: '#A38C85', ok: '#5DDAC8', err: '#FFB4AB',
   };
-  const STAGE_AR = {
-    download: 'التنزيل', normalize: 'توحيد الصوت', separate: 'فصل الصوت',
-    effects: 'المؤثرات', encode: 'الترميز',
-  };
-  const NOTE_SVG =
-    '<svg viewBox="0 0 24 24" width="22" height="22" fill="#fff" aria-hidden="true">' +
-    '<path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>';
+
+  let procBtn = null;
+  let watchBtn = null;
+  let menuCloser = null;
+  let toastTimer = 0;
+  let BUSY = false;
+  let LAST = null;
+  let WATCH = null;
+  let SENT_URL = null;
+
+  // Match a completion to THIS page by video identity — output FILE names
+  // derive from video titles (not ids), so name-matching would misfire.
+  function vidOf(u) {
+    if (!u || typeof u !== 'string') return null;
+    let m = u.match(/[?&]v=([^&#]+)/);
+    if (m) return m[1];
+    m = u.match(/youtu\.be\/([^?&#/]+)/);
+    if (m) return m[1];
+    m = u.match(/\/(shorts|embed|live)\/([^?&#/]+)/);
+    if (m) return m[2];
+    return null;
+  }
+  function sameVideo(a, b) {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    const va = vidOf(a);
+    const vb = vidOf(b);
+    return !!va && va === vb;
+  }
 
   function native(msg) {
     return new Promise((resolve, reject) => {
@@ -40,254 +66,278 @@
     });
   }
 
-  /* ── player button ─────────────────────────────────────────────── */
-  function makeButton() {
+  /* ── fading toast ──────────────────────────────────────────────── */
+  function toast(msg, ms) {
+    let el = document.getElementById(TOAST_ID);
+    if (!el) {
+      el = document.createElement('div');
+      el.id = TOAST_ID;
+      el.style.cssText =
+        `position:fixed;bottom:72px;right:16px;z-index:2147483002;max-width:min(360px,90vw);` +
+        `background:rgba(21,19,17,.96);border:1px solid ${T.border};border-radius:10px;` +
+        `padding:8px 12px;color:${T.text};font-family:Roboto,Arial,sans-serif;` +
+        `font-size:12px;direction:rtl;transition:opacity .4s;`;
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.style.opacity = '1';
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.style.opacity = '0'; }, ms || 2000);
+  }
+
+  /* ── bar buttons ───────────────────────────────────────────────── */
+  function barBtnBase() {
+    return 'display:inline-flex;align-items:center;justify-content:center;' +
+      'font-family:Roboto,Arial,sans-serif;font-size:13px;font-weight:600;white-space:nowrap;' +
+      'border:1px solid transparent;border-radius:16px;padding:0 14px;margin:0 4px;cursor:pointer;' +
+      'width:auto;height:32px;vertical-align:middle;box-sizing:border-box;transition:all 0.2s;' +
+      'background:rgba(21,19,17,.94);box-shadow:0 1px 8px rgba(0,0,0,.55);' +
+      'text-shadow:0 1px 2px rgba(0,0,0,.7);';
+  }
+  function makeProcBtn() {
     const btn = document.createElement('button');
-    btn.id = BTN_ID;
+    btn.id = BTN_PROC;
     btn.type = 'button';
     btn.className = 'ytp-button';
-    btn.title = 'HaramLite — عالج هذا الفيديو';
-    btn.setAttribute('aria-label', 'HaramLite');
-    btn.innerHTML = NOTE_SVG;
-    btn.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;opacity:0.9;';
+    btn.setAttribute('aria-label', 'HaramLite: download and process');
+    btn.style.cssText = barBtnBase();
     btn.addEventListener('click', (ev) => {
       ev.stopPropagation();
       ev.preventDefault();
-      // Decision 3: one button → the file pipeline directly.
-      void startFull();
+      if (BUSY) doCancel();
+      else void startFull();
     });
     return btn;
   }
-
-  /* ── themed mini panel (bottom of THIS page only) ──────────────── */
-  let panelEls = null;
-  function showPanel(statusText, isInfo = false) {
-    let panel = document.getElementById(PANEL_ID);
-    if (!panel) {
-      panel = document.createElement('div');
-      panel.id = PANEL_ID;
-      panel.style.cssText =
-        `position:fixed;bottom:16px;right:16px;width:320px;max-width:92vw;` +
-        `background:${T.panel};border:1px solid ${T.border};border-radius:12px;` +
-        `box-shadow:0 12px 32px rgba(0,0,0,.6);z-index:2147483000;padding:14px;` +
-        `font-family:Roboto,Arial,sans-serif;direction:rtl;color:${T.text};`;
-      panel.innerHTML =
-        `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">` +
-        `<span style="font-weight:700;color:${T.accent};font-size:13px;">🎵 HaramLite</span>` +
-        `<button id="hl-panel-close" style="background:none;border:none;color:${T.sub};cursor:pointer;font-size:16px;">✕</button></div>` +
-        `<div id="hl-panel-name" style="font-size:12px;color:${T.sub};margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>` +
-        `<div style="height:6px;background:${T.border};border-radius:3px;overflow:hidden;margin-bottom:6px;">` +
-        `<div id="hl-panel-bar" style="height:100%;width:0%;background:${T.accent};transition:width .45s;"></div></div>` +
-        `<div id="hl-panel-status" style="font-size:12px;color:${T.text};min-height:16px;"></div>` +
-        `<div id="hl-panel-prov" style="font-size:11px;color:${T.sub};min-height:14px;"></div>` +
-        `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">` +
-        `<button id="hl-panel-watch" style="display:none;flex:1;padding:8px;border-radius:8px;` +
-        `border:1px solid ${T.accent};background:rgba(218,119,86,.2);color:#ffb59d;cursor:pointer;font-size:12px;font-weight:700;">` +
-        `▶ مشاهدة مفلترة في الصفحة</button>` +
-        `<button id="hl-panel-reprocess" style="display:none;flex:1;padding:8px;border-radius:8px;` +
-        `border:1px solid ${T.border};background:transparent;color:${T.sub};cursor:pointer;font-size:12px;">` +
-        `↻ معالجة كاملة</button>` +
-        `<button id="hl-panel-stopwatch" style="display:none;flex:1;padding:8px;border-radius:8px;` +
-        `border:1px solid ${T.err};background:rgba(255,180,171,.1);color:${T.err};cursor:pointer;font-size:12px;font-weight:600;">` +
-        `⏹ إيقاف المشاهدة</button>` +
-        `<button id="hl-panel-open" style="display:none;flex:1;padding:8px;border-radius:8px;` +
-        `border:1px solid ${T.accent};background:rgba(218,119,86,.15);color:#ffb59d;cursor:pointer;font-size:12px;font-weight:600;">` +
-        `📂 فتح مجلد النتائج</button>` +
-        `<button id="hl-panel-open-file" style="display:none;flex:1;padding:8px;border-radius:8px;` +
-        `border:1px solid ${T.ok};background:rgba(93,218,200,.15);color:${T.ok};cursor:pointer;font-size:12px;font-weight:600;">` +
-        `▶ فتح الفيديو</button>` +
-        `<button id="hl-panel-cancel" style="display:none;flex:1;padding:8px;border-radius:8px;` +
-        `border:1px solid ${T.err};background:rgba(255,180,171,.1);color:${T.err};cursor:pointer;font-size:12px;font-weight:600;">` +
-        `⏹ إلغاء المعالجة</button></div>`;
-      document.body.appendChild(panel);
-      document.getElementById('hl-panel-close').addEventListener('click', () => {
-        panel.remove();
-        panelEls = null; // E-4: release the cached element refs for GC
-      });
-      document.getElementById('hl-panel-open').addEventListener('click', () => {
-        native({ type: 'open_folder' }).catch(() => {});
-      });
-      document.getElementById('hl-panel-open-file').addEventListener('click', () => {
-        native({ type: 'open_file' }).catch(() => {});
-      });
-      document.getElementById('hl-panel-cancel').addEventListener('click', () => {
-        native({ type: 'cancel' }).catch(() => {});
-      });
-      document.getElementById('hl-panel-watch').addEventListener('click', () => {
-        void startWatch();
-      });
-      document.getElementById('hl-panel-reprocess').addEventListener('click', () => {
-        stopWatch();
-        void startFull();
-      });
-      document.getElementById('hl-panel-stopwatch').addEventListener('click', () => {
-        stopWatch();
-      });
+  function makeWatchBtn() {
+    const btn = document.createElement('button');
+    btn.id = BTN_WATCH;
+    btn.type = 'button';
+    btn.className = 'ytp-button';
+    btn.setAttribute('aria-label', 'HaramLite: watch filtered');
+    btn.style.cssText = barBtnBase();
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+      if (WATCH) stopWatch();
+      else void startWatch();
+    });
+    // Options live on right-click: visible gap-skip + full reprocess.
+    btn.addEventListener('contextmenu', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      toggleWatchMenu(btn);
+    });
+    return btn;
+  }
+  function setProc(state, pct) {
+    if (!procBtn) return;
+    if (state === 'working') {
+      procBtn.disabled = false;
+      procBtn.style.opacity = '';
+      procBtn.style.background = 'rgba(21,19,17,.94)';
+      procBtn.style.borderColor = T.accent;
+      procBtn.style.color = '#fff';
+      procBtn.textContent = `${Math.round((pct || 0) * 100)}%`;
+      procBtn.title = 'HaramLite — جارٍ العمل (نقرة للإلغاء)';
+    } else if (state === 'done') {
+      procBtn.disabled = true;
+      procBtn.style.opacity = '0.55';
+      procBtn.style.background = 'rgba(21,19,17,.94)';
+      procBtn.style.borderColor = T.accent;
+      procBtn.style.color = T.text;
+      procBtn.textContent = 'تم التجهيز ✓';
+      procBtn.title = 'HaramLite — جاهز للمشاهدة';
+    } else {
+      procBtn.disabled = false;
+      procBtn.style.opacity = '';
+      procBtn.style.background = 'rgba(21,19,17,.94)';
+      procBtn.style.borderColor = T.accent;
+      procBtn.style.color = T.text;
+      procBtn.textContent = 'حمّل وعالج ⬇';
+      procBtn.title = 'HaramLite — حمّل وعالج هذا الفيديو';
     }
-    panelEls = {
-      name: panel.querySelector('#hl-panel-name'),
-      bar: panel.querySelector('#hl-panel-bar'),
-      status: panel.querySelector('#hl-panel-status'),
-      prov: panel.querySelector('#hl-panel-prov'),
-      open: panel.querySelector('#hl-panel-open'),
-      openFile: panel.querySelector('#hl-panel-open-file'),
-      cancel: panel.querySelector('#hl-panel-cancel'),
-      watch: panel.querySelector('#hl-panel-watch'),
-      reprocess: panel.querySelector('#hl-panel-reprocess'),
-      stopwatch: panel.querySelector('#hl-panel-stopwatch'),
-    };
-    panelEls.name.textContent = '';
-    panelEls.bar.style.width = '0%';
-    panelEls.status.textContent = statusText;
-    panelEls.status.style.color = isInfo ? T.sub : T.text;
-    panelEls.prov.textContent = '';
-    panelEls.open.style.display = 'none';
-    panelEls.openFile.style.display = 'none';
-    panelEls.cancel.style.display = 'none';
-    panelEls.watch.style.display = 'none';
-    panelEls.reprocess.style.display = 'none';
-    panelEls.stopwatch.style.display = 'none';
+  }
+  function setWatchBtn(state) {
+    if (!watchBtn) return;
+    if (state === 'ready') {
+      watchBtn.disabled = false;
+      watchBtn.style.opacity = '';
+      watchBtn.style.background = 'rgba(21,19,17,.94)';
+      watchBtn.style.borderColor = T.accent;
+      watchBtn.style.color = '#ffb59d';
+      watchBtn.textContent = 'شاهد مفلتراً ▶';
+      watchBtn.title = 'HaramLite — مشاهدة مفلترة';
+    } else if (state === 'watching') {
+      watchBtn.disabled = false;
+      watchBtn.style.opacity = '';
+      watchBtn.style.background = 'rgba(218,119,86,.6)';
+      watchBtn.style.borderColor = T.accent;
+      watchBtn.style.color = '#fff';
+      watchBtn.textContent = '⏸ إيقاف';
+      watchBtn.title = 'HaramLite — إيقاف المشاهدة المفلترة';
+    } else if (state === 'fetching') {
+      watchBtn.disabled = true;
+      watchBtn.style.opacity = '0.75';
+      watchBtn.style.background = 'rgba(21,19,17,.94)';
+      watchBtn.style.borderColor = T.accent;
+      watchBtn.textContent = 'جارٍ الجلب…';
+      watchBtn.title = 'HaramLite — جلب الصوت المفلتر';
+    } else {
+      watchBtn.disabled = true;
+      watchBtn.style.opacity = '0.55';
+      watchBtn.style.background = 'rgba(21,19,17,.94)';
+      watchBtn.style.borderColor = '#5a544f';
+      watchBtn.style.color = '#d8d2cc';
+      watchBtn.textContent = 'شاهد مفلتراً ▶';
+      watchBtn.title = 'HaramLite — يفعَّل بعد التجهيز';
+    }
+  }
+  function resetBar() {
+    BUSY = false;
+    LAST = null;
+    setProc('idle');
+    setWatchBtn('disabled');
   }
 
-  /* ── full processing flow + live status polling ────────────────── */
+  /* ── watch secondary menu (right-click): options ───────────────── */
+  function closeWatchMenu() {
+    document.getElementById(MENU_ID)?.remove();
+    if (menuCloser) {
+      document.removeEventListener('click', menuCloser);
+      menuCloser = null;
+    }
+  }
+  function toggleWatchMenu(anchor) {
+    if (document.getElementById(MENU_ID)) { closeWatchMenu(); return; }
+    const r = anchor.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.id = MENU_ID;
+    menu.style.cssText =
+      `position:fixed;bottom:${window.innerHeight - r.top + 8}px;right:${window.innerWidth - r.right}px;` +
+      `min-width:210px;background:${T.panel};border:1px solid ${T.border};border-radius:10px;` +
+      `box-shadow:0 10px 28px rgba(0,0,0,.55);padding:8px;z-index:2147483003;` +
+      `font-family:Roboto,Arial,sans-serif;font-size:12px;direction:rtl;color:${T.text};`;
+    menu.innerHTML =
+      `<label style="display:flex;align-items:center;gap:8px;padding:8px 6px;cursor:pointer;">` +
+      `<input type="checkbox" id="hl-ext-skipgaps" checked style="accent-color:${T.accent};" />` +
+      `<span>تخطي فجوات الصمت مرئياً</span></label>` +
+      `<button id="hl-ext-reprocess" style="width:100%;padding:8px 6px;background:transparent;border:none;` +
+      `border-top:1px solid ${T.border};color:${T.sub};font-size:12px;text-align:right;cursor:pointer;">` +
+      `↻ معالجة كاملة</button>`;
+    document.body.appendChild(menu);
+    menu.querySelector('#hl-ext-reprocess').addEventListener('click', () => {
+      closeWatchMenu();
+      stopWatch(true);
+      resetBar();
+      void startFull();
+    });
+    setTimeout(() => {
+      if (!menu.isConnected) return;
+      menuCloser = (e) => { if (!menu.contains(e.target)) closeWatchMenu(); };
+      document.addEventListener('click', menuCloser);
+    }, 0);
+  }
+  function skipChecked() {
+    const box = document.getElementById('hl-ext-skipgaps');
+    return !box || box.checked !== false;
+  }
+
+  /* ── request + poll (buttons only, no panels) ──────────────────── */
   let pollTimer = null;
   function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
   async function startFull() {
-    stopPoll();
-    stopWatch();
-    LAST = null;
-    // Field #1/#4: pause the page at once — the goal is hearing no music.
-    // Failures leave it paused with a message (YouTube's own play button
-    // resumes the original); success auto-watches (see poll).
+    if (BUSY) return;
+    stopWatch(true);
+    resetBar();
+    // Pause the page at once — the goal is hearing no music. Failures leave
+    // it paused with a message (YouTube's own play button resumes the
+    // original); completion waits for the manual watch button.
     const pv = pageVideo();
-    WANT_AUTO = true;
-    SENT_URL = location.href;
     if (pv) { try { pv.pause(); } catch { /* gone */ } }
-    showPanel('جاري الإرسال إلى HaramLite...');
+    SENT_URL = location.href;
+    let r = null;
     try {
-      const r = await native({ type: 'link', url: location.href, mode: 'watch' });
-      if (!r || !r.ok) throw new Error(r && r.error ? r.error : 'فشل الإرسال');
-      if (panelEls) {
-        panelEls.status.textContent = '✓ استُلم الرابط — بدء التنزيل...';
-        panelEls.status.style.color = T.ok;
-        panelEls.cancel.style.display = 'block';
-      }
-      poll();
+      r = await native({ type: 'link', url: location.href, mode: 'watch' });
     } catch (e) {
-      stopPoll();
-      if (panelEls) {
-        panelEls.status.textContent = '⚠ ' + e.message;
-        panelEls.status.style.color = T.err;
-        panelEls.cancel.style.display = 'none'; // nothing is running
-      }
+      toast('⚠ ' + (e && e.message ? e.message : 'فشل الإرسال'), 4000);
+      return;
     }
+    if (!r || !r.ok) {
+      toast('✗ ' + ((r && r.error) || 'فشل الإرسال'), 4000);
+      return;
+    }
+    BUSY = true;
+    setProc('working', 0);
+    toast('✓ استُلم الرابط — بدء التنزيل...');
+    poll();
+  }
+
+  function doCancel() {
+    native({ type: 'cancel' }).catch(() => {});
+    stopPoll();
+    resetBar();
+    toast('⏹ أُلغيت المعالجة — اضغط للبدء من جديد');
   }
 
   function poll() {
-    let shownDone = false;
-    let sawRunning = false; // E-6: never show an OLD job's "done" state
+    let sawRunning = false; // never show an OLD job's terminal state
     let fails = 0;
     pollTimer = setInterval(async () => {
       try {
         const r = await native({ type: 'status' });
         fails = 0; // healthy again
         const st = (r && r.state) || {};
-        // Decision 3 + expert D2د: provider badge (CPU honesty — no live
-        // inference exists, file watching works the same; durations measured).
-        if (panelEls && panelEls.prov) {
-          const prov = r && r.provider ? String(r.provider) : '';
-          panelEls.prov.textContent = prov === 'CPU'
-            ? 'وضع CPU — المعالجة أبطأ، والمدة المقاسة تُعلن عند الاكتمال'
-            : (prov ? `المزود: ${prov}` : '');
-        }
+        if (!BUSY) return; // foreign jobs never touch our buttons
         if (st.running) {
           sawRunning = true;
-          const { name, stage, pct } = st.running;
-          const q = st.queue || 0;
-          if (panelEls) {
-            panelEls.name.textContent = name || '';
-            panelEls.bar.style.width = `${Math.round((pct || 0) * 100)}%`;
-            panelEls.status.textContent =
-              `${STAGE_AR[stage] || stage || 'معالجة'} — ${Math.round((pct || 0) * 100)}%` +
-              (q > 0 ? ` · في الطابور بعد هذا: ${q}` : '');
-            panelEls.status.style.color = T.text;
-          }
-        } else if (st.last && sawRunning && !shownDone) {
-          shownDone = true;
+          setProc('working', (st.running && st.running.pct) || 0);
+        } else if (st.last && (sawRunning || sameVideo(SENT_URL, st.last.url))) {
+          // Fast jobs can finish between 1.5s polls unseen — the recorded
+          // request URL (not the title-derived filename) proves ownership.
           stopPoll();
-          if (panelEls) {
-            panelEls.bar.style.width = '100%';
-            // completed — a cancel button makes no sense here
-            panelEls.cancel.style.display = 'none';
-            if (st.last.ok) {
-              panelEls.status.textContent = `✓ اكتملت المعالجة في ${(st.last.seconds || 0).toFixed(1)} ثانية`;
-              panelEls.status.style.color = T.ok;
-              panelEls.open.style.display = 'block';
-              panelEls.openFile.style.display = 'block';
-              // Decision 3: watch-filtered + manual full-process side by side.
-              LAST = {
-                seconds: st.last.seconds || 0,
-                kept: Array.isArray(st.last.kept) ? st.last.kept : null,
-              };
-              // Field #1: our own job on this same page → watch at once,
-              // no questions asked. Foreign jobs keep the manual buttons.
-              if (WANT_AUTO && location.href === SENT_URL) {
-                WANT_AUTO = false;
-                void startWatch();
-              } else {
-                WANT_AUTO = false;
-                panelEls.watch.style.display = 'block';
-                panelEls.reprocess.style.display = 'block';
-              }
-            } else {
-              panelEls.status.textContent = '✗ ' + (st.last.error || 'فشلت المعالجة');
-              panelEls.status.style.color = T.err;
-            }
+          stopPoll();
+          BUSY = false;
+          if (st.last.ok) {
+            LAST = {
+              seconds: st.last.seconds || 0,
+              kept: Array.isArray(st.last.kept) ? st.last.kept : null,
+            };
+            setProc('done');
+            setWatchBtn('ready');
+            toast('تم التجهيز ✓ — شاهد مفلتراً ▶');
+          } else {
+            resetBar();
+            toast('✗ ' + (st.last.error || 'فشلت المعالجة'), 4000);
           }
         }
       } catch {
-        // Audit E-2: give up after 8 consecutive failures instead of
-        // polling forever against a dead bridge.
+        // Give up after 8 consecutive failures instead of polling forever
+        // against a dead bridge.
         fails += 1;
         if (fails >= 8) {
           stopPoll();
-          if (panelEls) {
-            panelEls.status.textContent =
-              '⚠ انقطع الاتصال بتطبيق HaramLite — شغّل التطبيق وفعّل التكامل ثم أعد المحاولة';
-            panelEls.status.style.color = T.err;
-          }
+          resetBar();
+          toast('⚠ انقطع الاتصال بتطبيق HaramLite — شغّل التطبيق وفعّل التكامل ثم أعد المحاولة', 4000);
         }
       }
     }, 1500);
   }
 
-  /* ── simplified dual-player: muted page video + filtered audio ──── */
-  // The finished file pipeline left page-audio on the desktop; the page
-  // fetches it ONCE (bounded slices, size-verified — file DELIVERY, never
-  // live/chunked streaming) and plays it through an <audio> element synced
-  // to the page <video>: play/pause/seek/rate/volume mirror + drift fix.
-  // Song outputs carry kept-ranges so mirrored silence cuts stay mapped;
-  // without them the timelines must coincide (±2s) or watching is refused
-  // with a clear message + file fallback. Restore is total.
-  let LAST = null;
-  let WATCH = null;
-  // Field issues #1/#4: this page auto-watches ITS OWN completed job only.
-  let WANT_AUTO = false;
-  let SENT_URL = null;
+  /* ── filtered watching (no video jumping) ──────────────────────── */
+  // The finished pipeline left page-audio on the desktop; the page fetches
+  // it ONCE (bounded slices, size-verified — file DELIVERY, never live or
+  // chunked streaming) into an <audio> element synced to the page <video>.
+  // Rate pinned at 1x on both sides (+ player API guard). Muted gaps hold
+  // the audio with edge-snapped resume; the drift backstop never forces a
+  // sync while stopped. Restore is total.
 
   function hexToBytes(hex) {
     const n = hex.length / 2;
     const out = new Uint8Array(n);
     for (let i = 0; i < n; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
     return out;
-  }
-
-  function setWatchStatus(msg, color) {
-    if (panelEls) {
-      panelEls.status.textContent = msg;
-      panelEls.status.style.color = color || T.text;
-    }
   }
 
   // Full-timeline seconds → cut-timeline seconds through kept ranges.
@@ -304,25 +354,30 @@
     return acc;
   }
 
-  // Field #6: where the page video must jump — inside a kept range it stays,
-  // inside a muted gap it jumps to the next kept start, past the end stays.
-  function skipVideoGaps(t, kept) {
-    if (!kept || !kept.length) return t;
+  // True while the position sits inside a muted gap (kept-ranges known).
+  function isGap(t, kept) {
+    if (!kept || !kept.length) return false;
     for (const pair of kept) {
       const a = Number(pair[0]);
       const b = Number(pair[1]);
       if (!(b > a)) continue;
-      if (t >= a && t < b) return t;
-      if (t < a) return a;
+      if (t >= a && t < b) return false;
     }
-    return t;
+    return true;
   }
 
   function pageVideo() {
     return document.querySelector('#movie_player video') || document.querySelector('video');
   }
 
-  async function fetchPageAudio() {
+  function pinPlayerRate() {
+    try {
+      const mp = document.getElementById('movie_player');
+      if (mp && typeof mp.setPlaybackRate === 'function') mp.setPlaybackRate(1);
+    } catch { /* gone */ }
+  }
+
+  async function fetchPageAudio(onProg) {
     const parts = [];
     let offset = 0;
     let total = 0;
@@ -333,7 +388,7 @@
       total = f.total || 0;
       parts.push(f.data);
       offset = f.offset + f.data.length / 2;
-      if (panelEls) panelEls.bar.style.width = `${total > 0 ? Math.round((offset / total) * 100) : 0}%`;
+      if (onProg) onProg(total > 0 ? offset / total : 0);
       if (f.done) break;
       if (total > 0 && offset >= total) break; // safety net
     }
@@ -342,43 +397,30 @@
     return URL.createObjectURL(new Blob([hexToBytes(flat)], { type: 'audio/mpeg' }));
   }
 
-  function showBadge(show) {
-    let badge = document.getElementById(BADGE_ID);
-    if (show) {
-      if (!badge) {
-        badge = document.createElement('div');
-        badge.id = BADGE_ID;
-        badge.style.cssText =
-          `position:fixed;top:64px;right:16px;z-index:2147483002;background:rgba(21,19,17,.95);` +
-          `border:1px solid ${T.accent};border-radius:10px;padding:8px 12px;color:${T.text};` +
-          `font-family:Roboto,Arial,sans-serif;font-size:12px;direction:rtl;`;
-        document.body.appendChild(badge);
-      }
-      badge.textContent = '🔇 الفيديو الأصلي مكتوم — الصوت المفلتر يعمل (كتم معلن)';
-      badge.style.display = '';
-    } else if (badge) {
-      badge.remove();
-    }
+  function watchLine() {
+    return `▶ مشاهدة مفلترة — الصوت من المعالجة المحلية${LAST && LAST.seconds ? ` (عولجت في ${LAST.seconds.toFixed(1)} ث)` : ''}`;
   }
 
   async function startWatch() {
     if (WATCH) return;
-    const video = pageVideo();
-    if (!video) {
-      setWatchStatus('✗ لم يُعثر على فيديو الصفحة', T.err);
+    if (!LAST) {
+      toast('✗ ابنِ الخريطة أولاً — اضغط «حمّل وعالج»', 4000);
       return;
     }
-    setWatchStatus('جارٍ جلب الصوت المفلتر من التطبيق...');
-    if (panelEls) {
-      panelEls.watch.style.display = 'none';
-      panelEls.bar.style.width = '0%';
+    const video = pageVideo();
+    if (!video) {
+      toast('✗ لم يُعثر على فيديو الصفحة', 4000);
+      return;
     }
+    setWatchBtn('fetching');
     let url = null;
     try {
-      url = await fetchPageAudio();
+      url = await fetchPageAudio((p) => {
+        if (watchBtn) watchBtn.textContent = `جارٍ الجلب… ${Math.round(p * 100)}%`;
+      });
     } catch (e) {
-      setWatchStatus('✗ ' + (e && e.message ? e.message : 'تعذر الجلب'), T.err);
-      if (panelEls) panelEls.watch.style.display = 'block';
+      setWatchBtn('ready');
+      toast('✗ ' + (e && e.message ? e.message : 'تعذر الجلب'), 4000);
       return;
     }
     const audio = new Audio();
@@ -392,45 +434,66 @@
       });
     } catch (e) {
       URL.revokeObjectURL(url);
-      setWatchStatus('✗ ' + e.message, T.err);
-      if (panelEls) panelEls.watch.style.display = 'block';
+      setWatchBtn('ready');
+      toast('✗ ' + e.message, 4000);
       return;
     }
     // Duration gate: song outputs mirror silence cuts (mapped via kept);
     // without kept-ranges the timelines must coincide.
-    const kept = LAST && LAST.kept;
+    const kept = LAST.kept;
     if ((!kept || !kept.length) && video.duration && audio.duration &&
         Math.abs(video.duration - audio.duration) > 2) {
       URL.revokeObjectURL(url);
-      setWatchStatus('✗ إخراج مقصوص الصمت بلا خريطة — افتح الملف بدلاً من ذلك', T.err);
-      if (panelEls) {
-        panelEls.watch.style.display = 'none';
-        panelEls.openFile.style.display = 'block';
-      }
+      setWatchBtn('ready');
+      toast('✗ إخراج مقصوص الصمت بلا خريطة — اطلب المعالجة من جديد', 4000);
       return;
     }
     const w = {
       audio, url, video,
       prevMuted: video.muted,
+      prevRate: video.playbackRate || 1,
       handlers: [],
       drift: 0,
-      gap: 0,
+      held: false,
     };
     const on = (el, ev, fn) => { el.addEventListener(ev, fn); w.handlers.push([el, ev, fn]); };
     const audioPos = () => {
       const t = mapFullToCut(video.currentTime || 0, kept);
       return Math.min(Math.max(t, 0), Math.max(audio.duration - 0.05, 0));
     };
+    const kickAudio = () => {
+      audio.currentTime = audioPos();
+      audio.play().then(() => {
+        if (WATCH) toast(watchLine());
+      }).catch(() => {
+        // No user activation (timer-started autoplay): the next press of
+        // play IS a gesture and retries through the play-handler below.
+        if (WATCH) toast('▶ اضغط تشغيل لبدء الصوت المفلتر', 4000);
+      });
+    };
     on(video, 'play', () => {
-      // Field #2: the page player fights mute — pin it on every play.
+      // The page player fights mute — pin it on every play.
       if (video.muted === false) { try { video.muted = true; } catch { /* gone */ } }
       kickAudio();
     });
     on(video, 'pause', () => { audio.pause(); });
-    on(video, 'seeking', () => { audio.currentTime = audioPos(); });
-    on(video, 'ratechange', () => { audio.playbackRate = video.playbackRate || 1; });
+    on(video, 'seeking', () => {
+      if (isGap(video.currentTime || 0, kept)) {
+        w.held = true;
+        try { audio.pause(); } catch { /* gone */ }
+      } else {
+        w.held = false;
+        audio.currentTime = audioPos();
+      }
+    });
+    on(video, 'ratechange', () => {
+      // Guard both sides at 1.0 for the whole watch (anti-2x).
+      if (video.playbackRate !== 1) { try { video.playbackRate = 1; } catch { /* gone */ } }
+      pinPlayerRate();
+      audio.playbackRate = 1;
+    });
     on(video, 'volumechange', () => {
-      // Field #2: volume gestures unmute the page player — pin it, then mirror.
+      // Volume gestures unmute the page player — pin it, then mirror.
       if (video.muted === false) { try { video.muted = true; } catch { /* gone */ } }
       audio.volume = video.volume;
     });
@@ -441,84 +504,126 @@
       stopWatch();
     });
     on(video, 'ended', () => { stopWatch(); });
-    // Declared mute (expert D2د): the ORIGINAL stays muted, announced.
+    // Declared mute + 1x clamp on both sides (+ player API guard).
     video.muted = true;
-    showBadge(true);
-    audio.playbackRate = video.playbackRate || 1;
+    try { video.playbackRate = 1; } catch { /* gone */ }
+    pinPlayerRate();
+    audio.playbackRate = 1;
     audio.volume = video.volume;
-    const watchLine = () => `▶ مشاهدة مفلترة — الصوت من المعالجة المحلية${LAST && LAST.seconds ? ` (عولجت في ${LAST.seconds.toFixed(1)} ث)` : ''}`;
-    const kickAudio = () => {
-      audio.currentTime = audioPos();
-      audio.play().then(() => {
-        if (WATCH) setWatchStatus(watchLine(), T.ok);
-      }).catch(() => {
-        // No user activation (timer-started autoplay): the next press of
-        // play IS a gesture and retries through the play-handler above.
-        if (WATCH) setWatchStatus('▶ اضغط تشغيل لبدء الصوت المفلتر', T.sub);
-      });
-    };
-    audio.currentTime = audioPos();
     WATCH = w;
     w.drift = setInterval(() => {
-      if (!WATCH || audio.paused) return;
-      // Field #2, second pin: scripts can unmute at any time.
+      if (!WATCH) return;
+      // The page player fights mute — pin it every tick.
       if (video.muted === false) { try { video.muted = true; } catch { /* gone */ } }
+      const gap = isGap(video.currentTime || 0, kept);
+      const skipping = skipChecked();
+      if (gap && skipping && !audio.paused) {
+        audio.pause();
+        w.held = true;
+      } else if ((!gap || !skipping) && w.held && !video.paused) {
+        w.held = false;
+        audio.currentTime = audioPos();
+        audio.play().catch(() => { w.held = true; });
+      }
+      // No forced sync while stopped (paused or held) — that fight is what
+      // looped the seams. Correct only a freely playing audio.
+      if (audio.paused) return;
       const expect = audioPos();
       if (Math.abs(audio.currentTime - expect) > 0.35) audio.currentTime = expect;
     }, 1000);
-    // Field #6: TRUE skipping — the page video itself jumps over muted gaps
-    // (mapping audio alone only loops the seam). >0.15s jumps, 250ms cadence.
-    w.gap = setInterval(() => {
-      if (!WATCH || video.paused) return;
-      const target = skipVideoGaps(video.currentTime || 0, kept);
-      if (Math.abs(target - (video.currentTime || 0)) > 0.15) {
-        try { video.currentTime = target; } catch { /* gone */ }
-      }
-    }, 250);
-    if (panelEls) {
-      panelEls.stopwatch.style.display = 'block';
-      panelEls.watch.style.display = 'none';
-    }
-    setWatchStatus(watchLine(), T.ok);
-    // Field #1/#4: resume both together (the video was paused at request).
-    try { await video.play(); } catch { setWatchStatus('▶ اضغط تشغيل الفيديو لبدء المشاهدة', T.sub); }
+    setWatchBtn('watching');
+    toast(watchLine());
+    // The video was paused at request time — resume both together.
+    try { await video.play(); } catch { toast('▶ اضغط تشغيل الفيديو لبدء المشاهدة', 4000); }
     kickAudio();
   }
 
-  function stopWatch() {
+  function stopWatch(quiet) {
     const w = WATCH;
     WATCH = null;
     if (!w) return;
     if (w.drift) clearInterval(w.drift);
-    if (w.gap) clearInterval(w.gap);
     for (const [el, ev, fn] of w.handlers) {
       try { el.removeEventListener(ev, fn); } catch { /* gone */ }
     }
     try { w.audio.pause(); } catch { /* gone */ }
     try { w.video.muted = w.prevMuted; } catch { /* gone */ }
+    try { w.video.playbackRate = w.prevRate; } catch { /* gone */ }
+    pinPlayerRateRestore(w.prevRate);
     try { URL.revokeObjectURL(w.url); } catch { /* gone */ }
-    showBadge(false);
-    if (panelEls) {
-      panelEls.stopwatch.style.display = 'none';
-      if (LAST) panelEls.watch.style.display = 'block';
-      setWatchStatus('⏹ توقفت المشاهدة — عاد صوت الصفحة الأصلي', T.sub);
-    }
+    if (LAST) setWatchBtn('ready');
+    else setWatchBtn('disabled');
+    if (!quiet) toast('⏹ توقفت المشاهدة — عاد صوت الصفحة الأصلي');
   }
 
-  /* ── injection loop (SPA-safe) ─────────────────────────────────── */
+  function pinPlayerRateRestore(rate) {
+    try {
+      const mp = document.getElementById('movie_player');
+      if (mp && typeof mp.setPlaybackRate === 'function') mp.setPlaybackRate(rate || 1);
+    } catch { /* gone */ }
+  }
+
+  /* ── injection (SPA-safe, per-video reset) ─────────────────────── */
+  let currentVideoUrl = null;
+
+  // Status check decoupled from injection: SPA navigation often KEEPS the
+  // bar buttons alive, so tryInject's early-return used to skip the check
+  // forever (watch stayed disabled on every navigated video). This runs on
+  // every distinct URL whether the buttons persisted or were just created.
+  function checkStatusForCurrentVideo() {
+    setProc('idle');
+    setWatchBtn('disabled');
+    native({ type: 'status' }).then((r) => {
+      const st = r && r.state;
+      const last = st && st.last;
+      if (last && last.ok && sameVideo(location.href, last.url)) {
+        LAST = {
+          seconds: last.seconds || 0,
+          kept: Array.isArray(last.kept) ? last.kept : null,
+        };
+        setProc('done');
+        setWatchBtn('ready');
+        return;
+      }
+      // A download-phase job of THIS video still running → track it (the
+      // running name is the request URL there; later phases rename it).
+      const run = st && st.running;
+      if (run && typeof run.name === 'string' && sameVideo(location.href, run.name) && !BUSY) {
+        BUSY = true;
+        setProc('working', run.pct || 0);
+        poll();
+      }
+    }).catch(() => {});
+  }
+
   function tryInject() {
-    if (document.getElementById(BTN_ID)) return true;
+    const isNewVideo = (currentVideoUrl !== location.href);
+    // Buttons persisted across an SPA navigation: still re-check the video.
+    if (document.getElementById(BTN_PROC)) {
+      if (isNewVideo) {
+        currentVideoUrl = location.href;
+        checkStatusForCurrentVideo();
+      }
+      return true;
+    }
     const controls = document.querySelector('.ytp-right-controls');
     if (!controls) return false;
-    controls.prepend(makeButton());
+    const wb = makeWatchBtn();
+    const pb = makeProcBtn();
+    controls.prepend(wb);
+    controls.prepend(pb);
+    procBtn = pb;
+    watchBtn = wb;
+    currentVideoUrl = location.href;
+    checkStatusForCurrentVideo();
     return true;
   }
 
   // Audit E-3: YouTube is an SPA — navigation rebuilds the player controls
-  // and the button vanishes. Re-inject on `yt-navigate-finish` AND watch the
+  // and the buttons vanish. Re-inject on `yt-navigate-finish` AND watch the
   // player container (NOT document.body — a body-wide subtree observer fires
   // on every progress-bar/comment mutation and drains CPU). Fall back to body
-  // only if the player isn't there yet.
+  // only if the player isn't there yet. A new video always resets the bar.
   let injectScheduled = false;
   function scheduleInject() {
     if (injectScheduled) return;
@@ -528,8 +633,12 @@
       tryInject();
     }, 200);
   }
-  window.addEventListener('yt-navigate-finish', scheduleInject);
-  window.addEventListener('yt-navigate-finish', stopWatch);
+  window.addEventListener('yt-navigate-finish', () => {
+    stopPoll(); // orphaned polls must not drive the new page's buttons
+    stopWatch(true);
+    resetBar();
+    scheduleInject();
+  });
   window.addEventListener('yt-page-data-updated', scheduleInject);
   const watchRoot = document.querySelector('#movie_player') || document.body;
   const domObserver = new MutationObserver(scheduleInject);
