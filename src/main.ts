@@ -1996,6 +1996,17 @@ function wireUpdater(): void {
 }
 
 /* ── live player surface (v1 songs scope) ─────────────────────────── */
+// DECISION 2026-09-06 (D1 — hide, never delete): the field verdict is that
+// the file pipeline is fast enough (14.5 min in 91s) and the watch path is
+// excellent — the live need dropped. The card is hidden behind this flag;
+// backend (livemap/decide/player/session/player_prepare), tests and strings
+// stay green untouched. Fully reversible: set PL_CARD_VISIBLE = true.
+const PL_CARD_VISIBLE = false;
+function applyPlCardVisibility(): void {
+  if (!PL_CARD_VISIBLE) {
+    document.getElementById('pl-container')?.classList.add('hidden');
+  }
+}
 // Session state + REAL precomputed maps (player_prepare) + audio output
 // through the map (mute 0 / duck −12 dB / pass 1, 50ms anti-click ramps).
 // The surface plays the user's own file only — no live-extension path,
@@ -2319,6 +2330,7 @@ async function renderPlayer(pos: number): Promise<void> {
   }
 }
 function wirePlayer(): void {
+  applyPlCardVisibility(); // D1: card hidden behind PL_CARD_VISIBLE, wiring intact
   let plPath = '';
   const fileBtn = document.getElementById('pl-file-btn');
   const prepBtn = document.getElementById('pl-prepare') as HTMLButtonElement | null;
