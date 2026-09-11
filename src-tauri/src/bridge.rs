@@ -31,8 +31,34 @@ fn cancel_flag() -> Arc<AtomicBool> {
 }
 
 pub const HOST_NAME: &str = "com.harammute.haramlite";
+/// Id of an UNPACKED build: derived from the `key` embedded in the repo's
+/// manifest.json (verified by re-deriving it with Chrome's algorithm).
 pub const CHROME_EXT_ID: &str = "jchaeejligdfbkgkbgneimclkagoopig";
+/// Id of the STORE-published item. The Chrome Web Store fixes an item's id when
+/// it is created and keeps it forever, and the published HaramMute/HaramLite
+/// item was created with a different key than the repo manifest carries. The
+/// native host must therefore accept BOTH: without this, updating the store
+/// item would hand the extension an id the desktop app rejects, silently
+/// breaking the integration for every store user (found in the pre-publish
+/// audit, 2026-09-11).
+pub const CHROME_STORE_EXT_ID: &str = "bbkbpldbnkoncockinoapcmbiijejgpn";
 pub const FIREFOX_EXT_ID: &str = "haramlite_bridge@harammute.app";
+
+/// The native-messaging host manifest (pure — unit-tested). `allowed_origins`
+/// carries both Chrome ids; `allowed_extensions` carries the Firefox id.
+fn host_manifest(exe: &Path) -> serde_json::Value {
+    serde_json::json!({
+        "name": HOST_NAME,
+        "description": "HaramLite desktop bridge (Native Messaging)",
+        "path": exe.to_string_lossy(),
+        "type": "stdio",
+        "allowed_origins": [
+            format!("chrome-extension://{CHROME_EXT_ID}/"),
+            format!("chrome-extension://{CHROME_STORE_EXT_ID}/"),
+        ],
+        "allowed_extensions": [FIREFOX_EXT_ID],
+    })
+}
 
 /// Base data dir, overridable for tests (`HARAMLITE_DATA_DIR`) so unit tests
 /// never touch the user's real `requests/` or `bridge_state.json`.
@@ -953,8 +979,7 @@ pub fn registry_targets() -> [&'static str; 4] {
     ]
 }
 
-/// Manifest location under any app-data base (pure — unit-tested).
-/// Production passes the Tauri app-data dir (same dir `register` writes).
+/// Manifest location under any app-data base (pure — unit-tested)./// Production passes the Tauri app-data dir (same dir `register` writes).
 pub fn manifest_path_for(base: &Path) -> PathBuf {
     base.join("native-host").join(format!("{HOST_NAME}.json"))
 }
@@ -1035,14 +1060,7 @@ pub fn register(app: &tauri::AppHandle, browser: &str) -> Result<String, String>
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
     let manifest_path = dir.join(format!("{HOST_NAME}.json"));
-    let manifest = serde_json::json!({
-        "name": HOST_NAME,
-        "description": "HaramLite desktop bridge (Native Messaging)",
-        "path": exe.to_string_lossy(),
-        "type": "stdio",
-        "allowed_origins": [format!("chrome-extension://{CHROME_EXT_ID}/")],
-        "allowed_extensions": [FIREFOX_EXT_ID],
-    });
+    let manifest = host_manifest(&exe);
     std::fs::write(
         &manifest_path,
         serde_json::to_vec_pretty(&manifest).unwrap_or_default(),
@@ -1107,6 +1125,33 @@ mod tests {
     /// under the same resolved data dir — see paths.rs.
     fn test_serial() -> &'static std::sync::Mutex<()> {
         crate::paths::test_lock()
+    }
+
+    /// The host manifest must admit BOTH ids: the store item's (fixed at
+    /// creation) and the unpacked build's (derived from the repo key). Getting
+    /// this wrong breaks native messaging for store users only — the worst
+    /// possible failure mode, because it is invisible locally.
+    #[test]
+    fn host_manifest_allows_the_store_id_and_the_dev_id() {
+        let m = host_manifest(Path::new("C:\\x\\HaramLite.exe"));
+        let origins: Vec<String> = m["allowed_origins"]
+            .as_array()
+            .expect("allowed_origins")
+            .iter()
+            .map(|v| v.as_str().unwrap_or_default().to_string())
+            .collect();
+        assert!(
+            origins.contains(&format!("chrome-extension://{CHROME_EXT_ID}/")),
+            "unpacked id missing: {origins:?}"
+        );
+        assert!(
+            origins.contains(&format!("chrome-extension://{CHROME_STORE_EXT_ID}/")),
+            "store id missing — publishing would break the integration: {origins:?}"
+        );
+        assert_eq!(m["name"], HOST_NAME);
+        assert_eq!(m["type"], "stdio");
+        assert_eq!(m["allowed_extensions"][0], FIREFOX_EXT_ID);
+        assert!(m["path"].as_str().unwrap_or_default().ends_with("HaramLite.exe"));
     }
 
     fn nanos() -> u128 {
