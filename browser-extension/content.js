@@ -7,10 +7,14 @@
 //      applies the filter and plays (active color) → second click stops and
 //      restores the original. Manual only — nothing auto-applies.
 // Filtered watching: page video muted + filtered audio element, playback
-// rate pinned at 1x on both sides (+ player API guard), muted gaps hold the
-// audio with edge-snapped resume (no video jumping), drift backstop without
-// forced sync while stopped, clean restore. Right-click Watch for options
-// (visible gap-skip, default on + full reprocess). 2s fading toast.
+// rate pinned at 1x on both sides (+ player API guard). The removed stretches
+// — the silence left by muting the music — are SKIPPED: the page video jumps
+// over each one while the filtered audio (which contains no such stretch)
+// plays on untouched, so both stay in step. Unticking the option holds the
+// audio at the seam instead and lets the picture play the silent stretch
+// through. Drift backstop without forced sync while stopped, clean restore.
+// Right-click Watch for options (gap-skip default on + full reprocess).
+// 2s fading toast.
 // No chunk streaming, no time-stretching, no telemetry — local only.
 // No trackers. All communication goes through Native Messaging.
 
@@ -220,12 +224,15 @@
       `font-family:Roboto,Arial,sans-serif;font-size:12px;direction:rtl;color:${T.text};`;
     menu.innerHTML =
       `<label style="display:flex;align-items:center;gap:8px;padding:8px 6px;cursor:pointer;">` +
-      `<input type="checkbox" id="hl-ext-skipgaps" checked style="accent-color:${T.accent};" />` +
-      `<span>تخطي فجوات الصمت مرئياً</span></label>` +
+      `<input type="checkbox" id="hl-ext-skipgaps" style="accent-color:${T.accent};" />` +
+      `<span>تخطي الصمت (قفز الفيديو فوقه)</span></label>` +
       `<button id="hl-ext-reprocess" style="width:100%;padding:8px 6px;background:transparent;border:none;` +
       `border-top:1px solid ${T.border};color:${T.sub};font-size:12px;text-align:right;cursor:pointer;">` +
       `↻ معالجة كاملة</button>`;
     document.body.appendChild(menu);
+    const skipBox = menu.querySelector('#hl-ext-skipgaps');
+    skipBox.checked = SKIP_GAPS;
+    skipBox.addEventListener('change', () => setSkipGaps(skipBox.checked));
     menu.querySelector('#hl-ext-reprocess').addEventListener('click', () => {
       closeWatchMenu();
       stopWatch(true);
@@ -238,9 +245,15 @@
       document.addEventListener('click', menuCloser);
     }, 0);
   }
-  function skipChecked() {
-    const box = document.getElementById('hl-ext-skipgaps');
-    return !box || box.checked !== false;
+  // Gap-skip is a real, PERSISTED option. Reading the menu checkbox alone was
+  // silently wrong: the menu is removed when it closes, so an untick survived
+  // only until the next click outside.
+  let SKIP_GAPS = true;
+  try { SKIP_GAPS = localStorage.getItem('hl.skipgaps') !== '0'; } catch { /* storage blocked */ }
+  function skipChecked() { return SKIP_GAPS; }
+  function setSkipGaps(v) {
+    SKIP_GAPS = !!v;
+    try { localStorage.setItem('hl.skipgaps', SKIP_GAPS ? '1' : '0'); } catch { /* storage blocked */ }
   }
 
   /* ── request + poll (buttons only, no panels) ──────────────────── */
@@ -366,6 +379,23 @@
     return true;
   }
 
+  // Where the page video must jump: inside a kept range it stays put, inside a
+  // removed stretch (music-only — the silence muting the music leaves behind)
+  // it jumps to the next kept start, past the last range it stays. Jumping the
+  // PICTURE is what makes the skip real: the filtered audio has the stretch
+  // cut out of it, so mapping the audio alone just loops the seam.
+  function skipVideoGaps(t, kept) {
+    if (!kept || !kept.length) return t;
+    for (const pair of kept) {
+      const a = Number(pair[0]);
+      const b = Number(pair[1]);
+      if (!(b > a)) continue;
+      if (t >= a && t < b) return t;
+      if (t < a) return a;
+    }
+    return t;
+  }
+
   function pageVideo() {
     return document.querySelector('#movie_player video') || document.querySelector('video');
   }
@@ -478,12 +508,19 @@
     });
     on(video, 'pause', () => { audio.pause(); });
     on(video, 'seeking', () => {
-      if (isGap(video.currentTime || 0, kept)) {
+      const now = video.currentTime || 0;
+      if (isGap(now, kept)) {
         w.held = true;
         try { audio.pause(); } catch { /* gone */ }
       } else {
         w.held = false;
-        audio.currentTime = audioPos();
+        const want = audioPos();
+        // Same tolerance as the drift backstop, and for the same reason: our
+        // own gap jump moves the picture over time the cut audio does not
+        // contain, so the mapped position barely moves — re-anchoring there
+        // would rewind ~0.2s of sound at every gap edge. Only a real seek
+        // lands far enough away to need correcting.
+        if (Math.abs(audio.currentTime - want) > 0.35) audio.currentTime = want;
       }
     });
     on(video, 'ratechange', () => {
@@ -517,10 +554,12 @@
       if (video.muted === false) { try { video.muted = true; } catch { /* gone */ } }
       const gap = isGap(video.currentTime || 0, kept);
       const skipping = skipChecked();
-      if (gap && skipping && !audio.paused) {
+      if (gap && !skipping && !audio.paused) {
+        // Skip is off: hold the filtered audio at the seam while the picture
+        // plays the silent stretch through, so the sound cannot run ahead.
         audio.pause();
         w.held = true;
-      } else if ((!gap || !skipping) && w.held && !video.paused) {
+      } else if (w.held && !video.paused) {
         w.held = false;
         audio.currentTime = audioPos();
         audio.play().catch(() => { w.held = true; });
@@ -531,6 +570,28 @@
       const expect = audioPos();
       if (Math.abs(audio.currentTime - expect) > 0.35) audio.currentTime = expect;
     }, 1000);
+    // The skip itself (option, default on): the page video jumps over every
+    // removed stretch while the filtered audio — which has those stretches cut
+    // out of it — keeps playing untouched, so picture and sound stay in step.
+    // 250ms cadence and >0.15s jumps, so a play/pause toggle or a pause mid
+    // gap never triggers a stray seek, and the map has already dropped every
+    // sliver under 100ms.
+    w.gap = setInterval(() => {
+      if (!WATCH || video.paused) return;
+      if (!skipChecked()) return;
+      const now = video.currentTime || 0;
+      const target = skipVideoGaps(now, kept);
+      if (Math.abs(target - now) > 0.15) {
+        try { video.currentTime = target; } catch { /* gone */ }
+        if (w.held) {
+          // A seek landed inside a removed stretch and the jump just left it:
+          // release the hold here instead of waiting up to a second.
+          w.held = false;
+          audio.currentTime = audioPos();
+          audio.play().catch(() => { w.held = true; });
+        }
+      }
+    }, 250);
     setWatchBtn('watching');
     toast(watchLine());
     // The video was paused at request time — resume both together.
@@ -543,6 +604,7 @@
     WATCH = null;
     if (!w) return;
     if (w.drift) clearInterval(w.drift);
+    if (w.gap) clearInterval(w.gap);
     for (const [el, ev, fn] of w.handlers) {
       try { el.removeEventListener(ev, fn); } catch { /* gone */ }
     }
