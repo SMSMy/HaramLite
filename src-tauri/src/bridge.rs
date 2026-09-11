@@ -936,6 +936,25 @@ pub fn ensure_registered() {
     if !manifest_path.is_file() {
         return; // user never enabled integration — nothing to heal
     }
+    // Content refresh, not just the registry keys: an install that enabled the
+    // integration before the host manifest carried BOTH extension ids keeps the
+    // old file forever (the registry value still matches the path, so the check
+    // below sees nothing to do), and the browser would then refuse the
+    // store-published build of the extension. The file is ours, so rewriting it
+    // is safe — and silent when nothing moved.
+    if let Ok(exe) = std::env::current_exe() {
+        let want = host_manifest(&exe);
+        if manifest_is_stale(&manifest_path, &want) {
+            match std::fs::write(&manifest_path, serde_json::to_vec_pretty(&want).unwrap_or_default())
+            {
+                Ok(()) => tracing::info!(
+                    target: "bridge",
+                    "حُدّث ملف مضيف التكامل (معرّفات الإضافة المقبولة)"
+                ),
+                Err(e) => tracing::warn!(target: "bridge", "تعذر تحديث ملف مضيف التكامل: {e}"),
+            }
+        }
+    }
     let manifest_str = manifest_path.to_string_lossy().into_owned();
     #[cfg(target_os = "windows")]
     {
@@ -988,6 +1007,16 @@ pub fn manifest_path_for(base: &Path) -> PathBuf {
 /// (`None` = missing/unreadable key — never counts as registered.)
 pub fn is_subkey_match(actual: Option<&str>, expected_manifest: &str) -> bool {
     matches!(actual, Some(v) if v == expected_manifest)
+}
+
+/// Is the host manifest on disk different from what we would write now?
+/// (Unreadable or malformed counts as stale — rewriting can only help.)
+fn manifest_is_stale(path: &Path, want: &serde_json::Value) -> bool {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .map(|cur| cur != *want)
+        .unwrap_or(true)
 }
 
 /// Live integration status: the manifest must exist AND at least one
@@ -1125,6 +1154,33 @@ mod tests {
     /// under the same resolved data dir — see paths.rs.
     fn test_serial() -> &'static std::sync::Mutex<()> {
         crate::paths::test_lock()
+    }
+
+    /// A stale host manifest must be detected so an upgrade rewrites it: the
+    /// old file listed one extension id, and the store build needs the other.
+    #[test]
+    fn stale_host_manifest_is_detected() {
+        let dir = std::env::temp_dir().join(format!("hl_manifest_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("host.json");
+        let want = host_manifest(Path::new("C:\\x\\HaramLite.exe"));
+
+        // Missing / malformed ⇒ rewrite.
+        assert!(manifest_is_stale(&p, &want));
+        std::fs::write(&p, b"{ not json").unwrap();
+        assert!(manifest_is_stale(&p, &want));
+
+        // The single-id manifest an older install wrote ⇒ rewrite.
+        let mut old = want.clone();
+        old["allowed_origins"] = serde_json::json!([format!("chrome-extension://{CHROME_EXT_ID}/")]);
+        std::fs::write(&p, serde_json::to_vec_pretty(&old).unwrap()).unwrap();
+        assert!(manifest_is_stale(&p, &want), "one id only ⇒ stale");
+
+        // Up to date ⇒ left alone (no pointless rewrite on every boot).
+        std::fs::write(&p, serde_json::to_vec_pretty(&want).unwrap()).unwrap();
+        assert!(!manifest_is_stale(&p, &want));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The host manifest must admit BOTH ids: the store item's (fixed at
