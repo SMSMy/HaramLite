@@ -10,16 +10,20 @@ mod livemap;
 mod logging;
 mod loudness;
 mod media;
+mod paths;
 mod pipeline;
 mod player;
 mod repair;
 mod reverb_delay;
+mod seal;
 mod separator;
 mod session;
 mod settings;
 mod silence;
 mod stft;
+mod telegram;
 mod throttle;
+mod tray;
 mod v1proto;
 mod watch_service;
 mod yt_dlp;
@@ -507,40 +511,51 @@ fn push_log(level: String, message: String) {
     logging::push_line(&level, &message);
 }
 
-#[tauri::command]
-fn open_folder(path: String) -> Result<(), String> {
-    let target = if path.trim().is_empty() {
-        dirs::video_dir().unwrap_or_else(|| PathBuf::from(".")).join("HaramLite")
-    } else {
-        PathBuf::from(path)
-    };
-    
-    if !target.exists() {
-        let _ = std::fs::create_dir_all(&target);
-    }
+/// Where the app writes its results (downloads + processed outputs).
+pub(crate) fn results_dir() -> PathBuf {
+    dirs::video_dir().unwrap_or_else(|| PathBuf::from(".")).join("HaramLite")
+}
 
+/// Reveal a folder in the OS file manager. Shared by the `open_folder` command
+/// and the tray menu (Sprint T2) so both behave identically.
+pub(crate) fn open_in_explorer(target: &Path) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("explorer")
-            .arg(&target)
+            .arg(target)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
-            .arg(&target)
+            .arg(target)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
     #[cfg(target_os = "linux")]
     {
         std::process::Command::new("xdg-open")
-            .arg(&target)
+            .arg(target)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[tauri::command]
+fn open_folder(path: String) -> Result<(), String> {
+    let target = if path.trim().is_empty() {
+        results_dir()
+    } else {
+        PathBuf::from(path)
+    };
+
+    if !target.exists() {
+        let _ = std::fs::create_dir_all(&target);
+    }
+
+    open_in_explorer(&target)
 }
 
 use std::collections::HashSet;
@@ -592,14 +607,39 @@ fn set_settings(
     state: tauri::State<'_, AppState>,
     value: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
+    // The UI no longer keeps the bot secrets in localStorage (a second
+    // plaintext copy at rest, and it defeated sealing). So on any unrelated
+    // settings push it cannot resend them: `null` (or a missing key) means
+    // "unchanged", an empty string means "clear" — explicit, never guessed.
+    let mut value = value;
+    if !value.is_object() {
+        return Err("settings payload must be an object".into());
+    }
+    let current = state
+        .settings
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone();
+    for (key, existing) in [
+        ("telegram_token", current.telegram_token),
+        ("telegram_api_hash", current.telegram_api_hash),
+    ] {
+        let unchanged = value.get(key).map(|v| v.is_null()).unwrap_or(true);
+        if unchanged {
+            value[key] = serde_json::Value::String(existing);
+        }
+    }
     let new: settings::Settings = serde_json::from_value(value).map_err(|e| e.to_string())?;
-    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let app_data = paths::data_dir();
     {
         let mut cur = state.settings.lock().map_err(|e| e.to_string())?;
         *cur = new.clone();
     }
     settings::save(&app_data, &new).map_err(|e| e.to_string())?;
     watch_service::apply_settings(&new);
+    telegram::apply_settings(&new);
+    // Tray labels follow the app language (no-op when nothing moved).
+    tray::refresh_lang(&app, &new.lang);
     use tauri::Emitter;
     let v = serde_json::to_value(&new).map_err(|e| e.to_string())?;
     let _ = app.emit("settings-changed", v.clone());
@@ -624,6 +664,21 @@ fn bridge_status(app: tauri::AppHandle) -> serde_json::Value {
 #[tauri::command]
 fn unregister_native_host(app: tauri::AppHandle) -> Result<String, String> {
     bridge::unregister(&app)
+}
+
+/// Sprint T1: live Telegram worker state for the settings panel (running,
+/// last error, queue, paired id, whether a pairing code is live).
+#[tauri::command]
+fn telegram_status() -> serde_json::Value {
+    telegram::status_json()
+}
+
+/// Sprint T1: the one-time pairing code shown in the panel. `force` mints a new
+/// one (the previous code is invalidated); otherwise the live code is returned,
+/// or a fresh one is minted when none is live.
+#[tauri::command]
+fn telegram_pairing_code(force: bool) -> serde_json::Value {
+    telegram::pairing_code(force)
 }
 
 /// Smart CUDA toggle support: NVIDIA GPU present? runtime DLLs ready?
@@ -746,7 +801,7 @@ fn cause_test_panic() -> Result<String, String> {
 /// a clean shutdown (the user reported random silent crashes — this turns
 /// them into visible evidence).
 fn crash_marker_path() -> Option<PathBuf> {
-    dirs::data_dir().map(|d| d.join("com.harammute.haramlite").join("session.lock"))
+    Some(paths::data_dir().join("session.lock"))
 }
 
 fn note_previous_crash() {
@@ -828,6 +883,18 @@ pub fn run() {
             downloaded: Arc::new(Mutex::new(HashSet::new())),
             player_sessions: Arc::new(Mutex::new(player::PlayerStore::default())),
         })
+        // Sprint T2 (owner's choice): closing the window HIDES it — the bot,
+        // the watch folder and the browser bridge keep running, and the always
+        // present tray icon is how you come back or quit for real. Before this,
+        // the process could outlive its window with no handle at all, which is
+        // exactly the complaint that produced tray.rs.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+                tracing::info!(target: "app", "أُخفيت النافذة إلى الشريط — البرنامج يعمل في الخلفية (الإغلاق الكامل من قائمة الأيقونة)");
+            }
+        })
         .setup(move |app| {
             // Second launch while we run (e.g. the user double-clicks the
             // shortcut while a hidden bridge instance is alive): bring the
@@ -847,13 +914,27 @@ pub fn run() {
                     })
                     .ok();
             }
-            let log_dir = app
-                .path()
-                .app_data_dir()
-                .expect("no app data dir")
-                .join("logs");
+            // Sprint T3: ONE place decides where app data lives, and the move
+            // off the roaming profile happens here — before anything reads or
+            // writes (the log folder included).
+            let app_data = paths::data_dir();
+            let _ = std::fs::create_dir_all(&app_data);
+            let moved = paths::migrate_legacy(&paths::legacy_dir(), &app_data);
+            let log_dir = app_data.join("logs");
             let shown = logging::init(log_dir);
             tracing::info!(target: "app", "HaramLite v{} starting — logs in {}", env!("CARGO_PKG_VERSION"), shown.display());
+            match &moved {
+                paths::Migration::Moved { files } => tracing::info!(
+                    target: "app",
+                    "نُقل مجلد البيانات من Roaming إلى LocalAppData ({files} ملفاً) — {}",
+                    app_data.display()
+                ),
+                paths::Migration::Failed(e) => tracing::error!(
+                    target: "app",
+                    "تعذر نقل مجلد البيانات ({e}) — سأقرأ الإعدادات القديمة ولن أكتب فيها"
+                ),
+                paths::Migration::Nothing => {}
+            }
             note_previous_crash();
             cleanup_crash_leftovers();
             // Audit F-1: push log lines to the UI as events instead of the
@@ -862,14 +943,33 @@ pub fn run() {
 
             // Sprint D1/D2: load persisted settings and (re)start the watch
             // folder service so it survives app restarts.
-            let app_data = app.path().app_data_dir().expect("no app data dir");
-            let loaded = settings::load(&app_data);
+            let mut loaded = settings::load(&app_data);
+            if !settings::path(&app_data).exists() {
+                // A failed migration must never cost the user their settings.
+                loaded = settings::load(&paths::legacy_dir());
+            }
+            // Upgrade path: a file written before sealing existed holds its
+            // secrets in the clear — seal it now, on this boot, rather than
+            // waiting for a settings change that may never come.
+            if settings::needs_sealing(&app_data) || settings::needs_sealing(&paths::legacy_dir()) {
+                match settings::save(&app_data, &loaded) {
+                    Ok(()) => tracing::info!(target: "app", "شُفّرت أسرار الإعدادات (توكن تيليجرام) عند الإقلاع"),
+                    Err(e) => tracing::warn!(target: "app", "تعذر تشفير أسرار الإعدادات: {e}"),
+                }
+            }
             // Audit R-2 (corrected): commit the ORT environment ONCE at startup
             // (no providers at env level — sessions select their own), BEFORE
             // the watch folder can start processing.
             separator::init_ort_env();
             watch_service::init(app.handle().clone());
             watch_service::apply_settings(&loaded);
+            // Sprint T2: the tray icon is the app's only always-visible handle
+            // (it can run with no window at all) — created with the language
+            // the settings already carry.
+            tray::init(app.handle(), &loaded.lang);
+            // Sprint T1: Telegram bot worker (off unless enabled + token set)
+            telegram::init(app.handle().clone());
+            telegram::apply_settings(&loaded);
             {
                 let state = app.state::<AppState>();
                 let mut cur = state
@@ -933,6 +1033,8 @@ pub fn run() {
             register_native_host,
             unregister_native_host,
             bridge_status,
+            telegram_status,
+            telegram_pairing_code,
             player_open,
             player_status,
             player_advance,

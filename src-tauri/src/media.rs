@@ -609,3 +609,124 @@ pub fn export_video_with_cuts(
         last_err.lines().last().unwrap_or_default().into(),
     ))
 }
+
+// ── Sprint T1: fitting a result into a messaging cap (Telegram) ─────────────
+
+/// Below this the picture is not worth sending at all — the caller sends the
+/// audio instead and says why, rather than shipping an unwatchable smear.
+pub const MIN_WATCHABLE_VIDEO_KBPS: u32 = 300;
+
+/// The video bitrate that fits `target_mb` into `duration_secs`: the owner's
+/// formula `(target_mb × 8192) / seconds` made exact — it yields the TOTAL
+/// bitrate, so the audio track and a small container margin come off the top
+/// (otherwise the file lands just over the cap and the upload is rejected).
+/// Pure and unit-tested; returns 0 when the budget cannot even carry audio.
+pub fn target_video_kbps(duration_secs: f64, target_mb: f64, audio_kbps: u32) -> u32 {
+    if !(duration_secs > 0.0) || !(target_mb > 0.0) {
+        return 0;
+    }
+    let total_kbps = (target_mb * 8192.0) / duration_secs;
+    // 4% headroom for the container (mp4 boxes, timestamps, index).
+    let usable = total_kbps * 0.96;
+    let video = usable - f64::from(audio_kbps);
+    if video <= 0.0 {
+        0
+    } else {
+        video as u32
+    }
+}
+
+/// Re-encode a finished result at a target video bitrate so it fits the cap.
+/// Deliberately x264 (predictable size — the whole point here is landing under
+/// a byte budget, and NVENC's rate control is looser); `max_height` only ever
+/// downscales, and the thread cap keeps the window compositor alive.
+pub fn transcode_to_bitrate(
+    input: &Path,
+    out_path: &Path,
+    video_kbps: u32,
+    audio_kbps: u32,
+    max_height: Option<u32>,
+) -> Result<PathBuf, MediaError> {
+    let ffmpeg = resolve_tool("ffmpeg")?;
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
+    }
+    let vk = video_kbps.max(1).to_string();
+    // 1.5× headroom on peaks, 3× buffer: constant-quality would overshoot.
+    let maxrate = format!("{}k", (video_kbps as f64 * 1.5) as u32);
+    let bufsize = format!("{}k", (video_kbps as f64 * 3.0) as u32);
+    let bitrate = format!("{vk}k");
+    let abr = format!("{}k", audio_kbps.max(32));
+    let threads = crate::separator::inference_threads(
+        std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
+    )
+    .to_string();
+    // Literal height (computed by the caller from probe) — no filter
+    // expressions, so there is no comma to escape.
+    let scale = max_height.map(|h| format!("scale=-2:{h}"));
+
+    let in_str = input.to_string_lossy().into_owned();
+    let out_str = out_path.to_string_lossy().into_owned();
+    let mut args: Vec<&str> = vec!["-y", "-v", "error", "-i", &in_str];
+    if let Some(s) = scale.as_deref() {
+        args.extend(["-vf", s]);
+    }
+    args.extend([
+        "-c:v", "libx264", "-preset", "veryfast", "-b:v", &bitrate,
+        "-maxrate", &maxrate, "-bufsize", &bufsize, "-threads", &threads,
+        "-c:a", "aac", "-b:a", &abr, "-movflags", "+faststart", &out_str,
+    ]);
+
+    let out = make_cmd(&ffmpeg)
+        .args(&args)
+        .output()
+        .map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
+    if !out.status.success() {
+        let last = String::from_utf8_lossy(&out.stderr)
+            .lines()
+            .last()
+            .unwrap_or_default()
+            .to_string();
+        tracing::error!(target: "media", "size-targeted transcode failed: {last}");
+        return Err(MediaError::InvalidOutput(last));
+    }
+    Ok(out_path.to_path_buf())
+}
+
+#[cfg(test)]
+mod telegram_size_tests {
+    use super::*;
+
+    #[test]
+    fn target_bitrate_matches_the_owner_formula() {
+        // 40MB over 600s ⇒ 546 kbps total; the audio track comes off the top.
+        let k = target_video_kbps(600.0, 40.0, 96);
+        assert!((k as i64 - 428).abs() <= 4, "got {k}");
+        // The raw formula (no audio subtraction) is the upper bound.
+        assert!(k < ((40.0 * 8192.0) / 600.0) as u32);
+    }
+
+    #[test]
+    fn an_hour_cannot_fit_a_watchable_picture() {
+        // 1h into 40MB ⇒ ~91 kbps total — under the audio budget: 0, and the
+        // caller must fall back to audio-only.
+        let k = target_video_kbps(3600.0, 40.0, 96);
+        assert_eq!(k, 0);
+        assert!(k < MIN_WATCHABLE_VIDEO_KBPS);
+    }
+
+    #[test]
+    fn short_clips_get_generous_bitrate() {
+        // 3 minutes into 40MB ⇒ ~1747 kbps video: comfortable 720p.
+        let k = target_video_kbps(180.0, 40.0, 96);
+        assert!(k > 1500 && k < 1800, "got {k}");
+    }
+
+    #[test]
+    fn degenerate_inputs_never_panic_or_overflow() {
+        assert_eq!(target_video_kbps(0.0, 40.0, 96), 0);
+        assert_eq!(target_video_kbps(-5.0, 40.0, 96), 0);
+        assert_eq!(target_video_kbps(60.0, 0.0, 96), 0);
+        assert_eq!(target_video_kbps(f64::NAN, 40.0, 96), 0);
+    }
+}

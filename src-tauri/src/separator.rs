@@ -169,11 +169,7 @@ struct MdxSession {
 /// process that cannot see ACTIVE_PROVIDER) reads this file to announce the
 /// provider — and honest durations — to the extension page.
 pub fn provider_file() -> PathBuf {
-    provider_file_in(
-        &dirs::data_dir()
-            .unwrap_or_default()
-            .join("com.harammute.haramlite"),
-    )
+    provider_file_in(&crate::paths::data_dir())
 }
 
 /// Pure path join (unit-tested); production passes the app-data base.

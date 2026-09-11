@@ -84,10 +84,7 @@ fn err<E: std::fmt::Display>(e: E) -> PipelineError {
 /// same file can never be separated twice concurrently (double GPU, duplicate
 /// outputs, cross-cancel confusion).
 fn locks_dir() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_default()
-        .join("com.harammute.haramlite")
-        .join("locks")
+    crate::paths::data_dir().join("locks")
 }
 
 fn lock_name_for(input: &Path) -> PathBuf {
@@ -455,6 +452,12 @@ mod tests {
     /// Cross-path exclusion: a live claim blocks a second claimant.
     #[test]
     fn processing_lock_excludes_double_claim() {
+        // The lock file lives under the shared resolved data dir, so this test
+        // must not overlap a test that swaps or deletes that dir (the bridge
+        // tests set HARAMLITE_DATA_DIR and remove their base on teardown).
+        let _guard = crate::paths::test_lock()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         let tmp = std::env::temp_dir().join(format!("hl_lock_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();

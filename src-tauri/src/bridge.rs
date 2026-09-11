@@ -17,7 +17,6 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
 use notify::Watcher;
-use tauri::Manager;
 
 use crate::pipeline::{self, Mode, OutKind};
 use crate::settings::Settings;
@@ -38,12 +37,7 @@ pub const FIREFOX_EXT_ID: &str = "haramlite_bridge@harammute.app";
 /// Base data dir, overridable for tests (`HARAMLITE_DATA_DIR`) so unit tests
 /// never touch the user's real `requests/` or `bridge_state.json`.
 fn data_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("HARAMLITE_DATA_DIR") {
-        if !dir.trim().is_empty() {
-            return PathBuf::from(dir);
-        }
-    }
-    dirs::data_dir().unwrap_or_default()
+    crate::paths::data_dir()
 }
 
 fn requests_dir() -> PathBuf {
@@ -315,10 +309,7 @@ fn serve_page_audio_slice(offset: usize, len: usize) -> Result<serde_json::Value
 
 /// Directory for compact in-page audio (NOT the user's folder — no clutter).
 pub fn page_audio_dir() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_default()
-        .join("com.harammute.haramlite")
-        .join("page-audio")
+    crate::paths::data_dir().join("page-audio")
 }
 
 /// Keep only `keep` inside the page-audio dir (best-effort): temp listens
@@ -851,6 +842,14 @@ fn handle_request(
                     if should_remove_bridge_source(&file, &out_dir, &outs) {
                         match std::fs::remove_file(&file) {
                             Ok(()) => tracing::info!(target: "bridge", "حُذف المصدر المؤقت بعد نجاح المعالجة: {}", file.display()),
+                            // Watch-temp jobs run the sweep a few lines above, which
+                            // already deleted this file (page-audio holds one file
+                            // only) — a second delete is not an error, and warning
+                            // about it was pure log noise on every watch job
+                            // (field report, 2026-09-11).
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                                tracing::debug!(target: "bridge", "المصدر المؤقت مُنظَّف مسبقاً: {}", file.display())
+                            }
                             Err(e) => tracing::warn!(target: "bridge", "تعذر حذف المصدر المؤقت {}: {e}", file.display()),
                         }
                     }
@@ -905,9 +904,7 @@ fn handle_request(
 /// (cleaner tools, manual reset) but our host manifest still exists, rewrite
 /// the keys silently so the extension keeps working.
 pub fn ensure_registered() {
-    let manifest_path = dirs::data_dir()
-        .unwrap_or_default()
-        .join("com.harammute.haramlite")
+    let manifest_path = crate::paths::data_dir()
         .join("native-host")
         .join(format!("{HOST_NAME}.json"));
     if !manifest_path.is_file() {
@@ -972,7 +969,8 @@ pub fn is_subkey_match(actual: Option<&str>, expected_manifest: &str) -> bool {
 /// registry subkey must point at it. Either half missing → disabled.
 /// (Reads the real HKCU — runtime only; tests cover the pure pieces.)
 pub fn is_registered(app: &tauri::AppHandle) -> bool {
-    let base = app.path().app_data_dir().unwrap_or_default();
+    let _ = app;
+    let base = crate::paths::data_dir();
     let manifest = manifest_path_for(&base);
     if !manifest.is_file() {
         return false;
@@ -1006,6 +1004,7 @@ pub fn is_registered(app: &tauri::AppHandle) -> bool {
 /// fine) and delete the host manifest so startup self-heal stays quiet.
 /// Mirror of `register` — the checkbox-off path.
 pub fn unregister(app: &tauri::AppHandle) -> Result<String, String> {
+    let _ = app; // the data dir is resolved globally now (paths::data_dir)
     #[cfg(target_os = "windows")]
     {
         use winreg::enums::HKEY_CURRENT_USER;
@@ -1020,7 +1019,7 @@ pub fn unregister(app: &tauri::AppHandle) -> Result<String, String> {
             let _ = hkcu.delete_subkey(&sub);
         }
     }
-    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let base = crate::paths::data_dir();
     let manifest = manifest_path_for(&base);
     if manifest.is_file() {
         std::fs::remove_file(&manifest).map_err(|e| e.to_string())?;
@@ -1028,8 +1027,10 @@ pub fn unregister(app: &tauri::AppHandle) -> Result<String, String> {
     Ok("أُوقف التكامل مع المتصفح — أُزيلت المفاتيح والمانيفست ✓".into())
 }
 
-pub fn register(app: &tauri::AppHandle, browser: &str) -> Result<String, String> {    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+pub fn register(app: &tauri::AppHandle, browser: &str) -> Result<String, String> {
+    let _ = app;
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let base = crate::paths::data_dir();
     let dir = base.join("native-host");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
@@ -1101,8 +1102,12 @@ mod tests {
     use super::*;
 
     /// Serialize tests: they mutate the shared `HARAMLITE_DATA_DIR` env,
-    /// the global `SEEN` set and the global cancel flag.
-    static TEST_SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    /// the global `SEEN` set and the global cancel flag. The lock is shared
+    /// crate-wide (paths::test_lock) because the *pipeline* lock file lives
+    /// under the same resolved data dir — see paths.rs.
+    fn test_serial() -> &'static std::sync::Mutex<()> {
+        crate::paths::test_lock()
+    }
 
     fn nanos() -> u128 {
         std::time::SystemTime::now()
@@ -1144,7 +1149,7 @@ mod tests {
 
     #[test]
     fn duplicate_link_removed_and_queued_once() {
-        let _guard = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = test_serial().lock().unwrap_or_else(|p| p.into_inner());
         let base = isolated_base("dup");
         let (ctx, pending) = ctx_with();
         let url = format!("https://example.invalid/dup_{}", nanos());
@@ -1193,7 +1198,7 @@ mod tests {
     /// dispatch); a modeless file queues full-save.
     #[test]
     fn watch_request_dispatches_temp_job() {
-        let _guard = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = test_serial().lock().unwrap_or_else(|p| p.into_inner());
         let base = isolated_base("watchmode");
         let (ctx, _pending) = ctx_with();
         let url = format!("https://example.invalid/watch_{}", nanos());
@@ -1220,7 +1225,7 @@ mod tests {
 
     #[test]
     fn empty_and_garbage_files_removed() {
-        let _guard = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = test_serial().lock().unwrap_or_else(|p| p.into_inner());
         let base = isolated_base("poison");
         let (ctx, pending) = ctx_with();
 
@@ -1242,7 +1247,7 @@ mod tests {
 
     #[test]
     fn cancel_removes_file_drains_queue_zeroes_pending() {
-        let _guard = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = test_serial().lock().unwrap_or_else(|p| p.into_inner());
         let base = isolated_base("cancel");
         let (ctx, pending) = ctx_with();
 
@@ -1270,7 +1275,7 @@ mod tests {
 
     #[test]
     fn bridge_source_removal_rules() {
-        let _guard = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = test_serial().lock().unwrap_or_else(|p| p.into_inner());
         let base = isolated_base("rm-src");
         let out_dir = requests_dir().join("HaramLite");
         std::fs::create_dir_all(&out_dir).unwrap();
@@ -1293,7 +1298,7 @@ mod tests {
 
     #[test]
     fn cold_start_grace_keeps_fresh_drops_with_zero_grace() {
-        let _guard = TEST_SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        let _guard = test_serial().lock().unwrap_or_else(|p| p.into_inner());
         let base = isolated_base("grace");
         let dir = requests_dir();
 

@@ -97,6 +97,21 @@ const i18n = {
     watch_toast_done: 'اكتملت معالجة ملف مراقَب',
     watch_toast_fail: 'فشلت معالجة ملف مراقَب',
     btn_bridge: 'تفعيل التكامل مع المتصفح',
+    tg_title: '📨 بوت تيليجرام',
+    tg_enable: 'تفعيل بوت تيليجرام',
+    tg_token: 'توكن البوت (من BotFather)',
+    tg_owner: 'معرّف المستخدم المسموح (اختياري)',
+    tg_audio_only: 'إرسال الصوت فقط (MP3) دائماً',
+    tg_paircode: 'رمز الاقتران',
+    tg_pair_hint: 'أرسل هذا الرمز إلى بوتك في تيليجرام لربط حسابك (صالح 10 دقائق).',
+    tg_advanced: 'إعدادات متقدمة: خادم Bot API محلي (حتى 2GB وبالجودة الأصلية)',
+    tg_local_note: 'يُشغَّل الخادم من حسابك في my.telegram.org؛ اتركه فارغاً لاستخدام السحابة (حد 50MB إرسال / 20MB استلام).',
+    tg_off: 'البوت متوقف',
+    tg_on: 'البوت يعمل',
+    tg_paired: 'مقترن',
+    tg_pairing: 'بانتظار الاقتران',
+    tg_code_copied: 'نُسخ الرمز',
+    tg_need_token: 'أدخل توكن البوت أولاً',
     pl_title: 'المعالجة المباشرة',
     pl_pick: 'اختيار ملف',
     pl_prepare: 'بناء الخريطة',
@@ -202,6 +217,21 @@ const i18n = {
     watch_toast_done: 'Watched file processed',
     watch_toast_fail: 'Watched file failed',
     btn_bridge: 'Enable browser integration',
+    tg_title: '📨 Telegram bot',
+    tg_enable: 'Enable Telegram bot',
+    tg_token: 'Bot token (from BotFather)',
+    tg_owner: 'Allowed user id (optional)',
+    tg_audio_only: 'Always send audio only (MP3)',
+    tg_paircode: 'Pairing code',
+    tg_pair_hint: 'Send this code to your bot on Telegram to link your account (valid 10 minutes).',
+    tg_advanced: 'Advanced: local Bot API server (up to 2GB, original quality)',
+    tg_local_note: 'Run the server with your own credentials from my.telegram.org; leave empty to use the cloud (50MB send / 20MB receive).',
+    tg_off: 'Bot stopped',
+    tg_on: 'Bot running',
+    tg_paired: 'Paired',
+    tg_pairing: 'Waiting for pairing',
+    tg_code_copied: 'Code copied',
+    tg_need_token: 'Enter the bot token first',
     pl_title: 'Live processing',
     pl_pick: 'Choose file',
     pl_prepare: 'Build map',
@@ -566,6 +596,11 @@ function hideStageLine(): void {
 
 /* ── unified settings sync (Sprint D1) ──────────────────────────────── */
 type RustSettings = Record<string, unknown>;
+/** Telegram secrets live in memory only — never in localStorage (a second
+ *  plaintext copy at rest, which also defeated sealing them in settings.json).
+ *  `null` = "unknown" and tells the backend to keep what it already has. */
+let tgToken: string | null = null;
+let tgApiHash: string | null = null;
 let settingsSyncTimer: number | undefined;
 /** Hook filled by wireWatchSettings so external settings changes can repaint. */
 let refreshWatchUi: (() => void) | null = null;
@@ -578,6 +613,17 @@ function collectSettings(): RustSettings {
     preview_seconds: Number(localStorage.getItem('hl.preview_seconds')) || 15,
     keep_instrumental: localStorage.getItem('hl.keep_inst') === '1',
     bridge_enabled: localStorage.getItem('hl.bridge') === '1',
+    // Sprint T1: Telegram bot (token + pairing live in Rust settings too).
+    telegram_enabled: localStorage.getItem('hl.tg') === '1',
+    // Secrets are NOT kept in localStorage (a second plaintext copy at rest,
+    // which also defeated sealing them in settings.json). `null` ⇒ the backend
+    // keeps its stored value; the panel loads them from Rust into memory.
+    telegram_token: tgToken,
+    telegram_user_id: localStorage.getItem('hl.tg_owner') || '',
+    telegram_audio_only: localStorage.getItem('hl.tg_audio') === '1',
+    telegram_local_url: localStorage.getItem('hl.tg_local') || '',
+    telegram_api_id: localStorage.getItem('hl.tg_api_id') || '',
+    telegram_api_hash: tgApiHash,
     log_open: logOpen,
     watch_enabled: localStorage.getItem('hl.watch') === '1',
     watch_path: localStorage.getItem('hl.watch_path') || null,
@@ -604,6 +650,7 @@ async function seedSettings(): Promise<void> {
       ['cuda', 'hl.cuda'], ['notify', 'hl.notify'], ['preview', 'hl.preview'],
       ['keep_instrumental', 'hl.keep_inst'], ['watch_enabled', 'hl.watch'],
       ['bridge_enabled', 'hl.bridge'],
+      ['telegram_enabled', 'hl.tg'], ['telegram_audio_only', 'hl.tg_audio'],
     ];
     for (const [k, ls] of bools) {
       if (localStorage.getItem(ls) === null && s[k] !== undefined) {
@@ -612,6 +659,8 @@ async function seedSettings(): Promise<void> {
     }
     const strs: [keyof RustSettings, string][] = [
       ['watch_mode', 'hl.watch_mode'], ['lang', 'hl.lang'],
+      ['telegram_user_id', 'hl.tg_owner'],
+      ['telegram_local_url', 'hl.tg_local'], ['telegram_api_id', 'hl.tg_api_id'],
     ];
     for (const [k, ls] of strs) {
       if (localStorage.getItem(ls) === null && typeof s[k] === 'string') {
@@ -1657,6 +1706,18 @@ function wireSettings(): void {
       const cb = document.getElementById('setting-bridge') as HTMLInputElement | null;
       if (cb) cb.checked = s.bridge_enabled;
     }
+    // Sprint T1: the Telegram worker rewrites these itself on a successful
+    // pairing, so the panel must follow backend truth (never a stale cache).
+    if (typeof s.telegram_enabled === 'boolean') {
+      localStorage.setItem('hl.tg', s.telegram_enabled ? '1' : '0');
+      const cb = document.getElementById('setting-telegram') as HTMLInputElement | null;
+      if (cb) cb.checked = s.telegram_enabled;
+    }
+    if (typeof s.telegram_user_id === 'string') {
+      localStorage.setItem('hl.tg_owner', s.telegram_user_id);
+      const inp = document.getElementById('tg-owner') as HTMLInputElement | null;
+      if (inp && inp.value !== s.telegram_user_id) inp.value = s.telegram_user_id;
+    }
     if (typeof s.watch_path === 'string') localStorage.setItem('hl.watch_path', s.watch_path);
     refreshWatchUi?.();
   });
@@ -2430,6 +2491,195 @@ function wirePlayer(): void {
 }
 
 /* ── browser integration (Sprint E3: persistent checkbox) ───────────── */
+/* ── Telegram bot (Sprint T1) ───────────────────────────────────────── */
+interface TgStatus {
+  running: boolean;
+  last_error: string;
+  last_activity: string;
+  processed: number;
+  queue: number;
+  paired_id: number | null;
+  pairing_code_active: boolean;
+}
+interface TgPairCode {
+  code: string;
+  expires_in_secs: number;
+  fails_left: number;
+  paired: boolean;
+}
+
+function wireTelegram(): void {
+  const overlay = document.getElementById('tg-overlay');
+  const openBtn = document.getElementById('btn-telegram');
+  const badge = document.getElementById('tg-badge');
+  // The panel is its own window: the settings dropdown is too narrow, and the
+  // token field used to sit inside the block its own toggle kept hidden — a
+  // dead end the owner hit on the first try (2026-09-11).
+  if (!overlay || !openBtn) return;
+  const enable = document.getElementById('setting-telegram') as HTMLInputElement | null;
+  const token = document.getElementById('tg-token') as HTMLInputElement | null;
+  const owner = document.getElementById('tg-owner') as HTMLInputElement | null;
+  const audioOnly = document.getElementById('tg-audio-only') as HTMLInputElement | null;
+  const localUrl = document.getElementById('tg-local-url') as HTMLInputElement | null;
+  const apiId = document.getElementById('tg-api-id') as HTMLInputElement | null;
+  const apiHash = document.getElementById('tg-api-hash') as HTMLInputElement | null;
+  const codeEl = document.getElementById('tg-pair-code');
+  const statusEl = document.getElementById('tg-status');
+  const btnNew = document.getElementById('tg-pair-new');
+  const btnCopy = document.getElementById('tg-pair-copy');
+
+  // Seed the non-secret fields from the cache; the settings echo keeps them
+  // reconciled after.
+  if (owner) owner.value = localStorage.getItem('hl.tg_owner') || '';
+  if (localUrl) localUrl.value = localStorage.getItem('hl.tg_local') || '';
+  if (apiId) apiId.value = localStorage.getItem('hl.tg_api_id') || '';
+  if (audioOnly) audioOnly.checked = localStorage.getItem('hl.tg_audio') === '1';
+  if (enable) enable.checked = localStorage.getItem('hl.tg') === '1';
+
+  // The two secrets come from the backend ONCE, into memory and the field —
+  // and any copy an older build left in localStorage is deleted here.
+  try {
+    localStorage.removeItem('hl.tg_token');
+    localStorage.removeItem('hl.tg_api_hash');
+  } catch { /* storage blocked */ }
+  void (async () => {
+    try {
+      const s = await invoke<RustSettings>('get_settings');
+      if (typeof s.telegram_token === 'string' && token && !token.value) {
+        token.value = s.telegram_token;
+        tgToken = s.telegram_token;
+      }
+      if (typeof s.telegram_api_hash === 'string' && apiHash && !apiHash.value) {
+        apiHash.value = s.telegram_api_hash;
+        tgApiHash = s.telegram_api_hash;
+      }
+    } catch { /* dev/portable builds — backend unavailable */ }
+  })();
+
+  const bindText = (key: string, el: HTMLInputElement | null): void => {
+    el?.addEventListener('input', () => {
+      localStorage.setItem(key, el.value.trim());
+      pushSettings();
+    });
+  };
+  // Secrets: memory only, and the value is what the backend stores.
+  token?.addEventListener('input', () => {
+    tgToken = token.value.trim();
+    pushSettings();
+  });
+  apiHash?.addEventListener('input', () => {
+    tgApiHash = apiHash.value.trim();
+    pushSettings();
+  });
+  bindText('hl.tg_owner', owner);
+  bindText('hl.tg_local', localUrl);
+  bindText('hl.tg_api_id', apiId);
+
+  audioOnly?.addEventListener('change', () => {
+    localStorage.setItem('hl.tg_audio', audioOnly.checked ? '1' : '0');
+    pushSettings();
+  });
+
+  let lastCode = '';
+  async function refresh(withCode: boolean): Promise<void> {
+    try {
+      const st = await invoke<TgStatus>('telegram_status');
+      if (statusEl) {
+        const bits: string[] = [st.running ? t('tg_on') : t('tg_off')];
+        bits.push(st.paired_id ? `${t('tg_paired')}: ${st.paired_id}` : t('tg_pairing'));
+        if (st.queue) bits.push(`⏳ ${st.queue}`);
+        if (st.last_error) bits.push(`⚠ ${String(st.last_error).slice(0, 70)}`);
+        statusEl.textContent = bits.join(' · ');
+        statusEl.className = st.last_error
+          ? 'font-label-sm text-label-sm text-error'
+          : 'font-label-sm text-label-sm text-on-surface-variant';
+      }
+      if (badge) {
+        badge.textContent = st.running ? t('tg_on') : t('tg_off');
+        badge.className = st.running
+          ? 'ms-auto font-label-sm text-label-sm text-tertiary'
+          : 'ms-auto font-label-sm text-label-sm text-on-surface-variant';
+      }
+      if (!codeEl || !withCode) return;
+      // Paired: the pairing instructions and the code row are noise — the
+      // owner's own request (2026-09-11). The status line already says who.
+      const pairRow = document.getElementById('tg-pair-row');
+      const pairHint = document.getElementById('tg-pair-hint');
+      pairRow?.classList.toggle('hidden', !!st.paired_id);
+      pairHint?.classList.toggle('hidden', !!st.paired_id);
+      if (st.paired_id) {
+        codeEl.textContent = '✓';
+        lastCode = '';
+        return;
+      }
+      const pc = await invoke<TgPairCode>('telegram_pairing_code', { force: false });
+      lastCode = pc.code;
+      codeEl.textContent = pc.code;
+    } catch { /* dev/portable builds — backend unavailable */ }
+  }
+
+  // Never a dead end: the token field is visible in this same panel, so say
+  // what is missing and put the cursor in it rather than refusing the toggle
+  // (the old inline layout hid the field behind the very switch it gated).
+  enable?.addEventListener('change', () => {
+    localStorage.setItem('hl.tg', enable.checked ? '1' : '0');
+    if (enable.checked && !(token?.value || '').trim()) {
+      if (statusEl) {
+        statusEl.textContent = `⚠ ${t('tg_need_token')}`;
+        statusEl.className = 'font-label-sm text-label-sm text-tertiary leading-relaxed';
+      }
+      token?.focus();
+    }
+    pushSettings();
+    void refresh(true);
+  });
+
+  const isOpen = (): boolean => !overlay.classList.contains('hidden');
+  const closePanel = (): void => { overlay.classList.add('hidden'); };
+  openBtn.addEventListener('click', () => {
+    // The settings dropdown is a narrow strip — get it out of the way.
+    document.getElementById('settings-menu')?.classList.add('hidden');
+    overlay.classList.remove('hidden');
+    void refresh(true);
+  });
+  document.getElementById('tg-close')?.addEventListener('click', closePanel);
+  document.getElementById('tg-ok')?.addEventListener('click', closePanel);
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closePanel();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isOpen()) closePanel();
+  });
+
+  btnNew?.addEventListener('click', () => {
+    void (async () => {
+      try {
+        const pc = await invoke<TgPairCode>('telegram_pairing_code', { force: true });
+        lastCode = pc.code;
+        if (codeEl) codeEl.textContent = pc.code;
+      } catch { /* dev */ }
+    })();
+  });
+
+  btnCopy?.addEventListener('click', () => {
+    if (!lastCode) return;
+    void navigator.clipboard?.writeText(lastCode).then(
+      () => showToast(`✓ ${t('tg_code_copied')}`),
+      () => { /* clipboard blocked — the code is on screen anyway */ },
+    );
+  });
+
+  // The worker emits on exit/restart; the poll is the safety net for a pairing
+  // completed in Telegram (Rust writes settings.json behind our back). It only
+  // runs while the panel is actually open.
+  void listen('telegram-status', () => { void refresh(true); });
+  window.setInterval(() => {
+    if (document.hidden || !isOpen()) return;
+    void refresh(true);
+  }, 5000);
+  void refresh(false);
+}
+
 function wireBridge(): void {
   let bridgeCardTimer: number | undefined; // F-5: one pending hide at a time
   const cb = document.getElementById('setting-bridge') as HTMLInputElement | null;
@@ -2535,6 +2785,7 @@ function wire(): void {
   wireUpdater();
   wireWatchSettings();
   wireBridge();
+  wireTelegram();
   wireExtJobs();
   wirePlayer();
 }

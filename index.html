@@ -87,6 +87,13 @@
             <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="btn_bridge">تفعيل التكامل مع المتصفح</span>
         </label>
     </div>
+    <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
+        <button id="btn-telegram" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer w-full">
+            <span class="material-symbols-outlined text-sm" data-icon="smart_toy">smart_toy</span>
+            <span class="font-body-sm" data-i18n="tg_title">📨 بوت تيليجرام</span>
+            <span id="tg-badge" class="ms-auto font-label-sm text-label-sm"></span>
+        </button>
+    </div>
 </div>
 </div>
 </header>
@@ -322,6 +329,53 @@
 </div>
 <div id="about-body" class="flex flex-col gap-unit font-body-sm text-sm text-cream-text leading-relaxed"></div>
 <button id="about-ok" class="self-end bg-surface-container text-cream-text border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high transition-all duration-300 font-label-sm text-label-sm cursor-pointer" data-i18n="about_ok">حسناً</button>
+</div>
+</div>
+<!-- Telegram bot panel (Sprint T1) — its own window on purpose: the settings
+     dropdown is too narrow, and hiding the token field behind its own toggle
+     made the feature impossible to switch on (real field defect, 2026-09-11). -->
+<div id="tg-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+<div class="glass-effect border border-border-muted rounded-xl p-stack-lg w-[30rem] max-w-[92vw] max-h-[85vh] overflow-y-auto flex flex-col gap-stack-md fade-in-up" style="animation-duration: 0.25s;">
+<div class="flex justify-between items-center">
+<h3 class="font-label-md text-label-md text-clay-accent" data-i18n="tg_title">📨 بوت تيليجرام</h3>
+<button id="tg-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit rounded cursor-pointer" title="إغلاق">
+<span class="material-symbols-outlined text-sm" data-icon="close">close</span>
+</button>
+</div>
+<label class="flex items-center gap-stack-sm cursor-pointer group">
+    <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-telegram" type="checkbox"/>
+    <span class="font-body-sm text-cream-text" data-i18n="tg_enable">تفعيل بوت تيليجرام</span>
+</label>
+<label class="flex flex-col gap-unit">
+    <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="tg_token">توكن البوت (من BotFather)</span>
+    <input id="tg-token" type="password" dir="ltr" autocomplete="off" spellcheck="false" placeholder="123456:ABC-DEF…" class="form-input bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent"/>
+</label>
+<label class="flex flex-col gap-unit">
+    <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="tg_owner">معرّف المستخدم المسموح (اختياري)</span>
+    <input id="tg-owner" type="text" dir="ltr" autocomplete="off" spellcheck="false" placeholder="123456789" class="form-input bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent"/>
+</label>
+<label class="flex items-center gap-stack-sm cursor-pointer group">
+    <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="tg-audio-only" type="checkbox"/>
+    <span class="font-body-sm text-cream-text" data-i18n="tg_audio_only">إرسال الصوت فقط (MP3) دائماً</span>
+</label>
+<div id="tg-pair-row" class="flex items-center gap-unit bg-coal-surface border border-border-muted rounded p-unit">
+    <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="tg_paircode">رمز الاقتران</span>
+    <span id="tg-pair-code" class="font-label-md text-label-md text-clay-accent tracking-[0.25em]" dir="ltr">------</span>
+    <button id="tg-pair-new" type="button" class="material-symbols-outlined text-sm text-on-surface-variant hover:text-clay-accent cursor-pointer transition-colors ms-auto" title="رمز جديد">refresh</button>
+    <button id="tg-pair-copy" type="button" class="material-symbols-outlined text-sm text-on-surface-variant hover:text-clay-accent cursor-pointer transition-colors" title="نسخ">content_copy</button>
+</div>
+<span id="tg-pair-hint" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="tg_pair_hint">أرسل هذا الرمز إلى بوتك في تيليجرام لربط حسابك (صالح 10 دقائق).</span>
+<span id="tg-status" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed"></span>
+<details class="border-t border-border-muted pt-2">
+    <summary class="font-label-sm text-label-sm text-on-surface-variant cursor-pointer" data-i18n="tg_advanced">إعدادات متقدمة: خادم Bot API محلي (حتى 2GB وبالجودة الأصلية)</summary>
+    <div class="flex flex-col gap-stack-sm mt-2">
+        <input id="tg-local-url" type="text" dir="ltr" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:8081" class="form-input bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent"/>
+        <input id="tg-api-id" type="text" dir="ltr" autocomplete="off" spellcheck="false" placeholder="api_id" class="form-input bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent"/>
+        <input id="tg-api-hash" type="password" dir="ltr" autocomplete="off" spellcheck="false" placeholder="api_hash" class="form-input bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent"/>
+        <span class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="tg_local_note">يُشغَّل الخادم من حسابك في my.telegram.org؛ اتركه فارغاً لاستخدام السحابة (حد 50MB إرسال / 20MB استلام).</span>
+    </div>
+</details>
+<button id="tg-ok" class="self-end bg-surface-container text-cream-text border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high transition-all duration-300 font-label-sm text-label-sm cursor-pointer" data-i18n="about_ok">حسناً</button>
 </div>
 </div>
 <!-- In-app toast (fallback when system notification is unavailable) -->

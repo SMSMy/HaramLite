@@ -48,10 +48,7 @@ pub fn cancel_current() {
 /// overwritten). Keyed by the same `key_of` (path|size|mtime); namespaced by
 /// the settings fingerprint so a mode/quality change re-runs everything once.
 fn done_path() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_default()
-        .join("com.harammute.haramlite")
-        .join("watch_done.json")
+    crate::paths::data_dir().join("watch_done.json")
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default)]
