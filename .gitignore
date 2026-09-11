@@ -44,3 +44,6 @@ src-tauri/vc_redist.x64.exe
 # Untracked owner scratch — never commit its content (auto-protection).
 docs/rebuild/
 
+
+# Store listing artwork (contains YouTube screenshots — local only)
+/store-assets/
