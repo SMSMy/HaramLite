@@ -1,7 +1,7 @@
 # HaramLite Bridge — قائمة متجر كروم (جاهزة للنسخ)
 
 > هذه ورقة العمل للنشر: كل حقل مكتوب بنصّه النهائي. المقاسات والملفات في
-> `store-assets/` (خارج git). الإصدار المرفوع: **1.1.0**.
+> `store-assets/` (خارج git). **المعلَّق في المتجر: 1.1.0** — ولا يُعدَّل حتى تُوافق قوقل على النسخة الأولى. **1.1.1 جاهزة محلياً** (أيقونة جديدة + نافذة جديدة + اختيار الوضع في النافذة) وتُرفع بعد الموافقة، لأن المتجر يرفض إعادة رفع النسخة نفسها.
 
 ## الحزمة (اقرأ هذا أولاً)
 
@@ -11,11 +11,11 @@
 يستخدمها التطوير وجسر التطبيق) و**الحزمة المرفوعة تُجرَّد منه**.
 
 ```
-pnpm pack:ext          # → src-tauri/target/store/HaramLite-Bridge-1.1.0-chrome.zip
+pnpm pack:ext          # → src-tauri/target/store/HaramLite-Bridge-1.1.1-chrome.zip
 pnpm pack:ext:firefox  # للفايرفوكس (يبقي browser_specific_settings)
 ```
 
-الملف الصحيح للرفع: **`HaramLite-Bridge-1.1.0-chrome.zip`** (المانيفست في الجذر،
+الملف الصحيح للرفع: **`HaramLite-Bridge-1.1.1-chrome.zip`** (المانيفست في الجذر،
 بلا `key` ولا `browser_specific_settings`، 9 ملفات).
 
 ## تسلسل النشر الأول (مهم — يمنع إضافة معطوبة)
@@ -39,14 +39,14 @@ pnpm pack:ext:firefox  # للفايرفوكس (يبقي browser_specific_setting
 
 ## الهوية
 
-| الحقل          | القيمة                                                                                                  |
-| -------------- | ------------------------------------------------------------------------------------------------------- |
-| اللغة الأساسية | العربية (`ar`)                                                                                          |
-| لغات إضافية    | الإنجليزية (`en`)                                                                                       |
-| الفئة          | **Productivity** (الإنتاجية)                                                                            |
-| الموقع الرسمي  | `https://smsmy.github.io/HaramLite/` — وبعد ربط الدومين: **`https://haramlite.com`**                    |
-| سياسة الخصوصية | `https://smsmy.github.io/HaramLite/PRIVACY.html` — وبعد الربط: **`https://haramlite.com/PRIVACY.html`** |
-| الدعم          | `https://github.com/SMSMy/HaramLite/issues`                                                             |
+| الحقل | القيمة |
+|---|---|
+| اللغة الأساسية | العربية (`ar`) |
+| لغات إضافية | الإنجليزية (`en`) |
+| الفئة | **Productivity** (الإنتاجية) |
+| الموقع الرسمي | **`https://haramlite.com`** (ومرآته `https://smsmy.github.io/HaramLite/`) |
+| سياسة الخصوصية | **`https://haramlite.com/PRIVACY.html`** |
+| الدعم | `https://github.com/SMSMy/HaramLite/issues` |
 
 > **لا تستخدم رابط المستودع كموقع رسمي**: `github.com/SMSMy/HaramLite/…` لا يخدم
 > الملفات على مسار الجذر (تحقق حيّ: **404**)، ولا يمكن إثبات ملكيته لأنه نطاق لا
@@ -132,15 +132,77 @@ under a Creative Commons licence.
 
 ## الصور المطلوبة (في `store-assets/`)
 
-| الملف                     | المقاس   | الاستخدام                            |
-| ------------------------- | -------- | ------------------------------------ |
-| `screenshot-1-player.png` | 1280×800 | لقطة 1: الزرّان داخل مشغّل يوتيوب    |
-| `screenshot-2-popup.png`  | 1280×800 | لقطة 2: منبثقة الإضافة وحالة الاتصال |
-| `icon-128.png`            | 128×128  | أيقونة المتجر                        |
-| `promo-440x280.png`       | 440×280  | البطاقة الترويجية الصغيرة            |
+| الملف | المقاس | الاستخدام |
+|---|---|---|
+| `screenshot-1-player.png` | 1280×800 | لقطة 1: الزرّان داخل مشغّل يوتيوب |
+| `screenshot-2-popup.png` | 1280×800 | لقطة 2: منبثقة الإضافة وحالة الاتصال |
+| `icon-128.png` | 128×128 | أيقونة المتجر |
+| `promo-440x280.png` | 440×280 | البطاقة الترويجية الصغيرة |
 
 > لقطات الشاشة من واجهة حقيقية: فيديو برخصة حرة، وجلسة متصفح **بلا حساب** —
 > لا بيانات شخصية في أي صورة.
+
+---
+
+## ربط الدومين `haramlite.com` بـGitHub Pages — **تمّ ✓ (2026-09-12)**
+
+المنطقة على Cloudflare (`phoenix.ns.cloudflare.com` · `lou.ns.cloudflare.com`)، والسجلات
+العشرة منشورة ومتحقَّق منها عبر DoH محايد: **4 A** + **4 AAAA** على الجذر، **CNAME**
+لـ`www` → `smsmy.github.io`، و**TXT** لإثبات ملكية قوقل. وكلها **DNS only** (بلا بروكسي).
+
+### السجلات المطلوبة (كلها **DNS only / سحابة رمادية**)
+
+> ⚠️ **أهم نقطة**: يجب أن تكون السحابة **رمادية (DNS only)** لكل السجلات. تفعيل
+> البروكسي (سحابة برتقالية) يمنع GitHub من إصدار شهادة HTTPS وقد يُنتج حلقة إعادة
+> توجيه. GitHub Pages يعمل مع Cloudflare **بشرط عدم التمرير عبر البروكسي**.
+
+| النوع | الاسم | القيمة |
+|---|---|---|
+| A | `@` | `185.199.108.153` |
+| A | `@` | `185.199.109.153` |
+| A | `@` | `185.199.110.153` |
+| A | `@` | `185.199.111.153` |
+| AAAA | `@` | `2606:50c0:8000::153` |
+| AAAA | `@` | `2606:50c0:8001::153` |
+| AAAA | `@` | `2606:50c0:8002::153` |
+| AAAA | `@` | `2606:50c0:8003::153` |
+| CNAME | `www` | `smsmy.github.io` |
+
+(العناوين مأخوذة من توثيق GitHub الرسمي، لا من مصادر ثانوية.)
+
+### الطريقان
+
+1. **يدوياً (موصى به — بلا مشاركة أي سر)**: Cloudflare ← DNS ← Records ← إضافة
+   التسعة، أو أسرع: **Import and Export ← Import** ولصق ملف BIND:
+
+```
+haramlite.com.     1 IN A     185.199.108.153
+haramlite.com.     1 IN A     185.199.109.153
+haramlite.com.     1 IN A     185.199.110.153
+haramlite.com.     1 IN A     185.199.111.153
+haramlite.com.     1 IN AAAA  2606:50c0:8000::153
+haramlite.com.     1 IN AAAA  2606:50c0:8001::153
+haramlite.com.     1 IN AAAA  2606:50c0:8002::153
+haramlite.com.     1 IN AAAA  2606:50c0:8003::153
+www.haramlite.com. 1 IN CNAME smsmy.github.io.
+```
+
+2. **بتوكن**: يجب أن يحمل صلاحية `Zone → DNS → Edit` لنطاق `haramlite.com`
+   وحده. توكن بنطاق `Workers` **لا يصلح** (فُحص: يُقرأ المنطقة لكنه يُرجع **403**
+   على سجلات DNS). وأي توكن يُشارَك يُبطَل فوراً بعد الاستخدام.
+
+### ما نُفِّذ بعد الانتشار
+
+1. ✓ ملف `docs/CNAME` يحوي `haramlite.com` (أُضيف **بعد** انتشار DNS لا قبله).
+2. ✓ ضبط الدومين المخصص في Pages، و✓ **فرض HTTPS** بعد إصدار شهادة Let's Encrypt.
+3. ✓ التحقق العملي: `/` و`/PRIVACY.html` وملف إثبات قوقل → **200** مع شهادة صالحة،
+   و`https://smsmy.github.io/HaramLite/` يحوّل **301** إلى الدومين.
+
+### إثبات الملكية في Search Console (بعد الربط)
+
+رمز الإثبات المُحمَّل صادر لعنصر `github.com/…` **ولا يصلح لعنصر جديد**؛ فعند
+إضافة عنصر `haramlite.com` يعطي قوقل **ملفاً أو سجل TXT جديداً**. والأفضل الآن
+إثبات **عنصر نطاق** بسجل TXT (مرة واحدة ويغطي كل النطاقات الفرعية).
 
 ---
 
@@ -157,23 +219,49 @@ under a Creative Commons licence.
 
 ### تبرير كل صلاحية (يُطلب حرفياً عند الرفع)
 
-| الصلاحية                       | التبرير                                                                                                                                                         |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `nativeMessaging`              | «التخاطب مع تطبيق HaramLite المكتبي **الذي ثبّته المستخدم بنفسه** لتمرير رابط الفيديو إليه. المعالجة تحدث على جهاز المستخدم، ولا تُرسل بيانات إلى أي خادم.»     |
-| `contextMenus`                 | «إضافة عنصر «أرسل إلى HaramLite» في قائمة الزر الأيمن، وهو المسار الذي اختاره المستخدم لإرسال رابط.»                                                            |
-| `activeTab`                    | «قراءة رابط التبويب النشط **فقط عند نقر المستخدم على الإضافة**، لإرساله إلى تطبيقه المحلي.»                                                                     |
-| محتوى في `*://*.youtube.com/*` | «إضافة الزرّين إلى مشغّل يوتيوب وتنفيذ المشاهدة المفلترة داخل الصفحة (كتم الفيديو ومزامنة الصوت المعالَج). لا يُقرأ أي محتوى آخر ولا تُرسل أي صفحة إلى الخارج.» |
+#### English — انسخ هذا (أسرع في المراجعة)
+
+**contextMenus**
+> Adds one item, "Send to HaramLite", to the browser's right-click menu so the user can send the link, page or video they are looking at to their own HaramLite desktop application. It adds nothing else and reads no page data.
+
+**nativeMessaging**
+> Used only to talk to the HaramLite desktop app that the user installs and runs on their own computer. The extension passes the URL the user chose to process, plus short status messages, over the local Native Messaging channel. Nothing is sent to the developer or to any server — the extension itself makes no network request. The messaging host is registered by the desktop app, and the user must switch the integration on in that app's settings; without it the extension does nothing.
+
+**activeTab**
+> Reads the URL of the active tab only at the moment the user clicks the extension, so that URL can be handed to their desktop app for processing. There is no background access, no browsing-history access and no access to any other tab or site.
+
+**Host permission for `*://*.youtube.com/*`**
+> A content script runs on YouTube pages only, to add two buttons to the video player ("download & process" and "watch filtered") and to play the audio that was processed locally on the user's machine in sync with the page video. It reads no other content on the page, and nothing is ever sent off the device.
+
+#### العربية (بديل مقبول)
+
+| الصلاحية | التبرير |
+|---|---|
+| `contextMenus` | «إضافة عنصر واحد «أرسل إلى HaramLite» في قائمة الزر الأيمن، ليرسل المستخدم الرابط أو الصفحة أو الفيديو إلى تطبيقه المكتبي. لا يضيف غيره ولا يقرأ بيانات الصفحة.» |
+| `nativeMessaging` | «للتخاطب مع تطبيق HaramLite المكتبي الذي ثبّته المستخدم على جهازه. تُمرَّر إليه الرابط الذي اختار معالجته ورسائل حالة قصيرة عبر قناة Native Messaging المحلية. لا شيء يُرسَل إلى المطوّر أو إلى أي خادم، والإضافة نفسها لا تُجري أي طلب شبكة. المضيف يُسجّله التطبيق، وعلى المستخدم تفعيل التكامل من إعداداته، وبدونه لا تفعل الإضافة شيئاً.» |
+| `activeTab` | «قراءة رابط التبويب النشط لحظة نقر المستخدم على الإضافة فقط، لتسليمه إلى تطبيقه المكتبي. لا وصول في الخلفية، ولا سجل تصفح، ولا وصول إلى أي تبويب أو موقع آخر.» |
+| محتوى في `*://*.youtube.com/*` | «سكربت محتوى يعمل على صفحات يوتيوب فقط لإضافة زرّين إلى المشغّل («حمّل وعالج» و«شاهد مفلتراً») وتشغيل الصوت المعالَج محلياً بتزامن مع الفيديو. لا يقرأ محتوى آخر، ولا يُرسل شيئاً خارج الجهاز.» |
+
+#### سؤال «الكود البعيد» (Remote code)
+
+الجواب الصحيح: **«لا، لا أستخدم الكود البعيد»** ✓ — كل الشيفرة داخل الحزمة، بلا `eval` ولا سكربتات خارجية (تحقّق آلي: صفر `eval`/`new Function`/`importScripts`).
+
+#### ملاحظة عن لافتة «المراجعة المطوّلة»
+
+طلب `nativeMessaging` (وأذونات المضيف) **قد يستدعي مراجعة بشرية مطوّلة تؤخر النشر** — وهذا متوقع ومعلن ولا يعني رفضاً. التبريرات المحددة أعلاه هي ما يقرؤه المراجع، فكلما كانت أوضح كان القرار أسرع. وبعد النشر: ثبّت نسخة المتجر على جهاز فيه تطبيق **0.2.1** وجرّب إرسال رابط.
 
 ### «الاستخدام المفرد» (Single purpose)
 
+> Bridge between the browser and the user's own HaramLite desktop app: it forwards the video URL the user chooses to that local app for processing, and plays the processed result inside the page.
+
 «جسر بين المتصفح وتطبيق HaramLite المكتبي: يمرّر رابط الفيديو المطلوب إلى
-التطبيق لمعالجته محلياً، ويشغّل الناتج داخل الصفحة.» — جملة واحدة تكفي المراجع.
+التطبيق لمعالجته محلياً، ويشغّل الناتج داخل الصفحة.»
 
 ---
 
 ## قائمة تحقق قبل النقر على «إرسال للمراجعة»
 
-1. [ ] رفع `HaramLite-Bridge-1.1.0-chrome.zip` (يُبنى بـ`pnpm pack:ext`؛ المانيفست في الجذر، الإصدار 1.1.0، **بلا حقل `key`**) — كعنصر جديد بظهور **Unlisted** أولاً.
+1. [ ] رفع `HaramLite-Bridge-1.1.1-chrome.zip` (يُبنى بـ`pnpm pack:ext`؛ المانيفست في الجذر، الإصدار 1.1.1، **بلا حقل `key`**) — كعنصر جديد بظهور **Unlisted** أولاً.
 2. [ ] اختيار لقطة واحدة على الأقل (المقترح: الاثنتان) + الأيقونة + البطاقة.
 3. [ ] لصق سياسة الخصوصية (الرابط أعلاه) — **مطلوبة** مع `nativeMessaging`.
 4. [ ] تعبئة تبويب ممارسات الخصوصية + تبريرات الصلاحيات الأربعة أعلاه.
