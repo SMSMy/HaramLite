@@ -83,3 +83,5 @@ cookies.txt
 *.ytdl
 # فيديو عرض الإضافة — مكانه المناسب الإصدارات لا المستودع
 /browser-extension/*.mp4
+# نسخ لقطات مرقّمة (الاسم القانوني هو IMG/Screenshot.png)
+/IMG/Screenshot v*.png
