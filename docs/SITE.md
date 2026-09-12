@@ -21,7 +21,7 @@
 ### شجرة `docs/` (جذر الموقع)
 
 ```
-index.html                      الصفحة الرئيسية (عربي/إنجليزي)
+index.html                      الصفحة الرئيسية — مبنية من تصميم "Clay & Coal" المُصدَّر
 404.html                        صفحة الخطأ (يستخدمها GitHub تلقائياً)
 CNAME                           haramlite.com — لا تحذفه
 robots.txt / sitemap.xml        لمحرّكات البحث
@@ -29,12 +29,43 @@ LICENSE.txt                     نسخة الرخصة (كانت /LICENSE = 404)
 PRIVACY.md                      سياسة الخصوصية (يُطلب رابطها في متجر كروم)
 _config.yml                     إعداد Jekyll + قائمة استثناء الوثائق الداخلية
 google30b5f3c41dd37016.html     ملف إثبات ملكية قوقل — لا تحذفه ولا تنقله
-assets/site.css                 التنسيقات
+assets/site.css                 التنسيقات — **مُصرَّفة** من Tailwind محلياً (لا CDN)
 assets/*.otf                    خطوط ثمانية (5 ملفات)
+assets/material-symbols-outlined.woff2   أيقونات واجهة مستضافة محلياً
 assets/icon-*.png + favicon.ico الأيقونات
 assets/og.png                   بطاقة المشاركة 1200×630
-assets/app-screenshot.png       لقطة التطبيق
+assets/app-screenshot.png       لقطة التطبيق الحقيقية (محفوظة — انظر ملاحظة الواجهة أدناه)
 ```
+
+### بناء تنسيقات الموقع (مهم عند تعديل الأصناف)
+
+التصميم كُتب بأصناف Tailwind، والتنسيقات **تُصرَّف محلياً** لا من CDN:
+
+```
+site.tailwind.config.cjs   ← ثيم التصميم المُصدَّر (نفس ألوان التطبيق) + content: docs/index.html
+site.input.css             ← @tailwind + @font-face للخطوط وأيقونات Material
+pnpm site:css              ← ينتج docs/assets/site.css
+```
+
+**إن أضفت صنف Tailwind جديداً في `docs/index.html` ولم تُعِد التصريف فلن يعمل.**
+والثيم في ملفه الخاص كي لا تمسّ تعديلات الموقع بناء التطبيق.
+
+### مصدر التصميم
+
+`site/stitch_haramlite_rs_desktop (1).zip` (‏`code.html` + `DESIGN.md` + `screen.png`).
+`DESIGN.md` هو مرجع الألوان والقياسات والطبقات — مطابق لألوان التطبيق.
+
+### ملاحظة الواجهة في الهيرو
+
+الواجهة المعروضة داخل الهيرو **ليست لقطة شاشة** بل **محاكاة مبنية بـHTML** صنعها
+المصمم (اسم ملف ونسبة تقدّم توضيحيان). اللقطة الحقيقية محفوظة في
+`assets/app-screenshot.png` — واستبدال المحاكاة بها تعديل سطر واحد إن أردت.
+
+---
+
+**⚠️ درس من الدمج**: ملف التصميم المُصدَّر جاء من متصفح فيه **AdGuard for Windows**،
+فحُقنت فيه سكربتات `local.adguard.org` (1103 حرفاً) — أُزيلت. وأي ملف HTML مُصدَّر
+من متصفح محمي يجب فحصه قبل النشر.
 
 **الوثائق الداخلية مستثناة** من النشر عبر `_config.yml` (`AUDIT.md`, `STORE.md`,
 `FUNCTIONAL_AUDIT.md`, `CUDA_RUNTIME_PLAN.md`, `CONTRIBUTING.md`, `RELEASE-0.2.1.md`,
