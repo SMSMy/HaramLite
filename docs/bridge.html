@@ -83,10 +83,10 @@
       </div>
 
       <nav class="hidden md:flex items-center gap-6 text-sm text-sand-400 font-medium">
-        <a href="#how-it-works" class="hover:text-sand-100 transition-colors">طريقة العمل</a>
-        <a href="#youtube-player" class="hover:text-sand-100 transition-colors">داخل يوتيوب</a>
-        <a href="#video" class="hover:text-sand-100 transition-colors">شرح بالفيديو</a> <a href="#install" class="hover:text-sand-100 transition-colors">التثبيت والمتاجر</a>
-        <a href="#privacy" class="hover:text-sand-100 transition-colors">الخصوصية المحلية</a>
+        <a href="#how-it-works" class="hover:text-sand-100 transition-colors" data-i18n-ar="طريقة العمل" data-i18n-en="How it works">طريقة العمل</a>
+        <a href="#youtube-player" class="hover:text-sand-100 transition-colors" data-i18n-ar="داخل يوتيوب" data-i18n-en="Inside YouTube">داخل يوتيوب</a>
+        <a href="#video" class="hover:text-sand-100 transition-colors" data-i18n-ar="شرح بالفيديو" data-i18n-en="Video guide">شرح بالفيديو</a> <a href="#install" class="hover:text-sand-100 transition-colors" data-i18n-ar="التثبيت والمتاجر" data-i18n-en="Install & stores">التثبيت والمتاجر</a>
+        <a href="#privacy" class="hover:text-sand-100 transition-colors" data-i18n-ar="الخصوصية المحلية" data-i18n-en="Local privacy">الخصوصية المحلية</a>
       </nav>
 
       <div class="flex items-center gap-3">
@@ -94,8 +94,8 @@
           <span class="w-2 h-2 rounded-full bg-status-ok pulse-dot"></span>
           <span>الإصدار 1.1.0</span>
         </div>
-        <a href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg" target="_blank" class="px-4 py-2 bg-clay text-sand-100 rounded-full text-xs md:text-sm font-semibold hover:bg-clay-bright transition-all shadow-md shadow-clay/20 flex items-center gap-2">
-          <span>تثبيت الإضافة</span>
+        <button id="bridge-lang-btn" type="button" class="px-3 py-1 rounded-full border border-coal-700 hover:border-clay text-sand-400 hover:text-sand-100 text-xs transition-colors" aria-label="Change language">English</button> <a href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg" target="_blank" class="px-4 py-2 bg-clay text-sand-100 rounded-full text-xs md:text-sm font-semibold hover:bg-clay-bright transition-all shadow-md shadow-clay/20 flex items-center gap-2">
+          <span data-i18n-ar="تثبيت الإضافة" data-i18n-en="Install the extension">تثبيت الإضافة</span>
           <svg class="w-4 h-4 rtl:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
           </svg>
@@ -123,8 +123,8 @@
         </div>
 
         <h1 class="text-3xl sm:text-4xl md:text-5xl font-extrabold text-sand-100 tracking-tight leading-[1.25] mb-6">
-          إزالة الموسيقى من يوتيوب<br>
-          <span class="text-clay serif-display kashida-glow font-normal">بنقرة واحدة من متصفحك</span>
+          <span data-i18n-ar="إزالة الموسيقى من يوتيوب" data-i18n-en="Remove music from YouTube">إزالة الموسيقى من يوتيوب</span><br>
+          <span class="text-clay serif-display kashida-glow font-normal" data-i18n-ar="بنقرة واحدة من متصفحك" data-i18n-en="in one click from your browser">بنقرة واحدة من متصفحك</span>
         </h1>
 
         <p class="text-base sm:text-lg text-sand-400 leading-relaxed max-w-2xl mx-auto mb-8">
@@ -151,7 +151,7 @@
         <div class="mt-4 text-xs text-sand-400 flex items-center justify-center gap-2">
           <span>⚠️ تتطلب وجود تطبيق HaramLite المكتبي المثبت على جهازك للعمل</span>
           <span>•</span>
-          <a href="/" class="text-clay hover:underline">تحميل البرنامج للويندوز</a> <span>•</span>
+          <a href="/" class="text-clay hover:underline" data-i18n-ar="تحميل البرنامج للويندوز" data-i18n-en="Download for Windows">تحميل البرنامج للويندوز</a> <span>•</span>
         <span class="text-sand-500">رابط التثبيت من متجر كروم يعمل فور اعتماد الإضافة</span>
         </div>
       </div>
@@ -285,8 +285,8 @@
                   <span class="text-sand-500">في الطابور: 0</span>
                 </div>
                 <div class="pt-1 flex gap-2">
-                  <button class="flex-1 py-1 rounded-lg bg-status-bad/10 border border-status-bad/40 text-status-bad text-[11px] font-medium hover:bg-status-bad/20">⏹ إلغاء</button>
-                  <button class="flex-1 py-1 rounded-lg bg-clay/20 border border-clay/40 text-clay-accent text-[11px] font-medium hover:bg-clay/30">📂 المجلد</button>
+                  <button class="flex-1 py-1 rounded-lg bg-status-bad/10 border border-status-bad/40 text-status-bad text-[11px] font-medium hover:bg-status-bad/20" data-i18n-ar="⏹ إلغاء" data-i18n-en="⏹ Cancel">⏹ إلغاء</button>
+                  <button class="flex-1 py-1 rounded-lg bg-clay/20 border border-clay/40 text-clay-accent text-[11px] font-medium hover:bg-clay/30" data-i18n-ar="📂 المجلد" data-i18n-en="📂 Folder">📂 المجلد</button>
                 </div>
               </div>
 
@@ -306,7 +306,7 @@
   <!-- قسم شرح الإضافة بالفيديو — الغلاف محلي، والفيديو يُحمَّل من يوتيوب عند النقر فقط -->
   <section id="video" class="py-16 bg-coal-950 border-t border-coal-700/80">
     <div class="max-w-4xl mx-auto px-6 text-center">
-      <h2 class="text-2xl sm:text-3xl font-bold text-sand-100 mb-3">شاهد الإضافة في دقيقة</h2>
+      <h2 class="text-2xl sm:text-3xl font-bold text-sand-100 mb-3" data-i18n-ar="شاهد الإضافة في دقيقة" data-i18n-en="See it in a minute">شاهد الإضافة في دقيقة</h2>
       <p class="text-sand-400 text-sm mb-8">شرح مبسّط لكيفية عمل HaramLite Bridge: التثبيت، وربط الإضافة بالتطبيق، والمشاهدة المفلترة داخل يوتيوب.</p>
       <div class="video-shell" data-video-id="0b7JrhqqGk8" role="button" tabindex="0" aria-label="تشغيل فيديو الشرح">
         <img src="assets/bridge-video.jpg" alt="شرح إضافة HaramLite Bridge بالفيديو" width="1280" height="720" loading="lazy">
@@ -322,7 +322,7 @@
   <section id="how-it-works" class="py-16 bg-coal-900/70 border-t border-b border-coal-700/80">
     <div class="max-w-6xl mx-auto px-6">
       <div class="text-center max-w-2xl mx-auto mb-12">
-        <h2 class="text-2xl sm:text-3xl font-bold text-sand-100 mb-3">ماذا تقدم لك إضافة المتصفح؟</h2>
+        <h2 class="text-2xl sm:text-3xl font-bold text-sand-100 mb-3" data-i18n-ar="ماذا تقدم لك إضافة المتصفح؟" data-i18n-en="What does the extension give you?">ماذا تقدم لك إضافة المتصفح؟</h2>
         <p class="text-sand-400 text-sm">دمج فوري وانسيابي بين صفحات التصفح وتطبيق المعالجة المحلي المستقر على حاسوبك.</p>
       </div>
 
@@ -333,7 +333,7 @@
             <div class="w-10 h-10 rounded-xl bg-clay/15 text-clay flex items-center justify-center text-lg font-bold mb-4 group-hover:scale-105 transition-transform">
               ▶
             </div>
-            <h3 class="text-base font-bold text-sand-100 mb-2">مشاهدة مفلترة فورية</h3>
+            <h3 class="text-base font-bold text-sand-100 mb-2" data-i18n-ar="مشاهدة مفلترة فورية" data-i18n-en="Instant filtered watching">مشاهدة مفلترة فورية</h3>
             <p class="text-sand-400 text-xs leading-relaxed">
               يشغّل الصوت المعالج محلياً داخل مشغّل يوتيوب بانسجام تام، بعد كتم صوت الصفحة المليء بالموسيقى تلقائياً.
             </p>
@@ -349,7 +349,7 @@
             <div class="w-10 h-10 rounded-xl bg-status-ok/15 text-status-ok flex items-center justify-center text-lg font-bold mb-4 group-hover:scale-105 transition-transform">
               ⏭
             </div>
-            <h3 class="text-base font-bold text-sand-100 mb-2">تخطي الصمت (Gap-Skip)</h3>
+            <h3 class="text-base font-bold text-sand-100 mb-2" data-i18n-ar="تخطي الصمت (Gap-Skip)" data-i18n-en="Silence skipping (gap-skip)">تخطي الصمت (Gap-Skip)</h3>
             <p class="text-sand-400 text-xs leading-relaxed">
               المقاطع الموسيقية المحذوفة تصبح صمتاً؛ تقفز الإضافة بالصورة فوق فترات الصمت هذه لتستمر المشاهدة بسلاسة ودون انقطاع.
             </p>
@@ -365,7 +365,7 @@
             <div class="w-10 h-10 rounded-xl bg-clay/15 text-clay flex items-center justify-center text-lg font-bold mb-4 group-hover:scale-105 transition-transform">
               🖱
             </div>
-            <h3 class="text-base font-bold text-sand-100 mb-2">إرسال بنقرة يمين</h3>
+            <h3 class="text-base font-bold text-sand-100 mb-2" data-i18n-ar="إرسال بنقرة يمين" data-i18n-en="Send with a right-click">إرسال بنقرة يمين</h3>
             <p class="text-sand-400 text-xs leading-relaxed">
               انقر بزر الفأرة الأيمن على أي رابط أو صفحة أو فيديو واختر «أرسل إلى HaramLite» لبدء المعالجة فوراً في الخلفية.
             </p>
@@ -381,7 +381,7 @@
             <div class="w-10 h-10 rounded-xl bg-status-ok/15 text-status-ok flex items-center justify-center text-lg font-bold mb-4 group-hover:scale-105 transition-transform">
               🔒
             </div>
-            <h3 class="text-base font-bold text-sand-100 mb-2">قناة محلية مشفرة</h3>
+            <h3 class="text-base font-bold text-sand-100 mb-2" data-i18n-ar="قناة محلية مشفرة" data-i18n-en="Private local channel">قناة محلية مشفرة</h3>
             <p class="text-sand-400 text-xs leading-relaxed">
               تتصل الإضافة بحاسوبك عبر بروتوكول Native Messaging الخاص بكروم؛ لا خوادم، لا استعلامات إنترنت، ولا تسجيل حسابات.
             </p>
@@ -398,7 +398,7 @@
   <section id="install" class="py-16">
     <div class="max-w-4xl mx-auto px-6">
       <div class="text-center mb-12">
-        <h2 class="text-2xl sm:text-3xl font-bold text-sand-100 mb-3">كيف تبدأ استخدام الإضافة؟</h2>
+        <h2 class="text-2xl sm:text-3xl font-bold text-sand-100 mb-3" data-i18n-ar="كيف تبدأ استخدام الإضافة؟" data-i18n-en="How do you start?">كيف تبدأ استخدام الإضافة؟</h2>
         <p class="text-sand-400 text-sm">خطوات بسيطة لربط الإضافة بتطبيقك المحلي وضمان التواصل الآمن بينهما.</p>
       </div>
 
@@ -409,7 +409,7 @@
             1
           </div>
           <div class="flex-1">
-            <h3 class="text-base font-semibold text-sand-100 mb-1">ثبّت تطبيق HaramLite على حاسوبك وشغّله</h3>
+            <h3 class="text-base font-semibold text-sand-100 mb-1" data-i18n-ar="ثبّت تطبيق HaramLite على حاسوبك وشغّله" data-i18n-en="Install and run the HaramLite app">ثبّت تطبيق HaramLite على حاسوبك وشغّله</h3>
             <p class="text-xs text-sand-400 leading-relaxed">
               الإضافة عبارة عن جسر محلي وليست خدمة سحابية، لذا يجب أن يكون التطبيق المكتبي مثبتاً على نظام ويندوز 10 أو 11.
             </p>
@@ -428,7 +428,7 @@
             2
           </div>
           <div class="flex-1">
-            <h3 class="text-base font-semibold text-sand-100 mb-1">فعّل «التكامل مع المتصفح» من إعدادات التطبيق</h3>
+            <h3 class="text-base font-semibold text-sand-100 mb-1" data-i18n-ar="فعّل «التكامل مع المتصفح» من إعدادات التطبيق" data-i18n-en="Turn on browser integration in the app settings">فعّل «التكامل مع المتصفح» من إعدادات التطبيق</h3>
             <p class="text-xs text-sand-400 leading-relaxed">
               افتح تطبيق <b>HaramLite</b> ← انتقل إلى <b>الإعدادات</b> ← ضع علامة صح على <b>«تفعيل التكامل مع المتصفح»</b> (يقوم التطبيق بتسجيل مفتاح Native Messaging Host تلقائياً في السجل).
             </p>
@@ -441,7 +441,7 @@
             3
           </div>
           <div class="flex-1">
-            <h3 class="text-base font-semibold text-sand-100 mb-1">ثبّت الإضافة من متجر Chrome الإلكتروني</h3>
+            <h3 class="text-base font-semibold text-sand-100 mb-1" data-i18n-ar="ثبّت الإضافة من متجر Chrome الإلكتروني" data-i18n-en="Install the extension from the Chrome Web Store">ثبّت الإضافة من متجر Chrome الإلكتروني</h3>
             <p class="text-xs text-sand-400 leading-relaxed mb-3">
               أضف الإضافة إلى متصفحك (متوافقة مع Google Chrome، Microsoft Edge، Brave، وجميع متصفحات Chromium).
             </p>
@@ -471,7 +471,7 @@
               <span class="w-2 h-2 rounded-full bg-status-ok"></span>
               <span>تعهّد الخصوصية الصريحة</span>
             </div>
-            <h2 class="text-xl sm:text-2xl font-bold text-sand-100">بياناتك ورابطك لا يغادران حاسوبك إطلاقاً</h2>
+            <h2 class="text-xl sm:text-2xl font-bold text-sand-100" data-i18n-ar="بياناتك ورابطك لا يغادران حاسوبك إطلاقاً" data-i18n-en="Your data and links never leave your computer">بياناتك ورابطك لا يغادران حاسوبك إطلاقاً</h2>
           </div>
           <a href="https://haramlite.com/PRIVACY.html" target="_blank" class="px-3.5 py-2 rounded-xl bg-coal-800 hover:bg-coal-700 text-sand-300 text-xs font-medium border border-coal-700 flex items-center gap-1.5 self-start sm:self-auto">
             <span>سياسة الخصوصية الكاملة</span>
@@ -527,10 +527,10 @@
       </div>
 
       <div class="flex flex-wrap items-center justify-center gap-5 text-sand-400">
-        <a href="/" class="hover:text-sand-100 transition-colors">الموقع الرسمي</a>
-        <a href="https://github.com/SMSMy/HaramLite" class="hover:text-sand-100 transition-colors">المستودع (GitHub)</a>
-        <a href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg" class="hover:text-sand-100 transition-colors">سوق Chrome الإلكتروني</a>
-        <a href="https://github.com/SMSMy/HaramLite/issues" class="hover:text-sand-100 transition-colors">الإبلاغ عن مشكلة</a>
+        <a href="/" class="hover:text-sand-100 transition-colors" data-i18n-ar="الموقع الرسمي" data-i18n-en="Official site">الموقع الرسمي</a>
+        <a href="https://github.com/SMSMy/HaramLite" class="hover:text-sand-100 transition-colors" data-i18n-ar="المستودع (GitHub)" data-i18n-en="Repository (GitHub)">المستودع (GitHub)</a>
+        <a href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg" class="hover:text-sand-100 transition-colors" data-i18n-ar="سوق Chrome الإلكتروني" data-i18n-en="Chrome Web Store">سوق Chrome الإلكتروني</a>
+        <a href="https://github.com/SMSMy/HaramLite/issues" class="hover:text-sand-100 transition-colors" data-i18n-ar="الإبلاغ عن مشكلة" data-i18n-en="Report a problem">الإبلاغ عن مشكلة</a>
       </div>
 
       <div class="text-sand-500 text-[11px]">
@@ -563,7 +563,35 @@
     });
   });
 </script>
+<script>
+  /* تبديل عربي/إنجليزي: يبدّل lang/dir ونصوص العناصر الموسومة data-i18n-ar/en،
+     ويحفظ الاختيار في المتصفح فلا يعود الزائر إلى العربية في كل زيارة. */
+  (function () {
+    var KEY = 'hl.bridge.lang';
+    function applyLang(lang) {
+      var l = lang === 'en' ? 'en' : 'ar';
+      document.documentElement.lang = l;
+      document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
+      document.querySelectorAll('[data-i18n-ar]').forEach(function (el) {
+        var text = el.getAttribute(l === 'ar' ? 'data-i18n-ar' : 'data-i18n-en');
+        if (text) el.textContent = text;
+      });
+      var btn = document.getElementById('bridge-lang-btn');
+      if (btn) btn.textContent = l === 'ar' ? 'English' : 'العربية';
+      try { localStorage.setItem(KEY, l); } catch (e) {}
+    }
+    var saved = null;
+    try { saved = localStorage.getItem(KEY); } catch (e) {}
+    var prefersAr = ((navigator.language || 'ar') + '').toLowerCase().startsWith('ar');
+    applyLang(saved === 'en' || saved === 'ar' ? saved : (prefersAr ? 'ar' : 'en'));
+    var btn = document.getElementById('bridge-lang-btn');
+    if (btn) btn.addEventListener('click', function () {
+      applyLang(document.documentElement.lang === 'ar' ? 'en' : 'ar');
+    });
+  })();
+</script>
 </body>
+
 
 </html>
 

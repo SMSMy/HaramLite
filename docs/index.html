@@ -24,53 +24,62 @@
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"HaramLite","applicationCategory":"MultimediaApplication","operatingSystem":"Windows 10, Windows 11","softwareVersion":"0.2.1","description":"أداة مجانية لإزالة الموسيقى من المقاطع الصوتية والمرئية بالذكاء الاصطناعي، تعمل محلياً بالكامل على جهاز المستخدم.","url":"https://haramlite.com/","downloadUrl":"https://github.com/SMSMy/HaramLite/releases/latest","license":"https://haramlite.com/LICENSE.txt","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
 </script>
-<style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><link rel="stylesheet" href="assets/site.css"/></head><body class="bg-coal-surface font-body-md text-cream-text selection:bg-clay-accent selection:text-coal-surface"><header class="fixed top-0 w-full z-50 bg-coal-surface/90 backdrop-blur-xl border-b border-border-muted"><div class="h-16 max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter"><div class="flex items-center gap-stack-lg"><a class="flex items-center gap-stack-sm focus:outline-none" data-path="home" href="/"><img src="assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded shadow-sm"><span class="font-label-md text-label-md tracking-wider text-cream-text font-bold uppercase">HaramLite</span></a><nav class="hidden lg:flex items-center gap-stack-lg" data-active-classes="text-cream-text border-b-2 border-clay-accent font-bold"><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="download" href="#download">التحميل</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="features" href="#features">المميزات</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" href="bridge.html">إضافة المتصفح</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="whats-new" href="#whatsnew">الجديد</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="privacy" href="#privacy">الخصوصية</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="developers" href="#dev">للمطورين</a></nav></div><div class="flex items-center gap-stack-sm"><button class="flex items-center gap-unit px-stack-sm py-unit rounded border border-border-muted font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text hover:border-outline transition-colors" type="button"><span class="material-symbols-outlined text-[16px]">language</span><span>العربية</span></button><a class="hidden sm:inline-flex items-center justify-center px-stack-md py-unit rounded bg-clay-accent text-coal-surface font-label-md text-label-md hover:bg-primary transition-colors font-bold" data-path="download" href="#download">تحميل التطبيق</a></div></div></header><main class="w-full pt-16 bg-coal-surface min-h-[calc(100vh-160px)]"><div class="flex flex-col w-full">
+<style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><link rel="stylesheet" href="assets/site.css"/></head><body class="bg-coal-surface font-body-md text-cream-text selection:bg-clay-accent selection:text-coal-surface"><header class="fixed top-0 w-full z-50 bg-coal-surface/90 backdrop-blur-xl border-b border-border-muted"><div class="h-16 max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter"><div class="flex items-center gap-stack-lg"><a class="flex items-center gap-stack-sm focus:outline-none" data-path="home" href="/"><img src="assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded shadow-sm"><span class="font-label-md text-label-md tracking-wider text-cream-text font-bold uppercase">HaramLite</span></a><nav class="hidden lg:flex items-center gap-stack-lg" data-active-classes="text-cream-text border-b-2 border-clay-accent font-bold"><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="download" href="#download">التحميل</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="features" href="#features">المميزات</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" href="bridge.html">إضافة المتصفح</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="whats-new" href="#whatsnew">الجديد</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="privacy" href="#privacy">الخصوصية</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="developers" href="#dev">للمطورين</a></nav></div><div class="flex items-center gap-stack-sm"><button id="lang-btn" class="flex items-center gap-unit px-stack-sm py-unit rounded border border-border-muted font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text hover:border-outline transition-colors cursor-pointer" type="button" aria-label="تغيير اللغة / Change language"><span class="material-symbols-outlined text-[16px]">language</span><span id="lang-btn-label">English</span></button><a class="hidden sm:inline-flex items-center justify-center px-stack-md py-unit rounded bg-clay-accent text-coal-surface font-label-md text-label-md hover:bg-primary transition-colors font-bold" data-path="download" href="#download">تحميل التطبيق</a></div></div></header><main class="w-full pt-16 bg-coal-surface min-h-[calc(100vh-160px)]"><div class="flex flex-col w-full">
 <!-- Interactive Localization & Audio Wave Simulation State Script -->
 <script>
     window.HaramLiteState = {
-      lang: 'ar',
-      releases: {
-        tag: 'v0.2.1',
-        exeUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.1/HaramLite_0.2.1_x64-setup.exe',
-        msiUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.1/HaramLite_0.2.1_x64_en-US.msi'
-      },
-      switchLang(lang) {
-        this.lang = lang;
-        document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
-        document.documentElement.lang = lang;
-        document.querySelectorAll('[data-i18n-ar]').forEach(el => {
-          const text = lang === 'ar' ? el.getAttribute('data-i18n-ar') : el.getAttribute('data-i18n-en');
-          if (text) el.textContent = text;
-        });
-      },
-      async fetchLatestRelease() {
-        try {
-          const res = await fetch('https://api.github.com/repos/SMSMy/HaramLite/releases/latest');
+    lang: 'ar',
+    releases: { tag: 'v0.2.1', exeUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.1/HaramLite_0.2.1_x64-setup.exe', msiUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.1/HaramLite_0.2.1_x64_en-US.msi' },
+    applyLang(lang) {
+      this.lang = lang === 'en' ? 'en' : 'ar';
+      document.documentElement.dir = this.lang === 'ar' ? 'rtl' : 'ltr';
+      document.documentElement.lang = this.lang;
+      document.querySelectorAll('[data-i18n-ar]').forEach(function (el) {
+        var text = el.getAttribute(document.documentElement.lang === 'ar' ? 'data-i18n-ar' : 'data-i18n-en');
+        if (text) el.textContent = text;
+      });
+      var label = document.getElementById('lang-btn-label');
+      if (label) label.textContent = this.lang === 'ar' ? 'English' : 'العربية';
+      try { localStorage.setItem('hl.lang', this.lang); } catch (e) {}
+    },
+    switchLang(lang) { this.applyLang(lang); },
+    async fetchLatestRelease() {
+      try {
+        var data = null;
+        try { var cached = sessionStorage.getItem('hl.release'); if (cached) data = JSON.parse(cached); } catch (e) {}
+        if (!data) {
+          var res = await fetch('https://api.github.com/repos/SMSMy/HaramLite/releases/latest');
           if (!res.ok) return;
-          const data = await res.json();
-          if (data && data.tag_name) {
-            const tag = data.tag_name;
-            const exeAsset = data.assets?.find(a => a.name.endsWith('-setup.exe'));
-            const msiAsset = data.assets?.find(a => a.name.endsWith('.msi'));
-            
-            document.querySelectorAll('.js-release-tag').forEach(el => el.textContent = tag);
-            if (exeAsset) {
-              document.querySelectorAll('.js-exe-link').forEach(el => el.href = exeAsset.browser_download_url);
-              document.querySelectorAll('.js-exe-size').forEach(el => el.textContent = (exeAsset.size / (1024*1024)).toFixed(1) + ' MB');
-            }
-            if (msiAsset) {
-              document.querySelectorAll('.js-msi-link').forEach(el => el.href = msiAsset.browser_download_url);
-              document.querySelectorAll('.js-msi-size').forEach(el => el.textContent = (msiAsset.size / (1024*1024)).toFixed(1) + ' MB');
-            }
-          }
-        } catch (e) {
-          console.warn('GitHub API offline, using cached v0.2.1 metadata');
+          data = await res.json();
+          try { sessionStorage.setItem('hl.release', JSON.stringify(data)); } catch (e) {}
         }
+        if (!data || !data.tag_name) return;
+        var exeAsset = (data.assets || []).find(function (a) { return a.name.endsWith('-setup.exe'); });
+        var msiAsset = (data.assets || []).find(function (a) { return a.name.endsWith('.msi'); });
+        document.querySelectorAll('.js-release-tag').forEach(function (el) { el.textContent = data.tag_name; });
+        if (exeAsset) {
+          document.querySelectorAll('.js-exe-link').forEach(function (el) { el.href = exeAsset.browser_download_url; });
+          document.querySelectorAll('.js-exe-size').forEach(function (el) { el.textContent = (exeAsset.size / (1024 * 1024)).toFixed(1) + ' MB'; });
+        }
+        if (msiAsset) {
+          document.querySelectorAll('.js-msi-link').forEach(function (el) { el.href = msiAsset.browser_download_url; });
+          document.querySelectorAll('.js-msi-size').forEach(function (el) { el.textContent = (msiAsset.size / (1024 * 1024)).toFixed(1) + ' MB'; });
+        }
+      } catch (e) {
+        console.warn('GitHub API offline, keeping the values written in the page');
       }
-    };
-    document.addEventListener('DOMContentLoaded', () => {
-      window.HaramLiteState.fetchLatestRelease();
-    });
+    }
+  };
+  document.addEventListener('DOMContentLoaded', function () {
+    var S = window.HaramLiteState;
+    var saved = null;
+    try { saved = localStorage.getItem('hl.lang'); } catch (e) {}
+    var prefersAr = ((navigator.language || 'ar') + '').toLowerCase().startsWith('ar');
+    S.applyLang(saved === 'en' || saved === 'ar' ? saved : (prefersAr ? 'ar' : 'en'));
+    var btn = document.getElementById('lang-btn');
+    if (btn) btn.addEventListener('click', function () { S.applyLang(S.lang === 'ar' ? 'en' : 'ar'); });
+    S.fetchLatestRelease();
+  });
   </script>
 <!-- Ambient Glow Background Decorators (Constrained) -->
 <div class="relative w-full overflow-hidden">
@@ -225,7 +234,7 @@
 <span class="material-symbols-outlined text-[16px]">terminal</span>
 <span>Console Feed</span>
 </span>
-<span class="text-tertiary">ONNX Model: bs_roformer_ep368</span>
+<span class="text-tertiary">ONNX Model: UVR-MDX-NET-Voc_FT</span>
 </div>
 <div class="flex-1 flex flex-col gap-1 text-on-surface-variant overflow-y-auto leading-relaxed">
 <div class="text-on-surface-variant/60">[00:00:01] Initializing Rust core engine (Tauri v2)...</div>
@@ -252,7 +261,7 @@
 </div>
 <div class="w-px h-8 bg-surface-container-highest"></div>
 <div>
-<span class="block font-headline-lg text-headline-lg text-clay-accent">14x</span>
+<span class="block font-headline-lg text-headline-lg text-clay-accent">GPU</span>
 <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n-ar="تسريع العتاد (GPU)" data-i18n-en="Hardware Acceleration">تسريع العتاد (GPU)</span>
 </div>
 <div class="w-px h-8 bg-surface-container-highest"></div>
@@ -397,7 +406,7 @@
 <div class="bg-surface-container rounded-xl p-stack-lg shadow-sm flex flex-col">
 <span class="font-headline-xl text-headline-xl text-clay-accent mb-stack-md font-mono-code font-bold">04</span>
 <h3 class="font-label-md text-label-md text-cream-text font-bold mb-2" data-i18n-ar="استمع واشهد النتيجة فوراً" data-i18n-en="Enjoy Pure Clean Playback">استمع واشهد النتيجة فوراً</h3>
-<p class="font-body-md text-body-md text-on-surface-variant flex-1" data-i18n-ar="احصل على الملف النقي في مجلد التنزيلات بجودة الاستوديو، أو تابعه داخل متصفحك بتخطي الصمت التلقائي." data-i18n-en="Retrieve your studio-grade output file immediately or stream it via browser with smart auto-silence skipping.">احصل على الملف النقي في مجلد التنزيلات بجودة الاستوديو، أو تابعه داخل متصفحك بتخطي الصمت التلقائي.</p>
+<p class="font-body-md text-body-md text-on-surface-variant flex-1" data-i18n-ar="الناتج بجانب ملفك الأصلي (وروابط المتصفح في مجلد نتائجك) بجودة الاستوديو — أو تابعه داخل متصفحك بتخطي الصمت التلقائي." data-i18n-en="Retrieve your studio-grade output file immediately or stream it via browser with smart auto-silence skipping.">الناتج بجانب ملفك الأصلي (وروابط المتصفح في مجلد نتائجك) بجودة الاستوديو — أو تابعه داخل متصفحك بتخطي الصمت التلقائي.</p>
 </div>
 </div>
 </section>
@@ -415,9 +424,9 @@
 <span class="font-label-md text-label-md font-bold uppercase" data-i18n-ar="الذكاء الصوتي المتخصص" data-i18n-en="Specialized Acoustic AI">الذكاء الصوتي المتخصص</span>
 </div>
 <h3 class="font-headline-lg text-headline-lg text-cream-text mb-3" data-i18n-ar="وضعان منفصلان مدربان بدقة لمعالجة كل نوع محتوى" data-i18n-en="Two Distinct Neural Models for Every Audio Scenario">وضعان منفصلان مدربان بدقة لمعالجة كل نوع محتوى</h3>
-<p class="font-body-md text-body-md text-on-surface-variant mb-6 max-w-2xl" data-i18n-ar="لا نستخدم خوارزمية فلترة عامة تشوّه الترددات. نمط «المقاطع العادية» يحافظ على نبرة المتحدثين وحفيف الطبيعة ويزيل الآلات الموسيقية فقط، بينما نمط «الأغاني» مصمم خصيصاً للتخلص من الإيقاعات والهارموني الموسيقي المعقد." data-i18n-en="We avoid blunt notch filters that muffle human speech. Our Podcast mode preserves natural voices and ambient field sound while excising background instruments, and Song mode rigorously separates vocals from layered studio instrumentals.">لا نستخدم خوارزمية فلترة عامة تشوّه الترددات. نمط «المقاطع العادية» يحافظ على نبرة المتحدثين وحفيف الطبيعة ويزيل الآلات الموسيقية فقط، بينما نمط «الأغاني» مصمم خصيصاً للتخلص من الإيقاعات والهارموني الموسيقي المعقد.</p>
+<p class="font-body-md text-body-md text-on-surface-variant mb-6 max-w-2xl" data-i18n-ar="لا نستخدم خوارزمية فلترة عامة تشوّه الترددات. نمط «المقاطع العادية» يحافظ على نبرة المتحدثين وحفيف الطبيعة ويزيل الآلات الموسيقية فقط، بينما نمط «الأغاني» يفصل الصوت بالكامل ثم يضيف مؤثرات إحياء ويقصّ الصمت تلقائياً." data-i18n-en="We avoid blunt notch filters that muffle human speech. Our Podcast mode preserves natural voices and ambient field sound while excising background instruments, while Song mode separates the vocal fully, adds revival effects and trims silence automatically.">لا نستخدم خوارزمية فلترة عامة تشوّه الترددات. نمط «المقاطع العادية» يحافظ على نبرة المتحدثين وحفيف الطبيعة ويزيل الآلات الموسيقية فقط، بينما نمط «الأغاني» يفصل الصوت بالكامل ثم يضيف مؤثرات إحياء ويقصّ الصمت تلقائياً.</p>
 <div class="flex flex-wrap gap-stack-sm">
-<span class="px-stack-sm py-unit bg-surface-container-high text-cream-text text-label-sm font-label-sm rounded font-mono-code">Model: MDX-Net v3</span>
+<span class="px-stack-sm py-unit bg-surface-container-high text-cream-text text-label-sm font-label-sm rounded font-mono-code">Model: UVR-MDX-NET-Voc_FT</span>
 <span class="px-stack-sm py-unit bg-surface-container-high text-cream-text text-label-sm font-label-sm rounded font-mono-code">Sample Rate: 44.1/48kHz Native</span>
 </div>
 </div>
@@ -429,11 +438,11 @@
 <span class="font-label-md text-label-md font-bold uppercase" data-i18n-ar="المتصفح الذكي" data-i18n-en="Browser Integration">المتصفح الذكي</span>
 </div>
 <h3 class="font-headline-lg text-headline-lg text-cream-text mb-3" data-i18n-ar="مشاهدة مباشرة مع تخطي الصمت" data-i18n-en="Live Stream &amp; Silence Skipping">مشاهدة مباشرة مع تخطي الصمت</h3>
-<p class="font-body-md text-body-md text-on-surface-variant" data-i18n-ar="إضافة المتصفح تتصل ببرنامجك المكتبي؛ تشاهد مقاطع يوتيوب وفيميو مفلترة تماماً مع خاصية قفز الصمت الذكي (Skip-Silence) عند حذف فواصل الموسيقى الطويلة." data-i18n-en="The companion extension talks with your local desktop engine, offering silent interval skipping when musical intermissions are purged.">إضافة المتصفح تتصل ببرنامجك المكتبي؛ تشاهد مقاطع يوتيوب وفيميو مفلترة تماماً مع خاصية قفز الصمت الذكي (Skip-Silence) عند حذف فواصل الموسيقى الطويلة.</p>
+<p class="font-body-md text-body-md text-on-surface-variant" data-i18n-ar="إضافة المتصفح تتصل ببرنامجك المكتبي؛ تشاهد مقاطع يوتيوب مفلترة تماماً مع قفز الصمت الذكي (Skip-Silence) فوق فواصل الموسيقى، وترسل أي رابط من أي موقع يدعمه yt-dlp — يوتيوب وغيره — بنقرة يمين." data-i18n-en="The extension talks to your local engine: watch YouTube filtered with automatic silence skipping, and send any link from any site yt-dlp supports with a right-click.">إضافة المتصفح تتصل ببرنامجك المكتبي؛ تشاهد مقاطع يوتيوب مفلترة تماماً مع قفز الصمت الذكي (Skip-Silence) فوق فواصل الموسيقى، وترسل أي رابط من أي موقع يدعمه yt-dlp — يوتيوب وغيره — بنقرة يمين.</p>
 </div>
 <div class="mt-6 font-mono-code text-mono-code text-tertiary flex items-center gap-2">
 <span class="w-2 h-2 rounded-full bg-tertiary"></span>
-<span>Zero-latency playback</span>
+<span>Synced in-page playback</span>
 </div>
 </div>
 <!-- Feature 3: Watch Folders & Batch Queue (4 cols) -->
@@ -444,10 +453,10 @@
 <span class="font-label-md text-label-md font-bold uppercase" data-i18n-ar="أتمتة المجلدات" data-i18n-en="Watch Folder Automation">أتمتة المجلدات</span>
 </div>
 <h3 class="font-headline-lg text-headline-lg text-cream-text mb-3" data-i18n-ar="مجلد المراقبة والدُفعات" data-i18n-en="Watch Folders &amp; Batch Runs">مجلد المراقبة والدُفعات</h3>
-<p class="font-body-md text-body-md text-on-surface-variant" data-i18n-ar="حدد مجلداً معيناً في حاسوبك؛ وبمجرد تنزيل أو حفظ أي حلقة بودكاست فيه، سيبدأ HaramLite بمعالجته فوراً ونقله لمجلد الإخراج المطهّر." data-i18n-en="Designate any folder. Any dropped audio or episode is instantly queued, processed, and deposited into your cleansed media directory.">حدد مجلداً معيناً في حاسوبك؛ وبمجرد تنزيل أو حفظ أي حلقة بودكاست فيه، سيبدأ HaramLite بمعالجته فوراً ونقله لمجلد الإخراج المطهّر.</p>
+<p class="font-body-md text-body-md text-on-surface-variant" data-i18n-ar="حدد مجلداً معيناً في حاسوبك؛ وبمجرد حفظ أي ملف فيه يبدأ HaramLite بمعالجته فوراً. وتستطيع إفلات عدة ملفات دفعة واحدة، مع إمكانية إيقاف المعالجة في أي لحظة، واختيار الناتج MP3 أو MP4." data-i18n-en="Point it at any folder and anything saved there is processed at once. Drop several files as a batch, stop a run whenever you want, and choose MP3 or MP4 output.">حدد مجلداً معيناً في حاسوبك؛ وبمجرد حفظ أي ملف فيه يبدأ HaramLite بمعالجته فوراً. وتستطيع إفلات عدة ملفات دفعة واحدة، مع إمكانية إيقاف المعالجة في أي لحظة، واختيار الناتج MP3 أو MP4.</p>
 </div>
 <div class="mt-6 font-mono-code text-mono-code text-on-surface-variant">
-            inotify/ReadDirectoryChangesW
+            ReadDirectoryChangesW
           </div>
 </div>
 <!-- Feature 4: Paired Telegram Bot (4 cols) -->
@@ -458,11 +467,11 @@
 <span class="font-label-md text-label-md font-bold uppercase" data-i18n-ar="الاقتران الشخصي" data-i18n-en="Personal Pairing">الاقتران الشخصي</span>
 </div>
 <h3 class="font-headline-lg text-headline-lg text-cream-text mb-3" data-i18n-ar="بوت تيليجرام المقترن بحاسوبك" data-i18n-en="Paired Personal Telegram Bot">بوت تيليجرام المقترن بحاسوبك</h3>
-<p class="font-body-md text-body-md text-on-surface-variant" data-i18n-ar="أرسل أي مقطع أو رابط من هاتفك لبوتك الخاص، وسيقوم حاسوبك المنزلي بمعالجته وإعادة إرساله لك نظيفاً أينما كنت دون وسيط خارجي." data-i18n-en="Send links or audio notes to your bot from your phone. Your PC processes it instantly and sends back the music-free media file.">أرسل أي مقطع أو رابط من هاتفك لبوتك الخاص، وسيقوم حاسوبك المنزلي بمعالجته وإعادة إرساله لك نظيفاً أينما كنت دون وسيط خارجي.</p>
+<p class="font-body-md text-body-md text-on-surface-variant" data-i18n-ar="أرسل أي مقطع أو رابط من هاتفك لبوتك الخاص، وسيقوم حاسوبك بمعالجته وإعادة إرساله نظيفاً. ولا يستجيب البوت لأي حساب قبل أن تربطه برمز من ستة أرقام صالح عشر دقائق وخمس محاولات — ومن أراد توفير وقت الرندرة يفعّل خيار «إرسال الصوت فقط (MP3)»." data-i18n-en="Send links or files to your own bot. It answers nobody until you pair your account with a six-digit code valid for ten minutes and five attempts, and an audio-only (MP3) option skips the video render.">أرسل أي مقطع أو رابط من هاتفك لبوتك الخاص، وسيقوم حاسوبك بمعالجته وإعادة إرساله نظيفاً. ولا يستجيب البوت لأي حساب قبل أن تربطه برمز من ستة أرقام صالح عشر دقائق وخمس محاولات — ومن أراد توفير وقت الرندرة يفعّل خيار «إرسال الصوت فقط (MP3)».</p>
 </div>
 <div class="mt-6 flex items-center gap-2 font-mono-code text-mono-code text-clay-accent">
 <span class="material-symbols-outlined text-[16px]">key</span>
-<span>Time-limited 6-digit PIN</span>
+<span>6-digit PIN · 10 min · 5 attempts</span>
 </div>
 </div>
 <!-- Feature 5: Discreet Tray & Notifications (4 cols) -->
@@ -476,7 +485,7 @@
 <p class="font-body-md text-body-md text-on-surface-variant" data-i18n-ar="يعمل التطبيق بخفة في منطقة الـ Tray، ويصدر إشعاراً صوتياً خفيفاً أو تنبيهاً مرئياً بمجرد اكتمال تجهيز الملف، مع إمكانية التشغيل بنقرة واحدة." data-i18n-en="Minimizes cleanly to Windows system tray, delivering subtle native toast alerts once separations conclude, with direct open-file shortcuts.">يعمل التطبيق بخفة في منطقة الـ Tray، ويصدر إشعاراً صوتياً خفيفاً أو تنبيهاً مرئياً بمجرد اكتمال تجهيز الملف، مع إمكانية التشغيل بنقرة واحدة.</p>
 </div>
 <div class="mt-6 font-mono-code text-mono-code text-on-surface-variant">
-            Low CPU idle (&lt; 0.1%)
+            Low CPU when idle
           </div>
 </div>
 </div>
@@ -526,7 +535,7 @@
 <span>Zero-Telemetry Guarantee</span>
 </div>
 <h2 class="font-headline-xl text-headline-xl text-cream-text mb-4" data-i18n-ar="ملفاتك وصوتياتك لا تغادر حاسوبك أبداً" data-i18n-en="Your Media Never Leaves Your Local Machine">ملفاتك وصوتياتك لا تغادر حاسوبك أبداً</h2>
-<p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed mb-6" data-i18n-ar="في HaramLite، الخصوصية ليست ميزة إضافية بل هي جوهر البناء. لا تحليلات (No Analytics)، لا تتبع لسلوك المستخدمين (No Tracking)، لا إعلانات تجارية، ولا أي اتصال بخوادم خارجية عدا تنزيل تحديثات البرمجيات مفتوحة المصدر التي تطلبها بنفسك." data-i18n-en="Privacy is the bedrock of HaramLite. Zero telemetry, zero analytics tracking, zero ads, and zero outbound network connections except for explicitly requested open-source binary updates.">في HaramLite، الخصوصية ليست ميزة إضافية بل هي جوهر البناء. لا تحليلات (No Analytics)، لا تتبع لسلوك المستخدمين (No Tracking)، لا إعلانات تجارية، ولا أي اتصال بخوادم خارجية عدا تنزيل تحديثات البرمجيات مفتوحة المصدر التي تطلبها بنفسك.</p>
+<p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed mb-6" data-i18n-ar="في HaramLite، الخصوصية ليست ميزة إضافية بل هي جوهر البناء: لا تحليلات (No Analytics)، لا تتبع (No Tracking)، ولا إعلانات. والاتصال بالإنترنت اختياري بالكامل — يُستخدم فقط لتنزيل رابط تطلبه أنت، وتحديث yt-dlp (ويمكن تعطيله)، وفحص التحديثات، وبوت تيليجرام إن فعّلته. ومن لم يستخدم هذه الميزات يعمل البرنامج عنده بلا شبكة." data-i18n-en="Privacy is the bedrock of HaramLite: no telemetry, no analytics, no ads. Internet access is entirely optional - it is used only to download a link you ask for, to update yt-dlp (can be disabled), to check for updates, and for the Telegram bot if you enable it. Use none of those and the app runs with the network unplugged.">في HaramLite، الخصوصية ليست ميزة إضافية بل هي جوهر البناء: لا تحليلات (No Analytics)، لا تتبع (No Tracking)، ولا إعلانات. والاتصال بالإنترنت اختياري بالكامل — يُستخدم فقط لتنزيل رابط تطلبه أنت، وتحديث yt-dlp (ويمكن تعطيله)، وفحص التحديثات، وبوت تيليجرام إن فعّلته. ومن لم يستخدم هذه الميزات يعمل البرنامج عنده بلا شبكة.</p>
 <a class="inline-flex items-center gap-stack-sm font-label-md text-label-md text-clay-accent font-bold hover:underline" href="PRIVACY.html">
 <span data-i18n-ar="قراءة وثيقة الخصوصية الصريحة الكاملة (PRIVACY.html)" data-i18n-en="Read Full Plaintext Privacy Policy (PRIVACY.html)">قراءة وثيقة الخصوصية الصريحة الكاملة (PRIVACY.html)</span>
 <span class="material-symbols-outlined text-[16px]">description</span>
@@ -559,7 +568,7 @@
 <div class="text-center max-w-3xl mx-auto mb-12">
 <span class="font-label-sm text-label-sm uppercase tracking-widest text-clay-accent font-bold" data-i18n-ar="للمطورين والمساهمين" data-i18n-en="For Developers &amp; Builders">للمطورين والمساهمين</span>
 <h2 class="font-headline-xl text-headline-xl text-cream-text mt-2 mb-4" data-i18n-ar="مشروع مفتوح المصدر بالكامل بأحدث التقنيات" data-i18n-en="100% Transparent, Modern Systems Stack">مشروع مفتوح المصدر بالكامل بأحدث التقنيات</h2>
-<p class="font-body-md text-body-md text-on-surface-variant" data-i18n-ar="مبني على كود مصدري نقي ومراجع يمكن لأي مبرمج فحصه وبناؤه بنفسه." data-i18n-en="Crafted with high-performance native systems tooling and verifiable open-source primitives.">مبني على كود مصدري نقي ومراجع يمكن لأي مبرمج فحصه وبناؤه بنفسه.</p>
+<p class="font-body-md text-body-md text-on-surface-variant" data-i18n-ar="مبني على كود مصدري نقي يمكن لأي مبرمج فحصه وبناؤه بنفسه — خطوات البناء من المصدر في دليل المساهمة." data-i18n-en="Clean source anyone can audit and build - the from-source steps live in the contributing guide.">مبني على كود مصدري نقي يمكن لأي مبرمج فحصه وبناؤه بنفسه — خطوات البناء من المصدر في دليل المساهمة.</p><p class="mt-3"><a class="inline-flex items-center gap-stack-sm font-label-md text-label-md text-clay-accent font-bold hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/docs/CONTRIBUTING.md" target="_blank" rel="noreferrer"><span class="material-symbols-outlined text-sm">build</span><span data-i18n-ar="البناء من المصدر (CONTRIBUTING)" data-i18n-en="Build from source (CONTRIBUTING)">البناء من المصدر (CONTRIBUTING)</span></a></p>
 </div>
 <!-- Tech Stack Badges Bento -->
 <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-stack-md mb-12">
