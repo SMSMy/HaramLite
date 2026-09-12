@@ -46,12 +46,21 @@
     async fetchLatestRelease() {
       try {
         var data = null;
-        try { var cached = sessionStorage.getItem('hl.release'); if (cached) data = JSON.parse(cached); } catch (e) {}
+        /* التخزين المؤقت محدود بعشر دقائق: بلا حدّ زمني يبقى تبويب مفتوح
+           يعرض إصداراً قديماً بعد نشر إصدار جديد (وهو ما حدث فعلاً). */
+        var TTL_MS = 10 * 60 * 1000;
+        try {
+          var cached = sessionStorage.getItem('hl.release');
+          if (cached) {
+            var parsed = JSON.parse(cached);
+            if (parsed && parsed.savedAt && (Date.now() - parsed.savedAt) < TTL_MS) data = parsed.data;
+          }
+        } catch (e) {}
         if (!data) {
           var res = await fetch('https://api.github.com/repos/SMSMy/HaramLite/releases/latest');
           if (!res.ok) return;
           data = await res.json();
-          try { sessionStorage.setItem('hl.release', JSON.stringify(data)); } catch (e) {}
+          try { sessionStorage.setItem('hl.release', JSON.stringify({ savedAt: Date.now(), data: data })); } catch (e) {}
         }
         if (!data || !data.tag_name) return;
         var exeAsset = (data.assets || []).find(function (a) { return a.name.endsWith('-setup.exe'); });
