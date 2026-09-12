@@ -1,3 +1,4 @@
+mod autostart;
 mod bridge;
 mod calibrate;
 mod cli;
@@ -657,7 +658,43 @@ fn register_native_host(app: tauri::AppHandle, browser: String) -> Result<String
 /// ground truth is manifest + registry, never the cached setting.
 #[tauri::command]
 fn bridge_status(app: tauri::AppHandle) -> serde_json::Value {
-    serde_json::json!({ "enabled": bridge::is_registered(&app) })
+    // هل اتصل متصفح بهذا التطبيق من قبل؟ لا يمكن لتطبيق مكتبي أن يعدّ إضافات
+    // المتصفح المثبَّتة، لكن المضيف يُسجّل أصل كل إضافة تتصل به — وسجلّ حديث
+    // يعني أن الإضافة موجودة، وسجلّ غائب أو قديم يعني «لا نعرف» فيُوجَّه
+    // المستخدم إلى صفحة الإضافة بدل أن يُترك يخمّن.
+    const MONTH_SECS: u64 = 30 * 24 * 3600;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (extension_seen, extension_days_ago, extension_origin) = match bridge::host_seen() {
+        Some((ts, origin)) => (
+            bridge::seen_within(ts, now, MONTH_SECS),
+            Some(now.saturating_sub(ts) / 86_400),
+            origin,
+        ),
+        None => (false, None, String::new()),
+    };
+    serde_json::json!({
+        "enabled": bridge::is_registered(&app),
+        "extension_seen": extension_seen,
+        "extension_days_ago": extension_days_ago,
+        "extension_origin": extension_origin,
+    })
+}
+/// هل يشغّل ويندوز البرنامج مع الإقلاع؟ (يُقرأ من الريجستري مباشرة)
+#[tauri::command]
+fn autostart_status() -> serde_json::Value {
+    serde_json::json!({ "enabled": autostart::is_enabled() })
+}
+
+/// تفعيل/إلغاء التشغيل مع النظام. عند التفعيل يُكتب سطر الأمر مع
+/// `--hidden-start` فيقلع البرنامج في الخلفية (بوت تيليجرام وتكامل
+/// المتصفح) بلا فتح نافذة.
+#[tauri::command]
+fn set_autostart(on: bool) -> Result<serde_json::Value, String> {
+    autostart::set_enabled(on)?;
+    Ok(serde_json::json!({ "enabled": autostart::is_enabled() }))
 }
 
 /// Sprint E3: checkbox-off path — removes keys + manifest (mirror of register).
@@ -1033,6 +1070,8 @@ pub fn run() {
             register_native_host,
             unregister_native_host,
             bridge_status,
+            autostart_status,
+            set_autostart,
             telegram_status,
             telegram_pairing_code,
             player_open,

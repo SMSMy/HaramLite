@@ -29,7 +29,7 @@
 <button id="btn-settings" class="text-on-surface-variant hover:bg-surface-variant/80 transition-all duration-300 apple-ease p-unit rounded hover:scale-110 active:scale-90 hover:text-cream-text">
 <span class="material-symbols-outlined" data-icon="settings">settings</span>
 </button>
-<div id="settings-menu" class="hidden absolute left-0 top-full mt-2 w-64 glass-effect border border-border-muted rounded-lg shadow-xl p-stack-md flex flex-col gap-stack-sm z-50 fade-in-up">
+<div id="settings-menu" class="hidden absolute left-0 top-full mt-2 w-64 max-h-[75vh] overflow-y-auto overscroll-contain glass-effect border border-border-muted rounded-lg shadow-xl p-stack-md flex flex-col gap-stack-sm z-50 fade-in-up">
     <h3 class="font-label-md text-clay-accent border-b border-border-muted pb-2 mb-2">الإعدادات</h3>
     <label class="flex items-center gap-stack-sm cursor-pointer group">
         <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-cuda" type="checkbox"/>
@@ -66,10 +66,7 @@
         </div>
     </div>
     <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
-        <button id="btn-about" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
-            <span class="material-symbols-outlined text-sm" data-icon="info">info</span>
-            <span class="font-body-sm" data-i18n="btn_about">حول البرنامج</span>
-        </button>
+        
         <button id="btn-report" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
             <span class="material-symbols-outlined text-sm" data-icon="bug_report">bug_report</span>
             <span class="font-body-sm" data-i18n="btn_report">الإبلاغ عن مشكلة</span>
@@ -86,6 +83,19 @@
             <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-bridge" type="checkbox"/>
             <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="btn_bridge">تفعيل التكامل مع المتصفح</span>
         </label>
+        <!-- هل الإضافة موجودة؟ التطبيق لا يستطيع تعداد إضافات المتصفح، لكن المضيف
+             يسجّل أصل كل إضافة تتصل به — فإن لم يتصل شيء قط نعرض الرابط بدل التخمين. -->
+        <p id="bridge-ext-status" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed px-unit"></p>
+        <button id="bridge-ext-link" type="button" class="hidden items-center gap-unit text-left text-clay-accent hover:underline font-label-sm text-label-sm px-unit" data-open-url="https://haramlite.com/bridge.html">
+            <span class="material-symbols-outlined text-sm" data-icon="extension">extension</span>
+            <span data-i18n="bridge_page_link">صفحة إضافة المتصفح — التثبيت والشرح</span>
+        </button>
+        <!-- التشغيل مع بدء تشغيل ويندوز: الغرض بقاء الخلفية (البوت والمتصفح) جاهزة -->
+        <label class="flex items-center gap-stack-sm cursor-pointer group mt-1">
+            <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-autostart" type="checkbox"/>
+            <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="autostart_label">التشغيل مع بدء تشغيل ويندوز</span>
+        </label>
+        <p class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed px-unit" data-i18n="autostart_hint">يقلع في الخلفية بلا نافذة، ليبقى بوت تيليجرام وتكامل المتصفح جاهزين — وتفتح النافذة متى شئت من أيقونة الشريط.</p>
     </div>
     <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
         <button id="btn-telegram" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer w-full">
@@ -94,7 +104,12 @@
             <span id="tg-badge" class="ms-auto font-label-sm text-label-sm"></span>
         </button>
     </div>
-</div>
+
+        <button id="btn-about" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
+            <span class="material-symbols-outlined text-sm" data-icon="info">info</span>
+            <span class="font-body-sm" data-i18n="btn_about">حول البرنامج</span>
+        </button>
+    </div>
 </div>
 </header>
 <!-- Main Content Area -->
@@ -334,7 +349,19 @@
 <!-- Telegram bot panel (Sprint T1) — its own window on purpose: the settings
      dropdown is too narrow, and hiding the token field behind its own toggle
      made the feature impossible to switch on (real field defect, 2026-09-11). -->
-<div id="tg-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+<!-- سؤال مرة واحدة: التشغيل مع النظام (يظهر بعد التثبيت فقط) -->
+  <div id="autostart-overlay" class="hidden fixed inset-0 z-[130] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div class="glass-effect border border-border-muted rounded-xl p-stack-lg w-[26rem] max-w-[92vw] flex flex-col gap-stack-md fade-in-up" style="animation-duration: 0.25s;">
+      <h3 class="font-label-md text-label-md text-clay-accent" data-i18n="autostart_ask_title">تشغيل HaramLite مع بدء تشغيل ويندوز؟</h3>
+      <p class="font-body-sm text-sm text-on-surface-variant leading-relaxed" data-i18n="autostart_ask_body">سيعمل البرنامج في الخلفية بلا فتح نافذة، فيبقى بوت تيليجرام وتكامل المتصفح جاهزين بعد كل إقلاع. يمكنك تغيير هذا في أي وقت من الإعدادات.</p>
+      <div class="flex gap-stack-sm justify-end">
+        <button id="autostart-no" class="px-stack-md py-unit rounded border border-border-muted text-on-surface-variant hover:text-cream-text font-label-sm text-label-sm cursor-pointer" data-i18n="autostart_no">لا، لاحقاً</button>
+        <button id="autostart-yes" class="px-stack-md py-unit rounded bg-clay-accent text-coal-surface font-label-sm text-label-sm font-bold cursor-pointer" data-i18n="autostart_yes">نعم، شغّله مع النظام</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tg-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
 <div class="glass-effect border border-border-muted rounded-xl p-stack-lg w-[30rem] max-w-[92vw] max-h-[85vh] overflow-y-auto flex flex-col gap-stack-md fade-in-up" style="animation-duration: 0.25s;">
 <div class="flex justify-between items-center">
 <h3 class="font-label-md text-label-md text-clay-accent" data-i18n="tg_title">📨 بوت تيليجرام</h3>

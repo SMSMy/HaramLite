@@ -27,6 +27,8 @@ pub struct Settings {
     pub watch_max_size_mb: u64,   // disk guard: reject larger files
     pub watch_rescan_secs: u64,   // periodic rescan (notify misses events)
     pub bridge_enabled: bool,     // browser-integration checkbox (Sprint E3)
+    /// هل سُئل المستخدم عن التشغيل مع النظام مرة واحدة؟ (يُسأل مرة واحدة فقط)
+    pub autostart_asked: bool,
     // ── Telegram bot (Sprint T1) ──
     pub telegram_enabled: bool,
     pub telegram_token: String,       // BotFather token "123456:ABC…"
@@ -58,6 +60,7 @@ impl Default for Settings {
             watch_max_size_mb: 2048,
             watch_rescan_secs: 60,
             bridge_enabled: false,
+        autostart_asked: false,
             telegram_enabled: false,
             telegram_token: String::new(),
             telegram_user_id: String::new(),

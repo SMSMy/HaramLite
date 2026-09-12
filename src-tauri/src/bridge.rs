@@ -77,6 +77,52 @@ fn state_path() -> PathBuf {
         .join("bridge_state.json")
 }
 
+/// Where the native host records that a browser extension actually called it.
+/// Chrome and Firefox append the caller's origin as argv[1], so this is the only
+/// first-hand evidence on the machine that an extension is installed — the app
+/// cannot enumerate browser extensions, but it can see who knocked.
+fn host_seen_path() -> PathBuf {
+    data_dir()
+        .join("com.harammute.haramlite")
+        .join("host_seen.json")
+}
+
+/// Best-effort: a failure here must never affect messaging. Called once per host
+/// process, i.e. once per browser session that has the extension loaded.
+pub fn record_host_seen(origin: Option<&str>) {
+    let path = host_seen_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let body = serde_json::json!({ "ts": ts, "origin": origin.unwrap_or("") });
+    let _ = std::fs::write(&path, body.to_string());
+}
+
+/// (seconds since epoch, origin) of the last browser call, if one ever happened.
+pub fn host_seen() -> Option<(u64, String)> {
+    let raw = std::fs::read_to_string(host_seen_path()).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let ts = v.get("ts").and_then(|t| t.as_u64())?;
+    let origin = v
+        .get("origin")
+        .and_then(|o| o.as_str())
+        .unwrap_or("")
+        .to_string();
+    Some((ts, origin))
+}
+
+/// Pure: is that timestamp recent enough to mean the extension is still there?
+/// An extension that was uninstalled leaves its last call behind, so callers
+/// treat a fresh record as "present" and anything older as "unknown" — never as
+/// proof of absence.
+pub fn seen_within(ts: u64, now: u64, max_age_secs: u64) -> bool {
+    now.saturating_sub(ts) <= max_age_secs
+}
+
 /// Live state consumed by the browser mini-panel (via the `status` message):
 /// { running: {name, stage, pct} | null, last: {name, ok, seconds?, error?} }
 pub fn write_state(v: &serde_json::Value) {
@@ -131,6 +177,10 @@ pub fn read_state() -> serde_json::Value {
 // ─────────────────────────────────────────────────────────────────────
 
 pub fn native_host_entry() -> i32 {
+    // كروم وفايرفوكس يضيفان أصل الإضافة المستدعية كوسيط أول — تسجيله هو الدليل
+    // الوحيد المتاح على الجهاز بأن إضافةً مثبَّتة فعلاً، وهو ما يسمح للتطبيق
+    // بأن يوجّه المستخدم إلى صفحة الإضافة إن لم يتصل به متصفح قط.
+    record_host_seen(std::env::args().nth(1).as_deref());
     // Audit E-1: persistent stdio loop — the browser keeps ONE host process
     // per `connectNative` port and reuses it for every message, instead of
     // spawning and killing a process for each 1.5s poll (sendNativeMessage).
@@ -1344,6 +1394,20 @@ mod tests {
         assert!(!job_watch_of(&json!({ "type": "link", "mode": "" })));
         assert!(!job_watch_of(&json!({ "type": "link", "mode": 7 })));
         assert!(!job_watch_of(&json!({})));
+    }
+
+    /// A stale "last call" record must never be read as "the extension is here":
+    /// the app only offers guidance when no browser has called recently.
+    #[test]
+    fn host_seen_recency_boundaries() {
+        let now = 1_700_000_000u64;
+        assert!(seen_within(now, now, 60));
+        assert!(seen_within(now - 59, now, 60));
+        assert!(seen_within(now - 60, now, 60));
+        assert!(!seen_within(now - 61, now, 60));
+        assert!(!seen_within(0, now, 60));
+        // ساعة متأخرة أو طابع مستقبلي لا يُنتجان انهياراً في الطرح
+        assert!(seen_within(now + 10, now, 60));
     }
 
     /// The popup's per-request mode: only an explicit song/clip is honoured, and

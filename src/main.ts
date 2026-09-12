@@ -97,6 +97,13 @@ const i18n = {
     watch_toast_done: 'اكتملت معالجة ملف مراقَب',
     watch_toast_fail: 'فشلت معالجة ملف مراقَب',
     btn_bridge: 'تفعيل التكامل مع المتصفح',
+  bridge_page_link: 'صفحة إضافة المتصفح — التثبيت والشرح',
+  autostart_label: 'التشغيل مع بدء تشغيل ويندوز',
+  autostart_hint: 'يقلع في الخلفية بلا نافذة، ليبقى بوت تيليجرام وتكامل المتصفح جاهزين — وتفتح النافذة متى شئت من أيقونة الشريط.',
+  autostart_ask_title: 'تشغيل HaramLite مع بدء تشغيل ويندوز؟',
+  autostart_ask_body: 'سيعمل البرنامج في الخلفية بلا فتح نافذة، فيبقى بوت تيليجرام وتكامل المتصفح جاهزين بعد كل إقلاع. يمكنك تغيير هذا في أي وقت من الإعدادات.',
+  autostart_yes: 'نعم، شغّله مع النظام',
+  autostart_no: 'لا، لاحقاً',
     tg_title: '📨 بوت تيليجرام',
     tg_enable: 'تفعيل بوت تيليجرام',
     tg_token: 'توكن البوت (من BotFather)',
@@ -217,6 +224,13 @@ const i18n = {
     watch_toast_done: 'Watched file processed',
     watch_toast_fail: 'Watched file failed',
     btn_bridge: 'Enable browser integration',
+  bridge_page_link: 'Browser extension page — install and guide',
+  autostart_label: 'Start with Windows',
+  autostart_hint: 'Boots in the background with no window so the Telegram bot and browser integration stay ready — open the window any time from the tray icon.',
+  autostart_ask_title: 'Start HaramLite with Windows?',
+  autostart_ask_body: 'The app will run in the background without opening a window, so the Telegram bot and browser integration stay ready after every boot. You can change this any time in the settings.',
+  autostart_yes: 'Yes, start with Windows',
+  autostart_no: 'Not now',
     tg_title: '📨 Telegram bot',
     tg_enable: 'Enable Telegram bot',
     tg_token: 'Bot token (from BotFather)',
@@ -1705,6 +1719,11 @@ function wireSettings(): void {
       localStorage.setItem('hl.bridge', s.bridge_enabled ? '1' : '0');
       const cb = document.getElementById('setting-bridge') as HTMLInputElement | null;
       if (cb) cb.checked = s.bridge_enabled;
+  void refreshBridgeExt();
+  void refreshAutostart();
+  void invoke<{ enabled: boolean }>('autostart_status')
+    .then((r) => askAutostartOnce(s.autostart_asked === true, !!r.enabled))
+    .catch(() => { /* لا سؤال إن تعذّرت القراءة */ });
     }
     // Sprint T1: the Telegram worker rewrites these itself on a successful
     // pairing, so the panel must follow backend truth (never a stale cache).
@@ -2759,6 +2778,98 @@ function wireBridge(): void {
   });
 }
 
+/* ── هل إضافة المتصفح موجودة؟ ─────────────────────────────────────────────
+   تطبيق مكتبي لا يستطيع تعداد إضافات المتصفح، لكن مضيف Native Messaging
+   يسجّل أصل كل إضافة تتصل به (كروم وفايرفوكس يمرّران الأصل كوسيط أول).
+   سجلّ حديث ⇒ الإضافة موجودة؛ لا سجلّ أو سجلّ قديم ⇒ «لا نعرف»، فنعرض رابط
+   صفحة الإضافة بدل أن نترك المستخدم يخمّن. لا يُستنتج الغياب من سجلّ قديم
+   أبداً: إضافة أُزيلت تترك آخر اتصالها خلفها. */
+type BridgeExt = { extension_seen: boolean; extension_days_ago: number | null };
+
+function renderBridgeExt(info: BridgeExt | null): void {
+  const status = document.getElementById('bridge-ext-status');
+  const link = document.getElementById('bridge-ext-link');
+  if (status) {
+    if (!info) {
+      status.textContent = '';
+    } else if (info.extension_seen) {
+      const d = info.extension_days_ago ?? 0;
+      status.textContent = lang === 'ar'
+        ? (d <= 0 ? '✓ الإضافة متصلة الآن' : `✓ الإضافة متصلة — آخر اتصال قبل ${d} يوم`)
+        : (d <= 0 ? '✓ Extension connected now' : `✓ Extension connected — last call ${d} day(s) ago`);
+      status.className = 'font-label-sm text-label-sm text-tertiary leading-relaxed px-unit';
+    } else {
+      status.textContent = lang === 'ar'
+        ? 'لم يتصل أي متصفح بعد. إن لم تكن الإضافة مثبَّتة فثبّتها من هنا:'
+        : 'No browser has called yet. If the extension is not installed, get it here:';
+      status.className = 'font-label-sm text-label-sm text-on-surface-variant leading-relaxed px-unit';
+    }
+  }
+  if (link) {
+    const show = !info || !info.extension_seen;
+    link.classList.toggle('hidden', !show);
+    link.classList.toggle('flex', show);
+  }
+}
+
+async function refreshBridgeExt(): Promise<void> {
+  try {
+    const r = await invoke<BridgeExt>('bridge_status');
+    renderBridgeExt(r);
+  } catch {
+    renderBridgeExt(null);
+  }
+}
+
+/* ── التشغيل مع بدء تشغيل ويندوز ───────────────────────────────────────────
+   المصدر الوحيد للحقيقة هو الريجستري (لا حقل مقابل في الإعدادات)، فنقرأ
+   الحالة منه بعد كل تغيير بدل أن نفترض أن الكتابة نجحت. والغرض من الخيار
+   بقاء الخلفية — البوت وتكامل المتصفح — لا فتح نافذة عند الإقلاع. */
+async function refreshAutostart(): Promise<void> {
+  const cb = document.getElementById('setting-autostart') as HTMLInputElement | null;
+  if (!cb) return;
+  try {
+    const r = await invoke<{ enabled: boolean }>('autostart_status');
+    cb.checked = !!r.enabled;
+  } catch {
+    cb.checked = false;
+  }
+}
+
+async function applyAutostart(on: boolean): Promise<void> {
+  const cb = document.getElementById('setting-autostart') as HTMLInputElement | null;
+  try {
+    const r = await invoke<{ enabled: boolean }>('set_autostart', { on });
+    if (cb) cb.checked = !!r.enabled; // نعكس الريجستري لا ما طلبناه
+  } catch (e) {
+    showToast(lang === 'ar'
+      ? `تعذر تغيير التشغيل مع النظام: ${String(e)}`
+      : `Could not change startup: ${String(e)}`);
+    await refreshAutostart();
+  }
+}
+
+function wireAutostart(): void {
+  const cb = document.getElementById('setting-autostart') as HTMLInputElement | null;
+  cb?.addEventListener('change', () => { void applyAutostart(!!cb.checked); });
+
+  const overlay = document.getElementById('autostart-overlay');
+  const closeAsk = async (enable: boolean | null): Promise<void> => {
+    overlay?.classList.add('hidden');
+    if (enable !== null) await applyAutostart(enable);
+    try { await invoke('set_settings', { patch: { autostart_asked: true } }); } catch { /* ignore */ }
+  };
+  document.getElementById('autostart-yes')?.addEventListener('click', () => { void closeAsk(true); });
+  document.getElementById('autostart-no')?.addEventListener('click', () => { void closeAsk(false); });
+}
+
+/** يُسأل مرة واحدة فقط: إن لم يُسأل بعد ولم يكن الخيار مفعّلاً. */
+function askAutostartOnce(asked: boolean, alreadyOn: boolean): void {
+  const overlay = document.getElementById('autostart-overlay');
+  if (!overlay || asked || alreadyOn) return;
+  overlay.classList.remove('hidden');
+}
+
 function wire(): void {
   startStallDetector();
   startLongtaskWatch();
@@ -2785,6 +2896,7 @@ function wire(): void {
   wireUpdater();
   wireWatchSettings();
   wireBridge();
+  wireAutostart();
   wireTelegram();
   wireExtJobs();
   wirePlayer();
