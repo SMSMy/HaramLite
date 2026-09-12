@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>سياسة الخصوصية — HaramLite</title>
+<meta name="description" content="سياسة خصوصية HaramLite: تطبيق ويندوز وإضافة المتصفح — لا جمع بيانات، ولا رفع ملفات، وكل المعالجة على جهازك.">
+<link rel="canonical" href="https://haramlite.com/PRIVACY.html">
+<meta name="theme-color" content="#151311">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="HaramLite">
+<meta property="og:title" content="سياسة الخصوصية — HaramLite">
+<meta property="og:description" content="لا جمع بيانات، ولا رفع ملفات، وكل المعالجة على جهازك.">
+<meta property="og:url" content="https://haramlite.com/PRIVACY.html">
+<meta property="og:image" content="https://haramlite.com/assets/og.png">
+<meta property="og:locale" content="ar_AR">
+<link rel="icon" href="assets/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icon-32.png">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body class="bg-coal-surface text-on-surface">
+
+<header class="w-full fixed top-0 z-50 bg-coal-bg/95 backdrop-blur border-b border-border-muted">
+  <div class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop h-16 flex items-center justify-between">
+    <a class="flex items-center gap-stack-sm" href="/">
+      <img src="assets/icon-32.png" alt="HaramLite" width="32" height="32" class="rounded">
+      <span class="font-headline-lg text-headline-lg text-cream-text">HaramLite</span>
+    </a>
+    <nav class="flex items-center gap-stack-md">
+      <a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors" href="/">الرئيسية</a>
+      <a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors" href="/#download">التحميل</a>
+      <a class="font-label-md text-label-md text-clay-accent" href="#en">English</a>
+    </nav>
+  </div>
+</header>
+
+<main class="w-full pt-16">
+<div class="doc">
+
+  <h2 style="margin-top:1.5rem">سياسة الخصوصية — HaramLite</h2>
+  <p class="font-mono-code text-mono-code text-on-surface-variant">تطبيق ويندوز + إضافة المتصفح · آخر تحديث: 2026-09-12</p>
+
+  <div class="lead">
+    <p><strong>باختصار:</strong> HaramLite <strong>لا يجمع أي بيانات عنك</strong> ولا يرسل ملفاتك إلى أي مكان.
+    المعالجة كلها تحدث على جهازك: التنزيل، الفصل بالذكاء الاصطناعي، المؤثرات، والترميز.
+    لا حسابات، ولا تحليلات، ولا تتبّع، ولا إعلانات.</p>
+  </div>
+
+  <h2>تطبيق ويندوز</h2>
+
+  <h3>ما يعالجه وأين</h3>
+  <table>
+    <thead><tr><th>ما يقرأه</th><th>متى</th><th>أين يذهب</th></tr></thead>
+    <tbody>
+      <tr><td>ملفاتك (فيديو/صوت)</td><td>عند إفلاتها أو اختيارها</td><td>تُعالَج محلياً على جهازك، والناتج يُكتب بجانب الملف الأصلي. لا تُرفع إلى أي خادم.</td></tr>
+      <tr><td>رابط تنزّله</td><td>عندما تلصقه أو ترسله من المتصفح</td><td>يُنزَّل الرابط من مصدره (مثل يوتيوب) إلى جهازك عبر <code>yt-dlp</code>، ثم يُعالج محلياً.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>الاتصال بالإنترنت — اختياري</h3>
+  <p>التطبيق يحتاج الشبكة فقط لهذه الأمور، وكلها بمبادرة منك:</p>
+  <ul>
+    <li>تنزيل رابط طلبته بنفسك.</li>
+    <li>تحديث <code>yt-dlp</code> (فحص دوري كل 24 ساعة، ويمكن تعطيله).</li>
+    <li>فحص التحديثات (معطّل حالياً في هذا الإصدار).</li>
+    <li>إصلاح المكوّنات (تنزيل النموذج/الأدوات عند فقدانها) مع التحقق من بصمة SHA-256.</li>
+    <li><strong>بوت تيليجرام</strong> إن فعّلته أنت (انظر أدناه).</li>
+  </ul>
+  <p>من لا يستخدم هذه الميزات يمكنه قطع الشبكة والتطبيق يعمل بالكامل.</p>
+
+  <h3>بوت تيليجرام (ميزة اختيارية تحتاج توكن تضعه أنت)</h3>
+  <ul>
+    <li>لا يعمل البوت إطلاقاً بلا <strong>توكن</strong> تضعه أنت من BotFather، ولا يستجيب لأي حساب حتى تربط حسابك برمز الاقتران. وأي حساب آخر يُتجاهل تماماً.</li>
+    <li>ما ترسله إلى البوت (رابط أو ملف) يمرّ عبر خوادم تيليجرام كما يمرّ أي نقاش عادي في التطبيق — فتيليجرام طرف ثالث في هذه الميزة، وسياسة تيليجرام تنطبق على الرسائل هناك. أما المعالجة نفسها فتحدث على جهازك، والناتج يُرسَل إليك عبر تيليجرام.</li>
+    <li>حدود تيليجرام: البوت يرسل حتى 50MB، ولا يستطيع تنزيل أكثر من 20MB من ملف مُرسَل. ومن يشغّل خادم Bot API محلياً يرفع السقف إلى 2GB.</li>
+  </ul>
+
+  <h3>ما يُخزَّن على جهازك</h3>
+  <ul>
+    <li><strong>الإعدادات</strong>: <code>%LOCALAPPDATA%\com.harammute.haramlite\settings.json</code></li>
+    <li><strong>الأسرار مشفّرة</strong>: توكن البوت و<code>api_hash</code> محفوظان بـ <strong>DPAPI</strong> المرتبط بحسابك وجهازك — لا نصّ صريح على القرص، ولا نسخة في متصفح الواجهة، ولا يعملان إن نُسخ الملف إلى جهاز آخر.</li>
+    <li><strong>سجلات التشخيص</strong>: مجلد <code>logs</code> بجانب الإعدادات (تُقرأ من داخل التطبيق فقط).</li>
+    <li><strong>ملفات عمل مؤقتة</strong>: مجلد <code>telegram</code> المؤقت وملفات <code>page-audio</code> — تُنظَّف تلقائياً.</li>
+    <li>لا تُرسل هذه الملفات إلى المطوّر ولا إلى أي خادم.</li>
+  </ul>
+
+  <h3>حذف بياناتك</h3>
+  <p>ألغِ تثبيت التطبيق ثم احذف المجلد <code>%LOCALAPPDATA%\com.harammute.haramlite</code>
+  (يحوي الإعدادات والسجلات والأسرار المشفّرة). لا يحتفظ المطوّر بأي نسخة منها.</p>
+
+  <hr>
+
+  <h2>إضافة المتصفح</h2>
+
+  <h3>ما تقرأه الإضافة، وأين يذهب</h3>
+  <table>
+    <thead><tr><th>ما تقرأه</th><th>متى</th><th>أين يذهب</th></tr></thead>
+    <tbody>
+      <tr><td>رابط الصفحة (التبويب النشط)</td><td><strong>فقط عند نقرك</strong> على زر الإضافة أو «أرسل إلى HaramLite»</td><td>إلى تطبيق HaramLite على جهازك، عبر قناة Native Messaging المحلية (stdin/stdout بين المتصفح والتطبيق)</td></tr>
+      <tr><td>صفحة يوتيوب التي تشاهدها</td><td>أثناء وجودك على يوتيوب</td><td>تُستخدم محلياً لإضافة الزرّين إلى المشغّل وتنفيذ المشاهدة المفلترة (كتم فيديو الصفحة وتشغيل الصوت المعالَج)</td></tr>
+      <tr><td>اسم الفيديو وحالته من التطبيق</td><td>أثناء المعالجة</td><td>تُقرأ من تطبيقك المحلي لعرض التقدّم داخل الصفحة</td></tr>
+    </tbody>
+  </table>
+  <p>لا شيء من ذلك يُرسل إلى المطوّر، ولا إلى أي خادم، ولا إلى أي طرف ثالث. الإضافة
+  نفسها لا تُجري أي طلب شبكة: تحقّق من ذلك بفحص ملفاتها أو بمراقبة شبكة المتصفح.</p>
+
+  <h3>الصلاحيات ولماذا</h3>
+  <ul>
+    <li><code>nativeMessaging</code> — التخاطب مع تطبيق HaramLite الذي ثبّته أنت بنفسك.</li>
+    <li><code>contextMenus</code> — عنصر «أرسل إلى HaramLite» في قائمة الزر الأيمن.</li>
+    <li><code>activeTab</code> — قراءة رابط التبويب النشط عند نقرك، وهذا كل ما تفعله.</li>
+    <li>الوصول إلى <code>youtube.com</code> — لإضافة الزرّين إلى مشغّل يوتيوب وتنفيذ المشاهدة المفلترة داخل الصفحة. الإضافة <strong>لا</strong> تصل إلى أي موقع آخر.</li>
+  </ul>
+
+  <h3>ما لا تفعله الإضافة</h3>
+  <ul>
+    <li>لا تبيع بيانات ولا تشاركها ولا تنقلها (لا شيء لتنقله أصلاً).</li>
+    <li>لا تُنشئ ملفات تعريف ولا تُرسل تقارير أعطال أو إحصاءات استخدام.</li>
+    <li>لا تقرأ سجل التصفح ولا التبويبات الأخرى ولا حقول الإدخال أو كلمات المرور.</li>
+    <li>لا تُحمّل أي كود من الإنترنت: كل الشيفرة داخل الحزمة (مانيفست الإصدار الثالث).</li>
+  </ul>
+
+  <h3>بيانات تُخزَّن على جهازك</h3>
+  <ul>
+    <li><strong>خيار «تخطي الصمت»</strong> في صفحة يوتيوب: قيمة واحدة (مفعّل/متوقّف) في تخزين الموقع المحلي للمتصفح. لا تُرسل لأي مكان.</li>
+    <li><strong>تطبيق HaramLite المكتبي</strong> يخزّن إعداداته ونتائجه على جهازك. وفي حال تفعيل تكامل تيليجرام، يُخزَّن توكن البوت مشفّراً (Windows DPAPI) داخل <code>%LOCALAPPDATA%\com.harammute.haramlite\settings.json</code> — وهذا كله خارج نطاق عمل إضافة المتصفح.</li>
+  </ul>
+
+  <h2>عام</h2>
+
+  <h3>الأطفال</h3>
+  <p>لا التطبيق ولا الإضافة موجّهان للأطفال، ولا يُجمع أي بيانات عنهم.</p>
+
+  <h3>التغييرات</h3>
+  <p>أي تحديث لهذه السياسة يُنشر في هذا الملف داخل المستودع نفسه، ويظهر تاريخ آخر تحديث في أعلاه.</p>
+
+  <h3>التواصل</h3>
+  <p>للأسئلة أو لطلب توضيح: <a href="https://github.com/SMSMy/HaramLite/issues">Issues المستودع</a>
+  أو من داخل التطبيق: الإعدادات ← <strong>الإبلاغ عن مشكلة</strong>.</p>
+
+  <h3>ملاحظات قانونية</h3>
+  <p>يوتيوب علامة تجارية لشركة Google LLC. هذا المشروع مستقل وغير مرتبط بـGoogle ولا معتمد منها.
+  المستخدم مسؤول عن احترام حقوق المحتوى الذي يعالجه.</p>
+
+  <hr>
+
+  <h2 id="en" class="en">Privacy Policy — HaramLite</h2>
+  <div class="en">
+    <p class="font-mono-code text-mono-code text-on-surface-variant">Windows app + browser extension · Last updated: 2026-09-12</p>
+    <div class="lead">
+      <p><strong>In short:</strong> HaramLite <strong>collects nothing about you</strong> and never uploads your files.
+      Every step — downloading, AI separation, effects and encoding — runs on your own machine.
+      No accounts, no analytics, no tracking, no ads.</p>
+    </div>
+
+    <h3>Windows app</h3>
+    <ul>
+      <li><strong>Your files</strong> (video/audio): opened when you drop or pick them, processed locally, and the result is written next to the original. Nothing is uploaded to any server.</li>
+      <li><strong>A link you download</strong>: fetched from its source (YouTube and others) to your machine with <code>yt-dlp</code>, then processed locally.</li>
+      <li><strong>Internet is optional</strong>: it is used only to download a link you asked for, to update <code>yt-dlp</code> (checked every 24 hours, can be disabled), to check for updates (disabled in this build), to repair missing components (verified against their SHA-256), and for the Telegram bot if you enable it. If you use none of those, the app works with the network unplugged.</li>
+      <li><strong>Telegram bot</strong> (optional, needs a token you supply): it does nothing without your token and ignores every account until you pair yours with the one-time code. Messages you send the bot travel through Telegram's servers like any chat, so Telegram is a third party for that feature; the processing itself happens on your machine. Telegram's limits: a bot may send up to 50MB and download at most 20MB of a file you send it. A local Bot API server raises that to 2GB.</li>
+      <li><strong>Stored on your machine</strong>: settings in <code>%LOCALAPPDATA%\com.harammute.haramlite</code>; the bot token and <code>api_hash</code> sealed with <strong>DPAPI</strong> (bound to your Windows account and machine, so they stop working if copied elsewhere); diagnostic logs; temporary working files that are cleaned up automatically.</li>
+      <li><strong>Deleting your data</strong>: uninstall the app and delete <code>%LOCALAPPDATA%\com.harammute.haramlite</code>. The developer keeps no copy.</li>
+    </ul>
+
+    <h3>Browser extension</h3>
+    <ul>
+      <li><strong>What it reads:</strong> the active tab's URL and only when you click the extension or "Send to HaramLite"; the YouTube page you are watching, used locally to add two player buttons and to run filtered watching; and the job name/state from your local app to show progress in the page.</li>
+      <li><strong>Where it goes:</strong> to the HaramLite app on your own machine over the local Native Messaging channel. Nothing goes to the developer, to any server, or to any third party — the extension makes no network request at all, which you can verify by reading its files or watching your browser's network panel.</li>
+      <li><strong>Permissions:</strong> <code>nativeMessaging</code> (talk to the app you installed), <code>contextMenus</code> (the "Send to HaramLite" item), <code>activeTab</code> (the active tab's URL when you click), and access to <code>youtube.com</code> (the player buttons and filtered watching). No other site is reachable.</li>
+      <li><strong>It never</strong> sells or shares data, creates profiles, sends crash or usage reports, reads your history, other tabs, input fields or passwords, or loads code from the internet — all code ships inside the package (Manifest V3).</li>
+      <li><strong>Stored locally:</strong> the "skip silence" toggle, one value in browser local storage. No account data is stored because there are no accounts.</li>
+    </ul>
+
+    <h3>General</h3>
+    <ul>
+      <li><strong>Children:</strong> neither the app nor the extension is directed at children, and no data about them is collected.</li>
+      <li><strong>Changes:</strong> any update to this policy is published in the repository and the date above changes with it.</li>
+      <li><strong>Contact:</strong> <a href="https://github.com/SMSMy/HaramLite/issues">open an issue</a>, or use Settings → Report a problem inside the app.</li>
+      <li><strong>Legal:</strong> YouTube is a trademark of Google LLC. This project is independent, not affiliated with or endorsed by Google, and users are responsible for respecting the rights of the content they process.</li>
+    </ul>
+  </div>
+
+  <hr>
+  <p class="text-center"><a href="/">← العودة إلى الرئيسية</a></p>
+
+</div>
+</main>
+
+<footer class="w-full bg-surface-container-lowest border-t border-border-muted py-stack-lg">
+  <div class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop flex flex-col sm:flex-row items-center justify-between gap-stack-md">
+    <div class="flex items-center gap-stack-sm">
+      <img src="assets/icon-32.png" alt="HaramLite" width="20" height="20" class="rounded-sm">
+      <span class="font-label-sm text-label-sm text-cream-text font-bold">HaramLite</span>
+      <span class="font-mono-code text-mono-code text-on-surface-variant" dir="ltr">haramlite.com</span>
+    </div>
+    <p class="font-label-sm text-label-sm text-on-surface-variant" dir="rtl">صُنع بحبٍّ ليخدم كل من أراد محتواه نظيفاً — وكل شيء هنا مفتوح المصدر.</p>
+  </div>
+</footer>
+
+</body>
+</html>

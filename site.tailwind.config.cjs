@@ -13,5 +13,5 @@ const design ={ darkMode: "class", theme: { extend: { "colors": { "outline-varia
 module.exports = {
   darkMode: design.darkMode || 'class',
   theme: design.theme,
-  content: ['./docs/index.html'],
+  content: ['./docs/index.html', './docs/PRIVACY.html'],
 };

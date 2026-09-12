@@ -26,7 +26,7 @@ index.html                      الصفحة الرئيسية — مبنية م�
 CNAME                           haramlite.com — لا تحذفه
 robots.txt / sitemap.xml        لمحرّكات البحث
 LICENSE.txt                     نسخة الرخصة (كانت /LICENSE = 404)
-PRIVACY.md                      سياسة الخصوصية (يُطلب رابطها في متجر كروم)
+PRIVACY.html                    سياسة الخصوصية (RTL بخط ثمانية — يُطلب رابطها في متجر كروم)
 _config.yml                     إعداد Jekyll + قائمة استثناء الوثائق الداخلية
 google30b5f3c41dd37016.html     ملف إثبات ملكية قوقل — لا تحذفه ولا تنقله
 assets/site.css                 التنسيقات — **مُصرَّفة** من Tailwind محلياً (لا CDN)
