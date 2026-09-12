@@ -536,7 +536,11 @@
       var f = document.createElement('iframe');
       f.className = 'video-frame';
       f.src = 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1&rel=0';
-      f.title = '<span data-i18n-ar="شرح إضافة HaramLite Bridge" data-i18n-en="HaramLite Bridge walkthrough">شرح إضافة HaramLite Bridge</span>';
+      /* سمة title تقبل نصاً صريحاً لا وسوماً: إدراج <span> كان يجعل قارئ الشاشة
+         ينطق الوسم حروفاً مجرّدة. نقرأ اللغة الحالية من <html lang>. */
+      f.title = document.documentElement.lang === 'en'
+        ? 'HaramLite Bridge walkthrough'
+        : 'شرح إضافة HaramLite Bridge';
       f.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
       f.allowFullscreen = true;
       shell.innerHTML = '';
