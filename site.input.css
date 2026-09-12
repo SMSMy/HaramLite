@@ -1,0 +1,47 @@
+/* Source stylesheet for the official site.
+   Compiled by Tailwind into docs/assets/site.css — the site ships the compiled
+   file, never a runtime CDN, so the page makes no external request and works
+   offline (which is what the project promises its users about privacy).
+   Rebuild:  pnpm site:css   */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Thmanyah (same files the desktop app ships, copied from font/) ───────── */
+@font-face { font-family: 'Thmanyah Sans'; src: url('thmanyah-sans-regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Thmanyah Sans'; src: url('thmanyah-sans-medium.otf') format('opentype'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Thmanyah Sans'; src: url('thmanyah-sans-bold.otf') format('opentype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Thmanyah Serif Display'; src: url('thmanyah-serif-bold.otf') format('opentype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Thmanyah Serif Display'; src: url('thmanyah-serif-black.otf') format('opentype'); font-weight: 900; font-display: swap; }
+
+/* ── Material Symbols (self-hosted, exactly as the app does it) ───────────── */
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+  src: url('material-symbols-outlined.woff2') format('woff2');
+}
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Thmanyah stylistic sets (per the project's font guide) ───────────────── */
+.mursala-text { font-feature-settings: 'salt' 1; }
+.kashida-text { font-feature-settings: 'ss01' 1; }
+
+/* Arabic needs a touch more line-height than Latin: keep diacritics unclipped. */
+html[lang='ar'] body { line-height: 1.75; }
