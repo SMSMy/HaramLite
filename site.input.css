@@ -91,5 +91,8 @@ html[lang='ar'] body { line-height: 1.75; }
   .doc .lead p { margin: 0; }
   .doc hr { border: 0; border-top: 1px solid #2E2C29; margin: 2.5rem 0; }
   .doc .en { direction: ltr; text-align: left; }
+
+  /* بطاقة زجاجية — من تصميم صفحة الإضافة */
+  .glass-card { background: rgba(33, 31, 29, 0.85); backdrop-filter: blur(12px); border: 1px solid #2e2c29; }
 }
 
