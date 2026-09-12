@@ -219,17 +219,43 @@ www.haramlite.com. 1 IN CNAME smsmy.github.io.
 
 ### تبرير كل صلاحية (يُطلب حرفياً عند الرفع)
 
+#### English — انسخ هذا (أسرع في المراجعة)
+
+**contextMenus**
+> Adds one item, "Send to HaramLite", to the browser's right-click menu so the user can send the link, page or video they are looking at to their own HaramLite desktop application. It adds nothing else and reads no page data.
+
+**nativeMessaging**
+> Used only to talk to the HaramLite desktop app that the user installs and runs on their own computer. The extension passes the URL the user chose to process, plus short status messages, over the local Native Messaging channel. Nothing is sent to the developer or to any server — the extension itself makes no network request. The messaging host is registered by the desktop app, and the user must switch the integration on in that app's settings; without it the extension does nothing.
+
+**activeTab**
+> Reads the URL of the active tab only at the moment the user clicks the extension, so that URL can be handed to their desktop app for processing. There is no background access, no browsing-history access and no access to any other tab or site.
+
+**Host permission for `*://*.youtube.com/*`**
+> A content script runs on YouTube pages only, to add two buttons to the video player ("download & process" and "watch filtered") and to play the audio that was processed locally on the user's machine in sync with the page video. It reads no other content on the page, and nothing is ever sent off the device.
+
+#### العربية (بديل مقبول)
+
 | الصلاحية | التبرير |
 |---|---|
-| `nativeMessaging` | «التخاطب مع تطبيق HaramLite المكتبي **الذي ثبّته المستخدم بنفسه** لتمرير رابط الفيديو إليه. المعالجة تحدث على جهاز المستخدم، ولا تُرسل بيانات إلى أي خادم.» |
-| `contextMenus` | «إضافة عنصر «أرسل إلى HaramLite» في قائمة الزر الأيمن، وهو المسار الذي اختاره المستخدم لإرسال رابط.» |
-| `activeTab` | «قراءة رابط التبويب النشط **فقط عند نقر المستخدم على الإضافة**، لإرساله إلى تطبيقه المحلي.» |
-| محتوى في `*://*.youtube.com/*` | «إضافة الزرّين إلى مشغّل يوتيوب وتنفيذ المشاهدة المفلترة داخل الصفحة (كتم الفيديو ومزامنة الصوت المعالَج). لا يُقرأ أي محتوى آخر ولا تُرسل أي صفحة إلى الخارج.» |
+| `contextMenus` | «إضافة عنصر واحد «أرسل إلى HaramLite» في قائمة الزر الأيمن، ليرسل المستخدم الرابط أو الصفحة أو الفيديو إلى تطبيقه المكتبي. لا يضيف غيره ولا يقرأ بيانات الصفحة.» |
+| `nativeMessaging` | «للتخاطب مع تطبيق HaramLite المكتبي الذي ثبّته المستخدم على جهازه. تُمرَّر إليه الرابط الذي اختار معالجته ورسائل حالة قصيرة عبر قناة Native Messaging المحلية. لا شيء يُرسَل إلى المطوّر أو إلى أي خادم، والإضافة نفسها لا تُجري أي طلب شبكة. المضيف يُسجّله التطبيق، وعلى المستخدم تفعيل التكامل من إعداداته، وبدونه لا تفعل الإضافة شيئاً.» |
+| `activeTab` | «قراءة رابط التبويب النشط لحظة نقر المستخدم على الإضافة فقط، لتسليمه إلى تطبيقه المكتبي. لا وصول في الخلفية، ولا سجل تصفح، ولا وصول إلى أي تبويب أو موقع آخر.» |
+| محتوى في `*://*.youtube.com/*` | «سكربت محتوى يعمل على صفحات يوتيوب فقط لإضافة زرّين إلى المشغّل («حمّل وعالج» و«شاهد مفلتراً») وتشغيل الصوت المعالَج محلياً بتزامن مع الفيديو. لا يقرأ محتوى آخر، ولا يُرسل شيئاً خارج الجهاز.» |
+
+#### سؤال «الكود البعيد» (Remote code)
+
+الجواب الصحيح: **«لا، لا أستخدم الكود البعيد»** ✓ — كل الشيفرة داخل الحزمة، بلا `eval` ولا سكربتات خارجية (تحقّق آلي: صفر `eval`/`new Function`/`importScripts`).
+
+#### ملاحظة عن لافتة «المراجعة المطوّلة»
+
+طلب `nativeMessaging` (وأذونات المضيف) **قد يستدعي مراجعة بشرية مطوّلة تؤخر النشر** — وهذا متوقع ومعلن ولا يعني رفضاً. التبريرات المحددة أعلاه هي ما يقرؤه المراجع، فكلما كانت أوضح كان القرار أسرع. وبعد النشر: ثبّت نسخة المتجر على جهاز فيه تطبيق **0.2.1** وجرّب إرسال رابط.
 
 ### «الاستخدام المفرد» (Single purpose)
 
+> Bridge between the browser and the user's own HaramLite desktop app: it forwards the video URL the user chooses to that local app for processing, and plays the processed result inside the page.
+
 «جسر بين المتصفح وتطبيق HaramLite المكتبي: يمرّر رابط الفيديو المطلوب إلى
-التطبيق لمعالجته محلياً، ويشغّل الناتج داخل الصفحة.» — جملة واحدة تكفي المراجع.
+التطبيق لمعالجته محلياً، ويشغّل الناتج داخل الصفحة.»
 
 ---
 
