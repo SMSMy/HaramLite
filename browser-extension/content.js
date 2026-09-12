@@ -3,7 +3,7 @@
 //   1. Download+Process — idle ("حمّل وعالج") → click starts (video paused,
 //      live % on the button) → click while busy cancels + resets → done dims
 //      ("تم التجهيز") and enables Watch.
-//   2. Watch — disabled until ready → enabled ("شاهد مفلتراً") → click
+//   2. Watch — disabled until ready → enabled ("شاهد بعد الفلترة") → click
 //      applies the filter and plays (active color) → second click stops and
 //      restores the original. Manual only — nothing auto-applies.
 // Filtered watching: page video muted + filtered audio element, playback
@@ -170,7 +170,7 @@
       watchBtn.style.background = 'rgba(21,19,17,.94)';
       watchBtn.style.borderColor = T.accent;
       watchBtn.style.color = '#ffb59d';
-      watchBtn.textContent = 'شاهد مفلتراً ▶';
+      watchBtn.textContent = 'شاهد بعد الفلترة ▶';
       watchBtn.title = 'HaramLite — مشاهدة مفلترة';
     } else if (state === 'watching') {
       watchBtn.disabled = false;
@@ -193,7 +193,7 @@
       watchBtn.style.background = 'rgba(21,19,17,.94)';
       watchBtn.style.borderColor = '#5a544f';
       watchBtn.style.color = '#d8d2cc';
-      watchBtn.textContent = 'شاهد مفلتراً ▶';
+      watchBtn.textContent = 'شاهد بعد الفلترة ▶';
       watchBtn.title = 'HaramLite — يفعَّل بعد التجهيز';
     }
   }
@@ -319,7 +319,7 @@
             };
             setProc('done');
             setWatchBtn('ready');
-            toast('تم التجهيز ✓ — شاهد مفلتراً ▶');
+            toast('تم التجهيز ✓ — شاهد بعد الفلترة ▶');
           } else {
             resetBar();
             toast('✗ ' + (st.last.error || 'فشلت المعالجة'), 4000);
