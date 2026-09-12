@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 
 <html dir="rtl" lang="ar"><head><meta charset="utf-8"/>
-  <title>تحويل الفيديو إلى MP3 نقي ومجرد كلياً من المؤثرات الموسيقي | HaramLite</title>
-  <meta name="description" content="وفر ما يصل إلى 90% من مساحة التخزين واختصر أزمنة المعالجة الطويلة. عندما يكون هدفك الاستماع إلى المحاضرات، البودكاست، أو الدروس العلمية بدون مشتتات، فإن اس">
+  <title>تحويل الفيديو إلى MP3 نقي بلا موسيقى | HaramLite</title>
+  <meta name="description" content="حوّل الفيديو إلى MP3 نقي بلا موسيقى: مساحة تخزين أقل وزمن معالجة أقصر للمحاضرات والبودكاست والدروس، مع الحفاظ على وضوح الكلام.">
   <link rel="icon" href="../assets/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="../assets/icon-32.png">
   <link rel="apple-touch-icon" href="../assets/icon-180.png">
-  <meta property="og:title" content="تحويل الفيديو إلى MP3 نقي ومجرد كلياً من المؤثرات الموسيقي | HaramLite">
+  <meta property="og:title" content="تحويل الفيديو إلى MP3 نقي بلا موسيقى | HaramLite">
   <meta property="og:description" content="وفر ما يصل إلى 90% من مساحة التخزين واختصر أزمنة المعالجة الطويلة. عندما يكون هدفك الاستماع إلى المحاضرات، البودكاست، أو الدروس العلمية بدون مشتتات، فإن اس">
   <meta name="twitter:card" content="summary_large_image"><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <style>@layer base { html, body { margin: 0; padding: 0; } body { overscroll-behavior: none; } main > :first-child { margin-top: 0 !important; } main > :last-child { margin-bottom: 0 !important; } } ::-webkit-scrollbar { display: none; }</style>  <link rel="stylesheet" href="../assets/site.css"/>
@@ -304,11 +304,11 @@
 <span class="font-mono-code text-label-sm text-tertiary font-semibold">GPU ACCELERATED</span>
 </div>
 <div class="font-mono-code text-[13px] text-on-surface leading-relaxed flex flex-col gap-1.5 p-stack-sm bg-surface-container-lowest rounded-lg">
-<p class="text-outline">$ haramlite-engine --input "lecture_part1.mp4" --export-format mp3 --bitrate 320k --isolate-speech</p>
-<p class="text-on-surface-variant">[1/3] Demuxing stream: Video discarded, Audio stream extracted in 1.2s</p>
-<p class="text-on-surface-variant">[2/3] Isolating human speech via Demucs local neural weights: 100%</p>
-<p class="text-tertiary">[3/3] Encoding pure stream to MP3 (LAME CBR 320 kbps): Done in 38.4s</p>
-<p class="text-cream-text font-bold">» Output: /Volumes/Storage/Podcasts/lecture_part1_[Clean].mp3 (36.2 MB)</p>
+<p class="text-outline" dir="ltr">$ haramlite "lecture.mp4" --mode clip --fmt mp3 --out "D:\Clean"</p>
+<p class="text-on-surface-variant">[1/3] فصل المسار الصوتي من الحاوية…</p>
+<p class="text-on-surface-variant">[2/3] عزل الصوت البشري بنموذج UVR-MDX-NET-Voc_FT…</p>
+<p class="text-tertiary">[3/3] الترميز إلى MP3 بمعدل 320 kbps ثابت (LAME)…</p>
+<p class="text-cream-text font-bold">» الناتج: D:\Clean\lecture_clean.mp3</p>
 </div>
 </section>
 <!-- Questions & Practical Details Grid -->
@@ -334,7 +334,7 @@
 <div class="flex flex-col gap-1">
 <h3 class="font-label-md text-label-md text-cream-text font-bold">فارق السرعة والعتاد المطلوب</h3>
 <p class="font-body-md text-body-md text-on-surface-variant">
-            تجاوز مرحلة رندرة الفيديو يوفر 80% من الحمل على كرت الشاشة (GPU). يعمل الاستخراج بكفاءة فائقة حتى على أجهزة الحواسيب المحمولة العادية بدون كروت شاشة منفصلة.
+            تجاوز مرحلة معالجة الفيديو يوفر 80% من الحمل على كرت الشاشة (GPU). يعمل الاستخراج بكفاءة فائقة حتى على أجهزة الحواسيب المحمولة العادية بدون كروت شاشة منفصلة.
           </p>
 </div>
 </div>
