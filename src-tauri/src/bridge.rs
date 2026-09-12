@@ -34,28 +34,30 @@ pub const HOST_NAME: &str = "com.harammute.haramlite";
 /// Id of an UNPACKED build: derived from the `key` embedded in the repo's
 /// manifest.json (verified by re-deriving it with Chrome's algorithm).
 pub const CHROME_EXT_ID: &str = "jchaeejligdfbkgkbgneimclkagoopig";
-/// Id of the STORE-published item. The Chrome Web Store fixes an item's id when
-/// it is created and keeps it forever, and the published HaramMute/HaramLite
-/// item was created with a different key than the repo manifest carries. The
-/// native host must therefore accept BOTH: without this, updating the store
-/// item would hand the extension an id the desktop app rejects, silently
-/// breaking the integration for every store user (found in the pre-publish
-/// audit, 2026-09-11).
-pub const CHROME_STORE_EXT_ID: &str = "bbkbpldbnkoncockinoapcmbiijejgpn";
+/// The STORE build gets an id the store invents when the item is created, so it
+/// cannot be known before the first publication. This constant is where that id
+/// goes once the listing exists — and until then the native host only trusts the
+/// unpacked build, deliberately: an id we have not verified must never be
+/// allowed to drive this app. (An earlier revision trusted `bbkb…` on the wrong
+/// assumption that an archived extension in the repo was our published item —
+/// it belongs to a different extension we do not control, so it was removed.)
+pub const CHROME_STORE_EXT_ID: Option<&str> = None;
 pub const FIREFOX_EXT_ID: &str = "haramlite_bridge@harammute.app";
 
 /// The native-messaging host manifest (pure — unit-tested). `allowed_origins`
-/// carries both Chrome ids; `allowed_extensions` carries the Firefox id.
+/// carries the unpacked id and, once known, the published one; the Firefox
+/// side needs no such dance because its add-on id is chosen by us.
 fn host_manifest(exe: &Path) -> serde_json::Value {
+    let mut origins = vec![format!("chrome-extension://{CHROME_EXT_ID}/")];
+    if let Some(store) = CHROME_STORE_EXT_ID {
+        origins.push(format!("chrome-extension://{store}/"));
+    }
     serde_json::json!({
         "name": HOST_NAME,
         "description": "HaramLite desktop bridge (Native Messaging)",
         "path": exe.to_string_lossy(),
         "type": "stdio",
-        "allowed_origins": [
-            format!("chrome-extension://{CHROME_EXT_ID}/"),
-            format!("chrome-extension://{CHROME_STORE_EXT_ID}/"),
-        ],
+        "allowed_origins": origins,
         "allowed_extensions": [FIREFOX_EXT_ID],
     })
 }
@@ -1156,8 +1158,8 @@ mod tests {
         crate::paths::test_lock()
     }
 
-    /// A stale host manifest must be detected so an upgrade rewrites it: the
-    /// old file listed one extension id, and the store build needs the other.
+    /// A stale host manifest must be detected so an upgrade rewrites it — e.g.
+    /// a file written by an older build that allowed different origins.
     #[test]
     fn stale_host_manifest_is_detected() {
         let dir = std::env::temp_dir().join(format!("hl_manifest_{}", std::process::id()));
@@ -1171,11 +1173,20 @@ mod tests {
         std::fs::write(&p, b"{ not json").unwrap();
         assert!(manifest_is_stale(&p, &want));
 
-        // The single-id manifest an older install wrote ⇒ rewrite.
-        let mut old = want.clone();
-        old["allowed_origins"] = serde_json::json!([format!("chrome-extension://{CHROME_EXT_ID}/")]);
-        std::fs::write(&p, serde_json::to_vec_pretty(&old).unwrap()).unwrap();
-        assert!(manifest_is_stale(&p, &want), "one id only ⇒ stale");
+        // Manifests written by other revisions differ ⇒ rewrite. (This is the
+        // upgrade path: the file on disk must follow the current trust list.)
+        let mut other = want.clone();
+        other["allowed_origins"] = serde_json::json!([
+            "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/",
+            "chrome-extension://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/"
+        ]);
+        std::fs::write(&p, serde_json::to_vec_pretty(&other).unwrap()).unwrap();
+        assert!(manifest_is_stale(&p, &want), "different origins ⇒ stale");
+
+        let mut moved = want.clone();
+        moved["path"] = serde_json::json!("C:\\elsewhere\\HaramLite.exe");
+        std::fs::write(&p, serde_json::to_vec_pretty(&moved).unwrap()).unwrap();
+        assert!(manifest_is_stale(&p, &want), "moved executable ⇒ stale");
 
         // Up to date ⇒ left alone (no pointless rewrite on every boot).
         std::fs::write(&p, serde_json::to_vec_pretty(&want).unwrap()).unwrap();
@@ -1183,12 +1194,12 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The host manifest must admit BOTH ids: the store item's (fixed at
-    /// creation) and the unpacked build's (derived from the repo key). Getting
-    /// this wrong breaks native messaging for store users only — the worst
-    /// possible failure mode, because it is invisible locally.
+    /// The host manifest must admit exactly the ids we trust: the unpacked
+    /// build's (derived from the repo key) and — only once it has actually been
+    /// published and verified — the store item's. Trusting an unverified id
+    /// would let an extension we do not control drive this app.
     #[test]
-    fn host_manifest_allows_the_store_id_and_the_dev_id() {
+    fn host_manifest_allows_only_trusted_ids() {
         let m = host_manifest(Path::new("C:\\x\\HaramLite.exe"));
         let origins: Vec<String> = m["allowed_origins"]
             .as_array()
@@ -1200,9 +1211,19 @@ mod tests {
             origins.contains(&format!("chrome-extension://{CHROME_EXT_ID}/")),
             "unpacked id missing: {origins:?}"
         );
+        if let Some(store) = CHROME_STORE_EXT_ID {
+            assert!(
+                origins.contains(&format!("chrome-extension://{store}/")),
+                "store id declared but not allowed: {origins:?}"
+            );
+        } else {
+            // Until the listing exists there is nothing else to trust: exactly
+            // one origin, never a wildcard and never somebody else's extension.
+            assert_eq!(origins.len(), 1, "unexpected extra origins: {origins:?}");
+        }
         assert!(
-            origins.contains(&format!("chrome-extension://{CHROME_STORE_EXT_ID}/")),
-            "store id missing — publishing would break the integration: {origins:?}"
+            !origins.iter().any(|o| o.contains("bbkbpldbnkoncockinoapcmbiijejgpn")),
+            "a foreign extension id must never be allowed"
         );
         assert_eq!(m["name"], HOST_NAME);
         assert_eq!(m["type"], "stdio");
