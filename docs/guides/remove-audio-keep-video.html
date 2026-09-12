@@ -1,254 +1,651 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>إزالة الصوت من الفيديو مع إبقاء الصورة | HaramLite</title>
-  <meta name="description" content="الفرق بين كتم الصوت وإزالته، وكيف تحصل على الفيديو نفسه بصوت جديد أو بلا صوت أصلاً — خطوات واضحة.">
-  <link rel="canonical" href="https://haramlite.com/guides/remove-audio-keep-video.html">
-  <meta name="theme-color" content="#151311">
-  <meta property="og:type" content="article">
-  <meta property="og:title" content="إزالة الصوت من الفيديو مع إبقاء الصورة | HaramLite">
-  <meta property="og:description" content="الفرق بين كتم الصوت وإزالته، وكيف تحصل على الفيديو نفسه بصوت جديد أو بلا صوت أصلاً — خطوات واضحة.">
-  <meta property="og:url" content="https://haramlite.com/guides/remove-audio-keep-video.html">
-  <meta property="og:image" content="https://haramlite.com/assets/og.png">
-  <meta name="twitter:card" content="summary_large_image">
-  <link rel="icon" href="../assets/favicon.ico" sizes="any">
-  <link rel="icon" type="image/png" sizes="32x32" href="../assets/icon-32.png">
-  <link rel="apple-touch-icon" href="../assets/icon-180.png">
-  <link rel="stylesheet" href="../assets/site.css"/>
+
+<html dir="rtl" lang="ar"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<style>@layer base { html, body { margin: 0; padding: 0; } body { overscroll-behavior: none; } main > :first-child { margin-top: 0 !important; } main > :last-child { margin-bottom: 0 !important; } } ::-webkit-scrollbar { display: none; }</style>  <link rel="stylesheet" href="../assets/site.css"/>
   <link rel="preload" href="../assets/thmanyah-serif-bold.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="../assets/thmanyah-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
-  <script type="application/ld+json">
-  {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "هل يمكن إزالة الصوت وإبقاء الصورة فقط؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "نعم لكن بلا حاجة لهذه الأداة: أي محرّر فيديو يكتم المسار في ثانية. HaramLite مخصص لحالة أصعب: إزالة الموسيقى مع إبقاء الكلام."
+  <link rel="canonical" href="https://haramlite.com/guides/remove-audio-keep-video.html">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://haramlite.com/assets/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+</head><body class="bg-surface font-body-md text-on-surface antialiased selection:bg-primary-container selection:text-on-primary-container"><header class="fixed top-0 w-full z-50 bg-coal-surface/90 backdrop-blur-xl border-b border-border-muted"><div class="h-16 max-w-7xl mx-auto px-gutter lg:px-margin-desktop flex items-center justify-between gap-stack-md"><div class="flex items-center gap-stack-md"><a class="flex items-center gap-stack-sm" data-path="home" href="#"><img alt="HaramLite brand app icon: acoustic fork / two-track audio branches converging into one pure stem, with the left music track cleanly severed by an angled cut-line and dimmed, while the right speech/vocal track remains solid and flows through to the pure audio base, rendered in Clay and Coal palette." class="h-8 w-auto object-contain" src="../assets/icon-32.png"/><div class="flex flex-col text-right"><span class="font-headline-lg text-cream-text tracking-tight text-[18px] leading-tight">HaramLite</span><span class="font-label-sm text-outline text-[11px] leading-none">معالجة محلية 100%</span></div></a><nav class="hidden md:flex items-center gap-1 mr-stack-md" data-active-classes="text-cream-text bg-surface-container font-semibold"><a class="px-stack-sm py-unit rounded text-on-surface-variant hover:text-cream-text transition-colors font-label-md text-label-md" data-path="home" href="#">الرئيسية</a><a aria-current="page" class="px-stack-sm py-unit rounded transition-colors text-cream-text bg-surface-container font-semibold" data-path="guides" href="#">الأدلة</a><a class="px-stack-sm py-unit rounded text-on-surface-variant hover:text-cream-text transition-colors font-label-md text-label-md" data-path="browser-extension" href="#">إضافة المتصفح</a><a class="px-stack-sm py-unit rounded text-on-surface-variant hover:text-cream-text transition-colors font-label-md text-label-md" data-path="faq" href="#">الأسئلة الشائعة</a></nav></div><div class="flex items-center gap-stack-sm"><a class="inline-flex items-center gap-stack-sm bg-clay-accent text-coal-surface hover:bg-primary px-stack-md py-unit rounded-lg transition-colors font-label-md text-label-md font-bold" data-path="download" href="#"><span class="material-symbols-outlined text-[18px]">download</span><span>تحميل HaramLite</span><span class="bg-surface-container-lowest text-cream-text font-mono-code text-label-sm px-1.5 py-0.5 rounded">v0.2.2</span></a><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-16 bg-surface"><div class="max-w-4xl mx-auto px-4 py-8"><div class="flex flex-col w-full">
+<!-- SEO Context & Technical Breadcrumbs -->
+<div class="w-full flex items-center justify-between gap-stack-sm pb-stack-md text-label-sm font-label-sm text-outline">
+<div class="flex items-center gap-2">
+<span class="text-on-surface-variant hover:text-cream-text transition-colors cursor-pointer">الأدلة التقنية</span>
+<span>/</span>
+<span class="text-clay-accent font-mono-code font-bold">LOSSLESS-STREAM-MUXING</span>
+<span>/</span>
+<span class="text-cream-text">إزالة الصوت والاحتفاظ بالصورة</span>
+</div>
+<div class="hidden sm:flex items-center gap-1.5 font-mono-code text-[11px] bg-surface-container px-2.5 py-1 rounded">
+<span class="w-2 h-2 rounded-full bg-clay-accent"></span>
+<span>PASSTHROUGH V2.2</span>
+</div>
+</div>
+<!-- Hero Section (Technical Precision Style) -->
+<section class="relative w-full bg-coal-bg rounded-xl p-stack-lg lg:p-margin-desktop mb-stack-lg overflow-hidden shadow-xl">
+<!-- Ambient Glow Backdrop -->
+<div class="absolute -top-24 -left-24 w-80 h-80 bg-clay-accent/10 rounded-full blur-3xl pointer-events-none"></div>
+<div class="absolute -bottom-24 -right-24 w-96 h-96 bg-primary/5 rounded-full blur-3xl pointer-events-none"></div>
+<div class="relative z-10 flex flex-col gap-stack-md">
+<div class="inline-flex items-center gap-stack-sm self-start bg-surface-container-lowest px-3 py-1.5 rounded">
+<span class="material-symbols-outlined text-clay-accent text-[18px]">movie_edit</span>
+<span class="font-mono-code text-label-sm text-clay-accent tracking-wide uppercase">Core Architecture • Demux / Remux</span>
+</div>
+<h1 class="font-headline-xl text-headline-xl text-cream-text tracking-tight font-extrabold leading-tight">
+        إزالة الصوت من الفيديو مع إبقاء الصورة
+      </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-3xl leading-relaxed">
+        فصل الموسيقى مع حفظ جودة الفيديو 100% دون إعادة ضغط 
+        <span class="font-mono-code text-cream-text bg-surface-container-high px-1.5 py-0.5 rounded text-label-md">(Lossless Passthrough)</span>، 
+        أو تفريغ الصوت نهائياً — كيف يعمل التزامن الإطاري الدقيق 
+        <span class="text-clay-accent font-bold">Frame-Accurate</span> 
+        بزمن تأخير 0.00ms وبأقصى سرعة ممكنة دون استهلاك كرت الشاشة في رندرة بكسلات الفيديو؟
+      </p>
+<!-- Micro Specs Bar -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-stack-sm pt-stack-sm">
+<div class="bg-surface-container p-3 rounded flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">فقدان البكسل (Pixel Loss)</span>
+<span class="font-mono-code text-headline-lg text-clay-accent font-bold">0.00%</span>
+</div>
+<div class="bg-surface-container p-3 rounded flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">انحراف التزامن (Sync Drift)</span>
+<span class="font-mono-code text-headline-lg text-cream-text font-bold">±0.0ms</span>
+</div>
+<div class="bg-surface-container p-3 rounded flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">محرك العزل العصبي</span>
+<span class="font-mono-code text-headline-lg text-cream-text font-bold">UVR-MDX</span>
+</div>
+<div class="bg-surface-container p-3 rounded flex flex-col">
+<span class="font-label-sm text-label-sm text-outline">استهلاك كرت الشاشة للفيديو</span>
+<span class="font-mono-code text-headline-lg text-warn-yellow font-bold">ZERO (I/O)</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Interactive Infographic: Lossless Stream Muxing Schematic -->
+<section class="w-full bg-coal-bg rounded-xl p-stack-lg mb-stack-lg shadow-lg flex flex-col gap-stack-lg">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-stack-sm pb-stack-sm border-b border-border-muted">
+<div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-clay-accent text-[22px]">account_tree</span>
+<h2 class="font-headline-lg text-headline-lg text-cream-text font-bold">مخطط التدفق الفني لمسارات الفيديو والصوت</h2>
+</div>
+<p class="font-label-sm text-label-sm text-outline mt-1">Lossless Stream Demux &amp; Remux Pipeline (معالجة تدفق مباشر دون إعادة ترميز)</p>
+</div>
+<div class="flex items-center gap-2 self-start sm:self-center font-mono-code text-[12px] bg-surface-container-lowest px-3 py-1.5 rounded text-secondary">
+<span class="inline-block w-2 h-2 rounded-full bg-tertiary"></span>
+<span>STATUS: DETERMINISTIC PIPELINE</span>
+</div>
+</div>
+<!-- The Demux/Remux Architectural Schematic -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-stack-md items-stretch font-mono-code text-[13px]">
+<!-- Phase 1: Input Container (3 cols) -->
+<div class="lg:col-span-3 bg-surface-container-low p-stack-md rounded-lg flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between mb-stack-sm">
+<span class="text-clay-accent font-bold">01 // الحاوية المصدر</span>
+<span class="text-outline text-[11px]">DEMUX ENTRY</span>
+</div>
+<p class="font-body-md text-label-md text-cream-text font-bold mb-2">ملف الفيديو الأصلي</p>
+<p class="font-label-sm text-outline leading-relaxed mb-4 font-body-md">
+            حاوية MP4 / MKV / MOV تدمج تدفق الصورة مع المسار الصوتي الصاخب.
+          </p>
+<div class="bg-surface-container-lowest p-stack-sm rounded space-y-2">
+<div class="flex justify-between text-secondary">
+<span>Codec:</span>
+<span class="text-cream-text">H.264 / HEVC / ProRes</span>
+</div>
+<div class="flex justify-between text-secondary">
+<span>Audio:</span>
+<span class="text-warn-yellow">Stereo / 5.1 (Mixed)</span>
+</div>
+<div class="flex justify-between text-secondary">
+<span>Timecode:</span>
+<span class="text-tertiary">SMPTE 29.97/60fps</span>
+</div>
+</div>
+</div>
+<div class="mt-4 pt-3 border-t border-border-muted flex items-center justify-between text-[11px] text-outline">
+<span>العملية: تفكيك المسارات</span>
+<span class="material-symbols-outlined text-clay-accent text-[16px]">call_split</span>
+</div>
+</div>
+<!-- Phase 2: Processing Split (6 cols) -->
+<div class="lg:col-span-6 flex flex-col gap-stack-md">
+<!-- Video Stream: Direct Passthrough (No Transcoding) -->
+<div class="bg-surface-container p-stack-md rounded-lg relative overflow-hidden">
+<div class="absolute top-0 right-0 w-1.5 h-full bg-tertiary"></div>
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-tertiary text-[18px]">videocam</span>
+<span class="text-cream-text font-bold text-label-md">مسار الصورة (Video Stream)</span>
+</div>
+<span class="bg-tertiary-container/30 text-tertiary text-[11px] px-2 py-0.5 rounded font-bold">Stream Copy 100%</span>
+</div>
+<p class="font-body-md text-label-sm text-on-surface-variant mb-3 leading-relaxed">
+            تجاوز كامل لوحدة GPU/CPU: يتم سحب بكسلات الفيديو كما هي وحفظها مؤقتاً بالذاكرة دون إعادة ترميز (No Re-encoding). الدقة والألوان ومعدل البت (<span class="font-mono-code text-cream-text">Bitrate</span>) تظل مطابقة للأصل بنسبة 100%.
+          </p>
+<div class="flex items-center gap-stack-sm font-mono-code text-[11px] text-tertiary bg-surface-container-lowest p-2 rounded">
+<span class="material-symbols-outlined text-[14px]">bolt</span>
+<span>استهلاك الموارد: 0% كرت الشاشة • السرعة: مقيدة فقط بسرعة قرص NVMe/SSD</span>
+</div>
+</div>
+<!-- Audio Stream: UVR Isolation Engine -->
+<div class="bg-surface-container p-stack-md rounded-lg relative overflow-hidden">
+<div class="absolute top-0 right-0 w-1.5 h-full bg-clay-accent"></div>
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-clay-accent text-[18px]">new_window</span>
+<span class="text-cream-text font-bold text-label-md">مسار الصوت (Audio Isolation)</span>
+</div>
+<span class="bg-primary-container/20 text-clay-accent text-[11px] px-2 py-0.5 rounded font-bold">UVR-MDX-Net Engine</span>
+</div>
+<p class="font-body-md text-label-sm text-on-surface-variant mb-3 leading-relaxed">
+            يُفرّغ الصوت إلى ترددات طيفية (Spectrograms). يزيل الذكاء الاصطناعي الآلات الموسيقية والإيقاعات المزعجة نهائياً، مع الاحتفاظ بـ <span class="text-cream-text font-bold">نبرة الحوار البشري (Pure Vocal Stem)</span> فقط.
+          </p>
+<div class="flex items-center justify-between bg-surface-container-lowest p-2 rounded text-[11px]">
+<span class="text-secondary">إعادة الترميز الصوتي:</span>
+<span class="text-clay-accent font-bold">AAC-LC 320kbps / 48kHz Stereo</span>
+</div>
+</div>
+</div>
+<!-- Phase 3: Remux & Sync (3 cols) -->
+<div class="lg:col-span-3 bg-surface-container-low p-stack-md rounded-lg flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between mb-stack-sm">
+<span class="text-clay-accent font-bold">03 // إعادة الدمج</span>
+<span class="text-outline text-[11px]">FRAME-ACCURATE</span>
+</div>
+<p class="font-body-md text-label-md text-cream-text font-bold mb-2">فيديو نقي جديد</p>
+<p class="font-label-sm text-outline leading-relaxed mb-4 font-body-md">
+            إعادة دمج مسار الفيديو غير الممسوس مع الصوت المُنقى بحساب أجزاء الميلي ثانية بدقة.
+          </p>
+<div class="bg-surface-container-lowest p-stack-sm rounded space-y-2">
+<div class="flex justify-between text-secondary">
+<span>تطابق الشفاه:</span>
+<span class="text-clay-accent font-bold">Lip-Sync 100%</span>
+</div>
+<div class="flex justify-between text-secondary">
+<span>انزلاق التوقيت:</span>
+<span class="text-tertiary font-bold">0.0000 sec</span>
+</div>
+<div class="flex justify-between text-secondary">
+<span>الملف الأصلي:</span>
+<span class="text-cream-text font-bold">محمي دون مساس</span>
+</div>
+</div>
+</div>
+<div class="mt-4 pt-3 border-t border-border-muted flex items-center justify-between text-[11px] text-cream-text font-bold">
+<span>الإخراج: MP4 جاهز فوراً</span>
+<span class="material-symbols-outlined text-clay-accent text-[16px]">verified</span>
+</div>
+</div>
+</div>
+<!-- Live Audio-Video Sync Waveform Inspector Component -->
+<div class="bg-surface-container-lowest p-stack-md rounded-lg flex flex-col gap-stack-sm">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-clay-accent text-[18px]">straighten</span>
+<span class="font-mono-code text-label-md text-cream-text font-bold">مفتش التزامن الإطاري (Frame-to-Audio Alignment Preview)</span>
+</div>
+<span class="font-mono-code text-[11px] text-outline">PTS (Presentation Time Stamps) MATCHED</span>
+</div>
+<!-- Timeline Canvas Visualization -->
+<div class="relative w-full bg-coal-surface rounded p-3 overflow-hidden">
+<!-- Time Marker Grid -->
+<div class="flex justify-between text-[10px] font-mono-code text-outline mb-2 pb-1 border-b border-border-muted/50">
+<span>00:00.000</span>
+<span>00:01.250</span>
+<span>00:02.500</span>
+<span>00:03.750</span>
+<span>00:05.000</span>
+</div>
+<!-- Video Frames Strip -->
+<div class="mb-3">
+<div class="flex items-center justify-between text-[11px] font-mono-code text-secondary mb-1">
+<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-tertiary"></span>مسار الصورة (Video Frames - Passthrough)</span>
+<span class="text-outline">60.00 FPS • Intra/Inter-frames Intact</span>
+</div>
+<div class="grid grid-cols-12 gap-1 h-7">
+<div class="bg-surface-container-high rounded flex items-center justify-center font-mono-code text-[9px] text-tertiary font-bold">I-FRM</div>
+<div class="bg-surface-container-low rounded flex items-center justify-center font-mono-code text-[9px] text-outline">P-FRM</div>
+<div class="bg-surface-container-low rounded flex items-center justify-center font-mono-code text-[9px] text-outline">B-FRM</div>
+<div class="bg-surface-container-low rounded flex items-center justify-center font-mono-code text-[9px] text-outline">B-FRM</div>
+<div class="bg-surface-container-high rounded flex items-center justify-center font-mono-code text-[9px] text-tertiary font-bold">I-FRM</div>
+<div class="bg-surface-container-low rounded flex items-center justify-center font-mono-code text-[9px] text-outline">P-FRM</div>
+<div class="bg-surface-container-low rounded flex items-center justify-center font-mono-code text-[9px] text-outline">B-FRM</div>
+<div class="bg-surface-container-low rounded flex items-center justify-center font-mono-code text-[9px] text-outline">B-FRM</div>
+<div class="bg-surface-container-high rounded flex items-center justify-center font-mono-code text-[9px] text-tertiary font-bold">I-FRM</div>
+<div class="bg-surface-container-low rounded flex items-center justify-center font-mono-code text-[9px] text-outline">P-FRM</div>
+<div class="bg-surface-container-low rounded flex items-center justify-center font-mono-code text-[9px] text-outline">B-FRM</div>
+<div class="bg-surface-container-high rounded flex items-center justify-center font-mono-code text-[9px] text-tertiary font-bold">I-FRM</div>
+</div>
+</div>
+<!-- Clean Speech Audio Track (Waveform) -->
+<div>
+<div class="flex items-center justify-between text-[11px] font-mono-code text-secondary mb-1">
+<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-clay-accent"></span>مسار الصوت المنقى (Clean Speech Stem)</span>
+<span class="text-clay-accent font-bold">MUSIC STRIPPED • 0.00ms DELAY</span>
+</div>
+<!-- Waveform Inline SVG -->
+<div class="w-full h-8 bg-surface-container-high/40 rounded flex items-center px-2">
+<svg class="w-full h-6 text-clay-accent" fill="currentColor" preserveaspectratio="none" viewbox="0 0 400 30">
+<rect height="6" rx="1" width="2" x="0" y="12"></rect>
+<rect height="14" rx="1" width="2" x="6" y="8"></rect>
+<rect height="10" rx="1" width="2" x="12" y="10"></rect>
+<rect height="2" rx="1" width="2" x="18" y="14"></rect>
+<rect height="20" rx="1" width="2" x="24" y="5"></rect>
+<rect height="26" rx="1" width="2" x="30" y="2"></rect>
+<rect height="16" rx="1" width="2" x="36" y="7"></rect>
+<rect height="8" rx="1" width="2" x="42" y="11"></rect>
+<rect height="2" rx="1" width="2" x="48" y="14"></rect>
+<rect height="2" rx="1" width="2" x="54" y="14"></rect>
+<rect height="22" rx="1" width="2" x="60" y="4"></rect>
+<rect height="26" rx="1" width="2" x="66" y="2"></rect>
+<rect height="18" rx="1" width="2" x="72" y="6"></rect>
+<rect height="10" rx="1" width="2" x="78" y="10"></rect>
+<rect height="4" rx="1" width="2" x="84" y="13"></rect>
+<rect height="24" rx="1" width="2" x="90" y="3"></rect>
+<rect height="20" rx="1" width="2" x="96" y="5"></rect>
+<rect height="6" rx="1" width="2" x="102" y="12"></rect>
+<rect height="2" rx="1" width="2" x="108" y="14"></rect>
+<rect height="14" rx="1" width="2" x="114" y="8"></rect>
+<rect height="28" rx="1" width="2" x="120" y="1"></rect>
+<rect height="22" rx="1" width="2" x="126" y="4"></rect>
+<rect height="8" rx="1" width="2" x="132" y="11"></rect>
+<rect height="2" rx="1" width="2" x="138" y="14"></rect>
+<rect height="2" rx="1" width="2" x="144" y="14"></rect>
+<rect height="12" rx="1" width="2" x="150" y="9"></rect>
+<rect height="24" rx="1" width="2" x="156" y="3"></rect>
+<rect height="18" rx="1" width="2" x="162" y="6"></rect>
+<rect height="6" rx="1" width="2" x="168" y="12"></rect>
+<rect height="2" rx="1" width="2" x="174" y="14"></rect>
+<rect height="22" rx="1" width="2" x="180" y="4"></rect>
+<rect height="28" rx="1" width="2" x="186" y="1"></rect>
+<rect height="20" rx="1" width="2" x="192" y="5"></rect>
+<rect height="10" rx="1" width="2" x="198" y="10"></rect>
+<rect height="2" rx="1" width="2" x="204" y="14"></rect>
+<rect height="2" rx="1" width="2" x="210" y="14"></rect>
+<rect height="18" rx="1" width="2" x="216" y="6"></rect>
+<rect height="26" rx="1" width="2" x="222" y="2"></rect>
+<rect height="22" rx="1" width="2" x="228" y="4"></rect>
+<rect height="12" rx="1" width="2" x="234" y="9"></rect>
+<rect height="4" rx="1" width="2" x="240" y="13"></rect>
+<rect height="20" rx="1" width="2" x="246" y="5"></rect>
+<rect height="28" rx="1" width="2" x="252" y="1"></rect>
+<rect height="16" rx="1" width="2" x="258" y="7"></rect>
+<rect height="8" rx="1" width="2" x="264" y="11"></rect>
+<rect height="2" rx="1" width="2" x="270" y="14"></rect>
+<rect height="14" rx="1" width="2" x="276" y="8"></rect>
+<rect height="26" rx="1" width="2" x="282" y="2"></rect>
+<rect height="20" rx="1" width="2" x="288" y="5"></rect>
+<rect height="10" rx="1" width="2" x="294" y="10"></rect>
+<rect height="2" rx="1" width="2" x="300" y="14"></rect>
+<rect height="2" rx="1" width="2" x="306" y="14"></rect>
+<rect height="18" rx="1" width="2" x="312" y="6"></rect>
+<rect height="28" rx="1" width="2" x="318" y="1"></rect>
+<rect height="22" rx="1" width="2" x="324" y="4"></rect>
+<rect height="12" rx="1" width="2" x="330" y="9"></rect>
+<rect height="2" rx="1" width="2" x="336" y="14"></rect>
+<rect height="16" rx="1" width="2" x="342" y="7"></rect>
+<rect height="26" rx="1" width="2" x="348" y="2"></rect>
+<rect height="20" rx="1" width="2" x="354" y="5"></rect>
+<rect height="8" rx="1" width="2" x="360" y="11"></rect>
+<rect height="2" rx="1" width="2" x="366" y="14"></rect>
+<rect height="2" rx="1" width="2" x="372" y="14"></rect>
+<rect height="16" rx="1" width="2" x="378" y="7"></rect>
+<rect height="24" rx="1" width="2" x="384" y="3"></rect>
+<rect height="18" rx="1" width="2" x="390" y="6"></rect>
+<rect height="6" rx="1" width="2" x="396" y="12"></rect>
+</svg>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section: Identify Your Exact Need (Three Core Cases) -->
+<section class="w-full mb-stack-lg flex flex-col gap-stack-md">
+<div class="border-r-2 border-clay-accent pr-stack-sm">
+<h2 class="font-headline-lg text-headline-lg text-cream-text font-bold">حدد ما تريده أولاً: الحالات الفنية الثلاث</h2>
+<p class="font-body-md text-label-md text-outline mt-1">لا تخلط بين كتم الصوت العادي، وفصل الموسيقى بالذكاء الاصطناعي مع الحفاظ على الحوار البشري</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-stack-md">
+<!-- Case 1: HaramLite Main Specialty -->
+<div class="bg-coal-bg rounded-xl p-stack-lg border border-clay-accent flex flex-col justify-between relative shadow-md">
+<div class="absolute -top-3 right-4 bg-clay-accent text-coal-surface font-mono-code font-bold text-[10px] px-2.5 py-0.5 rounded">
+          وظيفة HARAMLITE الأساسية
+        </div>
+<div>
+<div class="w-10 h-10 rounded bg-primary-container/20 text-clay-accent flex items-center justify-center mb-stack-md">
+<span class="material-symbols-outlined text-[24px]">music_off</span>
+</div>
+<h3 class="font-headline-lg-mobile text-headline-lg-mobile text-cream-text font-bold mb-stack-sm">
+            1. حذف الموسيقى وإبقاء الكلام
+          </h3>
+<p class="font-body-md text-label-md text-on-surface-variant leading-relaxed mb-4">
+            فيديو يحتوي على بودكاست، درس علمي، أو فيلم وثائقي مدمج بمؤثرات أو أغانٍ في الخلفية. يقوم النظام بعزل الخلفية الصوتية بدقة متناهية وإبقاء الحوار البشري فقط متزامناً مع الصورة بنسبة 100%.
+          </p>
+</div>
+<div class="pt-3 border-t border-border-muted flex items-center justify-between font-mono-code text-[12px]">
+<span class="text-tertiary font-bold">النتيجة: فيديو ناطق طاهر</span>
+<span class="material-symbols-outlined text-tertiary text-[18px]">check_circle</span>
+</div>
+</div>
+<!-- Case 2: Complete Mute -->
+<div class="bg-coal-bg rounded-xl p-stack-lg border border-border-muted flex flex-col justify-between shadow-sm hover:border-outline-variant transition-colors">
+<div>
+<div class="w-10 h-10 rounded bg-surface-container text-outline flex items-center justify-center mb-stack-md">
+<span class="material-symbols-outlined text-[24px]">volume_off</span>
+</div>
+<h3 class="font-headline-lg-mobile text-headline-lg-mobile text-cream-text font-bold mb-stack-sm">
+            2. كتم الفيديو بالكامل وتحويله لصامت
+          </h3>
+<p class="font-body-md text-label-md text-on-surface-variant leading-relaxed mb-4">
+            تجريد الفيديو نهائياً من أي مسار صوتي ليصبح صامتاً تماماً (Muted). هذه الحالة <span class="text-cream-text font-bold">لا تحتاج ذكاءً اصطناعياً</span>؛ يمكنك إنجازها بنقرة زر في أي محرر سريع أو عبر مشغل VLC دون استهلاك أي وقت.
+          </p>
+</div>
+<div class="pt-3 border-t border-border-muted flex items-center justify-between font-mono-code text-[12px]">
+<span class="text-secondary">النتيجة: ملف فيديو بدون مسار صوتي</span>
+<span class="material-symbols-outlined text-outline text-[18px]">info</span>
+</div>
+</div>
+<!-- Case 3: Audio Replacement / Dubbing -->
+<div class="bg-coal-bg rounded-xl p-stack-lg border border-border-muted flex flex-col justify-between shadow-sm hover:border-outline-variant transition-colors">
+<div>
+<div class="w-10 h-10 rounded bg-surface-container text-warn-yellow flex items-center justify-center mb-stack-md">
+<span class="material-symbols-outlined text-[24px]">swap_calls</span>
+</div>
+<h3 class="font-headline-lg-mobile text-headline-lg-mobile text-cream-text font-bold mb-stack-sm">
+            3. استبدال الموسيقى بصوت آخر
+          </h3>
+<p class="font-body-md text-label-md text-on-surface-variant leading-relaxed mb-4">
+            استخراج الصوت البشري النقي أولاً عبر HaramLite، ثم سحب الملف المُنقى إلى محرر الفيديو المفضل لديك لدمجه مع تعليق صوتي إضافي، أصوات بيئة طبيعية (Foley)، أو خلفيات نقية بدون ألحان.
+          </p>
+</div>
+<div class="pt-3 border-t border-border-muted flex items-center justify-between font-mono-code text-[12px]">
+<span class="text-warn-yellow">النتيجة: مرونة مونتاج احترافية</span>
+<span class="material-symbols-outlined text-warn-yellow text-[18px]">layers</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Section: Technical Facts (Does Video Picture Degrade?) -->
+<section class="w-full bg-surface-container-low rounded-xl p-stack-lg mb-stack-lg border border-border-muted shadow-lg">
+<div class="flex items-center gap-stack-sm mb-stack-md">
+<div class="w-8 h-8 rounded bg-primary text-coal-surface flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]">science</span>
+</div>
+<div>
+<h2 class="font-headline-lg text-headline-lg text-cream-text font-bold">هل تتأثر جودة الصورة أو تتراجع بكسلاتها؟</h2>
+<p class="font-label-sm text-outline">الحقائق الهندسية لتقنية المسار المباشر (Direct Stream Copy)</p>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-stack-md items-center">
+<div class="space-y-stack-sm font-body-md text-on-surface-variant text-label-md leading-relaxed">
+<p>
+          في معظم برامج تحرير الفيديو التقليدية، بمجرد إجراء تعديل على الصوت وتصدير الملف، يقوم البرنامج بـ 
+          <span class="text-error font-bold">إعادة ترميز الفيديو (Transcoding / Re-encoding)</span>، 
+          مما يؤدي إلى ضغط البكسلات وتغيير تدرج الألوان وتوليد حرارة عالية بكرت الشاشة واستغراق عشرات الدقائق.
+        </p>
+<p>
+          في <span class="text-cream-text font-bold">HaramLite</span>، يتم التعامل مع حاوية الفيديو بطريقة جراحية:
+        </p>
+<ul class="space-y-2 font-mono-code text-[12px]">
+<li class="flex items-center gap-2 text-cream-text">
+<span class="material-symbols-outlined text-clay-accent text-[16px]">check</span>
+<span>بقاء دقة 4K / 1080p والأبعاد ومعدل الإطارات (Framerate) ثابتة تماماً.</span>
+</li>
+<li class="flex items-center gap-2 text-cream-text">
+<span class="material-symbols-outlined text-clay-accent text-[16px]">check</span>
+<span>عدم المساس بمساحة الألوان (Rec.709 / BT.2020) أو عمق البتات (8-bit / 10-bit HDR).</span>
+</li>
+<li class="flex items-center gap-2 text-clay-accent font-bold">
+<span class="material-symbols-outlined text-clay-accent text-[16px]">flash_on</span>
+<span>توفير 95% من وقت الرندرة: تصدير فيديو مدته ساعة خلال ثوانٍ معدودة فقط.</span>
+</li>
+</ul>
+</div>
+<!-- Comparative Table Representation -->
+<div class="bg-surface-container-lowest rounded-lg p-stack-md font-mono-code text-[12px]">
+<div class="text-outline border-b border-border-muted pb-2 mb-2 flex justify-between font-bold">
+<span>المعيار التقني</span>
+<span>المحررات التقليدية</span>
+<span class="text-clay-accent">HaramLite Stream</span>
+</div>
+<div class="space-y-2.5">
+<div class="flex justify-between items-center py-1 border-b border-border-muted/30">
+<span class="text-secondary">فقدان تفاصيل البكسل</span>
+<span class="text-error">نعم (Generation Loss)</span>
+<span class="text-tertiary font-bold">معدوم 0% (Clone)</span>
+</div>
+<div class="flex justify-between items-center py-1 border-b border-border-muted/30">
+<span class="text-secondary">زمن التصدير لفيديو 10GB</span>
+<span class="text-on-surface-variant">15 - 45 دقيقة</span>
+<span class="text-clay-accent font-bold">12 - 25 ثانية</span>
+</div>
+<div class="flex justify-between items-center py-1 border-b border-border-muted/30">
+<span class="text-secondary">استهلاك طاقة المعالج/GPU</span>
+<span class="text-error">100% مستمر</span>
+<span class="text-tertiary font-bold">مقتصر على النواة الصوتية</span>
+</div>
+<div class="flex justify-between items-center py-1">
+<span class="text-secondary">التزامن الإطاري (Lip-sync)</span>
+<span class="text-on-surface-variant">معرّض لانزلاق الفريمات</span>
+<span class="text-cream-text font-bold">تطابق ميلي ثانية 0.00ms</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section: The 4 Step Practical Workflow -->
+<section class="w-full mb-stack-lg flex flex-col gap-stack-md">
+<div class="border-r-2 border-clay-accent pr-stack-sm">
+<h2 class="font-headline-lg text-headline-lg text-cream-text font-bold">الخطوات الأربع العملية لإزالة الموسيقى من الفيديو</h2>
+<p class="font-body-md text-label-md text-outline mt-1">طريقة المعالجة السريعة داخل تطبيق سطح المكتب</p>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-stack-md">
+<!-- Step 1 -->
+<div class="bg-coal-bg p-stack-md rounded-xl border border-border-muted flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="font-mono-code text-[12px] text-clay-accent font-bold">STEP // 01</span>
+<span class="material-symbols-outlined text-outline text-[20px]">upload_file</span>
+</div>
+<h3 class="font-headline-lg-mobile text-headline-lg-mobile text-cream-text font-bold">سحب وإفلات الفيديو</h3>
+<p class="font-body-md text-label-sm text-on-surface-variant leading-relaxed">
+          قم بإسقاط ملف الفيديو (MP4, MKV, MOV, WebM) في مساحة العمل. يتعرف البرنامج تلقائياً على بنية المسارات.
+        </p>
+</div>
+<!-- Step 2 -->
+<div class="bg-coal-bg p-stack-md rounded-xl border border-border-muted flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="font-mono-code text-[12px] text-clay-accent font-bold">STEP // 02</span>
+<span class="material-symbols-outlined text-outline text-[20px]">tune</span>
+</div>
+<h3 class="font-headline-lg-mobile text-headline-lg-mobile text-cream-text font-bold">اختيار وضع المعالجة</h3>
+<p class="font-body-md text-label-sm text-on-surface-variant leading-relaxed">
+          اختر نمط <span class="text-clay-accent font-bold">«مقطع عادي»</span> للكلام والبودكاست، أو <span class="text-cream-text font-bold">«أغنية»</span> إذا كانت الأصوات الحوارية مغناة أو سريعة الإيقاع.
+        </p>
+</div>
+<!-- Step 3 -->
+<div class="bg-coal-bg p-stack-md rounded-xl border border-border-muted flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="font-mono-code text-[12px] text-clay-accent font-bold">STEP // 03</span>
+<span class="material-symbols-outlined text-outline text-[20px]">video_settings</span>
+</div>
+<h3 class="font-headline-lg-mobile text-headline-lg-mobile text-cream-text font-bold">تحديد صيغة الإخراج MP4</h3>
+<p class="font-body-md text-label-sm text-on-surface-variant leading-relaxed">
+          تأكد من اختيار حفظ بصيغة الفيديو MP4 مع تفعيل خيار Passthrough ليتم تطبيق الدمج الفوري دون إعادة رندرة الفيديو.
+        </p>
+</div>
+<!-- Step 4 -->
+<div class="bg-coal-bg p-stack-md rounded-xl border border-border-muted flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="font-mono-code text-[12px] text-clay-accent font-bold">STEP // 04</span>
+<span class="material-symbols-outlined text-tertiary text-[20px]">download_done</span>
+</div>
+<h3 class="font-headline-lg-mobile text-headline-lg-mobile text-cream-text font-bold">استلام الملف الجديد</h3>
+<p class="font-body-md text-label-sm text-on-surface-variant leading-relaxed">
+          يُنشئ البرنامج ملفاً جديداً مضافاً لاسمه <span class="font-mono-code text-tertiary">_Cleaned</span> بجوار الملف الأصلي مباشرة مع الحفاظ التام على أصلك من الحذف.
+        </p>
+</div>
+</div>
+</section>
+<!-- Section: Honest Technical Limitations -->
+<section class="w-full bg-coal-bg rounded-xl p-stack-lg mb-stack-lg border border-border-muted">
+<div class="flex items-center gap-stack-sm mb-stack-md pb-stack-sm border-b border-border-muted">
+<span class="material-symbols-outlined text-warn-yellow text-[22px]">gavel</span>
+<h2 class="font-headline-lg text-headline-lg text-cream-text font-bold">حدود تقنية صريحة وأمانة فنية</h2>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-stack-lg font-body-md text-label-md">
+<div class="flex flex-col gap-2">
+<div class="flex items-center gap-2 text-warn-yellow font-bold">
+<span class="material-symbols-outlined text-[18px]">warning</span>
+<span>1. الفيديوهات الصامتة كلياً أو ذات الموسيقى البحتة</span>
+</div>
+<p class="text-on-surface-variant leading-relaxed">
+          إذا كان الفيديو يحتوي على موسيقى تصويرية فقط دون أي كلام بشري على الإطلاق، فإن الناتج سيكون ملف فيديو صامت بالكامل. تقنيات الذكاء الاصطناعي لا تؤلف كلاماً من العدم، بل تستخلص الحوار الموجود بالفعل وتلغي ما سواه.
+        </p>
+</div>
+<div class="flex flex-col gap-2">
+<div class="flex items-center gap-2 text-cream-text font-bold">
+<span class="material-symbols-outlined text-clay-accent text-[18px]">layers</span>
+<span>2. الفيديوهات متعددة المسارات الصوتية (Multi-track Audio)</span>
+</div>
+<p class="text-on-surface-variant leading-relaxed">
+          في حال كان ملف MKV أو MP4 يحتوي على مسارات صوتية مدبلجة متعددة (مثل مسار عربي وآخر إنجليزي)، يتيح لك تطبيق HaramLite تحديد المسار المراد تصفيته، أو دمج المسار الافتراضي تلقائياً مع تنبيه المستخدم.
+        </p>
+</div>
+</div>
+</section>
+<!-- Section: Technical FAQ Accordion -->
+<section class="w-full mb-stack-lg flex flex-col gap-stack-md">
+<div class="border-r-2 border-clay-accent pr-stack-sm">
+<h2 class="font-headline-lg text-headline-lg text-cream-text font-bold">الأسئلة الشائعة حول معالجة الفيديو</h2>
+<p class="font-body-md text-label-md text-outline mt-1">إجابات دقيقة لخبراء المونتاج وصنّاع المحتوى</p>
+</div>
+<div class="space-y-stack-sm" id="faq-accordion">
+<!-- FAQ 1 -->
+<div class="bg-coal-bg rounded-lg border border-border-muted overflow-hidden">
+<button class="w-full p-stack-md flex items-center justify-between text-right text-cream-text font-bold hover:text-clay-accent transition-colors cursor-pointer" onclick="toggleFaq(this)" type="button">
+<span class="font-body-lg text-label-md">لماذا تكون المعالجة أسرع بكثير من تصدير الفيديو في برامج مثل Premiere أو Final Cut؟</span>
+<span class="material-symbols-outlined text-outline transition-transform duration-200">expand_more</span>
+</button>
+<div class="hidden px-stack-md pb-stack-md text-on-surface-variant font-body-md text-label-md leading-relaxed border-t border-border-muted/40 pt-stack-sm">
+          برامج المونتاج تعيد فك تشفير وتشفير كل إطار (Frame Rendering)، بينما يعتمد HaramLite أسلوب Demuxing ثم نسخ مباشر للبث (Stream Copy). العملية تقتصر على معالجة الصوت فقط، بينما يتم نسخ الفيديو كبيانات خام دون استهلاك كرت الشاشة، مما يختصر 95% من الوقت.
+        </div>
+</div>
+<!-- FAQ 2 -->
+<div class="bg-coal-bg rounded-lg border border-border-muted overflow-hidden">
+<button class="w-full p-stack-md flex items-center justify-between text-right text-cream-text font-bold hover:text-clay-accent transition-colors cursor-pointer" onclick="toggleFaq(this)" type="button">
+<span class="font-body-lg text-label-md">هل يحدث أي تأخير أو عدم تزامن بين حركة الشفاه والصوت بعد الإزالة؟</span>
+<span class="material-symbols-outlined text-outline transition-transform duration-200">expand_more</span>
+</button>
+<div class="hidden px-stack-md pb-stack-md text-on-surface-variant font-body-md text-label-md leading-relaxed border-t border-border-muted/40 pt-stack-sm">
+          أبداً. يحافظ النظام على الطوابع الزمنية الدقيقة (Presentation Time Stamps - PTS) لكل مقطع صوتي وإطار بصري. يتم تعويض أي فجوة زمنية (Silence-Gap Matching) لضمان تطابق نطق الشفاه بنسبة 100% وبدقة 0.00ms.
+        </div>
+</div>
+<!-- FAQ 3 -->
+<div class="bg-coal-bg rounded-lg border border-border-muted overflow-hidden">
+<button class="w-full p-stack-md flex items-center justify-between text-right text-cream-text font-bold hover:text-clay-accent transition-colors cursor-pointer" onclick="toggleFaq(this)" type="button">
+<span class="font-body-lg text-label-md">هل يتم رفع الفيديو إلى أي خوادم أو سحابة عبر الإنترنت؟</span>
+<span class="material-symbols-outlined text-outline transition-transform duration-200">expand_more</span>
+</button>
+<div class="hidden px-stack-md pb-stack-md text-on-surface-variant font-body-md text-label-md leading-relaxed border-t border-border-muted/40 pt-stack-sm">
+          لا نهائياً. تطبيق HaramLite يعمل بمحرك محلي بالكامل على جهازك (On-Device Local AI). لا يتم إرسال بايت واحد عبر الإنترنت، مما يمنح خصوصية تامة لفيديوهاتك العائلية والخاصة والأفلام دون اتصال شبكة.
+        </div>
+</div>
+<!-- FAQ 4 -->
+<div class="bg-coal-bg rounded-lg border border-border-muted overflow-hidden">
+<button class="w-full p-stack-md flex items-center justify-between text-right text-cream-text font-bold hover:text-clay-accent transition-colors cursor-pointer" onclick="toggleFaq(this)" type="button">
+<span class="font-body-lg text-label-md">ما هي صيغ الفيديو المدعومة كمدخلات ومخرجات؟</span>
+<span class="material-symbols-outlined text-outline transition-transform duration-200">expand_more</span>
+</button>
+<div class="hidden px-stack-md pb-stack-md text-on-surface-variant font-body-md text-label-md leading-relaxed border-t border-border-muted/40 pt-stack-sm">
+          يدعم البرنامج قراءة MP4, MKV, MOV, AVI, WebM, FLV, WMV. ومخرجات الفيديو تكون MP4 أو MKV عالية التوافق مع كافة مشغلات الهواتف والتلفاز ومواقع التواصل.
+        </div>
+</div>
+</div>
+</section>
+<!-- CTA Box: Direct Action -->
+<section class="w-full bg-surface-container rounded-xl p-stack-lg border border-border-muted flex flex-col md:flex-row items-center justify-between gap-stack-md shadow-xl mb-stack-lg">
+<div class="flex flex-col gap-1 text-right">
+<div class="inline-flex items-center gap-2 text-clay-accent font-mono-code text-[12px] font-bold">
+<span class="w-2 h-2 rounded-full bg-clay-accent"></span>
+<span>جاهز للتجربة على جهازك الآن؟</span>
+</div>
+<h3 class="font-headline-lg text-headline-lg text-cream-text font-bold">حمّل HaramLite وابدأ معالجة فيديوهاتك محلياً</h3>
+<p class="font-body-md text-label-sm text-on-surface-variant">مجاني، مفتوح المصدر، يدعم ويندوز وماك ولينكس مع تسريع كروت الشاشة Nvidia CUDA و Apple Metal.</p>
+</div>
+<div class="flex flex-wrap items-center gap-stack-sm shrink-0">
+<a class="inline-flex items-center gap-stack-sm bg-clay-accent text-coal-surface hover:bg-primary px-stack-md py-stack-sm rounded font-label-md font-bold transition-colors" data-path="download" href="#">
+<span class="material-symbols-outlined text-[20px]">download</span>
+<span>تحميل التطبيق مجاناً</span>
+</a>
+<a class="inline-flex items-center gap-stack-sm bg-transparent border border-cream-text/40 text-cream-text hover:border-cream-text px-stack-md py-stack-sm rounded font-label-md font-bold transition-colors" data-path="guides" href="#">
+<span class="material-symbols-outlined text-[20px]">menu_book</span>
+<span>تصفح باقي الأدلة</span>
+</a>
+</div>
+</section>
+<!-- Internal Semantic Cross-Linking -->
+<nav class="w-full pt-stack-md border-t border-border-muted flex flex-wrap items-center justify-between gap-stack-sm text-label-sm font-label-sm text-outline">
+<span class="text-secondary font-bold">أدلة ذات صلة:</span>
+<div class="flex flex-wrap items-center gap-stack-md">
+<a class="hover:text-cream-text transition-colors flex items-center gap-1" data-path="guides/lossless-audio" href="#">
+<span class="material-symbols-outlined text-[16px]">arrow_back</span>
+<span>دليل الحفاظ على جودة الصوت الأصلية (Lossless Audio)</span>
+</a>
+<a class="hover:text-cream-text transition-colors flex items-center gap-1" data-path="guides/vocal-isolation-accuracy" href="#">
+<span class="material-symbols-outlined text-[16px]">arrow_back</span>
+<span>مقارنة دقة نماذج MDX-Net و Demucs</span>
+</a>
+<a class="hover:text-cream-text transition-colors flex items-center gap-1" data-path="browser-extension" href="#">
+<span class="material-symbols-outlined text-[16px]">arrow_back</span>
+<span>إضافة تصفية مقاطع اليوتيوب اللحظية</span>
+</a>
+</div>
+</nav>
+</div>
+<script>
+  function toggleFaq(btn) {
+    const content = btn.nextElementSibling;
+    const icon = btn.querySelector('.material-symbols-outlined');
+    const isHidden = content.classList.contains('hidden');
+    
+    // Close all FAQs in this group
+    document.querySelectorAll('#faq-accordion > div').forEach(item => {
+      const c = item.querySelector('div:last-child');
+      const i = item.querySelector('.material-symbols-outlined');
+      if (c && !c.classList.contains('hidden')) {
+        c.classList.add('hidden');
+        if (i) i.classList.remove('rotate-180');
       }
-    },
-    {
-      "@type": "Question",
-      "name": "هل تتأثر جودة الصورة؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "لا في وضع «مقطع عادي»؛ يُعاد ترميز المسار الصوتي وحده، أما مسار الفيديو فيُنسخ كما هو."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "هل يبقى التزامن صحيحاً؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "نعم، الصوت يبقى متزامناً مع الصورة لأن المعالجة تحافظ على المدة والمواضع الزمنية."
-      }
+    });
+
+    if (isHidden) {
+      content.classList.remove('hidden');
+      if (icon) icon.classList.add('rotate-180');
     }
-  ]
-}
-  </script>
-</head>
-<body class="min-h-screen flex flex-col bg-coal-surface text-cream-text">
-
-  <header class="sticky top-0 z-50 bg-coal-surface/90 backdrop-blur-md border-b border-coal-border">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-      <a href="../" class="flex items-center gap-3 group">
-        <img src="../assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded-lg shadow-sm border border-coal-border group-hover:border-clay/50 transition-colors">
-        <span class="flex flex-col">
-          <span class="font-serif font-bold text-lg tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span>
-          <span class="text-[10px] text-cream-muted leading-tight -mt-0.5">معالجة محلية 100%</span>
-        </span>
-      </a>
-      <div class="flex items-center gap-3 sm:gap-4">
-        <a href="#faq" class="text-xs sm:text-sm text-cream-muted hover:text-cream-text transition-colors">الأسئلة الشائعة</a>
-        <a href="../#download" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-clay text-coal-surface font-semibold text-xs sm:text-sm hover:bg-clay-hover shadow-sm transition-all">
-          <span class="material-symbols-outlined text-xs">download</span><span>تحميل فوري</span>
+  }
+</script></div>
+    <nav class="related-guides mt-12 pt-6 border-t border-coal-border">
+      <h4 class="font-bold text-xs uppercase tracking-wider text-cream-muted mb-3">أدلة ذات صلة</h4>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <a href="remove-music-from-video.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">إزالة الموسيقى من الفيديو</span>
+        </a>
+        <a href="watch-youtube-without-music.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">مشاهدة يوتيوب بدون موسيقى</span>
+        </a>
+        <a href="ai-vocal-separation.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">كيف يفصل الذكاء الاصطناعي الصوت؟</span>
+        </a>
+        <a href="remove-music-from-podcast.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">إزالة الموسيقى من البودكاست</span>
         </a>
       </div>
-    </div>
-  </header>
-
-  <main class="flex-grow max-w-3xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12">
-
-    <nav class="flex items-center gap-2 text-xs text-cream-muted mb-4">
-      <a href="../" class="hover:text-clay transition-colors">الرئيسية</a>
-      <span class="material-symbols-outlined text-[10px] opacity-60">chevron_left</span>
-      <a href="./" class="hover:text-clay transition-colors">الأدلة</a>
-      <span class="material-symbols-outlined text-[10px] opacity-60">chevron_left</span>
-      <span class="text-cream-text font-medium truncate">إزالة الصوت مع إبقاء الصورة</span>
     </nav>
+  </main><footer class="w-full bg-surface-container-low border-t border-border-muted py-stack-lg"><div class="max-w-7xl mx-auto px-gutter lg:px-margin-desktop flex flex-col md:flex-row items-center justify-between gap-stack-md text-center md:text-right"><div class="font-label-sm text-label-sm text-outline">© 2026 HaramLite · معالجة صوتية محلية 100% دون سحابة</div><div class="flex flex-wrap items-center justify-center gap-stack-md font-label-sm text-label-sm text-on-surface-variant"><a class="hover:text-cream-text transition-colors" data-path="privacy-policy" href="#">سياسة الخصوصية</a><a class="hover:text-cream-text transition-colors" data-path="open-source-github" href="#">المستودع المفتوح GitHub</a><a class="hover:text-cream-text transition-colors" data-path="chrome-web-store" href="#">متجر كروم</a><a class="hover:text-cream-text transition-colors" data-path="report-issue" href="#">الإبلاغ عن مشكلة</a></div></div></footer></body></html>
 
-    <section class="mb-8">
-      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-clay/10 border border-clay/25 text-clay text-xs font-semibold mb-3">
-        <span class="material-symbols-outlined text-xs">bolt</span><span>دليل مبسط وسريع</span>
-      </div>
-      <h1 class="font-serif text-2xl sm:text-4xl font-bold text-cream-text leading-tight mb-4">إزالة الصوت من الفيديو مع إبقاء الصورة</h1>
-      <p class="text-base sm:text-lg text-cream-muted leading-relaxed">سؤال شائع، وفيه التباس: هل تريد <strong class="text-clay font-bold">صوتاً جديداً</strong> (بلا موسيقى لكن مع الكلام) أم <strong class="text-clay font-bold">بلا صوت إطلاقاً</strong>؟ الحلّان مختلفان تماماً.</p>
-    </section>
-
-    <div id="quick-download" class="my-6 p-5 sm:p-6 rounded-2xl bg-coal-card border-glow-clay relative overflow-hidden">
-      <div class="flex flex-col sm:flex-row items-center justify-between gap-5 relative z-10">
-        <div class="text-center sm:text-right space-y-1">
-          <div class="flex items-center justify-center sm:justify-start gap-2">
-            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span class="text-xs font-medium text-cream-muted">مجاني ومفتوح المصدر · الإصدار 0.2.2</span>
-          </div>
-          <h2 class="font-serif font-bold text-lg sm:text-xl text-cream-text">برنامج HaramLite لنظام ويندوز 10 / 11</h2>
-          <p class="text-xs sm:text-sm text-cream-muted">حجم خفيف (~220MB متكامل) · معالجة 100% محلية · بلا اشتراك ولا حساب</p>
-        </div>
-        <a href="../#download" class="shrink-0 inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all shadow-lg">
-          <span class="material-symbols-outlined ">download</span><span>حمّل المثبّت (.exe)</span>
-        </a>
-      </div>
-    </div>
-
-    <section class="mt-10 mb-12">
-      <div class="flex items-center justify-between mb-5 border-b border-coal-border pb-3">
-        <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text flex items-center gap-2.5"><span class="material-symbols-outlined text-clay text-lg">checklist</span> حدّد ما تريده أولاً</h2>
-        <span class="text-xs text-cream-muted">ثلاث حالات مختلفة</span>
-      </div>
-      <div class="grid grid-cols-1 gap-3.5">
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">1</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">تريد إزالة الموسيقى فقط وإبقاء الكلام</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">هذه هي وظيفة HaramLite: يفصل المسار الصوتي إلى غناء وموسيقى، يحذف الموسيقى، ويعيد دمج الكلام مع الصورة كما هي — بالصورة نفسها والجودة نفسها.</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">2</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">تريد إسكات الفيديو كاملاً</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">هذا لا يحتاج ذكاءً اصطناعياً: أي محرّر فيديو يفعلها في ثانية (كتم المسار الصوتي). HaramLite لم يُبنَ لهذا.</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">3</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">تريد استبدال الصوت بصوت آخر</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">استخرج الكلام أولاً (MP3 بلا موسيقى)، ثم استبدل المسار الصوتي في محرّر الفيديو. الصورة لا تُمسّ في كل الحالات.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="my-10 p-5 sm:p-6 rounded-2xl bg-coal-card border border-coal-border">
-      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-4 flex items-center gap-2"><span class="material-symbols-outlined text-clay">tune</span> هل تُفقد الجودة؟</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🎞️</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">الصورة</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> لا تُعاد معالجتها بصرياً ولا يُعاد ضغطها في وضع «مقطع عادي»؛ يُستبدل المسار الصوتي فقط.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🔊</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">الصوت</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> يُعاد ترميز المسار الصوتي بعد الفصل (AAC في MP4 أو MP3)، وهو ترميز بجودة عالية لا يُلاحظ.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">⏱️</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">المدة والتزامن</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> تبقى المدة كما هي ويبقى الصوت متزامناً مع الصورة إطاراً بإطار — والفرق أن الموسيقى اختفت.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">📦</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">الصيغة</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> MP4 للفيديو، أو MP3 لو أردت الصوت وحده. والاختيار من الواجهة قبل المعالجة.</p>
-        </div>
-      </div>
-    </section>
-    <section class="my-10">
-      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">verified_user</span> حدود صريحة وأمانة فنية</h2>
-      <p class="text-xs sm:text-sm text-cream-muted mb-4">لا توجد أداة في العالم تعطي فصلاً مثالياً 100%؛ والفرق الحقيقي هو جودة العزل دون تشويه نبرة الصوت:</p>
-      <ul class="space-y-2.5 text-xs sm:text-sm text-cream-muted bg-coal-card p-4 sm:p-5 rounded-xl border border-coal-border">
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">الفيديو بلا مسار صوتي:</strong> إن كان الملف صامتاً أصلاً فلا شيء يُفصل.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">ملفات غير مدعومة:</strong> كل ما يفكّه FFmpeg تقريباً مدعوم؛ وإن رُفض ملف فغالباً سببه ترميز نادر أو ملف تالف.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">مساران صوتيان (لغتان):</strong> يُعالج المسار الرئيسي؛ فإن أردت لغة أخرى فحدّدها في المصدر أولاً.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-emerald-400 mt-1 text-xs shrink-0">check_circle</span>
-          <span><strong class="text-cream-text">ملفك الأصلي لا يُمس:</strong> الناتج ملف جديد بجانبه، فيبقى الأصل كما هو للمقارنة أو للرجوع.</span>
-        </li>
-      </ul>
-    </section>
-
-    <section id="faq" class="my-12">
-      <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text mb-6 border-b border-coal-border pb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">help</span> الأسئلة الشائعة</h2>
-      <div class="space-y-3.5">
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل يمكن إزالة الصوت وإبقاء الصورة فقط؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">نعم لكن بلا حاجة لهذه الأداة: أي محرّر فيديو يكتم المسار في ثانية. HaramLite مخصص لحالة أصعب: إزالة الموسيقى مع إبقاء الكلام.</div>
-        </details>
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل تتأثر جودة الصورة؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">لا في وضع «مقطع عادي»؛ يُعاد ترميز المسار الصوتي وحده، أما مسار الفيديو فيُنسخ كما هو.</div>
-        </details>
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل يبقى التزامن صحيحاً؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">نعم، الصوت يبقى متزامناً مع الصورة لأن المعالجة تحافظ على المدة والمواضع الزمنية.</div>
-        </details>
-      </div>
-    </section>
-
-    <div class="p-6 rounded-2xl bg-coal-card border border-coal-border text-center space-y-4 my-8">
-      <h3 class="font-serif font-bold text-xl text-cream-text">أزل الموسيقى وأبقِ الصورة</h3>
-      <p class="text-xs sm:text-sm text-cream-muted max-w-md mx-auto">حمّل التطبيق وأفلت ملفك، والناتج بجانب الأصل.</p>
-      <div class="flex flex-wrap items-center justify-center gap-3 pt-1">
-        <a href="../#download" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all shadow-md"><span class="material-symbols-outlined ">download</span><span>تحميل HaramLite لويندوز</span></a>
-        <a href="../bridge.html" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-coal-surface border border-coal-border text-cream-muted hover:text-cream-text hover:border-clay/40 text-sm transition-colors"><span class="material-symbols-outlined ">extension</span><span>إضافة المتصفح</span></a>
-      </div>
-    </div>
-
-    <nav class="mt-12 pt-6 border-t border-coal-border">
-      <h4 class="font-bold text-xs uppercase tracking-wider text-cream-dim mb-3">أدلة ذات صلة</h4>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-      <a href="remove-music-from-video.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">إزالة الموسيقى من الفيديو <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">الخطوات والوضع المناسب وحدود الفصل</p>
-      </a>
-      <a href="watch-youtube-without-music.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">مشاهدة يوتيوب بدون موسيقى <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">تخطي الصمت المباشر في المتصفح</p>
-      </a>
-      <a href="ai-vocal-separation.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">كيف يفصل الذكاء الاصطناعي الصوت؟ <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">شرح تقني مبسّط لموديل الفصل</p>
-      </a>
-      </div>
-    </nav>
-
-    <p class="mt-8 text-xs text-cream-dim leading-relaxed">كل المعالجة تحدث على جهازك: لا يُرفع أي ملف، ولا حساب ولا تتبّع. راجع <a href="../PRIVACY.html" class="text-clay hover:underline">سياسة الخصوصية</a>.</p>
-  </main>
-
-  <footer class="border-t border-coal-border py-6 bg-coal-surface mt-auto">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-cream-muted">
-      <span>© 2026 HaramLite · إزالة الموسيقى محلياً على جهازك، بلا رفع ولا حساب.</span>
-      <div class="flex items-center gap-4">
-        <a href="../PRIVACY.html" class="hover:text-clay transition-colors">الخصوصية</a>
-        <a href="https://github.com/SMSMy/HaramLite" target="_blank" rel="noreferrer" class="hover:text-clay transition-colors">المستودع</a>
-      </div>
-    </div>
-  </footer>
-</body>
-</html>

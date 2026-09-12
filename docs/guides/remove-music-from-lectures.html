@@ -1,261 +1,497 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>إزالة موسيقى الخلفية من المحاضرات والدروس | HaramLite</title>
-  <meta name="description" content="لمعلّم أو طالب: كيف تزيل الموسيقى الخلفية من درس مسجّل وتحافظ على وضوح الشرح، وبأي وضع.">
-  <link rel="canonical" href="https://haramlite.com/guides/remove-music-from-lectures.html">
-  <meta name="theme-color" content="#151311">
-  <meta property="og:type" content="article">
-  <meta property="og:title" content="إزالة موسيقى الخلفية من المحاضرات والدروس | HaramLite">
-  <meta property="og:description" content="لمعلّم أو طالب: كيف تزيل الموسيقى الخلفية من درس مسجّل وتحافظ على وضوح الشرح، وبأي وضع.">
-  <meta property="og:url" content="https://haramlite.com/guides/remove-music-from-lectures.html">
-  <meta property="og:image" content="https://haramlite.com/assets/og.png">
-  <meta name="twitter:card" content="summary_large_image">
-  <link rel="icon" href="../assets/favicon.ico" sizes="any">
-  <link rel="icon" type="image/png" sizes="32x32" href="../assets/icon-32.png">
-  <link rel="apple-touch-icon" href="../assets/icon-180.png">
-  <link rel="stylesheet" href="../assets/site.css"/>
+
+<html class="dark" dir="rtl" lang="ar"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+
+<style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style>  <link rel="stylesheet" href="../assets/site.css"/>
   <link rel="preload" href="../assets/thmanyah-serif-bold.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="../assets/thmanyah-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
-  <script type="application/ld+json">
-  {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "هل يبقى صوت المتحدث واضحاً؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "نعم، ووضع «مقطع عادي» مصمّم لهذا تحديداً: إزالة الموسيقى الخلفية مع الحفاظ على نبرة الكلام بلا تشويه."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "هل يمكن معالجة سلسلة دروس كاملة؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "نعم، عبر مجلد المراقبة (أي ملف تنسخه إليه يُعالج تلقائياً) أو بإفلات عدة ملفات دفعة واحدة."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "هل الصوت أم الصورة أفضل للطلاب؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "إن كان الشرح صوتياً فMP3 أخف وأسرع للتحميل؛ وإن كان فيه عرض مرئي فMP4 يحفظ الصورة كما هي."
-      }
-    }
-  ]
-}
-  </script>
-</head>
-<body class="min-h-screen flex flex-col bg-coal-surface text-cream-text">
-
-  <header class="sticky top-0 z-50 bg-coal-surface/90 backdrop-blur-md border-b border-coal-border">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-      <a href="../" class="flex items-center gap-3 group">
-        <img src="../assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded-lg shadow-sm border border-coal-border group-hover:border-clay/50 transition-colors">
-        <span class="flex flex-col">
-          <span class="font-serif font-bold text-lg tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span>
-          <span class="text-[10px] text-cream-muted leading-tight -mt-0.5">معالجة محلية 100%</span>
+  <link rel="canonical" href="https://haramlite.com/guides/remove-music-from-lectures.html">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://haramlite.com/assets/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+</head><body class="bg-surface font-body-md text-body-md text-on-surface antialiased selection:bg-primary-container selection:text-on-primary-container"><header class="fixed top-0 w-full z-50 bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.25)]"><div class="h-20 max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter"><div class="flex items-center gap-stack-md"><img alt="HaramLite brand app icon: acoustic fork / two-track audio branches converging into one pure stem, with the left music track cleanly severed by an angled cut-line and dimmed, while the right speech/vocal track remains solid and flows through to the pure audio base, rendered in Clay and Coal palette." class="h-8 w-auto object-contain" src="../assets/icon-32.png"/><div class="flex flex-col"><span class="font-headline-lg text-headline-lg font-bold text-cream-text tracking-tight">HaramLite</span><span class="font-label-sm text-label-sm text-on-surface-variant">معالجة صوتية محلية 100%</span></div></div><nav class="hidden lg:flex items-center gap-stack-md" data-active-classes="bg-primary-container text-on-primary-container font-label-md text-label-md rounded-lg"><a class="px-stack-sm py-unit font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" data-path="home" href="#">الرئيسية</a><a aria-current="page" class="px-stack-sm py-unit transition-colors bg-primary-container text-on-primary-container font-label-md text-label-md rounded-lg" data-path="guides" href="#">الأدلة والشروحات</a><a class="px-stack-sm py-unit font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" data-path="browser-extension" href="#">إضافة المتصفح</a><a class="px-stack-sm py-unit font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" data-path="faq" href="#">الأسئلة الشائعة</a><a class="px-stack-sm py-unit font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" data-path="repository" href="#">المستودع</a></nav><div class="flex items-center gap-stack-md"><a class="inline-flex items-center gap-stack-sm bg-primary-container text-on-primary-container px-stack-md py-stack-sm rounded-lg hover:bg-clay-accent transition-colors" href="#"><span class="material-symbols-outlined text-[18px]">download</span><span class="font-label-md text-label-md font-semibold">تحميل HaramLite مجاناً</span><span class="font-mono-code text-mono-code bg-surface-container-lowest text-cream-text px-unit py-[2px] rounded">v0.2.2</span></a><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-20 bg-surface min-h-[calc(100vh-80px)] max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop"><div class="flex flex-col w-full">
+<!-- Subtle Ambient Glow -->
+<div class="relative w-full overflow-hidden">
+<div class="absolute top-0 right-1/4 w-96 h-96 bg-clay-accent/5 rounded-full blur-3xl pointer-events-none -z-10"></div>
+<div class="absolute top-48 left-10 w-80 h-80 bg-tertiary/5 rounded-full blur-3xl pointer-events-none -z-10"></div>
+<!-- Editorial Header Section -->
+<section class="py-stack-lg flex flex-col gap-stack-md">
+<div class="flex flex-wrap items-center gap-stack-sm text-on-surface-variant font-mono-code text-mono-code">
+<span class="px-stack-sm py-unit bg-surface-container-high rounded text-clay-accent flex items-center gap-unit">
+<span class="material-symbols-outlined text-[14px]">school</span>
+          DOCUMENT_21
         </span>
-      </a>
-      <div class="flex items-center gap-3 sm:gap-4">
-        <a href="#faq" class="text-xs sm:text-sm text-cream-muted hover:text-cream-text transition-colors">الأسئلة الشائعة</a>
-        <a href="../#download" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-clay text-coal-surface font-semibold text-xs sm:text-sm hover:bg-clay-hover shadow-sm transition-all">
-          <span class="material-symbols-outlined text-xs">download</span><span>تحميل فوري</span>
+<span>/</span>
+<span>الأدلة التقنية التطبيقية</span>
+<span>/</span>
+<span class="text-cream-text">الأوساط الأكاديمية والدروس</span>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-stack-lg items-end">
+<div class="lg:col-span-8 flex flex-col gap-stack-sm">
+<h1 class="font-headline-xl text-headline-xl text-cream-text leading-tight">
+            إزالة موسيقى الخلفية من المحاضرات والدروس العلمية
+          </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-3xl">
+            دليل عملي تفصيلي للأساتذة والمعلمين وطلاب العلم لتطهير التسجيلات الأكاديمية والندوات الصوتية والمرئية محلياً 100%، دون التضحية بنبرة المحاضر، رنين القاعة الواقعي، أو تزامن حركة الشفاه وسلايدات العرض.
+          </p>
+</div>
+<div class="lg:col-span-4 flex flex-col gap-stack-sm bg-surface-container-low p-stack-md rounded-xl shadow-sm">
+<div class="flex items-center justify-between text-on-surface-variant font-label-sm text-label-sm">
+<span>معدل حفظ النقاء الصوتي</span>
+<span class="font-mono-code text-mono-code text-clay-accent font-bold">100% Zero-Muffle</span>
+</div>
+<div class="w-full bg-surface-container-highest h-2 rounded-full overflow-hidden">
+<div class="bg-clay-accent h-full w-[99%]"></div>
+</div>
+<div class="flex items-center gap-stack-sm text-secondary font-label-sm text-label-sm pt-unit">
+<span class="material-symbols-outlined text-tertiary text-[18px]">lock</span>
+<span>معالجة محلية بالكامل على جهازك دون إرسال إلى السحابة</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Visual Hero Image: Academic Lecture Setting -->
+<section class="w-full relative rounded-xl overflow-hidden shadow-xl my-stack-md bg-surface-container">
+<div class="relative h-72 md:h-96 w-full">
+
+<div class="absolute inset-0 bg-gradient-to-t from-surface via-surface/40 to-transparent"></div>
+<div class="absolute bottom-6 right-6 left-6 flex flex-col md:flex-row md:items-end justify-between gap-stack-md">
+<div class="flex flex-col gap-unit max-w-2xl">
+<span class="font-label-sm text-label-sm text-clay-accent tracking-wider font-mono-code">ACOUSTIC INTEGRITY SHIELD</span>
+<h2 class="font-headline-lg text-headline-lg text-cream-text">درع الرنين الصوتي لمسار المحاضرة العلمية</h2>
+<p class="font-body-md text-body-md text-on-surface">استئصال تام لنغمات المونتاج الإلزامية والفواصل الصوتية دون التأثير على طبيعة الحضور الأكاديمي الحي.</p>
+</div>
+<div class="flex items-center gap-stack-sm">
+<span class="px-stack-md py-stack-sm bg-surface/85 backdrop-blur-md rounded-lg font-mono-code text-mono-code text-cream-text flex items-center gap-unit shadow-sm">
+<span class="material-symbols-outlined text-warn-yellow text-[16px]">graphic_eq</span>
+              Latency: 0ms Desync
+            </span>
+</div>
+</div>
+</div>
+</section>
+<!-- Key Feature: Interactive Lecture Acoustic Clarity Matrix -->
+<section class="py-stack-lg flex flex-col gap-stack-md">
+<div class="flex flex-col gap-unit">
+<div class="flex items-center gap-stack-sm">
+<span class="w-2.5 h-2.5 rounded-full bg-clay-accent"></span>
+<span class="font-label-sm text-label-sm font-mono-code text-clay-accent tracking-widest uppercase">CORE ARCHITECTURE</span>
+</div>
+<h2 class="font-headline-lg text-headline-lg text-cream-text">مخطط الأمان الأكاديمي ومصفوفة النقاء (Hall Resonance Shield)</h2>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-3xl">
+          التسجيلات التعليمية تختلف جوهرياً عن الأغاني؛ فالصوت يحتوي على ترددات بيئية مرافقة (طرقات القلم على السبورة، حركة الطلاب، ارتداد صوت القاعة). انقر على المسارات أدناه لمحاكاة استجابة المحرك:
+        </p>
+</div>
+<!-- Interactive Clarity Matrix Console -->
+<div class="bg-surface-container rounded-xl p-stack-md lg:p-stack-lg shadow-xl flex flex-col gap-stack-lg" id="acousticMatrixConsole">
+<!-- Interactive Controls -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-stack-sm bg-surface-container-lowest p-stack-sm rounded-lg">
+<button class="matrix-tab-btn flex items-center justify-center gap-stack-sm py-stack-sm px-stack-md rounded bg-primary-container text-on-primary-container font-label-md text-label-md transition-all" id="btnModeIntro" onclick="switchSpectrumMode('intro')" type="button">
+<span class="material-symbols-outlined text-[18px]">music_off</span>
+            موسيقى البداية والنهاية (Intro/Outro)
+          </button>
+<button class="matrix-tab-btn flex items-center justify-center gap-stack-sm py-stack-sm px-stack-md rounded bg-surface-container text-on-surface-variant hover:text-cream-text font-label-md text-label-md transition-all" id="btnModeUnder" onclick="switchSpectrumMode('under')" type="button">
+<span class="material-symbols-outlined text-[18px]">graphic_eq</span>
+            موسيقى الخلفية تحت الشرح
+          </button>
+<button class="matrix-tab-btn flex items-center justify-center gap-stack-sm py-stack-sm px-stack-md rounded bg-surface-container text-on-surface-variant hover:text-cream-text font-label-md text-label-md transition-all" id="btnModeHall" onclick="switchSpectrumMode('hall')" type="button">
+<span class="material-symbols-outlined text-[18px]">hearing</span>
+            رنين القاعة وصوت السبورة (Preserved)
+          </button>
+</div>
+<!-- Waveform Dynamic Visualization -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-stack-lg items-center">
+<div class="lg:col-span-8 flex flex-col gap-stack-sm bg-surface-container-lowest p-stack-md rounded-xl">
+<div class="flex items-center justify-between font-mono-code text-label-sm text-secondary">
+<span class="text-clay-accent flex items-center gap-unit" id="spectrumLabel">
+<span class="material-symbols-outlined text-[16px]">waves</span>
+                حالة التحليل: عزل نغمات الصخب الافتتاحية
+              </span>
+<span class="text-tertiary">Realtime Neural Spectrum v0.2.2</span>
+</div>
+<!-- SVG Waveform Display -->
+<div class="h-44 w-full flex items-center justify-center relative overflow-hidden rounded bg-surface-container-high/40 p-2">
+<svg class="w-full h-full text-clay-accent transition-all duration-500" fill="none" id="spectrumSvg" preserveaspectratio="none" viewbox="0 0 700 140">
+<!-- Grid background lines -->
+<line stroke="currentColor" stroke-dasharray="4 4" stroke-opacity="0.08" x1="0" x2="700" y1="35" y2="35"></line>
+<line stroke="currentColor" stroke-opacity="0.15" x1="0" x2="700" y1="70" y2="70"></line>
+<line stroke="currentColor" stroke-dasharray="4 4" stroke-opacity="0.08" x1="0" x2="700" y1="105" y2="105"></line>
+<!-- Suppressed Wave (Music) -->
+<path d="M0,70 Q30,10 60,70 T120,70 T180,20 T240,70 T300,15 T360,70 T420,120 T480,70 T540,30 T600,70 T660,110 T700,70" fill="none" id="pathSuppressed" stroke="#da7756" stroke-opacity="0.25" stroke-width="2"></path>
+<!-- Retained Pure Vocal Wave -->
+<path d="M0,70 Q40,60 70,70 T140,75 T210,50 T280,70 T350,85 T420,70 T490,55 T560,70 T630,80 T700,70" fill="none" id="pathPureVoice" stroke="#f5f2ed" stroke-linecap="round" stroke-width="3"></path>
+<!-- Acoustic Detail Markers (Chalk / Desk clicks) -->
+<g id="chalkPoints">
+<circle cx="180" cy="53" fill="#5ddac8" r="3.5"></circle>
+<circle cx="390" cy="74" fill="#5ddac8" r="3.5"></circle>
+<circle cx="580" cy="65" fill="#5ddac8" r="3.5"></circle>
+</g>
+</svg>
+<!-- Floating Status Indicator -->
+<div class="absolute bottom-2 left-3 flex items-center gap-stack-sm bg-surface/90 px-stack-sm py-unit rounded font-mono-code text-[11px] text-cream-text">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<span>Active Isolation Gate</span>
+</div>
+</div>
+<!-- Waveform Legend -->
+<div class="flex flex-wrap items-center justify-between text-label-sm text-on-surface-variant pt-unit font-label-sm">
+<div class="flex items-center gap-unit">
+<span class="w-3 h-1 bg-cream-text rounded-full"></span>
+<span>مسار الصوت الصافي (نبرة المحاضر الأساسية)</span>
+</div>
+<div class="flex items-center gap-unit">
+<span class="w-3 h-1 bg-clay-accent/40 rounded-full"></span>
+<span>الموسيقى المحذوفة بالكامل</span>
+</div>
+<div class="flex items-center gap-unit">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<span>ترددات الكتابة والحركة الأكاديمية المحفوظة</span>
+</div>
+</div>
+</div>
+<!-- Technical Verification Metrics -->
+<div class="lg:col-span-4 flex flex-col gap-stack-md">
+<div class="bg-surface-container-lowest p-stack-md rounded-xl flex flex-col gap-unit">
+<span class="font-label-sm text-label-sm text-secondary">حفظ الترددات الحوارية المنخفضة</span>
+<div class="flex items-baseline justify-between">
+<span class="font-headline-lg text-headline-lg text-cream-text">85Hz - 250Hz</span>
+<span class="font-mono-code text-mono-code text-tertiary font-bold">محمية 100%</span>
+</div>
+<p class="font-label-sm text-label-sm text-on-surface-variant">تجنب الصوت المعدني الباهت المعتاد في برامج الذكاء الاصطناعي الأخرى.</p>
+</div>
+<div class="bg-surface-container-lowest p-stack-md rounded-xl flex flex-col gap-unit">
+<span class="font-label-sm text-label-sm text-secondary">تزامن مسار الفيديو للشاشات والقاعات</span>
+<div class="flex items-baseline justify-between">
+<span class="font-headline-lg text-headline-lg text-cream-text">Lip-Sync Perfect</span>
+<span class="font-mono-code text-mono-code text-clay-accent font-bold">FFmpeg Native</span>
+</div>
+<p class="font-label-sm text-label-sm text-on-surface-variant">حركة سلايدات PowerPoint متطابقة أوتوماتيكياً مع إيقاع الحديث.</p>
+</div>
+<div class="bg-surface-container-lowest p-stack-md rounded-xl flex flex-col gap-unit">
+<span class="font-label-sm text-label-sm text-secondary">انبعاث الكتم الصناعي (Muffle Penalty)</span>
+<div class="flex items-baseline justify-between">
+<span class="font-headline-lg text-headline-lg text-cream-text">0.0 dB</span>
+<span class="font-mono-code text-mono-code text-warn-yellow font-bold">انعدام الشوائب</span>
+</div>
+<p class="font-label-sm text-label-sm text-on-surface-variant">تنقية حواف التردد بدون خنق الحروف الصامتة والهمس الأكاديمي.</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Detailed Comparison Cards -->
+<section class="py-stack-lg flex flex-col gap-stack-lg">
+<div class="flex flex-col gap-unit">
+<span class="font-label-sm text-label-sm font-mono-code text-clay-accent tracking-widest uppercase">DECISION MATRIX</span>
+<h2 class="font-headline-lg text-headline-lg text-cream-text">المعادلة التقنية للدروس والمحاضرات: كيف تضبط خياراتك؟</h2>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-3xl">
+          أهم الفروق التشغيلية التي تجعل HaramLite الأداة المثالية في يد أعضاء الهيئة التدريسية والطلبة:
+        </p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-stack-md">
+<!-- Card 1: Standard Mode vs Song Mode -->
+<div class="bg-surface-container-low p-stack-md rounded-xl flex flex-col gap-stack-md shadow-sm hover:bg-surface-container transition-colors">
+<div class="w-10 h-10 rounded-lg bg-primary-container/20 text-clay-accent flex items-center justify-center">
+<span class="material-symbols-outlined text-[24px]">tune</span>
+</div>
+<div class="flex flex-col gap-unit">
+<h3 class="font-headline-lg text-headline-lg-mobile text-cream-text">لماذا "وضع مقطع عادي" هو الخيار الذهبي؟</h3>
+<span class="font-label-sm text-label-sm font-mono-code text-clay-accent">Speech Optimized Model</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            وضع الأغنية (Song Mode) يعامل الصوت كأداء غنائي نغمي، مما يتسبب في قص النهايات الهادئة للجمل ومخارج الحروف. في المقابل، يدرك وضع "مقطع عادي" ديناميكية الإلقاء الصوتي، فترات السكوت، وتغير نبرات المدرس أثناء التفكير.
+          </p>
+<div class="mt-auto pt-stack-sm bg-surface-container-lowest/50 p-stack-sm rounded">
+<span class="font-label-sm text-label-sm text-cream-text font-bold block mb-1">النتيجة العملية:</span>
+<span class="font-body-md text-label-sm text-secondary">وضوح فائق لمخارج الحروف والأسئلة المفاجئة من قاعة الطلاب دون تقطيع.</span>
+</div>
+</div>
+<!-- Card 2: MP3 vs MP4 Strategy -->
+<div class="bg-surface-container-low p-stack-md rounded-xl flex flex-col gap-stack-md shadow-sm hover:bg-surface-container transition-colors">
+<div class="w-10 h-10 rounded-lg bg-tertiary-container/20 text-tertiary flex items-center justify-center">
+<span class="material-symbols-outlined text-[24px]">data_saver_on</span>
+</div>
+<div class="flex flex-col gap-unit">
+<h3 class="font-headline-lg text-headline-lg-mobile text-cream-text">مصفوفة توفير الوقت والإنترنت للطلاب</h3>
+<span class="font-label-sm text-label-sm font-mono-code text-tertiary">MP3 vs MP4 Bandwidth Rule</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            إذا كان الشرح صوتياً فقط، استخرج مسار MP3؛ سيوفر 90% من حجم الملف (من 600 ميغابايت إلى 25 ميغابايت) مع الحفاظ على التردد الصوتي. أما إذا تطلبت المحاضرة رؤية المسائل المكتوبة، فصدّر بصيغة MP4 مع الاحتفاظ التام بدقة الفيديو.
+          </p>
+<div class="mt-auto pt-stack-sm bg-surface-container-lowest/50 p-stack-sm rounded">
+<span class="font-label-sm text-label-sm text-cream-text font-bold block mb-1">قاعدة التوزيع:</span>
+<span class="font-body-md text-label-sm text-secondary">مجموعات تيليجرام وواتساب للطلبة ← صوت MP3 فوراً وبأقل استهلاك باقة.</span>
+</div>
+</div>
+<!-- Card 3: Watch Folder Automation -->
+<div class="bg-surface-container-low p-stack-md rounded-xl flex flex-col gap-stack-md shadow-sm hover:bg-surface-container transition-colors">
+<div class="w-10 h-10 rounded-lg bg-surface-container-highest text-warn-yellow flex items-center justify-center">
+<span class="material-symbols-outlined text-[24px]">folder_special</span>
+</div>
+<div class="flex flex-col gap-unit">
+<h3 class="font-headline-lg text-headline-lg-mobile text-cream-text">مجلد المراقبة لسلاسل الدروس الليلية</h3>
+<span class="font-label-sm text-label-sm font-mono-code text-warn-yellow">Batch Folder Automation</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            بدلاً من معالجة كل محاضرة على حدة، فعّل خيار مجلد المراقبة وضع دورة تدريبية كاملة (30 أو 50 محاضرة). سيقوم محرك HaramLite بمعالجتها تلقائياً في الخلفية أثناء نومك مع وضع الجهاز في وضع استهلاك الطاقة المنخفض.
+          </p>
+<div class="mt-auto pt-stack-sm bg-surface-container-lowest/50 p-stack-sm rounded">
+<span class="font-label-sm text-label-sm text-cream-text font-bold block mb-1">الإنتاجية الأكاديمية:</span>
+<span class="font-body-md text-label-sm text-secondary">استيقظ لتجد فهرساً كاملاً من المحاضرات النقية الجاهزة للنشر الأكاديمي.</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Visual Secondary Graphic: Classroom Workflow Overview -->
+<section class="py-stack-md">
+<div class="bg-surface-container-low rounded-xl p-stack-md lg:p-stack-lg flex flex-col lg:flex-row items-center justify-between gap-stack-lg shadow-sm">
+<div class="w-full lg:w-1/2 flex flex-col gap-stack-sm">
+<span class="font-label-sm text-label-sm text-clay-accent font-mono-code uppercase">ZERO BANDWIDTH OVERHEAD</span>
+<h3 class="font-headline-lg text-headline-lg text-cream-text">خصوصية أبحاثك ومحاضراتك داخل أسوار جهازك</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            سواء كانت تسجيلاً لدراسات طبية عليا، أو مجلساً علمياً خاصاً، لا ترفع بياناتك لسحابة خارجية تدرب نماذجها على أصوات علمائك وأساتذتك. الحوسبة على كرت الشاشة المحلي أو المعالج تمنحك استقلالية وأماناً مطلقاً.
+          </p>
+<div class="flex items-center gap-stack-md pt-unit">
+<div class="flex items-center gap-unit text-cream-text font-label-md text-label-md">
+<span class="material-symbols-outlined text-tertiary text-[18px]">check_circle</span>
+              بدون اتصال إنترنت
+            </div>
+<div class="flex items-center gap-unit text-cream-text font-label-md text-label-md">
+<span class="material-symbols-outlined text-tertiary text-[18px]">check_circle</span>
+              أمان ملفات الـ NDA
+            </div>
+</div>
+</div>
+<div class="w-full lg:w-1/2 rounded-lg overflow-hidden shadow-md">
+
+</div>
+</div>
+</section>
+<!-- 4 Practical Steps Section -->
+<section class="py-stack-lg flex flex-col gap-stack-md">
+<div class="flex flex-col gap-unit">
+<span class="font-label-sm text-label-sm font-mono-code text-clay-accent tracking-widest uppercase">STEP-BY-STEP WORKFLOW</span>
+<h2 class="font-headline-lg text-headline-lg text-cream-text">الخطوات الأربع العملية لتنقية المحاضرة</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">
+          تنفيذ سهل وبسيط ومريح، لا يتطلب أي خبرة في هندسة الصوت أو التعديل المعقد:
+        </p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-stack-md">
+<!-- Step 1 -->
+<div class="bg-surface-container p-stack-md rounded-xl flex flex-col gap-stack-sm relative shadow-sm hover:translate-y-[-2px] transition-transform">
+<div class="flex items-center justify-between">
+<span class="font-headline-xl text-headline-xl text-clay-accent/30 font-mono-code font-bold">01</span>
+<span class="material-symbols-outlined text-clay-accent text-[22px]">upload_file</span>
+</div>
+<h4 class="font-headline-lg text-headline-lg-mobile text-cream-text">استيراد المحاضرة</h4>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            اسحب ملف الفيديو (MP4, MKV) أو الصوت (MP3, M4A, WAV) مباشرة إلى نافذة التطبيق الرئيسية.
+          </p>
+</div>
+<!-- Step 2 -->
+<div class="bg-surface-container p-stack-md rounded-xl flex flex-col gap-stack-sm relative shadow-sm hover:translate-y-[-2px] transition-transform">
+<div class="flex items-center justify-between">
+<span class="font-headline-xl text-headline-xl text-clay-accent/30 font-mono-code font-bold">02</span>
+<span class="material-symbols-outlined text-clay-accent text-[22px]">record_voice_over</span>
+</div>
+<h4 class="font-headline-lg text-headline-lg-mobile text-cream-text">تحديد "مقطع عادي"</h4>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            تأكد من اختيار وضع "مقطع عادي / Speech Mode" لتفعيل حماية ترددات الحوار البشري والأصوات الحية.
+          </p>
+</div>
+<!-- Step 3 -->
+<div class="bg-surface-container p-stack-md rounded-xl flex flex-col gap-stack-sm relative shadow-sm hover:translate-y-[-2px] transition-transform">
+<div class="flex items-center justify-between">
+<span class="font-headline-xl text-headline-xl text-clay-accent/30 font-mono-code font-bold">03</span>
+<span class="material-symbols-outlined text-clay-accent text-[22px]">output</span>
+</div>
+<h4 class="font-headline-lg text-headline-lg-mobile text-cream-text">اختيار نوع المخرج</h4>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            اختر MP4 للاحتفاظ بمرئيات السبورة وعرض الشرائح، أو MP3 لإنشاء بودكاست صوتي خفيف الحجم وسريع التداول.
+          </p>
+</div>
+<!-- Step 4 -->
+<div class="bg-surface-container p-stack-md rounded-xl flex flex-col gap-stack-sm relative shadow-sm hover:translate-y-[-2px] transition-transform">
+<div class="flex items-center justify-between">
+<span class="font-headline-xl text-headline-xl text-clay-accent/30 font-mono-code font-bold">04</span>
+<span class="material-symbols-outlined text-clay-accent text-[22px]">play_circle</span>
+</div>
+<h4 class="font-headline-lg text-headline-lg-mobile text-cream-text">المعالجة والاستلام</h4>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            اضغط "بدء التنقية". خلال ثوانٍ أو دقائق معدودة تجد ملفك النقي في مجلد المخرجات جاهزاً للطلاب.
+          </p>
+</div>
+</div>
+</section>
+<!-- Technical Honest Limits & Quality Constraints -->
+<section class="py-stack-lg">
+<div class="bg-surface-container-high rounded-xl p-stack-md lg:p-stack-lg flex flex-col gap-stack-md shadow-md">
+<div class="flex items-center gap-stack-sm text-warn-yellow">
+<span class="material-symbols-outlined text-[24px]">verified</span>
+<h3 class="font-headline-lg text-headline-lg text-cream-text">الأمانة التقنية والحدود الصوتية للتسجيل الأكاديمي</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface">
+          نلتزم بالصراحة التقنية الكاملة مع الباحثين والمعلمين؛ لضمان أفضل نتيجة ممكنة وتجنب التوقعات غير المنطقية:
+        </p>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-stack-md mt-unit">
+<div class="bg-surface-container p-stack-md rounded-lg flex flex-col gap-unit">
+<div class="flex items-center gap-unit text-warn-yellow font-label-md text-label-md">
+<span class="material-symbols-outlined text-[18px]">info</span>
+              صدى القاعة المفرط (Heavy Hall Reverb)
+            </div>
+<p class="font-body-md text-label-sm text-on-surface-variant">
+              يقوم HaramLite بعزل الموسيقى المضافة وموسيقى الخلفية تماماً، ولكنه لا يقوم بإلغاء ارتداد جدران القاعة الحقيقية إلا بنسبة طفيفة؛ حرصاً على عدم كتم الصوت وجعله يبدو كأنه صادر من داخل علبة مغلقة.
+            </p>
+</div>
+<div class="bg-surface-container p-stack-md rounded-lg flex flex-col gap-unit">
+<div class="flex items-center gap-unit text-warn-yellow font-label-md text-label-md">
+<span class="material-symbols-outlined text-[18px]">mic_off</span>
+              ضعف ميكروفون الحاسب المكتبي وتشوّه الإشارة (Clipping)
+            </div>
+<p class="font-body-md text-label-sm text-on-surface-variant">
+              إذا كان الصوت المسجل مشوهاً بفعل ميكروفون رديء عالي الكسب أو بعيد جداً عن المحاضر مع وجود تكسير إلكتروني، فإن المعالجة ستطهر الموسيقى لكن التشويه الأساسي لصوت الميكروفون سيبقى بنسبته الأصلية.
+            </p>
+</div>
+</div>
+</div>
+</section>
+<!-- FAQ Accordion Section -->
+<section class="py-stack-lg flex flex-col gap-stack-md">
+<div class="flex flex-col gap-unit">
+<span class="font-label-sm text-label-sm font-mono-code text-clay-accent tracking-widest uppercase">ACADEMIC FAQ</span>
+<h2 class="font-headline-lg text-headline-lg text-cream-text">الأسئلة الشائعة من الأساتذة ومسجلي الدروس</h2>
+</div>
+<div class="flex flex-col gap-stack-sm max-w-4xl" id="faqAccordion">
+<!-- Question 1 -->
+<div class="bg-surface-container-low rounded-lg overflow-hidden shadow-sm">
+<button class="w-full p-stack-md text-right flex items-center justify-between text-cream-text font-headline-lg text-headline-lg-mobile transition-colors hover:bg-surface-container" onclick="toggleFaq('faq-1')" type="button">
+<span>هل تتغير حركة مزامنة الصوت مع حركة الشفاه وسلايدات الدرس بالفيديو؟</span>
+<span class="material-symbols-outlined text-clay-accent text-[20px] transition-transform" id="faq-icon-1">expand_more</span>
+</button>
+<div class="hidden px-stack-md pb-stack-md pt-unit text-on-surface-variant font-body-md text-body-md" id="faq-1">
+            إطلاقاً. يعتمد محركنا على تقنية تفكيك واستبدال المسارات الصوتية (Remuxing) بدون إعادة كتابة الفريمات الزمنية، مما يعني أن كل حركة قلم أو إشارة إلى مسألة أو تحريك شريحة تظل متطابقة بدقة المللي ثانية مع الصوت المعالج.
+          </div>
+</div>
+<!-- Question 2 -->
+<div class="bg-surface-container-low rounded-lg overflow-hidden shadow-sm">
+<button class="w-full p-stack-md text-right flex items-center justify-between text-cream-text font-headline-lg text-headline-lg-mobile transition-colors hover:bg-surface-container" onclick="toggleFaq('faq-2')" type="button">
+<span>هل يحذف المحرك أسئلة الطلاب ومداخلاتهم أثناء الدرس؟</span>
+<span class="material-symbols-outlined text-clay-accent text-[20px] transition-transform" id="faq-icon-2">expand_more</span>
+</button>
+<div class="hidden px-stack-md pb-stack-md pt-unit text-on-surface-variant font-body-md text-body-md" id="faq-2">
+            لا، فطالما تم ضبط المحرك على وضع "مقطع عادي"، فإن الخوارزمية تميز أي حوار بشري سواء كان من الميكروفون المباشر للمحاضر أو من أسئلة الحضور في القاعة، وتقتصر الإزالة على الآلات الموسيقية والإيقاعات المضافة بالمونتاج فقط.
+          </div>
+</div>
+<!-- Question 3 -->
+<div class="bg-surface-container-low rounded-lg overflow-hidden shadow-sm">
+<button class="w-full p-stack-md text-right flex items-center justify-between text-cream-text font-headline-lg text-headline-lg-mobile transition-colors hover:bg-surface-container" onclick="toggleFaq('faq-3')" type="button">
+<span>لدي سلسلة من 40 درساً مسجلاً، كم من الوقت تستغرق المعالجة؟</span>
+<span class="material-symbols-outlined text-clay-accent text-[20px] transition-transform" id="faq-icon-3">expand_more</span>
+</button>
+<div class="hidden px-stack-md pb-stack-md pt-unit text-on-surface-variant font-body-md text-body-md" id="faq-3">
+            تعتمد السرعة على بطاقة الرسوميات لديك؛ فعلى سبيل المثال مع كرت RTX متوسط أو معالجات Apple Silicon، تتم معالجة المحاضرة ذات الساعة الواحدة في أقل من 3 إلى 5 دقائق. يمكنك وضع الـ 40 درساً في مجلد المراقبة وسيقوم البرنامج بمعالجتها بالكامل دون توقف.
+          </div>
+</div>
+<!-- Question 4 -->
+<div class="bg-surface-container-low rounded-lg overflow-hidden shadow-sm">
+<button class="w-full p-stack-md text-right flex items-center justify-between text-cream-text font-headline-lg text-headline-lg-mobile transition-colors hover:bg-surface-container" onclick="toggleFaq('faq-4')" type="button">
+<span>هل تتوفر إضافة لتصفية مقاطع اليوتيوب التعليمية مباشرة أثناء المشاهدة؟</span>
+<span class="material-symbols-outlined text-clay-accent text-[20px] transition-transform" id="faq-icon-4">expand_more</span>
+</button>
+<div class="hidden px-stack-md pb-stack-md pt-unit text-on-surface-variant font-body-md text-body-md" id="faq-4">
+            نعم، نوفر إضافة متصفح خاصة (Browser Extension) مرتبطة بمحرك العزل، تتيح للطلاب وأعضاء هيئة التدريس تصفية مقاطع المنصات التعليمية المفتوحة أثناء الاستماع الفوري دون الحاجة لتنزيل الفيديو أولاً.
+          </div>
+</div>
+</div>
+</section>
+<!-- Call to Action Section -->
+<section class="my-stack-lg bg-surface-container-low p-stack-lg rounded-xl flex flex-col md:flex-row items-center justify-between gap-stack-lg shadow-xl">
+<div class="flex flex-col gap-unit max-w-xl">
+<span class="font-label-sm text-label-sm text-clay-accent font-mono-code uppercase">GET STARTED NOW</span>
+<h3 class="font-headline-lg text-headline-lg text-cream-text">جاهز لتنقية محتواك الأكاديمي والدروس العلمية؟</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+          حمّل الإصدار الأخير من محرك HaramLite وابدأ المعالجة غير المحدودة على جهازك مجاناً وبشكل مفتوح المصدر.
+        </p>
+</div>
+<div class="flex flex-wrap items-center gap-stack-sm w-full md:w-auto">
+<a class="inline-flex items-center justify-center gap-stack-sm bg-primary-container text-on-primary-container px-stack-lg py-stack-md rounded-lg font-label-md text-label-md hover:bg-clay-accent transition-colors shadow-md w-full sm:w-auto" href="#">
+<span class="material-symbols-outlined text-[20px]">download</span>
+<span>تحميل النسخة v0.2.2</span>
+</a>
+<a class="inline-flex items-center justify-center gap-stack-sm bg-surface-container-high text-cream-text px-stack-md py-stack-md rounded-lg font-label-md text-label-md hover:bg-surface-bright transition-colors w-full sm:w-auto" href="#">
+<span class="material-symbols-outlined text-[20px]">menu_book</span>
+<span>تصفح باقي الأدلة التقنية</span>
+</a>
+</div>
+</section>
+</div>
+</div>
+<script>
+  function switchSpectrumMode(mode) {
+    const label = document.getElementById('spectrumLabel');
+    const pathSuppressed = document.getElementById('pathSuppressed');
+    const pathPureVoice = document.getElementById('pathPureVoice');
+    const chalkPoints = document.getElementById('chalkPoints');
+    
+    // Reset tabs
+    document.querySelectorAll('.matrix-tab-btn').forEach(btn => {
+      btn.className = 'matrix-tab-btn flex items-center justify-center gap-stack-sm py-stack-sm px-stack-md rounded bg-surface-container text-on-surface-variant hover:text-cream-text font-label-md text-label-md transition-all';
+    });
+
+    if (mode === 'intro') {
+      document.getElementById('btnModeIntro').className = 'matrix-tab-btn flex items-center justify-center gap-stack-sm py-stack-sm px-stack-md rounded bg-primary-container text-on-primary-container font-label-md text-label-md transition-all';
+      label.innerHTML = '<span class="material-symbols-outlined text-[16px]">music_off</span> حالة التحليل: استئصال صخب المقدمات والنهايات (Intro/Outro)';
+      pathSuppressed.setAttribute('d', 'M0,70 Q30,10 60,70 T120,70 T180,20 T240,70 T300,15 T360,70 T420,120 T480,70 T540,30 T600,70 T660,110 T700,70');
+      pathSuppressed.setAttribute('stroke-opacity', '0.2');
+      pathPureVoice.setAttribute('d', 'M0,70 Q40,60 70,70 T140,75 T210,50 T280,70 T350,85 T420,70 T490,55 T560,70 T630,80 T700,70');
+      chalkPoints.style.opacity = '0.3';
+    } else if (mode === 'under') {
+      document.getElementById('btnModeUnder').className = 'matrix-tab-btn flex items-center justify-center gap-stack-sm py-stack-sm px-stack-md rounded bg-primary-container text-on-primary-container font-label-md text-label-md transition-all';
+      label.innerHTML = '<span class="material-symbols-outlined text-[16px]">graphic_eq</span> حالة التحليل: إخماد موسيقى الخلفية المدمجة مع كلام المحاضر';
+      pathSuppressed.setAttribute('d', 'M0,70 Q20,30 50,70 T100,70 T150,40 T200,70 T250,30 T300,70 T350,100 T400,70 T450,40 T500,70 T550,90 T600,70 T650,40 T700,70');
+      pathSuppressed.setAttribute('stroke-opacity', '0.12');
+      pathPureVoice.setAttribute('d', 'M0,70 Q50,40 100,70 T200,90 T300,45 T400,70 T500,95 T600,60 T700,70');
+      chalkPoints.style.opacity = '0.6';
+    } else if (mode === 'hall') {
+      document.getElementById('btnModeHall').className = 'matrix-tab-btn flex items-center justify-center gap-stack-sm py-stack-sm px-stack-md rounded bg-primary-container text-on-primary-container font-label-md text-label-md transition-all';
+      label.innerHTML = '<span class="material-symbols-outlined text-[16px]">hearing</span> حالة التحليل: حماية رنين القاعة وصوت حركة المحاضر والسبورة';
+      pathSuppressed.setAttribute('d', 'M0,70 L700,70');
+      pathSuppressed.setAttribute('stroke-opacity', '0.05');
+      pathPureVoice.setAttribute('d', 'M0,70 Q30,55 70,70 T150,85 T220,40 T310,70 T380,95 T450,60 T520,70 T600,80 T700,70');
+      chalkPoints.style.opacity = '1';
+    }
+  }
+
+  function toggleFaq(id) {
+    const el = document.getElementById(id);
+    const icon = document.getElementById('faq-icon-' + id.split('-')[1]);
+    const isHidden = el.classList.contains('hidden');
+    
+    if (isHidden) {
+      el.classList.remove('hidden');
+      icon.style.transform = 'rotate(180deg)';
+    } else {
+      el.classList.add('hidden');
+      icon.style.transform = 'rotate(0deg)';
+    }
+  }
+</script>
+    <nav class="related-guides mt-12 pt-6 border-t border-coal-border">
+      <h4 class="font-bold text-xs uppercase tracking-wider text-cream-muted mb-3">أدلة ذات صلة</h4>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <a href="remove-music-from-video.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">إزالة الموسيقى من الفيديو</span>
+        </a>
+        <a href="watch-youtube-without-music.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">مشاهدة يوتيوب بدون موسيقى</span>
+        </a>
+        <a href="ai-vocal-separation.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">كيف يفصل الذكاء الاصطناعي الصوت؟</span>
+        </a>
+        <a href="remove-music-from-podcast.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">إزالة الموسيقى من البودكاست</span>
         </a>
       </div>
-    </div>
-  </header>
-
-  <main class="flex-grow max-w-3xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12">
-
-    <nav class="flex items-center gap-2 text-xs text-cream-muted mb-4">
-      <a href="../" class="hover:text-clay transition-colors">الرئيسية</a>
-      <span class="material-symbols-outlined text-[10px] opacity-60">chevron_left</span>
-      <a href="./" class="hover:text-clay transition-colors">الأدلة</a>
-      <span class="material-symbols-outlined text-[10px] opacity-60">chevron_left</span>
-      <span class="text-cream-text font-medium truncate">المحاضرات والدروس</span>
     </nav>
+  </main><footer class="w-full bg-surface-container-low mt-stack-lg"><div class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-stack-lg flex flex-col gap-stack-lg"><div class="flex flex-col md:flex-row items-center justify-between gap-stack-md"><div class="flex items-center gap-stack-sm bg-surface-container px-stack-md py-stack-sm rounded-full"><span class="material-symbols-outlined text-tertiary text-[20px]">verified_user</span><span class="font-label-sm text-label-sm text-on-surface">ضمانات المعالجة المحلية: خصوصية تامة بدون اتصال خارجي 100%</span></div><div class="flex items-center gap-stack-md"><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors" data-path="privacy-policy" href="#">سياسة الخصوصية</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-unit" data-path="repository" href="#"><span class="material-symbols-outlined text-[16px]">code</span>مستودع GitHub</a></div></div><div class="flex flex-col md:flex-row items-center justify-between text-on-surface-variant font-label-sm text-label-sm"><p>© 2024 HaramLite Audio Engine. جميع الحقوق محفوظة.</p><p class="text-secondary font-mono-code text-mono-code">Designed with Charcoal & Clay Precision</p></div></div></footer></body></html>
 
-    <section class="mb-8">
-      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-clay/10 border border-clay/25 text-clay text-xs font-semibold mb-3">
-        <span class="material-symbols-outlined text-xs">bolt</span><span>دليل مبسط · للمعلّمين والطلاب</span>
-      </div>
-      <h1 class="font-serif text-2xl sm:text-4xl font-bold text-cream-text leading-tight mb-4">إزالة موسيقى الخلفية من المحاضرات</h1>
-      <p class="text-base sm:text-lg text-cream-muted leading-relaxed">الدرس المسجّل غالباً فيه موسيقى تمهيدية أو خلفية أثناء الشرح. الهدف هنا مختلف عن الأغنية: <strong class="text-clay font-bold">أن يبقى الشرح مسموعاً وواضحاً</strong> بلا تشويه.</p>
-    </section>
-
-    <div id="quick-download" class="my-6 p-5 sm:p-6 rounded-2xl bg-coal-card border-glow-clay relative overflow-hidden">
-      <div class="flex flex-col sm:flex-row items-center justify-between gap-5 relative z-10">
-        <div class="text-center sm:text-right space-y-1">
-          <div class="flex items-center justify-center sm:justify-start gap-2">
-            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span class="text-xs font-medium text-cream-muted">مجاني ومفتوح المصدر · الإصدار 0.2.2</span>
-          </div>
-          <h2 class="font-serif font-bold text-lg sm:text-xl text-cream-text">برنامج HaramLite لنظام ويندوز 10 / 11</h2>
-          <p class="text-xs sm:text-sm text-cream-muted">حجم خفيف (~220MB متكامل) · معالجة 100% محلية · بلا اشتراك ولا حساب</p>
-        </div>
-        <a href="../#download" class="shrink-0 inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all shadow-lg">
-          <span class="material-symbols-outlined ">download</span><span>حمّل المثبّت (.exe)</span>
-        </a>
-      </div>
-    </div>
-
-    <section class="mt-10 mb-12">
-      <div class="flex items-center justify-between mb-5 border-b border-coal-border pb-3">
-        <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text flex items-center gap-2.5"><span class="material-symbols-outlined text-clay text-lg">checklist</span> أربع خطوات</h2>
-        <span class="text-xs text-cream-muted">يناسب سلسلة دروس أيضاً</span>
-      </div>
-      <div class="grid grid-cols-1 gap-3.5">
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">1</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">اختر وضع «مقطع عادي»</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">هو المصمَّم للكلام: يزيل الموسيقى الخلفية ويُبقي نبرة المتحدث كما هي، بلا تحسين مبالغ فيه كما في وضع الأغنية.</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">2</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">أفلت التسجيل أو الصق الرابط</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">ملف محلي أو رابط محاضرة؛ ولو كانت السلسلة كاملة فأفلتها دفعة واحدة.</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">3</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">اختر MP3 أو MP4</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">MP3 إن كان الطلاب سيستمعون فقط (أصغر وأسرع)، وMP4 إن كانت الصورة مهمة (شرح على السبورة أو العرض).</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">4</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">عالج السلسلة كاملة</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">بعد التأكد من الوضع على درس واحد، استخدم «مجلد المراقبة» أو الدفعات لمعالجة بقية الدروس بلا متابعة.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="my-10 p-5 sm:p-6 rounded-2xl bg-coal-card border border-coal-border">
-      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-4 flex items-center gap-2"><span class="material-symbols-outlined text-clay">tune</span> لماذا «مقطع عادي» هنا؟</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🎙️</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">يحفظ نبرة الشرح</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> الأولوية للوضوح: لا يُبالغ في التحسين ولا يغيّر طبيعة الصوت البشري كما قد يحدث في وضع الأغنية.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🔇</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">يزيل الخلفية لا الكلام</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> يزيل الآلات الموسيقية الخلفية ويُبقي الكلام وأصوات البيئة الطبيعية (كصوت القلم أو حركة القاعة).</p>
-        </div>
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">📚</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">مناسب للسلاسل</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> مجلد مراقبة ودفعات وإيقاف متاح — لمعالجة عشرات الدروس بلا عمل يدوي.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🎯</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">بلا تشويه</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> لا «فلتر» يخفض الترددات، بل فصل للمسار الصوتي يبقي نبرة المتحدث سليمة.</p>
-        </div>
-      </div>
-    </section>
-    <section class="my-10">
-      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">verified_user</span> حدود صريحة وأمانة فنية</h2>
-      <p class="text-xs sm:text-sm text-cream-muted mb-4">لا توجد أداة في العالم تعطي فصلاً مثالياً 100%؛ والفرق الحقيقي هو جودة العزل دون تشويه نبرة الصوت:</p>
-      <ul class="space-y-2.5 text-xs sm:text-sm text-cream-muted bg-coal-card p-4 sm:p-5 rounded-xl border border-coal-border">
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">الموسيقى الهادئة تحت الكلام:</strong> تختفي غالباً، لكن قد تبقى بقايا خفيفة جداً في اللحظات الهادئة من التسجيل.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">التسجيلات من القاعة:</strong> صدى القاعة وضعف الميكروفون يقلّلان دقة الفصل، والأفضل التسجيل بميكروفون قريب.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">الصدى والضجيج:</strong> الأداة تفصل الموسيقى لا تُصلح تسجيلاً رديئاً؛ التسجيل الجيد يبقى الأساس.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-emerald-400 mt-1 text-xs shrink-0">check_circle</span>
-          <span><strong class="text-cream-text">لا حدّ على عدد الدروس:</strong> بلا اشتراك ولا حدّ على المدة أو عدد الملفات.</span>
-        </li>
-      </ul>
-    </section>
-
-    <section id="faq" class="my-12">
-      <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text mb-6 border-b border-coal-border pb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">help</span> الأسئلة الشائعة</h2>
-      <div class="space-y-3.5">
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل يبقى صوت المتحدث واضحاً؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">نعم، ووضع «مقطع عادي» مصمّم لهذا تحديداً: إزالة الموسيقى الخلفية مع الحفاظ على نبرة الكلام بلا تشويه.</div>
-        </details>
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل يمكن معالجة سلسلة دروس كاملة؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">نعم، عبر مجلد المراقبة (أي ملف تنسخه إليه يُعالج تلقائياً) أو بإفلات عدة ملفات دفعة واحدة.</div>
-        </details>
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل الصوت أم الصورة أفضل للطلاب؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">إن كان الشرح صوتياً فMP3 أخف وأسرع للتحميل؛ وإن كان فيه عرض مرئي فMP4 يحفظ الصورة كما هي.</div>
-        </details>
-      </div>
-    </section>
-
-    <div class="p-6 rounded-2xl bg-coal-card border border-coal-border text-center space-y-4 my-8">
-      <h3 class="font-serif font-bold text-xl text-cream-text">جهّز دروسك بلا موسيقى</h3>
-      <p class="text-xs sm:text-sm text-cream-muted max-w-md mx-auto">عالج درساً واحداً للتجربة، ثم ادفع السلسلة كاملة.</p>
-      <div class="flex flex-wrap items-center justify-center gap-3 pt-1">
-        <a href="../#download" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all shadow-md"><span class="material-symbols-outlined ">download</span><span>تحميل HaramLite لويندوز</span></a>
-        <a href="../bridge.html" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-coal-surface border border-coal-border text-cream-muted hover:text-cream-text hover:border-clay/40 text-sm transition-colors"><span class="material-symbols-outlined ">extension</span><span>إضافة المتصفح</span></a>
-      </div>
-    </div>
-
-    <nav class="mt-12 pt-6 border-t border-coal-border">
-      <h4 class="font-bold text-xs uppercase tracking-wider text-cream-dim mb-3">أدلة ذات صلة</h4>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-      <a href="remove-music-from-video.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">إزالة الموسيقى من الفيديو <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">الخطوات والوضع المناسب وحدود الفصل</p>
-      </a>
-      <a href="watch-youtube-without-music.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">مشاهدة يوتيوب بدون موسيقى <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">تخطي الصمت المباشر في المتصفح</p>
-      </a>
-      <a href="ai-vocal-separation.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">كيف يفصل الذكاء الاصطناعي الصوت؟ <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">شرح تقني مبسّط لموديل الفصل</p>
-      </a>
-      </div>
-    </nav>
-
-    <p class="mt-8 text-xs text-cream-dim leading-relaxed">كل المعالجة تحدث على جهازك: لا يُرفع أي ملف، ولا حساب ولا تتبّع. راجع <a href="../PRIVACY.html" class="text-clay hover:underline">سياسة الخصوصية</a>.</p>
-  </main>
-
-  <footer class="border-t border-coal-border py-6 bg-coal-surface mt-auto">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-cream-muted">
-      <span>© 2026 HaramLite · إزالة الموسيقى محلياً على جهازك، بلا رفع ولا حساب.</span>
-      <div class="flex items-center gap-4">
-        <a href="../PRIVACY.html" class="hover:text-clay transition-colors">الخصوصية</a>
-        <a href="https://github.com/SMSMy/HaramLite" target="_blank" rel="noreferrer" class="hover:text-clay transition-colors">المستودع</a>
-      </div>
-    </div>
-  </footer>
-</body>
-</html>

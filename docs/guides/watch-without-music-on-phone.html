@@ -1,254 +1,591 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>المشاهدة بدون موسيقى على الجوال | HaramLite</title>
-  <meta name="description" content="ثلاث طرق للوصول من هاتفك إلى معالجة HaramLite: روبوت تيليجرام، أو إرسال الرابط، أو تشغيل الحاسوب عن بُعد.">
-  <link rel="canonical" href="https://haramlite.com/guides/watch-without-music-on-phone.html">
-  <meta name="theme-color" content="#151311">
-  <meta property="og:type" content="article">
-  <meta property="og:title" content="المشاهدة بدون موسيقى على الجوال | HaramLite">
-  <meta property="og:description" content="ثلاث طرق للوصول من هاتفك إلى معالجة HaramLite: روبوت تيليجرام، أو إرسال الرابط، أو تشغيل الحاسوب عن بُعد.">
-  <meta property="og:url" content="https://haramlite.com/guides/watch-without-music-on-phone.html">
-  <meta property="og:image" content="https://haramlite.com/assets/og.png">
-  <meta name="twitter:card" content="summary_large_image">
-  <link rel="icon" href="../assets/favicon.ico" sizes="any">
-  <link rel="icon" type="image/png" sizes="32x32" href="../assets/icon-32.png">
-  <link rel="apple-touch-icon" href="../assets/icon-180.png">
-  <link rel="stylesheet" href="../assets/site.css"/>
+
+<html class="dark" dir="rtl" lang="ar"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+
+<style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style>  <link rel="stylesheet" href="../assets/site.css"/>
   <link rel="preload" href="../assets/thmanyah-serif-bold.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="../assets/thmanyah-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
-  <script type="application/ld+json">
-  {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "هل يوجد تطبيق جوال لـHaramLite؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "لا. المعالجة تحتاج جهاز ويندوز، لكن يمكنك تشغيلها من هاتفك عبر روبوت تيليجرام بلا تطبيق إضافي."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "هل يعمل إن كان الحاسوب مغلقاً؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "لا. المعالجة تحدث على حاسوبك، فيلزم أن يكون مشغّلاً. فعّل «التشغيل مع بدء تشغيل ويندوز» ليبقى جاهزاً."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "هل يمكن المشاهدة المفلترة على الجوال؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "المشاهدة داخل الصفحة ميزة إضافة المتصفح على الحاسوب. على الجوال تُعالج الملفات عبر الروبوت ثم تشاهدها من معرض هاتفك."
-      }
-    }
-  ]
-}
-  </script>
-</head>
-<body class="min-h-screen flex flex-col bg-coal-surface text-cream-text">
-
-  <header class="sticky top-0 z-50 bg-coal-surface/90 backdrop-blur-md border-b border-coal-border">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-      <a href="../" class="flex items-center gap-3 group">
-        <img src="../assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded-lg shadow-sm border border-coal-border group-hover:border-clay/50 transition-colors">
-        <span class="flex flex-col">
-          <span class="font-serif font-bold text-lg tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span>
-          <span class="text-[10px] text-cream-muted leading-tight -mt-0.5">معالجة محلية 100%</span>
+  <link rel="canonical" href="https://haramlite.com/guides/watch-without-music-on-phone.html">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://haramlite.com/assets/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+</head><body class="bg-surface font-body-md text-body-md text-on-surface antialiased selection:bg-primary-container selection:text-on-primary-container"><header class="fixed top-0 w-full z-50 bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.25)]"><div class="h-20 max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter"><div class="flex items-center gap-stack-md"><img alt="HaramLite brand app icon: acoustic fork / two-track audio branches converging into one pure stem, with the left music track cleanly severed by an angled cut-line and dimmed, while the right speech/vocal track remains solid and flows through to the pure audio base, rendered in Clay and Coal palette." class="h-8 w-auto object-contain" src="../assets/icon-32.png"/><div class="flex flex-col"><span class="font-headline-lg text-headline-lg font-bold text-cream-text tracking-tight">HaramLite</span><span class="font-label-sm text-label-sm text-on-surface-variant">معالجة صوتية محلية 100%</span></div></div><nav class="hidden lg:flex items-center gap-stack-md" data-active-classes="bg-primary-container text-on-primary-container font-label-md text-label-md rounded-lg"><a class="px-stack-sm py-unit font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" data-path="home" href="#">الرئيسية</a><a aria-current="page" class="px-stack-sm py-unit transition-colors bg-primary-container text-on-primary-container font-label-md text-label-md rounded-lg" data-path="guides" href="#">الأدلة والشروحات</a><a class="px-stack-sm py-unit font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" data-path="browser-extension" href="#">إضافة المتصفح</a><a class="px-stack-sm py-unit font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" data-path="faq" href="#">الأسئلة الشائعة</a><a class="px-stack-sm py-unit font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" data-path="repository" href="#">المستودع</a></nav><div class="flex items-center gap-stack-md"><a class="inline-flex items-center gap-stack-sm bg-primary-container text-on-primary-container px-stack-md py-stack-sm rounded-lg hover:bg-clay-accent transition-colors" href="#"><span class="material-symbols-outlined text-[18px]">download</span><span class="font-label-md text-label-md font-semibold">تحميل HaramLite مجاناً</span><span class="font-mono-code text-mono-code bg-surface-container-lowest text-cream-text px-unit py-[2px] rounded">v0.2.2</span></a><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-20 bg-surface min-h-[calc(100vh-80px)] max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop"><div class="flex flex-col w-full">
+<!-- Subtle Ambient Glow -->
+<div class="relative w-full overflow-hidden">
+<div class="absolute -top-32 left-1/2 -translate-x-1/2 w-[720px] h-96 bg-primary-container/10 rounded-full blur-3xl pointer-events-none -z-10"></div>
+<!-- Editorial Intro & Eyebrow -->
+<section class="py-stack-lg flex flex-col gap-stack-md">
+<div class="flex flex-wrap items-center gap-stack-sm text-clay-accent">
+<span class="inline-flex items-center gap-unit bg-surface-container-high px-stack-sm py-unit rounded-full text-label-sm font-label-sm text-clay-accent">
+<span class="material-symbols-outlined text-[15px]">phone_iphone</span>
+          دليل التزامن المحمول
         </span>
-      </a>
-      <div class="flex items-center gap-3 sm:gap-4">
-        <a href="#faq" class="text-xs sm:text-sm text-cream-muted hover:text-cream-text transition-colors">الأسئلة الشائعة</a>
-        <a href="../#download" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-clay text-coal-surface font-semibold text-xs sm:text-sm hover:bg-clay-hover shadow-sm transition-all">
-          <span class="material-symbols-outlined text-xs">download</span><span>تحميل فوري</span>
+<span class="text-on-surface-variant font-mono-code text-mono-code">DOCUMENT_15 // CLOUDLESS-PIPELINE</span>
+<span class="inline-flex items-center gap-unit text-tertiary font-label-sm text-label-sm mr-auto">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+          جاهز للتشغيل الفوري
+        </span>
+</div>
+<div class="flex flex-col lg:flex-row lg:items-end justify-between gap-stack-lg">
+<div class="max-w-3xl flex flex-col gap-unit">
+<h1 class="font-headline-xl text-headline-xl font-bold text-cream-text tracking-tight">
+            المشاهدة بدون موسيقى على الجوال
+          </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed">
+            قوة بطاقة العرض (<span class="font-mono-code text-primary-fixed">GPU</span>) في حاسوبك المكتبي، بين يديك أثناء التنقل. نقّ المقاطع والصوتيات في ثوانٍ عبر روبوتك الخاص دون تثبيت تطبيقات ثقيلة تستهلك بطارية الهاتف وبدون رفع أي ملف لسحابة طرف ثالث.
+          </p>
+</div>
+<div class="flex items-center gap-stack-sm shrink-0">
+<a class="inline-flex items-center gap-stack-sm bg-primary-container text-on-primary-container px-stack-md py-stack-sm rounded-lg hover:bg-clay-accent transition-colors font-label-md text-label-md font-semibold" href="#telegram-guide">
+<span class="material-symbols-outlined text-[18px]">bolt</span>
+            تهيئة الروبوت في دقيقتين
+          </a>
+<a class="inline-flex items-center gap-stack-sm bg-surface-container-high text-cream-text px-stack-md py-stack-sm rounded-lg hover:bg-surface-bright transition-colors font-label-md text-label-md" href="#comparison">
+<span class="material-symbols-outlined text-[18px]">sync_alt</span>
+            مقارنة الطرق الثلاث
+          </a>
+</div>
+</div>
+</section>
+<!-- Visual Architecture: Phone-to-Workstation Hybrid Bridge -->
+<section class="mt-stack-lg p-stack-md lg:p-stack-lg bg-surface-container-low rounded-xl relative shadow-md">
+<div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-stack-sm mb-stack-lg">
+<div class="flex items-center gap-stack-sm">
+<span class="w-3 h-3 rounded-full bg-clay-accent"></span>
+<h2 class="font-headline-lg text-headline-lg font-bold text-cream-text">
+            مخطط الجسر الهاتفي (Phone-to-Workstation Bridge)
+          </h2>
+</div>
+<span class="font-mono-code text-mono-code text-secondary bg-surface-container px-stack-sm py-unit rounded">
+          Local Bot API Engine • End-to-End Private
+        </span>
+</div>
+<!-- Architectural SVG Diagram -->
+<div class="w-full bg-coal-surface rounded-lg p-stack-md lg:p-stack-lg overflow-x-auto">
+<div class="min-w-[760px] flex flex-col gap-stack-lg">
+<!-- Topology Map -->
+<div class="grid grid-cols-12 gap-stack-md items-center">
+<!-- Mobile Source Node -->
+<div class="col-span-3 bg-surface-container-high p-stack-md rounded-lg flex flex-col gap-stack-sm relative">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-secondary">هاتفك الذكي</span>
+<span class="material-symbols-outlined text-clay-accent text-[22px]">smartphone</span>
+</div>
+<div class="font-headline-lg text-headline-lg text-cream-text font-bold">iOS / Android</div>
+<p class="font-label-sm text-label-sm text-on-surface-variant">
+                لا تثبيت نماذج ذكاء اصطناعي، لا حرارة زائدة، لا استنزاف بطارية.
+              </p>
+<div class="flex flex-col gap-unit pt-unit">
+<span class="font-mono-code text-[11px] text-tertiary flex items-center gap-unit">
+<span class="material-symbols-outlined text-[13px]">check_circle</span> رابط يوتيوب / ملف فيديو
+                </span>
+<span class="font-mono-code text-[11px] text-tertiary flex items-center gap-unit">
+<span class="material-symbols-outlined text-[13px]">check_circle</span> أمر بصيغة MP3 أو MP4
+                </span>
+</div>
+</div>
+<!-- Transit Channels -->
+<div class="col-span-6 flex flex-col gap-stack-sm">
+<!-- Channel 1 -->
+<div class="bg-surface-container p-stack-sm rounded-lg flex items-center justify-between group hover:bg-surface-bright transition-colors">
+<div class="flex items-center gap-stack-sm">
+<span class="w-7 h-7 rounded-full bg-primary-container/20 text-clay-accent flex items-center justify-center font-mono-code text-mono-code font-bold">1</span>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-cream-text font-semibold">روبوت تيليجرام الخاص المباشر</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">مشفر تماماً • استلام ملفات وروابط من أي مكان</span>
+</div>
+</div>
+<span class="font-mono-code text-mono-code text-tertiary">سريع وعملي</span>
+</div>
+<!-- Channel 2 -->
+<div class="bg-surface-container p-stack-sm rounded-lg flex items-center justify-between group hover:bg-surface-bright transition-colors">
+<div class="flex items-center gap-stack-sm">
+<span class="w-7 h-7 rounded-full bg-surface-container-highest text-secondary flex items-center justify-center font-mono-code text-mono-code font-bold">2</span>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-cream-text font-semibold">بوابة قائمة المشاركة (Web Share Hook)</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">مشاركة فورية من المتصفح لحاسوبك في المنزل</span>
+</div>
+</div>
+<span class="font-mono-code text-mono-code text-secondary">بدون وسيط</span>
+</div>
+<!-- Channel 3 -->
+<div class="bg-surface-container p-stack-sm rounded-lg flex items-center justify-between group hover:bg-surface-bright transition-colors">
+<div class="flex items-center gap-stack-sm">
+<span class="w-7 h-7 rounded-full bg-surface-container-highest text-secondary flex items-center justify-center font-mono-code text-mono-code font-bold">3</span>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-cream-text font-semibold">التحكم المباشر (Tailscale + RustDesk)</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">واجهة HaramLite الكاملة على شاشة الجوال</span>
+</div>
+</div>
+<span class="font-mono-code text-mono-code text-warn-yellow">تحكم شامل</span>
+</div>
+</div>
+<!-- Home Workstation Processing Node -->
+<div class="col-span-3 bg-coal-bg p-stack-md rounded-lg flex flex-col gap-stack-sm relative shadow-md">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-clay-accent font-semibold">محطة العمل المنزلية</span>
+<span class="material-symbols-outlined text-clay-accent text-[22px]">desktop_windows</span>
+</div>
+<div class="font-headline-lg text-headline-lg text-cream-text font-bold">HaramLite Core</div>
+<p class="font-label-sm text-label-sm text-on-surface-variant">
+                معالجة محلية 100% بنماذج MDX-Net و Demucs.
+              </p>
+<div class="bg-surface-container-lowest p-unit rounded font-mono-code text-[11px] text-cream-text flex items-center justify-between">
+<span>GPU Acceleration</span>
+<span class="text-tertiary">CUDA ON</span>
+</div>
+</div>
+</div>
+<!-- Live Signal Flow Bar -->
+<div class="w-full bg-surface-container-lowest p-stack-sm rounded flex items-center justify-between text-on-surface-variant font-mono-code text-mono-code">
+<span class="flex items-center gap-unit text-clay-accent">
+<span class="material-symbols-outlined text-[16px]">lock</span>
+              تشفير رمز الروبوت محلياً عبر Windows DPواجهة
+            </span>
+<span class="flex items-center gap-unit text-cream-text">
+<span class="material-symbols-outlined text-[16px]">send</span>
+              استجابة الروبوت: إرسال فوري بمجرد اكتمال الفلترة
+            </span>
+<span class="text-tertiary flex items-center gap-unit">
+<span class="material-symbols-outlined text-[16px]">speed</span>
+              سرعة المعالجة: 4x-8x في الوقت الحقيقي
+            </span>
+</div>
+</div>
+</div>
+</section>
+<!-- Main Content Grid: Simulator + Strategy Breakdown -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-stack-lg mt-stack-lg items-start">
+<!-- Mobile Simulation Card (Left/Right balanced) -->
+<section class="lg:col-span-5 flex flex-col gap-stack-md">
+<div class="bg-coal-bg rounded-xl p-stack-md flex flex-col gap-stack-md shadow-md">
+<div class="flex items-center justify-between pb-unit">
+<div class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-clay-accent">chat</span>
+<h3 class="font-headline-lg text-headline-lg text-cream-text font-bold">
+                محاكاة محادثة الروبوت
+              </h3>
+</div>
+<span class="font-mono-code text-mono-code bg-surface-container-highest px-stack-sm py-unit rounded text-cream-text">
+              @HaramLite_MyBot
+            </span>
+</div>
+<!-- Telegram Screen Mockup -->
+<div class="bg-coal-surface rounded-lg p-stack-md flex flex-col gap-stack-sm min-h-[460px]">
+<!-- Header status of chat -->
+<div class="flex items-center justify-between pb-stack-sm bg-surface-container-low p-stack-sm rounded">
+<div class="flex items-center gap-stack-sm">
+<div class="w-8 h-8 rounded-full bg-clay-accent text-coal-surface flex items-center justify-center font-bold font-mono-code text-mono-code">
+                  HL
+                </div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-cream-text font-bold">HaramLite Assistant</span>
+<span class="font-mono-code text-[11px] text-tertiary">متصل بمحطة العمل • جاهز</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]">verified</span>
+</div>
+<!-- User Message: Shared Link -->
+<div class="self-start max-w-[85%] bg-primary-container text-on-primary-container p-stack-sm rounded-lg flex flex-col gap-unit">
+<span class="font-mono-code text-[11px] opacity-80">المستخدم (أنت فقط)</span>
+<p class="font-body-md text-body-md font-medium">
+                https://youtube.com/watch?v=kX729aJ...
+              </p>
+<div class="flex items-center justify-between pt-unit text-[11px] font-mono-code opacity-75">
+<span>14:32</span>
+<span>✓✓</span>
+</div>
+</div>
+<!-- Bot Message: Prompt Action -->
+<div class="self-end max-w-[88%] bg-surface-container p-stack-sm rounded-lg flex flex-col gap-stack-sm text-cream-text">
+<div class="flex items-center gap-unit text-clay-accent font-label-sm text-label-sm font-semibold">
+<span class="material-symbols-outlined text-[16px]">downloading</span>
+                تم استلام الرابط: "مقطع وثائقي - 18 دقيقة"
+              </div>
+<p class="font-label-sm text-label-sm text-on-surface-variant">
+                اختر الصيغة المفضلة للإرجاع لحفظ باقة هاتفك:
+              </p>
+<!-- Quick Actions -->
+<div class="grid grid-cols-2 gap-unit">
+<button class="bg-surface-container-high hover:bg-clay-accent hover:text-coal-surface transition-colors p-unit rounded text-right flex flex-col">
+<span class="font-label-md text-label-md font-bold text-cream-text">صوت MP3 فقط</span>
+<span class="font-mono-code text-[11px] text-tertiary">~16MB • فائق السرعة</span>
+</button>
+<button class="bg-surface-container-high hover:bg-clay-accent hover:text-coal-surface transition-colors p-unit rounded text-right flex flex-col">
+<span class="font-label-md text-label-md font-bold text-cream-text">فيديو MP4 كامل</span>
+<span class="font-mono-code text-[11px] text-secondary">~84MB • 720p نقي</span>
+</button>
+</div>
+<!-- Processing Indicator -->
+<div class="bg-surface-container-lowest p-stack-sm rounded flex flex-col gap-unit">
+<div class="flex justify-between font-mono-code text-[11px] text-on-surface-variant">
+<span>جاري عزل الموسيقى (MDX-v3)...</span>
+<span class="text-clay-accent">88%</span>
+</div>
+<div class="w-full bg-border-muted h-1.5 rounded-full overflow-hidden">
+<div class="bg-clay-accent h-full w-[88%] transition-all"></div>
+</div>
+</div>
+<!-- Final result simulation -->
+<div class="bg-surface-container-high p-unit rounded flex items-center justify-between">
+<div class="flex items-center gap-unit">
+<span class="material-symbols-outlined text-tertiary text-[20px]">audio_file</span>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-cream-text">Audio_Vocal_Clean.mp3</span>
+<span class="font-mono-code text-[10px] text-on-surface-variant">14.2 MB • بدون موسيقى</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-cream-text text-[18px]">play_circle</span>
+</div>
+</div>
+<!-- Telegram input mock -->
+<div class="mt-auto bg-surface-container-low p-unit rounded-lg flex items-center justify-between text-on-surface-variant">
+<span class="font-label-sm text-label-sm px-unit">أرسل رابط أو مقطع فيديو...</span>
+<div class="flex items-center gap-unit">
+<span class="material-symbols-outlined text-[18px]">attach_file</span>
+<span class="material-symbols-outlined text-clay-accent text-[20px]">send</span>
+</div>
+</div>
+</div>
+<!-- Metering Card: Telegram File Limits -->
+<div class="bg-surface-container-high p-stack-md rounded-lg flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md font-bold text-cream-text">سعات الاستلام والإرسال</span>
+<span class="font-mono-code text-mono-code text-clay-accent">Telegram Bot Limits</span>
+</div>
+<div class="flex flex-col gap-unit">
+<div class="flex justify-between font-label-sm text-label-sm">
+<span class="text-on-surface-variant">خادم تيليجرام المجاني (Cloud Bot API)</span>
+<span class="font-mono-code text-cream-text">50 MB كحد أقصى</span>
+</div>
+<div class="w-full bg-surface-container-lowest h-2 rounded-full overflow-hidden">
+<div class="bg-warn-yellow h-full w-[35%]"></div>
+</div>
+</div>
+<div class="flex flex-col gap-unit">
+<div class="flex justify-between font-label-sm text-label-sm">
+<span class="text-on-surface-variant">خادم Bot API المحلي (مضمن في HaramLite)</span>
+<span class="font-mono-code text-tertiary">2,000 MB (2GB) لكل ملف</span>
+</div>
+<div class="w-full bg-surface-container-lowest h-2 rounded-full overflow-hidden">
+<div class="bg-tertiary h-full w-[95%]"></div>
+</div>
+</div>
+<p class="font-label-sm text-label-sm text-on-surface-variant pt-unit">
+              * عند إرسال الروابط (YouTube / X / Drive)، لا يستهلك التنزيل أي ميجابايت من باقة هاتفك؛ حاسوبك هو من ينزل المقطع ويعالجه مباشرة.
+            </p>
+</div>
+</div>
+</section>
+<!-- Detailed 3 Strategy Cards + Interactive Steps -->
+<section class="lg:col-span-7 flex flex-col gap-stack-lg" id="comparison">
+<!-- Pillar 1: Telegram Bot -->
+<div class="bg-coal-bg rounded-xl p-stack-md lg:p-stack-lg flex flex-col gap-stack-md shadow-md" id="telegram-guide">
+<div class="flex items-start justify-between gap-stack-sm">
+<div class="flex items-center gap-stack-sm">
+<span class="w-9 h-9 rounded-lg bg-primary-container text-on-primary-container flex items-center justify-center font-mono-code text-mono-code font-bold">
+                01
+              </span>
+<div>
+<h3 class="font-headline-lg text-headline-lg font-bold text-cream-text">
+                  الطريقة الأولى: روبوت تيليجرام الخاص (الأسهل والأقوى)
+                </h3>
+<span class="font-label-sm text-label-sm text-clay-accent">مستحسن للاستخدام اليومي أثناء التنقل</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-clay-accent text-[26px]">smart_toy</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            أنشئ روبوت شخصي مجاني في 60 ثانية عبر <span class="font-mono-code text-cream-text">@BotFather</span>. حاسوبك يراقب طلبات حسابك فقط، ويعالج الصوت فوراً ثم يرسله لك في نفس المحادثة.
+          </p>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-stack-sm">
+<div class="bg-surface-container p-stack-sm rounded-lg flex flex-col gap-unit">
+<span class="font-label-md text-label-md font-bold text-cream-text flex items-center gap-unit">
+<span class="material-symbols-outlined text-tertiary text-[18px]">verified</span>
+                حماية الحساب الفردي
+              </span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">
+                يقفل الروبوت برقم معرف التليجرام الخاص بك (<span class="font-mono-code text-cream-text">Telegram User ID</span>). لا يمكن لأي شخص آخر استغلال كرتك.
+              </span>
+</div>
+<div class="bg-surface-container p-stack-sm rounded-lg flex flex-col gap-unit">
+<span class="font-label-md text-label-md font-bold text-cream-text flex items-center gap-unit">
+<span class="material-symbols-outlined text-tertiary text-[18px]">save</span>
+                توفير فائق للبيانات
+              </span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">
+                أرسل روابط المقاطع الكبيرة وسيقوم الحاسوب بتنزيلها عبر شبكة الألياف المنزلية، ثم إرسال نسخة MP3 نقية وخفيفة لهاتفك.
+              </span>
+</div>
+</div>
+</div>
+<!-- Pillar 2: Mobile Browser Hook -->
+<div class="bg-coal-bg rounded-xl p-stack-md lg:p-stack-lg flex flex-col gap-stack-md shadow-md">
+<div class="flex items-start justify-between gap-stack-sm">
+<div class="flex items-center gap-stack-sm">
+<span class="w-9 h-9 rounded-lg bg-surface-container-high text-cream-text flex items-center justify-center font-mono-code text-mono-code font-bold">
+                02
+              </span>
+<div>
+<h3 class="font-headline-lg text-headline-lg font-bold text-cream-text">
+                  الطريقة الثانية: متصفح الجوال وقائمة المشاركة (Share Sheet)
+                </h3>
+<span class="font-label-sm text-label-sm text-secondary">عبر اختصارات iOS Shortcuts أو قائمة مشاركة Android</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-secondary text-[26px]">share</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            أثناء تصفحك لليوتيوب أو منصات التواصل على هاتفك، اضغط "مشاركة" واختر اختصار <span class="font-mono-code text-cream-text">Clean via HaramLite</span>. يقوم الـ الربط بالروبوت بإدراج الرابط في طابور المعالجة على حاسوبك فوراً وحفظ النتيجة في مجلدك السحابي الخاص (Nextcloud / Google Drive / Syncthing).
+          </p>
+<div class="bg-coal-surface p-stack-sm rounded-lg flex items-center justify-between">
+<div class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-clay-accent">terminal</span>
+<span class="font-mono-code text-mono-code text-cream-text">افتح روبوتك، ثم أرسل الرابط أو الملف</span>
+</div>
+<span class="font-mono-code text-[11px] text-tertiary bg-surface-container px-stack-sm py-unit rounded">الطريقة المعتمدة</span>
+</div>
+</div>
+<!-- Pillar 3: Remote Desktop -->
+<div class="bg-coal-bg rounded-xl p-stack-md lg:p-stack-lg flex flex-col gap-stack-md shadow-md">
+<div class="flex items-start justify-between gap-stack-sm">
+<div class="flex items-center gap-stack-sm">
+<span class="w-9 h-9 rounded-lg bg-surface-container-high text-cream-text flex items-center justify-center font-mono-code text-mono-code font-bold">
+                03
+              </span>
+<div>
+<h3 class="font-headline-lg text-headline-lg font-bold text-cream-text">
+                  الطريقة الثالثة: سطح المكتب البعيد الآمن (Tailscale + RustDesk)
+                </h3>
+<span class="font-label-sm text-label-sm text-secondary">تحكم مرئي وصوتي كامل بدون فتح منافذ في الراوتر</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-secondary text-[26px]">desktop_mac</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            باستخدام شبكة افتراضية خاصة ومجانية عبر <span class="font-mono-code text-cream-text">Tailscale</span>، يمكنك فتح شاشة حاسوبك وتشغيل واجهة HaramLite وضبط أشرطة الحساسية يدويًا كما لو كنت جالساً أمام الشاشة، دون تعريض جهازك لمخاطر الإنترنت العام.
+          </p>
+<div class="flex flex-wrap gap-stack-sm">
+<span class="bg-surface-container px-stack-sm py-unit rounded font-label-sm text-label-sm text-cream-text flex items-center gap-unit">
+<span class="material-symbols-outlined text-clay-accent text-[16px]">vpn_key</span>
+              Zero-Trust Tunneling
+            </span>
+<span class="bg-surface-container px-stack-sm py-unit rounded font-label-sm text-label-sm text-cream-text flex items-center gap-unit">
+<span class="material-symbols-outlined text-clay-accent text-[16px]">router</span>
+              بدون Port Forwarding
+            </span>
+<span class="bg-surface-container px-stack-sm py-unit rounded font-label-sm text-label-sm text-cream-text flex items-center gap-unit">
+<span class="material-symbols-outlined text-clay-accent text-[16px]">lock</span>
+              تشفير WireGuard مباشر
+            </span>
+</div>
+</div>
+</section>
+</div>
+<!-- Security & Privacy Architecture Panel -->
+<section class="mt-stack-lg bg-coal-surface rounded-xl p-stack-md lg:p-stack-lg shadow-md flex flex-col gap-stack-md">
+<div class="flex items-center justify-between flex-wrap gap-stack-sm">
+<div class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-clay-accent text-[26px]">shield</span>
+<h2 class="font-headline-lg text-headline-lg font-bold text-cream-text">
+            الأمانة الفنية وتأمين الـ Bot Token
+          </h2>
+</div>
+<span class="font-mono-code text-mono-code text-tertiary bg-surface-container-high px-stack-sm py-unit rounded">
+          Local Security Model v2.4
+        </span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-stack-md">
+<!-- Feature 1 -->
+<div class="bg-coal-bg p-stack-md rounded-lg flex flex-col gap-unit">
+<div class="flex items-center gap-unit text-cream-text font-bold font-label-md text-label-md">
+<span class="material-symbols-outlined text-clay-accent">enhanced_encryption</span>
+            تشفير DPواجهة لنظام Windows
+          </div>
+<p class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed">
+            رمز الرمز التليجرام الخاص بك لا يُخزن بصيغة نص عادي. يتم تشفيره بمفتاح أمان محلي مرتبط بمستخدم نظام التشغيل نفسه، فلا يستطيع أي برنامج آخر سرقته.
+          </p>
+</div>
+<!-- Feature 2 -->
+<div class="bg-coal-bg p-stack-md rounded-lg flex flex-col gap-unit">
+<div class="flex items-center gap-unit text-cream-text font-bold font-label-md text-label-md">
+<span class="material-symbols-outlined text-clay-accent">group_off</span>
+            فلتر الـ User ID الحصري
+          </div>
+<p class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed">
+            يرفض الروبوت تلقائياً وبشكل صامت أي رسالة تأتي من أي حساب تليجرام لا يطابق رقمك المسجل في إعدادات التطبيق، مما يمنع استهلاك موارد كرتك من الغرباء.
+          </p>
+</div>
+<!-- Feature 3 -->
+<div class="bg-coal-bg p-stack-md rounded-lg flex flex-col gap-unit">
+<div class="flex items-center gap-unit text-cream-text font-bold font-label-md text-label-md">
+<span class="material-symbols-outlined text-clay-accent">cloud_off</span>
+            انعدام الخوادم الوسيطة (Zero Mid-Servers)
+          </div>
+<p class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed">
+            الاتصال يتدفق مباشرة من هاتفك إلى خوادم تيليجرام ثم إلى حاسوبك المكتبي عبر Long Polling. فريق HaramLite ليس لديه أي خادم وسيط ولا يرى ملفاتك مطلقاً.
+          </p>
+</div>
+</div>
+</section>
+<!-- 4-Step Setup Guide Table -->
+<section class="mt-stack-lg bg-surface-container-low rounded-xl p-stack-md lg:p-stack-lg shadow-md flex flex-col gap-stack-md">
+<div class="flex flex-col gap-unit">
+<span class="font-label-sm text-label-sm text-clay-accent font-semibold">دليل التشغيل السريع</span>
+<h2 class="font-headline-lg text-headline-lg font-bold text-cream-text">
+          أربع خطوات بسيطة للربط والتشغيل
+        </h2>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-stack-md">
+<!-- Step 1 -->
+<div class="bg-coal-bg p-stack-md rounded-lg flex flex-col gap-stack-sm relative">
+<span class="font-mono-code text-headline-lg font-bold text-clay-accent">01</span>
+<h4 class="font-label-md text-label-md font-bold text-cream-text">إنشاء الروبوت في تيليجرام</h4>
+<p class="font-label-sm text-label-sm text-on-surface-variant">
+            افتح تطبيق تيليجرام على جوالك، وابحث عن المعرف الرسمي <span class="font-mono-code text-cream-text">@BotFather</span>، ثم أرسل له أمر <span class="font-mono-code text-cream-text">/newbot</span> وانسخ رمز الروبوت الناتج.
+          </p>
+<div class="mt-auto pt-unit">
+<span class="font-mono-code text-[11px] text-secondary">الوقت المتوقع: 40 ثانية</span>
+</div>
+</div>
+<!-- Step 2 -->
+<div class="bg-coal-bg p-stack-md rounded-lg flex flex-col gap-stack-sm relative">
+<span class="font-mono-code text-headline-lg font-bold text-clay-accent">02</span>
+<h4 class="font-label-md text-label-md font-bold text-cream-text">إدخال رمز الروبوت في HaramLite</h4>
+<p class="font-label-sm text-label-sm text-on-surface-variant">
+            على حاسوبك، افتح تبويب <b>"التزامن المحمول والجوال"</b> في HaramLite، والصق رمز الروبوت واضغط <b>"حفظ واختبار الاتصال"</b>.
+          </p>
+<div class="mt-auto pt-unit">
+<span class="font-mono-code text-[11px] text-secondary">تشغيل المحرك بنقرة واحدة</span>
+</div>
+</div>
+<!-- Step 3 -->
+<div class="bg-coal-bg p-stack-md rounded-lg flex flex-col gap-stack-sm relative">
+<span class="font-mono-code text-headline-lg font-bold text-clay-accent">03</span>
+<h4 class="font-label-md text-label-md font-bold text-cream-text">إقران معرفك (User ID)</h4>
+<p class="font-label-sm text-label-sm text-on-surface-variant">
+            أرسل كلمة <span class="font-mono-code text-cream-text">/start</span> للروبوت الجديد من جوالك؛ سيتعرف النظام تلقائياً على حسابك ويقفل الوصول له حصرياً.
+          </p>
+<div class="mt-auto pt-unit">
+<span class="font-mono-code text-[11px] text-secondary">تأمين تلقائي مشفر</span>
+</div>
+</div>
+<!-- Step 4 -->
+<div class="bg-coal-bg p-stack-md rounded-lg flex flex-col gap-stack-sm relative">
+<span class="font-mono-code text-headline-lg font-bold text-clay-accent">04</span>
+<h4 class="font-label-md text-label-md font-bold text-cream-text">أرسل واستمتع بالمحتوى</h4>
+<p class="font-label-sm text-label-sm text-on-surface-variant">
+            شارك أي رابط أو ملف فيديو مع الروبوت من أي مكان؛ سيعالج حاسوبك في غرفتك الصوت ويعيده لك نظيفاً بنسبة 100%.
+          </p>
+<div class="mt-auto pt-unit">
+<span class="font-mono-code text-[11px] text-tertiary">بدء المشاهدة فوراً</span>
+</div>
+</div>
+</div>
+</section>
+<!-- FAQ Accordion Section -->
+<section class="mt-stack-lg bg-coal-bg rounded-xl p-stack-md lg:p-stack-lg shadow-md flex flex-col gap-stack-md">
+<div class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-clay-accent text-[24px]">help_center</span>
+<h2 class="font-headline-lg text-headline-lg font-bold text-cream-text">
+          الأسئلة الشائعة حول المشاهدة عبر الجوال
+        </h2>
+</div>
+<div class="flex flex-col gap-stack-sm" id="faq-container">
+<!-- FAQ item 1 -->
+<div class="bg-surface-container rounded-lg p-stack-md flex flex-col gap-unit cursor-pointer transition-colors hover:bg-surface-bright" onclick="toggleFaq(this)">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md font-bold text-cream-text">
+              هل يجب أن يظل حاسوبي المكتبي قيد التشغيل؟
+            </span>
+<span class="material-symbols-outlined text-secondary transition-transform faq-icon">expand_more</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant pt-unit hidden faq-answer">
+            نعم، بما أن المعالجة تجري محلياً على كرت الشاشة لديك لتفادي رفع المقاطع لأي سحابة مجهولة، يجب أن يكون الحاسوب مشغلاً أو في وضع السكون المزود بخاصية الإيقاظ عبر الشبكة (Wake-on-LAN).
+          </p>
+</div>
+<!-- FAQ item 2 -->
+<div class="bg-surface-container rounded-lg p-stack-md flex flex-col gap-unit cursor-pointer transition-colors hover:bg-surface-bright" onclick="toggleFaq(this)">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md font-bold text-cream-text">
+              هل يستهلك هذا الإجراء باقة إنترنت الهاتف؟
+            </span>
+<span class="material-symbols-outlined text-secondary transition-transform faq-icon">expand_more</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant pt-unit hidden faq-answer">
+            على العكس تماماً، إرسال رابط فيديو لروبوت تيليجرام واختيار "صوت MP3 فقط" يجعلك تستهلك من 10 إلى 20 ميجابايت فقط بدلاً من استهلاك 600 ميجابايت لمشاهدة الفيديو بالكامل، وحاسوبك في المنزل هو من يتكفل بالتحميل الثقيل.
+          </p>
+</div>
+<!-- FAQ item 3 -->
+<div class="bg-surface-container rounded-lg p-stack-md flex flex-col gap-unit cursor-pointer transition-colors hover:bg-surface-bright" onclick="toggleFaq(this)">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md font-bold text-cream-text">
+              هل يمكن لأحد أصدقائي استخدام نفس الروبوت؟
+            </span>
+<span class="material-symbols-outlined text-secondary transition-transform faq-icon">expand_more</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant pt-unit hidden faq-answer">
+            افتراضياً، يتم رفض أي مستخدم آخر. ومع ذلك، توفر لك إعدادات HaramLite خيار إضافة "معرفات موثوقة" (Whitelist IDs) مثل أفراد عائلتك ليتمكنوا أيضاً من إرسال مقاطعهم وتنظيفها عبر جهازك.
+          </p>
+</div>
+</div>
+</section>
+<!-- Bottom Action & Download Banner -->
+<section class="mt-stack-lg mb-stack-lg p-stack-lg bg-surface-container-high rounded-xl relative overflow-hidden flex flex-col lg:flex-row items-center justify-between gap-stack-lg">
+<div class="flex flex-col gap-unit max-w-2xl text-right z-10">
+<div class="flex items-center gap-unit text-tertiary font-mono-code text-mono-code">
+<span class="material-symbols-outlined text-[16px]">verified</span>
+          إصدار متاح مجاناً ومفتوح المصدر
+        </div>
+<h3 class="font-headline-lg text-headline-lg font-bold text-cream-text">
+          ابدأ تنقية الصوتيات على هاتفك الذكي الآن
+        </h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+          قم بتنزيل محرك HaramLite على حاسوبك، وفعّل خيار الجوال بسرعة، وتمتع بتجربة مشاهدة نقية بدون أي موسيقى أينما كنت.
+        </p>
+</div>
+<div class="flex flex-wrap items-center gap-stack-sm z-10 shrink-0">
+<a class="inline-flex items-center gap-stack-sm bg-primary-container text-on-primary-container px-stack-md py-stack-sm rounded-lg hover:bg-clay-accent transition-colors font-label-md text-label-md font-semibold" href="#">
+<span class="material-symbols-outlined text-[20px]">download</span>
+          تحميل HaramLite v0.2.2 لنظام Windows
+        </a>
+<a class="inline-flex items-center gap-stack-sm bg-surface-container text-cream-text px-stack-md py-stack-sm rounded-lg hover:bg-surface-bright transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined text-[20px]">menu_book</span>
+          قراءة وثائق DOCUMENT_15
+        </a>
+</div>
+</section>
+</div>
+</div>
+<script>
+  function toggleFaq(card) {
+    const answer = card.querySelector('.faq-answer');
+    const icon = card.querySelector('.faq-icon');
+    if (answer.classList.contains('hidden')) {
+      answer.classList.remove('hidden');
+      icon.style.transform = 'rotate(180deg)';
+    } else {
+      answer.classList.add('hidden');
+      icon.style.transform = 'rotate(0deg)';
+    }
+  }
+</script>
+    <nav class="related-guides mt-12 pt-6 border-t border-coal-border">
+      <h4 class="font-bold text-xs uppercase tracking-wider text-cream-muted mb-3">أدلة ذات صلة</h4>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <a href="remove-music-from-video.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">إزالة الموسيقى من الفيديو</span>
+        </a>
+        <a href="watch-youtube-without-music.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">مشاهدة يوتيوب بدون موسيقى</span>
+        </a>
+        <a href="ai-vocal-separation.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">كيف يفصل الذكاء الاصطناعي الصوت؟</span>
+        </a>
+        <a href="remove-music-from-podcast.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">إزالة الموسيقى من البودكاست</span>
         </a>
       </div>
-    </div>
-  </header>
-
-  <main class="flex-grow max-w-3xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12">
-
-    <nav class="flex items-center gap-2 text-xs text-cream-muted mb-4">
-      <a href="../" class="hover:text-clay transition-colors">الرئيسية</a>
-      <span class="material-symbols-outlined text-[10px] opacity-60">chevron_left</span>
-      <a href="./" class="hover:text-clay transition-colors">الأدلة</a>
-      <span class="material-symbols-outlined text-[10px] opacity-60">chevron_left</span>
-      <span class="text-cream-text font-medium truncate">على الجوال</span>
     </nav>
+  </main><footer class="w-full bg-surface-container-low mt-stack-lg"><div class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-stack-lg flex flex-col gap-stack-lg"><div class="flex flex-col md:flex-row items-center justify-between gap-stack-md"><div class="flex items-center gap-stack-sm bg-surface-container px-stack-md py-stack-sm rounded-full"><span class="material-symbols-outlined text-tertiary text-[20px]">verified_user</span><span class="font-label-sm text-label-sm text-on-surface">ضمانات المعالجة المحلية: خصوصية تامة بدون اتصال خارجي 100%</span></div><div class="flex items-center gap-stack-md"><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors" data-path="privacy-policy" href="#">سياسة الخصوصية</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-unit" data-path="repository" href="#"><span class="material-symbols-outlined text-[16px]">code</span>مستودع GitHub</a></div></div><div class="flex flex-col md:flex-row items-center justify-between text-on-surface-variant font-label-sm text-label-sm"><p>© 2024 HaramLite Audio Engine. جميع الحقوق محفوظة.</p><p class="text-secondary font-mono-code text-mono-code">Designed with Charcoal & Clay Precision</p></div></div></footer></body></html>
 
-    <section class="mb-8">
-      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-clay/10 border border-clay/25 text-clay text-xs font-semibold mb-3">
-        <span class="material-symbols-outlined text-xs">bolt</span><span>دليل مبسط · من هاتفك</span>
-      </div>
-      <h1 class="font-serif text-2xl sm:text-4xl font-bold text-cream-text leading-tight mb-4">المشاهدة بدون موسيقى على الجوال</h1>
-      <p class="text-base sm:text-lg text-cream-muted leading-relaxed">التطبيق لويندوز، لكن استخدامه ليس محصوراً بالحاسوب: يمكنك تشغيله من هاتفك عبر <strong class="text-clay font-bold">روبوت تيليجرام</strong>، فيعمل حاسوبك ويعيد إليك الناتج.</p>
-    </section>
-
-    <div id="quick-download" class="my-6 p-5 sm:p-6 rounded-2xl bg-coal-card border-glow-clay relative overflow-hidden">
-      <div class="flex flex-col sm:flex-row items-center justify-between gap-5 relative z-10">
-        <div class="text-center sm:text-right space-y-1">
-          <div class="flex items-center justify-center sm:justify-start gap-2">
-            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span class="text-xs font-medium text-cream-muted">مجاني ومفتوح المصدر · الإصدار 0.2.2</span>
-          </div>
-          <h2 class="font-serif font-bold text-lg sm:text-xl text-cream-text">برنامج HaramLite لنظام ويندوز 10 / 11</h2>
-          <p class="text-xs sm:text-sm text-cream-muted">حجم خفيف (~220MB متكامل) · معالجة 100% محلية · بلا اشتراك ولا حساب</p>
-        </div>
-        <a href="../#download" class="shrink-0 inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all shadow-lg">
-          <span class="material-symbols-outlined ">download</span><span>حمّل المثبّت (.exe)</span>
-        </a>
-      </div>
-    </div>
-
-    <section class="mt-10 mb-12">
-      <div class="flex items-center justify-between mb-5 border-b border-coal-border pb-3">
-        <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text flex items-center gap-2.5"><span class="material-symbols-outlined text-clay text-lg">checklist</span> ثلاث طرق من الجوال</h2>
-        <span class="text-xs text-cream-muted">اختر ما يناسبك</span>
-      </div>
-      <div class="grid grid-cols-1 gap-3.5">
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">1</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">روبوت تيليجرام (الأسهل)</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">أنشئ روبوتاً من BotFather، ضع رمزه في إعدادات التطبيق، اربط حسابك برمز من ستة أرقام، ثم أرسل الروابط أو الملفات من هاتفك ويعيدها إليك معالَجة.</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">2</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">إرسال الرابط من المتصفح</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">إن كنت تستخدم متصفح الحاسوب فأرسل الرابط بنقرة يمين؛ أما على الجوال فانسخ الرابط وأرسله إلى روبوتك — النتيجة نفسها.</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">3</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">تشغيل الحاسوب عن بُعد</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">إن أردت الواجهة الكاملة على الجوال، شغّل الحاسوب عن بُعد (‏Remote Desktop) واعمل على التطبيق كما من أمامه.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="my-10 p-5 sm:p-6 rounded-2xl bg-coal-card border border-coal-border">
-      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-4 flex items-center gap-2"><span class="material-symbols-outlined text-clay">tune</span> ماذا يصل إلى هاتفك؟</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🎵</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">ملف صوتي أو مرئي</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> يعيد الروبوت الناتج مباشرة إلى محادثتك: MP4 للفيديو أو MP3 للصوت، جاهزاً للحفظ أو المشاركة.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">⚡</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">خيار الصوت فقط</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> فعّل «إرسال الصوت فقط (MP3) دائماً» ليوفر وقت رندرة الفيديو ويصلك الصوت أسرع وأصغر.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🔐</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">مربوط بحسابك</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> لا يستجيب الروبوت لأي حساب قبل الاقتران، وبعده يتجاهل كل من سواك.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">💻</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">الحاسوب يجب أن يعمل</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> المعالجة على جهازك؛ فإن كان مغلقاً فلا معالجة — ولهذا يفيد خيار التشغيل مع بدء تشغيل ويندوز.</p>
-        </div>
-      </div>
-    </section>
-    <section class="my-10">
-      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">verified_user</span> حدود صريحة وأمانة فنية</h2>
-      <p class="text-xs sm:text-sm text-cream-muted mb-4">لا توجد أداة في العالم تعطي فصلاً مثالياً 100%؛ والفرق الحقيقي هو جودة العزل دون تشويه نبرة الصوت:</p>
-      <ul class="space-y-2.5 text-xs sm:text-sm text-cream-muted bg-coal-card p-4 sm:p-5 rounded-xl border border-coal-border">
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">حدّ الإرسال 50MB:</strong> يرسل الروبوت حتى 50 ميغابايت ولا ينزّل منك أكثر من 20؛ والروابط بلا حدّ.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">خادم Bot API محلي:</strong> إعداد متقدم لمن يريد رفع السقف إلى 2GB وبالجودة الأصلية.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">سرعة الإنترنت تهمّ:</strong> الروابط الطويلة تُنزَّل على حاسوبك ثم يُرسل الناتج إلى هاتفك، فالسرعة تحدّد زمن الانتظار.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-emerald-400 mt-1 text-xs shrink-0">check_circle</span>
-          <span><strong class="text-cream-text">لا حاجة لفتح منافذ:</strong> الروبوت يسأل تيليجرام عن الرسائل، فلا تحتاج عنواناً ثابتاً ولا إعدادات راوتر.</span>
-        </li>
-      </ul>
-    </section>
-
-    <section id="faq" class="my-12">
-      <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text mb-6 border-b border-coal-border pb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">help</span> الأسئلة الشائعة</h2>
-      <div class="space-y-3.5">
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل يوجد تطبيق جوال لـHaramLite؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">لا. المعالجة تحتاج جهاز ويندوز، لكن يمكنك تشغيلها من هاتفك عبر روبوت تيليجرام بلا تطبيق إضافي.</div>
-        </details>
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل يعمل إن كان الحاسوب مغلقاً؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">لا. المعالجة تحدث على حاسوبك، فيلزم أن يكون مشغّلاً. فعّل «التشغيل مع بدء تشغيل ويندوز» ليبقى جاهزاً.</div>
-        </details>
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل يمكن المشاهدة المفلترة على الجوال؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">المشاهدة داخل الصفحة ميزة إضافة المتصفح على الحاسوب. على الجوال تُعالج الملفات عبر الروبوت ثم تشاهدها من معرض هاتفك.</div>
-        </details>
-      </div>
-    </section>
-
-    <div class="p-6 rounded-2xl bg-coal-card border border-coal-border text-center space-y-4 my-8">
-      <h3 class="font-serif font-bold text-xl text-cream-text">شغّل روبوتك واستخدمه من هاتفك</h3>
-      <p class="text-xs sm:text-sm text-cream-muted max-w-md mx-auto">ربط مرة واحدة، ثم أرسل ما تريد أينما كنت.</p>
-      <div class="flex flex-wrap items-center justify-center gap-3 pt-1">
-        <a href="../#download" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all shadow-md"><span class="material-symbols-outlined ">download</span><span>تحميل HaramLite لويندوز</span></a>
-        <a href="../bridge.html" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-coal-surface border border-coal-border text-cream-muted hover:text-cream-text hover:border-clay/40 text-sm transition-colors"><span class="material-symbols-outlined ">extension</span><span>إضافة المتصفح</span></a>
-      </div>
-    </div>
-
-    <nav class="mt-12 pt-6 border-t border-coal-border">
-      <h4 class="font-bold text-xs uppercase tracking-wider text-cream-dim mb-3">أدلة ذات صلة</h4>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-      <a href="remove-music-from-video.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">إزالة الموسيقى من الفيديو <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">الخطوات والوضع المناسب وحدود الفصل</p>
-      </a>
-      <a href="watch-youtube-without-music.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">مشاهدة يوتيوب بدون موسيقى <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">تخطي الصمت المباشر في المتصفح</p>
-      </a>
-      <a href="ai-vocal-separation.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">كيف يفصل الذكاء الاصطناعي الصوت؟ <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">شرح تقني مبسّط لموديل الفصل</p>
-      </a>
-      </div>
-    </nav>
-
-    <p class="mt-8 text-xs text-cream-dim leading-relaxed">كل المعالجة تحدث على جهازك: لا يُرفع أي ملف، ولا حساب ولا تتبّع. راجع <a href="../PRIVACY.html" class="text-clay hover:underline">سياسة الخصوصية</a>.</p>
-  </main>
-
-  <footer class="border-t border-coal-border py-6 bg-coal-surface mt-auto">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-cream-muted">
-      <span>© 2026 HaramLite · إزالة الموسيقى محلياً على جهازك، بلا رفع ولا حساب.</span>
-      <div class="flex items-center gap-4">
-        <a href="../PRIVACY.html" class="hover:text-clay transition-colors">الخصوصية</a>
-        <a href="https://github.com/SMSMy/HaramLite" target="_blank" rel="noreferrer" class="hover:text-clay transition-colors">المستودع</a>
-      </div>
-    </div>
-  </footer>
-</body>
-</html>

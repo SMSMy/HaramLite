@@ -1,24 +1,15 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>إزالة الموسيقى أونلاين أم ببرنامج محلي؟ | HaramLite</title>
-  <meta name="description" content="مقارنة عملية: السرعة، والحدود، والخصوصية، والتكلفة، والجودة — لتختار الطريقة المناسبة لحالتك.">
-  <link rel="canonical" href="https://haramlite.com/guides/online-vs-offline-removal.html">
-  <meta name="theme-color" content="#151311">
-  <meta property="og:type" content="article">
-  <meta property="og:title" content="إزالة الموسيقى أونلاين أم ببرنامج محلي؟ | HaramLite">
-  <meta property="og:description" content="مقارنة عملية: السرعة، والحدود، والخصوصية، والتكلفة، والجودة — لتختار الطريقة المناسبة لحالتك.">
-  <meta property="og:url" content="https://haramlite.com/guides/online-vs-offline-removal.html">
-  <meta property="og:image" content="https://haramlite.com/assets/og.png">
-  <meta name="twitter:card" content="summary_large_image">
-  <link rel="icon" href="../assets/favicon.ico" sizes="any">
-  <link rel="icon" type="image/png" sizes="32x32" href="../assets/icon-32.png">
-  <link rel="apple-touch-icon" href="../assets/icon-180.png">
-  <link rel="stylesheet" href="../assets/site.css"/>
+
+<html class="dark" dir="rtl" lang="ar"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+
+<style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style>  <link rel="stylesheet" href="../assets/site.css"/>
   <link rel="preload" href="../assets/thmanyah-serif-bold.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="../assets/thmanyah-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="canonical" href="https://haramlite.com/guides/online-vs-offline-removal.html">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://haramlite.com/assets/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+
   <script type="application/ld+json">
   {
   "@context": "https://schema.org",
@@ -26,233 +17,707 @@
   "mainEntity": [
     {
       "@type": "Question",
-      "name": "هل الجودة تختلف بين الطريقتين؟",
+      "name": "help_outline هل تختلف جودة فصل الموسيقى بين الطريقتين؟ expand_more",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "الجودة تعتمد على الموديل المستخدم لا على مكان المعالجة. لكن المحلي يتيح لك معالجة الملف بالجودة الأصلية بلا حدّ رفع أو إعادة ضغط."
+        "text": "الجودة تعتمد في الأساس على نموذج الذكاء الاصطناعي (Model Architecture) وليس مكان تشغيله. ومع ذلك، التطبيق المحلي يتفوق لأنه يعالج الملف بالدقة الاستوديو الخام (مثل 24-bit / 48kHz WAV) دون أي ضغط أو تصغير للملف الذي تفرضه الخوادم السحابية لتوفير استهلاك خوادمها."
       }
     },
     {
       "@type": "Question",
-      "name": "هل المعالجة المحلية تحتاج جهازاً قوياً؟",
+      "name": "help_outline هل تتطلب المعالجة المحلية جهاز حاسوب فائق المواصفات؟ expand_more",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "لا، تعمل على المعالج؛ وتتسارع كثيراً على كرت NVIDIA أو أي كرت DX12 عند تفعيل التسريع."
+        "text": "إطلاقاً؛ تم تحسين محرك HaramLite ليعمل بكفاءة عالية على المعالجات التقليدية (CPU) لأجهزة اللابتوب العادية. وإذا كان جهازك يحتوي على كرت شاشة من NVIDIA أو كرت يدعم تسريع DirectX 12، فسيتم تفعيل التسريع العتادي تلقائياً لتتم المعالجة بأضعاف السرعة وبسلاسة تامة."
       }
     },
     {
       "@type": "Question",
-      "name": "ما الأفضل للمحتوى الطويل؟",
+      "name": "help_outline ما هو الخيار الأفضل لحلقات البودكاست والمحاضرات الطويلة؟ expand_more",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "المحلي، لأن السحابي غالباً يضع حدّاً للدقائق أو الحجم، ولأن الرفع والتنزيل يستهلكان وقتاً أطول من المعالجة نفسها في الملفات الكبيرة."
+        "text": "البرنامج المحلي بلا أدنى شك. المنصات السحابية تفرض سقفاً دقيقاً (عادة 10 إلى 20 دقيقة كحد أقصى للحسابات المدفوعة)، بالإضافة إلى أن رفع وتنزيل ملف بودكاست يستغرق وقتاً يفوق وقت معالجته محلياً على جهازك. المحلي يقبل ملفات لعدة ساعات متواصلة بلا توقف."
       }
     }
   ]
 }
   </script>
-</head>
-<body class="min-h-screen flex flex-col bg-coal-surface text-cream-text">
-
-  <header class="sticky top-0 z-50 bg-coal-surface/90 backdrop-blur-md border-b border-coal-border">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-      <a href="../" class="flex items-center gap-3 group">
-        <img src="../assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded-lg shadow-sm border border-coal-border group-hover:border-clay/50 transition-colors">
-        <span class="flex flex-col">
-          <span class="font-serif font-bold text-lg tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span>
-          <span class="text-[10px] text-cream-muted leading-tight -mt-0.5">معالجة محلية 100%</span>
-        </span>
-      </a>
-      <div class="flex items-center gap-3 sm:gap-4">
-        <a href="#faq" class="text-xs sm:text-sm text-cream-muted hover:text-cream-text transition-colors">الأسئلة الشائعة</a>
-        <a href="../#download" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-clay text-coal-surface font-semibold text-xs sm:text-sm hover:bg-clay-hover shadow-sm transition-all">
-          <span class="material-symbols-outlined text-xs">download</span><span>تحميل فوري</span>
+</head><body class="bg-surface font-body-md text-body-md text-on-surface antialiased selection:bg-primary-container selection:text-on-primary-container"><header class="fixed top-0 w-full z-50 bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.25)]"><div class="h-20 max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter"><div class="flex items-center gap-stack-md"><img alt="HaramLite brand app icon: acoustic fork / two-track audio branches converging into one pure stem, with the left music track cleanly severed by an angled cut-line and dimmed, while the right speech/vocal track remains solid and flows through to the pure audio base, rendered in Clay and Coal palette." class="h-8 w-auto object-contain" src="../assets/icon-32.png"/><div class="flex flex-col"><span class="font-headline-lg text-headline-lg font-bold text-cream-text tracking-tight">HaramLite</span><span class="font-label-sm text-label-sm text-on-surface-variant">معالجة صوتية محلية 100%</span></div></div><nav class="hidden lg:flex items-center gap-stack-md" data-active-classes="bg-primary-container text-on-primary-container font-label-md text-label-md rounded-lg"><a class="px-stack-sm py-unit font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" data-path="home" href="#">الرئيسية</a><a aria-current="page" class="px-stack-sm py-unit transition-colors bg-primary-container text-on-primary-container font-label-md text-label-md rounded-lg" data-path="guides" href="#">الأدلة والشروحات</a><a class="px-stack-sm py-unit font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" data-path="browser-extension" href="#">إضافة المتصفح</a><a class="px-stack-sm py-unit font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" data-path="faq" href="#">الأسئلة الشائعة</a><a class="px-stack-sm py-unit font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-colors" data-path="repository" href="#">المستودع</a></nav><div class="flex items-center gap-stack-md"><a class="inline-flex items-center gap-stack-sm bg-primary-container text-on-primary-container px-stack-md py-stack-sm rounded-lg hover:bg-clay-accent transition-colors" href="#"><span class="material-symbols-outlined text-[18px]">download</span><span class="font-label-md text-label-md font-semibold">تحميل HaramLite مجاناً</span><span class="font-mono-code text-mono-code bg-surface-container-lowest text-cream-text px-unit py-[2px] rounded">v0.2.2</span></a><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-20 bg-surface min-h-[calc(100vh-80px)] max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop"><div class="flex flex-col w-full pb-stack-lg">
+<!-- Top Breadcrumb & Metadata Header -->
+<div class="flex flex-col gap-stack-sm mb-stack-lg">
+<div class="flex items-center gap-unit text-on-surface-variant font-label-sm text-label-sm">
+<a class="hover:text-primary transition-colors" href="#">الرئيسية</a>
+<span class="material-symbols-outlined text-[14px]">chevron_left</span>
+<a class="hover:text-primary transition-colors" href="#">الأدلة التقنية</a>
+<span class="material-symbols-outlined text-[14px]">chevron_left</span>
+<span class="text-cream-text font-semibold">مقارنة المعالجة: أونلاين أم محلي</span>
+</div>
+<!-- Editorial Header Block -->
+<div class="relative overflow-hidden rounded-xl bg-surface-container-low p-stack-lg shadow-sm">
+<div class="absolute -top-16 -left-16 w-64 h-64 rounded-full bg-clay-accent/10 blur-3xl pointer-events-none"></div>
+<div class="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-stack-md">
+<div class="max-w-2xl space-y-unit">
+<div class="inline-flex items-center gap-stack-sm px-stack-sm py-unit rounded-full bg-clay-accent/15 text-clay-accent font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[15px]">balance</span>
+<span>دليل المقارنة الموضوعي والهيكلي · بلا انحياز تسويقي</span>
+</div>
+<h1 class="font-headline-xl text-headline-xl text-cream-text tracking-tight mt-stack-sm">
+            إزالة الموسيقى أونلاين أم ببرنامج محلي؟
+          </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed">
+            التقنيات كلاهما تعمل؛ غير أن الفارق الحقيقي يتجاوز مجرد دقة الفصل إلى <span class="text-clay-accent font-semibold">أين تذهب بياناتك الصوتية</span>، وحواجز اشتراك المنصات، وحدود معالجة الملفات العائلية والحساسة.
+          </p>
+</div>
+<!-- Quick Summary Badge Metric -->
+<div class="bg-coal-surface p-stack-md rounded-lg flex flex-col items-start gap-unit shrink-0">
+<div class="flex items-center gap-unit text-tertiary font-mono-code text-mono-code">
+<span class="material-symbols-outlined text-[16px]">lock</span>
+<span>معدل السيادة الرقمية</span>
+</div>
+<div class="flex items-baseline gap-stack-sm">
+<span class="font-headline-lg text-headline-lg font-black text-cream-text">100%</span>
+<span class="text-on-surface-variant font-label-sm text-label-sm">محلي مستقل</span>
+</div>
+<span class="text-on-surface-variant font-mono-code text-mono-code text-[11px]">0 بايت يغادر وحدة التخزين</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Quick Download Notification Banner -->
+<div class="mb-stack-lg rounded-xl bg-surface-container p-stack-md flex flex-col lg:flex-row items-center justify-between gap-stack-md shadow-sm">
+<div class="flex items-center gap-stack-md w-full lg:w-auto">
+<div class="w-12 h-12 rounded-lg bg-clay-accent/20 flex items-center justify-center shrink-0 text-clay-accent">
+<span class="material-symbols-outlined text-[26px]">terminal</span>
+</div>
+<div class="flex flex-col">
+<div class="flex items-center gap-stack-sm">
+<span class="inline-block w-2 h-2 rounded-full bg-tertiary"></span>
+<span class="font-mono-code text-mono-code text-cream-text">محرك HaramLite v0.2.2 لـ Windows 10/11</span>
+<span class="bg-surface-container-high px-stack-sm py-[2px] rounded text-on-surface-variant font-label-sm text-label-sm">مفتوح المصدر</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant mt-[2px]">
+          حزمة متكاملة (~220MB) · تسريع CUDA/DX12 بدون اشتراكات أو تسجيل دخول
+        </p>
+</div>
+</div>
+<div class="flex items-center gap-stack-sm w-full lg:w-auto justify-end">
+<a class="inline-flex items-center justify-center gap-unit px-stack-md py-stack-sm rounded-lg bg-primary-container text-on-primary-container font-label-md text-label-md hover:bg-clay-accent transition-colors" href="#">
+<span class="material-symbols-outlined text-[18px]">download</span>
+<span>تحميل المثبت المباشر (.exe)</span>
+</a>
+</div>
+</div>
+<!-- Head-to-Head Architectural Comparison Matrix (UNIQUE VISUAL FEATURE) -->
+<section class="mb-stack-lg flex flex-col gap-stack-md">
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-stack-sm">
+<div>
+<div class="font-mono-code text-mono-code text-clay-accent mb-unit">// ARCHITECTURAL MATRIX</div>
+<h2 class="font-headline-lg text-headline-lg text-cream-text font-bold">
+          مقارنة البنية البرمجية وجهاً لوجه
+        </h2>
+</div>
+<p class="font-label-sm text-label-sm text-on-surface-variant max-w-md">
+        تفصيل المسار المادي الذي يقطعه ملفك الصوتي في المعالجة السحابية مقارنة بمحرك العزل المحلي.
+      </p>
+</div>
+<!-- The Side-by-Side Dual Deck -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-stack-md">
+<!-- Right Side: Cloud Services (6 Cols) -->
+<div class="lg:col-span-6 rounded-xl bg-surface-container-low p-stack-lg flex flex-col justify-between shadow-sm relative overflow-hidden">
+<div class="absolute top-0 right-0 left-0 h-1 bg-surface-variant"></div>
+<div class="flex flex-col gap-stack-md">
+<div class="flex items-center justify-between pb-stack-sm">
+<div class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-warn-yellow text-[24px]">cloud_upload</span>
+<div>
+<h3 class="font-headline-lg text-[20px] font-bold text-cream-text leading-snug">الخدمات السحابية ومواقع الويب</h3>
+<span class="font-mono-code text-mono-code text-on-surface-variant">Cloud Web Separation Engines</span>
+</div>
+</div>
+<span class="px-stack-sm py-unit rounded bg-surface-container-highest font-mono-code text-mono-code text-on-surface-variant text-[11px]">قائمة على السيرفر</span>
+</div>
+<!-- Cloud Flow Timeline Diagram -->
+<div class="bg-coal-surface p-stack-md rounded-lg flex flex-col gap-stack-sm font-mono-code text-mono-code text-[12px] text-on-surface-variant">
+<div class="flex items-center gap-stack-sm text-warn-yellow">
+<span class="material-symbols-outlined text-[16px]">arrow_upward</span>
+<span>1. رفع الصوت عبر الإنترنت العام (Bandwidth Heavy)</span>
+</div>
+<div class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-[16px]">hourglass_top</span>
+<span>2. طابور سيرفرات مشتركة مع آلاف المستخدمين</span>
+</div>
+<div class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-[16px]">database</span>
+<span>3. تخزين مؤقت على قرص خارجي مجهول الصلاحيات</span>
+</div>
+<div class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-[16px]">arrow_downward</span>
+<span>4. تنزيل المسار المفصول (مضغوط MP3 غالباً)</span>
+</div>
+</div>
+<!-- Feature Specs List -->
+<ul class="flex flex-col gap-stack-sm font-body-md text-body-md">
+<li class="flex items-start gap-stack-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-error text-[18px] shrink-0 mt-[2px]">cancel</span>
+<span><strong>الخصوصية:</strong> الصوت يمر عبر خوادم أجنبية قد تخضع للتصنت أو التدريب.</span>
+</li>
+<li class="flex items-start gap-stack-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-error text-[18px] shrink-0 mt-[2px]">cancel</span>
+<span><strong>حدود الحجم والمدة:</strong> تقييد 5-10 دقائق كحد أقصى للملفات المجانية.</span>
+</li>
+<li class="flex items-start gap-stack-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-error text-[18px] shrink-0 mt-[2px]">cancel</span>
+<span><strong>النموذج المالي:</strong> اشتراكات تجديد دورية (8$ - 30$/شهرياً) أو رسوم بالدقيقة.</span>
+</li>
+<li class="flex items-start gap-stack-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-warn-yellow text-[18px] shrink-0 mt-[2px]">wifi_off</span>
+<span><strong>الاتصال:</strong> مشلول كلياً بدون اتصال نشط بالإنترنت.</span>
+</li>
+</ul>
+</div>
+<div class="mt-stack-md pt-stack-md bg-surface-container/50 -mx-stack-lg -mb-stack-lg p-stack-md flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-on-surface-variant">التقييم التشغيلي الإجمالي:</span>
+<span class="font-mono-code text-mono-code text-warn-yellow font-bold">مريح للمقاطع السريعة فقط</span>
+</div>
+</div>
+<!-- Left Side: HaramLite Local (6 Cols) -->
+<div class="lg:col-span-6 rounded-xl bg-surface-container-low p-stack-lg flex flex-col justify-between shadow-sm relative overflow-hidden">
+<div class="absolute top-0 right-0 left-0 h-1 bg-clay-accent"></div>
+<div class="flex flex-col gap-stack-md">
+<div class="flex items-center justify-between pb-stack-sm">
+<div class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-clay-accent text-[24px]">developer_board</span>
+<div>
+<h3 class="font-headline-lg text-[20px] font-bold text-cream-text leading-snug">برنامج HaramLite المحلي</h3>
+<span class="font-mono-code text-mono-code text-clay-accent">100% On-Device Local Engine</span>
+</div>
+</div>
+<span class="px-stack-sm py-unit rounded bg-clay-accent/20 font-mono-code text-mono-code text-clay-accent text-[11px]">مستقل كلياً</span>
+</div>
+<!-- Local Flow Timeline Diagram -->
+<div class="bg-coal-surface p-stack-md rounded-lg flex flex-col gap-stack-sm font-mono-code text-mono-code text-[12px] text-cream-text">
+<div class="flex items-center gap-stack-sm text-tertiary">
+<span class="material-symbols-outlined text-[16px]">folder_open</span>
+<span>1. قراءة الملف مباشرة من القرص الصلب (Zero Bandwidth)</span>
+</div>
+<div class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-[16px]">memory</span>
+<span>2. استدعاء فوري لوحدة المعالجة العصبية / كرت الشاشة (GPU)</span>
+</div>
+<div class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-[16px]">lock</span>
+<span>3. المعالجة في الذاكرة العشوائية دون خروج بايت واحد</span>
+</div>
+<div class="flex items-center gap-stack-sm text-clay-accent">
+<span class="material-symbols-outlined text-[16px]">save</span>
+<span>4. حفظ النتيجة بجودة أصلية غير منقوصة (WAV / FLAC / MP3)</span>
+</div>
+</div>
+<!-- Feature Specs List -->
+<ul class="flex flex-col gap-stack-sm font-body-md text-body-md">
+<li class="flex items-start gap-stack-sm text-cream-text">
+<span class="material-symbols-outlined text-tertiary text-[18px] shrink-0 mt-[2px]">verified</span>
+<span><strong>الخصوصية:</strong> سيادة مطلقة 100%. مناسب للمحتوى العائلي والتسجيلات الخاصة.</span>
+</li>
+<li class="flex items-start gap-stack-sm text-cream-text">
+<span class="material-symbols-outlined text-tertiary text-[18px] shrink-0 mt-[2px]">verified</span>
+<span><strong>بلا قيود:</strong> ساعات من البودكاست أو المحاضرات دفعة واحدة دون حد زمني.</span>
+</li>
+<li class="flex items-start gap-stack-sm text-cream-text">
+<span class="material-symbols-outlined text-tertiary text-[18px] shrink-0 mt-[2px]">verified</span>
+<span><strong>التكلفة:</strong> مجاني بالكامل للأبد ومفتوح المصدر تحت ترخيص حر.</span>
+</li>
+<li class="flex items-start gap-stack-sm text-cream-text">
+<span class="material-symbols-outlined text-tertiary text-[18px] shrink-0 mt-[2px]">offline_pin</span>
+<span><strong>دون إنترنت:</strong> يعمل في الصحراء أو على الطائرة دون اتصال شبكي إطلاقاً.</span>
+</li>
+</ul>
+</div>
+<div class="mt-stack-md pt-stack-md bg-clay-accent/10 -mx-stack-lg -mb-stack-lg p-stack-md flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-cream-text">التقييم التشغيلي الإجمالي:</span>
+<span class="font-mono-code text-mono-code text-clay-accent font-bold">الحل الجذري للاستدامة والخصوصية</span>
+</div>
+</div>
+</div>
+<!-- Comparative Radar/Scorecard Metric Grid (SVG Data Visualization) -->
+<div class="rounded-xl bg-surface-container-low p-stack-lg mt-stack-sm shadow-sm">
+<div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-stack-md pb-stack-md">
+<div>
+<h3 class="font-headline-lg text-[22px] font-bold text-cream-text">لوحة تقييم المعايير الحيوية (Scorecard Grid)</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">قياس كمي مقارن لأداء المنظومتين في بيئات العمل الحقيقية</p>
+</div>
+<div class="flex items-center gap-stack-md font-mono-code text-mono-code text-label-sm">
+<span class="flex items-center gap-unit"><span class="w-3 h-3 rounded bg-clay-accent"></span> تطبيق HaramLite المحلي</span>
+<span class="flex items-center gap-unit"><span class="w-3 h-3 rounded bg-surface-variant"></span> الخدمات السحابية</span>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-stack-md pt-stack-md">
+<!-- Metric 1: الخصوصية -->
+<div class="bg-coal-surface p-stack-md rounded-lg flex flex-col justify-between gap-stack-md">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-cream-text font-bold">الخصوصية والأمان</span>
+<span class="material-symbols-outlined text-tertiary text-[20px]">shield</span>
+</div>
+<div class="space-y-stack-sm">
+<div>
+<div class="flex justify-between font-mono-code text-mono-code text-[11px] mb-1">
+<span class="text-clay-accent">محلي</span>
+<span class="text-cream-text font-bold">100%</span>
+</div>
+<div class="w-full h-2 rounded bg-surface-container overflow-hidden">
+<div class="h-full bg-clay-accent w-full"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between font-mono-code text-mono-code text-[11px] mb-1">
+<span class="text-on-surface-variant">سحابي</span>
+<span class="text-on-surface-variant">30%</span>
+</div>
+<div class="w-full h-2 rounded bg-surface-container overflow-hidden">
+<div class="h-full bg-surface-variant w-[30%]"></div>
+</div>
+</div>
+</div>
+<span class="font-mono-code text-mono-code text-[11px] text-on-surface-variant">تشفير كامل في بيئة نظامك</span>
+</div>
+<!-- Metric 2: كفاءة الملفات الطويلة -->
+<div class="bg-coal-surface p-stack-md rounded-lg flex flex-col justify-between gap-stack-md">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-cream-text font-bold">معالجة الصوت الطويل</span>
+<span class="material-symbols-outlined text-clay-accent text-[20px]">timer</span>
+</div>
+<div class="space-y-stack-sm">
+<div>
+<div class="flex justify-between font-mono-code text-mono-code text-[11px] mb-1">
+<span class="text-clay-accent">محلي</span>
+<span class="text-cream-text font-bold">95%</span>
+</div>
+<div class="w-full h-2 rounded bg-surface-container overflow-hidden">
+<div class="h-full bg-clay-accent w-[95%]"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between font-mono-code text-mono-code text-[11px] mb-1">
+<span class="text-on-surface-variant">سحابي</span>
+<span class="text-on-surface-variant">25%</span>
+</div>
+<div class="w-full h-2 rounded bg-surface-container overflow-hidden">
+<div class="h-full bg-surface-variant w-[25%]"></div>
+</div>
+</div>
+</div>
+<span class="font-mono-code text-mono-code text-[11px] text-on-surface-variant">بلا قطع مفاجئ عند 10 د</span>
+</div>
+<!-- Metric 3: جودة البت الأصلية -->
+<div class="bg-coal-surface p-stack-md rounded-lg flex flex-col justify-between gap-stack-md">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-cream-text font-bold">الحفاظ على نقاء الخام</span>
+<span class="material-symbols-outlined text-primary text-[20px]">graphic_eq</span>
+</div>
+<div class="space-y-stack-sm">
+<div>
+<div class="flex justify-between font-mono-code text-mono-code text-[11px] mb-1">
+<span class="text-clay-accent">محلي (WAV)</span>
+<span class="text-cream-text font-bold">100%</span>
+</div>
+<div class="w-full h-2 rounded bg-surface-container overflow-hidden">
+<div class="h-full bg-clay-accent w-full"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between font-mono-code text-mono-code text-[11px] mb-1">
+<span class="text-on-surface-variant">سحابي (MP3)</span>
+<span class="text-on-surface-variant">65%</span>
+</div>
+<div class="w-full h-2 rounded bg-surface-container overflow-hidden">
+<div class="h-full bg-surface-variant w-[65%]"></div>
+</div>
+</div>
+</div>
+<span class="font-mono-code text-mono-code text-[11px] text-on-surface-variant">تجنب إعادة الضغط والتشفير</span>
+</div>
+<!-- Metric 4: الجدوى الاقتصادية -->
+<div class="bg-coal-surface p-stack-md rounded-lg flex flex-col justify-between gap-stack-md">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-cream-text font-bold">الجدوى الاقتصادية</span>
+<span class="material-symbols-outlined text-tertiary text-[20px]">payments</span>
+</div>
+<div class="space-y-stack-sm">
+<div>
+<div class="flex justify-between font-mono-code text-mono-code text-[11px] mb-1">
+<span class="text-clay-accent">محلي (مجاني)</span>
+<span class="text-cream-text font-bold">100%</span>
+</div>
+<div class="w-full h-2 rounded bg-surface-container overflow-hidden">
+<div class="h-full bg-clay-accent w-full"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between font-mono-code text-mono-code text-[11px] mb-1">
+<span class="text-on-surface-variant">سحابي (اشتراك)</span>
+<span class="text-on-surface-variant">40%</span>
+</div>
+<div class="w-full h-2 rounded bg-surface-container overflow-hidden">
+<div class="h-full bg-surface-variant w-[40%]"></div>
+</div>
+</div>
+</div>
+<span class="font-mono-code text-mono-code text-[11px] text-on-surface-variant">وفر مئات الدولارات سنوياً</span>
+</div>
+<!-- Metric 5: الاستقلالية دون شبكة -->
+<div class="bg-coal-surface p-stack-md rounded-lg flex flex-col justify-between gap-stack-md">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-cream-text font-bold">العمل المستقل (Offline)</span>
+<span class="material-symbols-outlined text-clay-accent text-[20px]">cloud_off</span>
+</div>
+<div class="space-y-stack-sm">
+<div>
+<div class="flex justify-between font-mono-code text-mono-code text-[11px] mb-1">
+<span class="text-clay-accent">محلي</span>
+<span class="text-cream-text font-bold">100%</span>
+</div>
+<div class="w-full h-2 rounded bg-surface-container overflow-hidden">
+<div class="h-full bg-clay-accent w-full"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between font-mono-code text-mono-code text-[11px] mb-1">
+<span class="text-on-surface-variant">سحابي</span>
+<span class="text-on-surface-variant">0%</span>
+</div>
+<div class="w-full h-2 rounded bg-surface-container overflow-hidden">
+<div class="h-full bg-surface-variant w-[0%]"></div>
+</div>
+</div>
+</div>
+<span class="font-mono-code text-mono-code text-[11px] text-on-surface-variant">إنتاجية كاملة بلا شبكة</span>
+</div>
+</div>
+</div>
+</section>
+<!-- 5 Core Decision Points Section -->
+<section class="mb-stack-lg">
+<div class="flex items-center justify-between mb-stack-md pb-stack-sm">
+<div class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-clay-accent text-[24px]">checklist</span>
+<h2 class="font-headline-lg text-headline-lg font-bold text-cream-text">الفرق الجوهري في خمس نقاط أساسية</h2>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant">حدد أولوياتك</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-stack-md">
+<!-- Point 1 -->
+<div class="bg-surface-container-low p-stack-md rounded-xl flex flex-col justify-between gap-stack-sm shadow-sm">
+<div class="flex items-center gap-stack-sm">
+<span class="w-8 h-8 rounded-lg bg-clay-accent/15 text-clay-accent font-bold font-mono-code text-mono-code flex items-center justify-center shrink-0">01</span>
+<h3 class="font-headline-lg text-[18px] font-bold text-cream-text">أين يُعالج الملف فعلياً؟</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+<strong class="text-cream-text">السحابي:</strong> يرسل كامل التسجيل إلى خوادم تابعة لشركات تجارية خارجية قد تفحصه خوارزمياً.
+          <br/>
+<strong class="text-clay-accent">المحلي:</strong> يبقى على قرصك التخزيني ولا يخرج منه بايت واحد—وهذا معيار لا يقبل المساومة في المواد العائلية.
+        </p>
+<span class="font-mono-code text-mono-code text-[11px] text-tertiary">معيار: السيادة والأمان</span>
+</div>
+<!-- Point 2 -->
+<div class="bg-surface-container-low p-stack-md rounded-xl flex flex-col justify-between gap-stack-sm shadow-sm">
+<div class="flex items-center gap-stack-sm">
+<span class="w-8 h-8 rounded-lg bg-clay-accent/15 text-clay-accent font-bold font-mono-code text-mono-code flex items-center justify-center shrink-0">02</span>
+<h3 class="font-headline-lg text-[18px] font-bold text-cream-text">استهلاك الباقة وسقف الحجم</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+<strong class="text-cream-text">السحابي:</strong> استهلاك متكرر لباقة الإنترنت بالرفع والتنزيل، ورفض فوري للملفات فوق 100MB في الباقات العادية.
+          <br/>
+<strong class="text-clay-accent">المحلي:</strong> لا يستهلك باقتك نهائياً؛ بإمكانك معالجة ملف فيديو حجمه 10GB دون قيد.
+        </p>
+<span class="font-mono-code text-mono-code text-[11px] text-tertiary">معيار: استهلاك النطاق</span>
+</div>
+<!-- Point 3 -->
+<div class="bg-surface-container-low p-stack-md rounded-xl flex flex-col justify-between gap-stack-sm shadow-sm">
+<div class="flex items-center gap-stack-sm">
+<span class="w-8 h-8 rounded-lg bg-clay-accent/15 text-clay-accent font-bold font-mono-code text-mono-code flex items-center justify-center shrink-0">03</span>
+<h3 class="font-headline-lg text-[18px] font-bold text-cream-text">الرسوم وفخ الاشتراكات</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+<strong class="text-cream-text">السحابي:</strong> يمنحك دقائق تجريبية ثم يطالبك ببطاقتك الائتمانية عبر اشتراك شهري يتجدد تلقائياً لفك العلامات المائية.
+          <br/>
+<strong class="text-clay-accent">المحلي:</strong> مجاني ومفتوح المصدر بالكامل (FOSS). لا توجد خطة مدفوعة ولا فخاخ خفية.
+        </p>
+<span class="font-mono-code text-mono-code text-[11px] text-tertiary">معيار: الاستدامة المالية</span>
+</div>
+<!-- Point 4 -->
+<div class="bg-surface-container-low p-stack-md rounded-xl flex flex-col justify-between gap-stack-sm shadow-sm">
+<div class="flex items-center gap-stack-sm">
+<span class="w-8 h-8 rounded-lg bg-clay-accent/15 text-clay-accent font-bold font-mono-code text-mono-code flex items-center justify-center shrink-0">04</span>
+<h3 class="font-headline-lg text-[18px] font-bold text-cream-text">زمن الانتظار وطوابير المعالجة</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+<strong class="text-cream-text">السحابي:</strong> الانتظار في طابور مهام مع آلاف المستخدمين، خصوصاً في أوقات الذروة العالمية وبطء الاستجابة.
+          <br/>
+<strong class="text-clay-accent">المحلي:</strong> تسخير فوري لقدرات كرت الشاشة (GPU)؛ يبدأ الفصل فور ضغطك على الزر دون ثانية انتظار واحدة.
+        </p>
+<span class="font-mono-code text-mono-code text-[11px] text-tertiary">معيار: سرعة التنفيذ</span>
+</div>
+<!-- Point 5 -->
+<div class="bg-surface-container-low p-stack-md rounded-xl flex flex-col justify-between gap-stack-sm shadow-sm md:col-span-2 lg:col-span-2">
+<div class="flex items-center gap-stack-sm">
+<span class="w-8 h-8 rounded-lg bg-clay-accent/15 text-clay-accent font-bold font-mono-code text-mono-code flex items-center justify-center shrink-0">05</span>
+<h3 class="font-headline-lg text-[18px] font-bold text-cream-text">السيطرة الكاملة وتجربة المستخدم الخالية من الإعلانات</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+          تطبيقات الويب السحابية مليئة بالنوافذ المنبثقة، وتتبع ملفات تعريف الارتباط (Cookies)، وإعلانات إعادة الاستهداف، بالإضافة إلى إمكانية إغلاق الخدمة أو حجبها في أي لحظة. في المقابل، البرنامج المحلي هو أداة مستقرة تملكها وتتحكم بها داخل بيئة تشغيل نظيفة، دون تسجيل، ودون مشاركة لمعرفاتك الرقمية مع أي طرف ثالث.
+        </p>
+<span class="font-mono-code text-mono-code text-[11px] text-tertiary">معيار: السيادة التقنية وتجربة الاستخدام</span>
+</div>
+</div>
+</section>
+<!-- Practical Decision Guide (When to choose Online vs Local) -->
+<section class="mb-stack-lg rounded-xl bg-surface-container-low p-stack-lg shadow-sm">
+<div class="mb-stack-md">
+<div class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-clay-accent text-[24px]">alt_route</span>
+<h2 class="font-headline-lg text-headline-lg font-bold text-cream-text">دليل القرار العملي: متى تختار كل منهما؟</h2>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1">
+        اختر الأداة الأنسب حسب طبيعة مهامك المحددة لتوفير الوقت والجهد
+      </p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-stack-md">
+<!-- Scenario A: Choose Online -->
+<div class="p-stack-md rounded-xl bg-coal-surface flex flex-col justify-between gap-stack-md">
+<div>
+<div class="flex items-center gap-stack-sm mb-stack-sm text-warn-yellow">
+<span class="w-7 h-7 rounded-full bg-warn-yellow/15 flex items-center justify-center font-bold text-[14px]">⚡</span>
+<h3 class="font-headline-lg text-[18px] font-bold text-cream-text">متى يكون الأونلاين خياراً منطقياً؟</h3>
+</div>
+<ul class="space-y-stack-sm font-body-md text-body-md text-on-surface-variant">
+<li class="flex items-start gap-stack-sm">
+<span class="material-symbols-outlined text-warn-yellow text-[18px] shrink-0 mt-[2px]">check</span>
+<span>عندما تريد فحص مقطع فيديو عابر قصير مدته 30 ثانية لمرة واحدة فقط.</span>
+</li>
+<li class="flex items-start gap-stack-sm">
+<span class="material-symbols-outlined text-warn-yellow text-[18px] shrink-0 mt-[2px]">check</span>
+<span>المحتوى عام منشور مسبقاً على الإنترنت ولا يحتوي على خصوصيات أسرية.</span>
+</li>
+<li class="flex items-start gap-stack-sm">
+<span class="material-symbols-outlined text-warn-yellow text-[18px] shrink-0 mt-[2px]">check</span>
+<span>إذا كنت تستخدم جهازاً عاماً لا تملك فيه صلاحيات تثبيت البرامج (مثل مكتبة جامعية).</span>
+</li>
+</ul>
+</div>
+<div class="p-stack-sm rounded bg-surface-container font-mono-code text-mono-code text-[12px] text-on-surface-variant">
+          الخلاصة: ممتاز للاستعمال النادر غير الحساس.
+        </div>
+</div>
+<!-- Scenario B: Choose Local -->
+<div class="p-stack-md rounded-xl bg-coal-surface flex flex-col justify-between gap-stack-md">
+<div>
+<div class="flex items-center gap-stack-sm mb-stack-sm text-clay-accent">
+<span class="w-7 h-7 rounded-full bg-clay-accent/20 flex items-center justify-center font-bold text-[14px]">💻</span>
+<h3 class="font-headline-lg text-[18px] font-bold text-cream-text">متى يجب عليك حتماً اختيار البرنامج المحلي؟</h3>
+</div>
+<ul class="space-y-stack-sm font-body-md text-body-md text-cream-text">
+<li class="flex items-start gap-stack-sm">
+<span class="material-symbols-outlined text-clay-accent text-[18px] shrink-0 mt-[2px]">verified</span>
+<span><strong>التسجيلات العائلية والشخصية:</strong> لضمان عدم تسريب أي أصوات خاصة لأي سيرفر.</span>
+</li>
+<li class="flex items-start gap-stack-sm">
+<span class="material-symbols-outlined text-clay-accent text-[18px] shrink-0 mt-[2px]">verified</span>
+<span><strong>صناع المحتوى والبودكاست:</strong> للملفات الطويلة ذات الساعتين أو الثلاث بجودة استوديو خام.</span>
+</li>
+<li class="flex items-start gap-stack-sm">
+<span class="material-symbols-outlined text-clay-accent text-[18px] shrink-0 mt-[2px]">verified</span>
+<span><strong>العمل المستمر والوفير:</strong> معالجة مجلدات كاملة دفعة واحدة بضغطة زر دون اشتراكات.</span>
+</li>
+</ul>
+</div>
+<div class="p-stack-sm rounded bg-clay-accent/15 font-mono-code text-mono-code text-[12px] text-clay-accent">
+          الخلاصة: خيار الاحتراف، والسرية التامة، والتوفير الدائم.
+        </div>
+</div>
+</div>
+</section>
+<!-- Technical Honesty & Transparency Notice -->
+<section class="mb-stack-lg rounded-xl bg-surface-container-low p-stack-lg shadow-sm">
+<div class="flex items-center gap-stack-sm mb-stack-sm">
+<span class="material-symbols-outlined text-clay-accent text-[22px]">verified_user</span>
+<h2 class="font-headline-lg text-[22px] font-bold text-cream-text">حدود صريحة وأمانة فنية</h2>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant mb-stack-md leading-relaxed">
+      لا توجد في العالم أي خوارزمية ذكاء اصطناعي تحقق عزلاً سحرياً مثالياً بنسبة 100% دون أدنى أثر صوتي؛ والفيصل الحقيقي يكمن في الحفاظ على نبرة المتحدث وخلوها من التشويه الرقمي (Artifacts):
+    </p>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-stack-md">
+<div class="p-stack-md rounded-lg bg-coal-surface flex items-start gap-stack-sm">
+<span class="material-symbols-outlined text-clay-accent text-[20px] shrink-0 mt-1">insights</span>
+<div class="space-y-1">
+<h4 class="font-label-md text-label-md font-bold text-cream-text">المحلي ليس بالضرورة أبطأ</h4>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            على الحواسيب المزودة بكرت شاشة حديث أو معالج متوسط، زمن المعالجة المحلية يكون أسرع من الوقت المستغرق فقط في رفع ملفك عالي الجودة إلى موقع سحابي وتنزيله.
+          </p>
+</div>
+</div>
+<div class="p-stack-md rounded-lg bg-coal-surface flex items-start gap-stack-sm">
+<span class="material-symbols-outlined text-warn-yellow text-[20px] shrink-0 mt-1">warning</span>
+<div class="space-y-1">
+<h4 class="font-label-md text-label-md font-bold text-cream-text">الحذر من القيود الصامتة في السحاب</h4>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            كثير من المنصات الأونلاين تعمد سراً إلى تخفيض معدل البت (Bitrate) وتقليص الترددات فوق 14kHz لتقليل تكاليف سيرفراتها دون إشعار مسبق.
+          </p>
+</div>
+</div>
+</div>
+<!-- Practical Tip Callout -->
+<div class="mt-stack-md p-stack-md rounded-lg bg-surface-container flex items-center gap-stack-md">
+<span class="material-symbols-outlined text-tertiary text-[28px] shrink-0">hearing</span>
+<div class="font-body-md text-body-md text-cream-text">
+<strong>نصيحة تقنية مجربة:</strong> قم باقتطاع دقيقة واحدة من ملفك الصوتي وجرب عزلها على كلا النموذجين؛ أذنك البشرية ستحدد فوراً مستوى النقاء الحقيقي وخلو الصوت من نبرة "الروبوتية".
+      </div>
+</div>
+</section>
+<!-- Interactive FAQ Section -->
+<section class="mb-stack-lg">
+<div class="flex items-center gap-stack-sm mb-stack-md pb-stack-sm">
+<span class="material-symbols-outlined text-clay-accent text-[24px]">quiz</span>
+<h2 class="font-headline-lg text-headline-lg font-bold text-cream-text">الأسئلة الأكثر شيوعاً</h2>
+</div>
+<div class="space-y-stack-sm" id="faq-accordion">
+<!-- FAQ 1 -->
+<details class="group bg-surface-container-low rounded-xl p-stack-md transition-all shadow-sm">
+<summary class="flex items-center justify-between gap-stack-md font-headline-lg text-[17px] font-bold text-cream-text cursor-pointer list-none select-none">
+<span class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-clay-accent text-[20px]">help_outline</span>
+<span>هل تختلف جودة فصل الموسيقى بين الطريقتين؟</span>
+</span>
+<span class="material-symbols-outlined text-on-surface-variant transition-transform duration-200 group-open:rotate-180 group-open:text-clay-accent shrink-0 text-[20px]">expand_more</span>
+</summary>
+<div class="mt-stack-sm pt-stack-sm font-body-md text-body-md text-on-surface-variant leading-relaxed">
+          الجودة تعتمد في الأساس على نموذج الذكاء الاصطناعي (Model Architecture) وليس مكان تشغيله. ومع ذلك، التطبيق المحلي يتفوق لأنه يعالج الملف بالدقة الاستوديو الخام (مثل 24-bit / 48kHz WAV) دون أي ضغط أو تصغير للملف الذي تفرضه الخوادم السحابية لتوفير استهلاك خوادمها.
+        </div>
+</details>
+<!-- FAQ 2 -->
+<details class="group bg-surface-container-low rounded-xl p-stack-md transition-all shadow-sm">
+<summary class="flex items-center justify-between gap-stack-md font-headline-lg text-[17px] font-bold text-cream-text cursor-pointer list-none select-none">
+<span class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-clay-accent text-[20px]">help_outline</span>
+<span>هل تتطلب المعالجة المحلية جهاز حاسوب فائق المواصفات؟</span>
+</span>
+<span class="material-symbols-outlined text-on-surface-variant transition-transform duration-200 group-open:rotate-180 group-open:text-clay-accent shrink-0 text-[20px]">expand_more</span>
+</summary>
+<div class="mt-stack-sm pt-stack-sm font-body-md text-body-md text-on-surface-variant leading-relaxed">
+          إطلاقاً؛ تم تحسين محرك HaramLite ليعمل بكفاءة عالية على المعالجات التقليدية (CPU) لأجهزة اللابتوب العادية. وإذا كان جهازك يحتوي على كرت شاشة من NVIDIA أو كرت يدعم تسريع DirectX 12، فسيتم تفعيل التسريع العتادي تلقائياً لتتم المعالجة بأضعاف السرعة وبسلاسة تامة.
+        </div>
+</details>
+<!-- FAQ 3 -->
+<details class="group bg-surface-container-low rounded-xl p-stack-md transition-all shadow-sm">
+<summary class="flex items-center justify-between gap-stack-md font-headline-lg text-[17px] font-bold text-cream-text cursor-pointer list-none select-none">
+<span class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-clay-accent text-[20px]">help_outline</span>
+<span>ما هو الخيار الأفضل لحلقات البودكاست والمحاضرات الطويلة؟</span>
+</span>
+<span class="material-symbols-outlined text-on-surface-variant transition-transform duration-200 group-open:rotate-180 group-open:text-clay-accent shrink-0 text-[20px]">expand_more</span>
+</summary>
+<div class="mt-stack-sm pt-stack-sm font-body-md text-body-md text-on-surface-variant leading-relaxed">
+          البرنامج المحلي بلا أدنى شك. المنصات السحابية تفرض سقفاً دقيقاً (عادة 10 إلى 20 دقيقة كحد أقصى للحسابات المدفوعة)، بالإضافة إلى أن رفع وتنزيل ملف بودكاست يستغرق وقتاً يفوق وقت معالجته محلياً على جهازك. المحلي يقبل ملفات لعدة ساعات متواصلة بلا توقف.
+        </div>
+</details>
+</div>
+</section>
+<!-- Big Call to Action Section -->
+<section class="mb-stack-lg rounded-xl bg-surface-container-low p-stack-lg shadow-sm text-center relative overflow-hidden">
+<div class="absolute -bottom-20 -right-20 w-80 h-80 rounded-full bg-clay-accent/10 blur-3xl pointer-events-none"></div>
+<div class="relative z-10 max-w-xl mx-auto space-y-stack-sm">
+<div class="inline-flex items-center gap-unit px-stack-sm py-unit rounded-full bg-surface-container text-tertiary font-mono-code text-mono-code text-label-sm">
+<span class="material-symbols-outlined text-[15px]">verified</span>
+<span>حمل مرة واحدة · خصوصية تامة إلى الأبد</span>
+</div>
+<h3 class="font-headline-xl text-headline-xl font-bold text-cream-text">
+        امتلك محرك المعالجة على جهازك الآن
+      </h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+        تخلص من قيود الحجم، وتكاليف الاشتراكات الشهرية، ومخاطر تسريب التسجيلات الصوتية عبر الخوادم الخارجية.
+      </p>
+<div class="pt-stack-md flex flex-wrap items-center justify-center gap-stack-sm">
+<a class="inline-flex items-center gap-stack-sm bg-primary-container text-on-primary-container px-stack-lg py-stack-sm rounded-lg hover:bg-clay-accent transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined text-[20px]">download</span>
+<span>تحميل HaramLite لويندوز مجاناً</span>
+</a>
+<a class="inline-flex items-center gap-stack-sm bg-surface-container text-cream-text px-stack-md py-stack-sm rounded-lg hover:bg-surface-variant transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined text-[18px]">extension</span>
+<span>إضافة يوتيوب للمتصفح</span>
+</a>
+</div>
+</div>
+</section>
+<!-- Related Guides Grid -->
+<nav class="pt-stack-md">
+<div class="flex items-center justify-between mb-stack-sm">
+<h4 class="font-mono-code text-mono-code text-clay-accent font-bold uppercase tracking-wider">
+        // ADJACENT GUIDES & BENCHMARKS
+      </h4>
+<span class="text-on-surface-variant font-label-sm text-label-sm">شروحات تقنية ذات صلة</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-stack-md">
+<!-- Guide Card 1 -->
+<a class="group p-stack-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-all shadow-sm flex flex-col justify-between" href="#">
+<div>
+<div class="flex items-center justify-between text-cream-text group-hover:text-primary transition-colors mb-unit">
+<span class="font-headline-lg text-[16px] font-bold">إزالة الموسيقى من الفيديو</span>
+<span class="material-symbols-outlined text-[16px] -translate-x-1 group-hover:translate-x-0 transition-transform">arrow_back</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-2">
+            الخطوات العملية واختيار نمط المعالجة الأنسب وحدود عزل الكلام بدقة عالية.
+          </p>
+</div>
+<span class="mt-stack-sm font-mono-code text-mono-code text-[11px] text-tertiary">دليل خطوة بخطوة</span>
+</a>
+<!-- Guide Card 2 -->
+<a class="group p-stack-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-all shadow-sm flex flex-col justify-between" href="#">
+<div>
+<div class="flex items-center justify-between text-cream-text group-hover:text-primary transition-colors mb-unit">
+<span class="font-headline-lg text-[16px] font-bold">مشاهدة يوتيوب بلا موسيقى</span>
+<span class="material-symbols-outlined text-[16px] -translate-x-1 group-hover:translate-x-0 transition-transform">arrow_back</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-2">
+            كيف تعمل إضافة المتصفح على كتم الموسيقى اللحظي وتخطي الفواصل الصوتية.
+          </p>
+</div>
+<span class="mt-stack-sm font-mono-code text-mono-code text-tertiary">شرح إضافة المتصفح</span>
+</a>
+<!-- Guide Card 3 -->
+<a class="group p-stack-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-all shadow-sm flex flex-col justify-between" href="#">
+<div>
+<div class="flex items-center justify-between text-cream-text group-hover:text-primary transition-colors mb-unit">
+<span class="font-headline-lg text-[16px] font-bold">كيف يفصل الذكاء الاصطناعي الصوت؟</span>
+<span class="material-symbols-outlined text-[16px] -translate-x-1 group-hover:translate-x-0 transition-transform">arrow_back</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-2">
+            شرح مبسط لبنية شبكات المويجات والتحليل الطيفي (Spectrogram Analysis).
+          </p>
+</div>
+<span class="mt-stack-sm font-mono-code text-mono-code text-tertiary">أساسيات الخوارزميات</span>
+</a>
+</div>
+</nav>
+<!-- Footnote Note on Zero Telemetry -->
+<div class="mt-stack-md p-stack-sm rounded bg-surface-container text-center text-on-surface-variant font-label-sm text-label-sm">
+<span>تنبيه الخصوصية: لا يقوم البرنامج بجمع أي تحليلات تشغيلية (Zero Telemetry) ولا يتواصل بأي خادم إحصائي على الإطلاق.</span>
+</div>
+</div>
+    <nav class="related-guides mt-12 pt-6 border-t border-coal-border">
+      <h4 class="font-bold text-xs uppercase tracking-wider text-cream-muted mb-3">أدلة ذات صلة</h4>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <a href="remove-music-from-video.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">إزالة الموسيقى من الفيديو</span>
+        </a>
+        <a href="watch-youtube-without-music.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">مشاهدة يوتيوب بدون موسيقى</span>
+        </a>
+        <a href="ai-vocal-separation.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">كيف يفصل الذكاء الاصطناعي الصوت؟</span>
+        </a>
+        <a href="remove-music-from-podcast.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">إزالة الموسيقى من البودكاست</span>
         </a>
       </div>
-    </div>
-  </header>
-
-  <main class="flex-grow max-w-3xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12">
-
-    <nav class="flex items-center gap-2 text-xs text-cream-muted mb-4">
-      <a href="../" class="hover:text-clay transition-colors">الرئيسية</a>
-      <span class="material-symbols-outlined text-[10px] opacity-60">chevron_left</span>
-      <a href="./" class="hover:text-clay transition-colors">الأدلة</a>
-      <span class="material-symbols-outlined text-[10px] opacity-60">chevron_left</span>
-      <span class="text-cream-text font-medium truncate">أونلاين أم محلي؟</span>
     </nav>
+  </main><footer class="w-full bg-surface-container-low mt-stack-lg"><div class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-stack-lg flex flex-col gap-stack-lg"><div class="flex flex-col md:flex-row items-center justify-between gap-stack-md"><div class="flex items-center gap-stack-sm bg-surface-container px-stack-md py-stack-sm rounded-full"><span class="material-symbols-outlined text-tertiary text-[20px]">verified_user</span><span class="font-label-sm text-label-sm text-on-surface">ضمانات المعالجة المحلية: خصوصية تامة بدون اتصال خارجي 100%</span></div><div class="flex items-center gap-stack-md"><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors" data-path="privacy-policy" href="#">سياسة الخصوصية</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-unit" data-path="repository" href="#"><span class="material-symbols-outlined text-[16px]">code</span>مستودع GitHub</a></div></div><div class="flex flex-col md:flex-row items-center justify-between text-on-surface-variant font-label-sm text-label-sm"><p>© 2024 HaramLite Audio Engine. جميع الحقوق محفوظة.</p><p class="text-secondary font-mono-code text-mono-code">Designed with Charcoal & Clay Precision</p></div></div></footer></body></html>
 
-    <section class="mb-8">
-      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-clay/10 border border-clay/25 text-clay text-xs font-semibold mb-3">
-        <span class="material-symbols-outlined text-xs">bolt</span><span>مقارنة عملية · بلا تحيّز</span>
-      </div>
-      <h1 class="font-serif text-2xl sm:text-4xl font-bold text-cream-text leading-tight mb-4">أونلاين أم برنامج محلي؟</h1>
-      <p class="text-base sm:text-lg text-cream-muted leading-relaxed">الطريقتان تعملان، لكن الفرق بينهما ليس في الجودة وحدها بل في <strong class="text-clay font-bold">أين يذهب ملفك</strong> وما الحدود التي ستقابلها.</p>
-    </section>
-
-    <div id="quick-download" class="my-6 p-5 sm:p-6 rounded-2xl bg-coal-card border-glow-clay relative overflow-hidden">
-      <div class="flex flex-col sm:flex-row items-center justify-between gap-5 relative z-10">
-        <div class="text-center sm:text-right space-y-1">
-          <div class="flex items-center justify-center sm:justify-start gap-2">
-            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span class="text-xs font-medium text-cream-muted">مجاني ومفتوح المصدر · الإصدار 0.2.2</span>
-          </div>
-          <h2 class="font-serif font-bold text-lg sm:text-xl text-cream-text">برنامج HaramLite لنظام ويندوز 10 / 11</h2>
-          <p class="text-xs sm:text-sm text-cream-muted">حجم خفيف (~220MB متكامل) · معالجة 100% محلية · بلا اشتراك ولا حساب</p>
-        </div>
-        <a href="../#download" class="shrink-0 inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all shadow-lg">
-          <span class="material-symbols-outlined ">download</span><span>حمّل المثبّت (.exe)</span>
-        </a>
-      </div>
-    </div>
-
-    <section class="mt-10 mb-12">
-      <div class="flex items-center justify-between mb-5 border-b border-coal-border pb-3">
-        <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text flex items-center gap-2.5"><span class="material-symbols-outlined text-clay text-lg">checklist</span> الفرق في خمس نقاط</h2>
-        <span class="text-xs text-cream-muted">قارنها بحالتك</span>
-      </div>
-      <div class="grid grid-cols-1 gap-3.5">
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">1</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">أين يُعالج الملف؟</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">السحابي: ملفك يُرفع إلى خادم الشركة ثم يُعاد إليك. المحلي: يبقى على قرصك، ولا يخرج منه بايت واحد — وهذا هو الفرق الجوهري في المحتوى الخاص.</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">2</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">الإنترنت والحجم</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">السحابي يحتاج اتصالاً دائماً وغالباً حدّاً للحجم أو الدقائق. المحلي يعمل بلا شبكة وبلا حدود، وإنما يتوقف على سرعة جهازك.</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">3</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">التكلفة</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">السحابي غالباً باشتراك شهري للجودة العالية أو لإزالة العلامة المائية. المحلي: دفعة واحدة (أو مجاناً إن كان مفتوح المصدر كأداتنا) وبلا حدّ.</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">4</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">الانتظار</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">السحابي يضعك في طابور مع بقية المستخدمين وقد يبطؤ في الذروة. المحلي لا ينتظر أحداً، والسرعة تعتمد على كرت رسومياتك.</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">5</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">التحكّم والخصوصية</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">المحلي يعطيك تحكماً كاملاً: بلا حساب، بلا رفع، بلا سياسة تخزين تخفى عليك. والسحابي يعتمد على ثقتك في سياسة الشركة.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="my-10 p-5 sm:p-6 rounded-2xl bg-coal-card border border-coal-border">
-      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-4 flex items-center gap-2"><span class="material-symbols-outlined text-clay">tune</span> أي طريقة تناسبك؟</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">⚡</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">اختر الأونلاين إن</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> كنت تريد تجربة سريعة لمقطع واحد غير خاص، ولا تمانع رفعه، ولا تحتاج جودة قصوى ولا معالجة متكررة.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">💻</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">اختر المحلي إن</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> كان المحتوى خاصاً أو متكرراً أو طويلاً، أو أردت العمل بلا إنترنت، أو أردت نتائج بلا حدّ ولا اشتراك ولا رفع.</p>
-        </div>
-      </div>
-    </section>
-    <section class="my-10">
-      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">verified_user</span> حدود صريحة وأمانة فنية</h2>
-      <p class="text-xs sm:text-sm text-cream-muted mb-4">لا توجد أداة في العالم تعطي فصلاً مثالياً 100%؛ والفرق الحقيقي هو جودة العزل دون تشويه نبرة الصوت:</p>
-      <ul class="space-y-2.5 text-xs sm:text-sm text-cream-muted bg-coal-card p-4 sm:p-5 rounded-xl border border-coal-border">
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">المحلي ليس أبطأ دائماً:</strong> على كرت رسوميات مدعوم تكون المعالجة المحلية أسرع من انتظار طابور خادم مزدحم.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">السحابي أسهل في البداية:</strong> لا تثبيت ولا إعداد — وهذا سبب اختياره في تجربة واحدة عابرة.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">انتبه للحدود الصامتة:</strong> بعض الخدمات تقصّ الدقائق المجانية أو تخفّض الجودة دون إعلان واضح.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-emerald-400 mt-1 text-xs shrink-0">check_circle</span>
-          <span><strong class="text-cream-text">جرّب قبل أن تقرّر:</strong> عالج دقيقة واحدة من محتواك في الطريقتين وقارن بنفسك: الأذن تحكم أسرع من أي وصف.</span>
-        </li>
-      </ul>
-    </section>
-
-    <section id="faq" class="my-12">
-      <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text mb-6 border-b border-coal-border pb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">help</span> الأسئلة الشائعة</h2>
-      <div class="space-y-3.5">
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل الجودة تختلف بين الطريقتين؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">الجودة تعتمد على الموديل المستخدم لا على مكان المعالجة. لكن المحلي يتيح لك معالجة الملف بالجودة الأصلية بلا حدّ رفع أو إعادة ضغط.</div>
-        </details>
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل المعالجة المحلية تحتاج جهازاً قوياً؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">لا، تعمل على المعالج؛ وتتسارع كثيراً على كرت NVIDIA أو أي كرت DX12 عند تفعيل التسريع.</div>
-        </details>
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>ما الأفضل للمحتوى الطويل؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">المحلي، لأن السحابي غالباً يضع حدّاً للدقائق أو الحجم، ولأن الرفع والتنزيل يستهلكان وقتاً أطول من المعالجة نفسها في الملفات الكبيرة.</div>
-        </details>
-      </div>
-    </section>
-
-    <div class="p-6 rounded-2xl bg-coal-card border border-coal-border text-center space-y-4 my-8">
-      <h3 class="font-serif font-bold text-xl text-cream-text">جرّب الطريقة المحلية</h3>
-      <p class="text-xs sm:text-sm text-cream-muted max-w-md mx-auto">حمّل مرة واحدة، واعمل بلا حدود وبلا رفع.</p>
-      <div class="flex flex-wrap items-center justify-center gap-3 pt-1">
-        <a href="../#download" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all shadow-md"><span class="material-symbols-outlined ">download</span><span>تحميل HaramLite لويندوز</span></a>
-        <a href="../bridge.html" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-coal-surface border border-coal-border text-cream-muted hover:text-cream-text hover:border-clay/40 text-sm transition-colors"><span class="material-symbols-outlined ">extension</span><span>إضافة المتصفح</span></a>
-      </div>
-    </div>
-
-    <nav class="mt-12 pt-6 border-t border-coal-border">
-      <h4 class="font-bold text-xs uppercase tracking-wider text-cream-dim mb-3">أدلة ذات صلة</h4>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-      <a href="remove-music-from-video.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">إزالة الموسيقى من الفيديو <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">الخطوات والوضع المناسب وحدود الفصل</p>
-      </a>
-      <a href="watch-youtube-without-music.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">مشاهدة يوتيوب بدون موسيقى <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">تخطي الصمت المباشر في المتصفح</p>
-      </a>
-      <a href="ai-vocal-separation.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">كيف يفصل الذكاء الاصطناعي الصوت؟ <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">شرح تقني مبسّط لموديل الفصل</p>
-      </a>
-      </div>
-    </nav>
-
-    <p class="mt-8 text-xs text-cream-dim leading-relaxed">كل المعالجة تحدث على جهازك: لا يُرفع أي ملف، ولا حساب ولا تتبّع. راجع <a href="../PRIVACY.html" class="text-clay hover:underline">سياسة الخصوصية</a>.</p>
-  </main>
-
-  <footer class="border-t border-coal-border py-6 bg-coal-surface mt-auto">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-cream-muted">
-      <span>© 2026 HaramLite · إزالة الموسيقى محلياً على جهازك، بلا رفع ولا حساب.</span>
-      <div class="flex items-center gap-4">
-        <a href="../PRIVACY.html" class="hover:text-clay transition-colors">الخصوصية</a>
-        <a href="https://github.com/SMSMy/HaramLite" target="_blank" rel="noreferrer" class="hover:text-clay transition-colors">المستودع</a>
-      </div>
-    </div>
-  </footer>
-</body>
-</html>

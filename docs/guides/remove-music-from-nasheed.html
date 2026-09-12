@@ -1,276 +1,468 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>إزالة الموسيقى من الأناشيد وعزل الصوت البشري | HaramLite</title>
-  <meta name="description" content="كيف تعزل الصوت البشري من نشيد فيه إيقاعات أو موسيقى خلفية، وما الذي يحدث للكورال والغناء الجماعي.">
-  <link rel="canonical" href="https://haramlite.com/guides/remove-music-from-nasheed.html">
-  <meta name="theme-color" content="#151311">
-  <meta property="og:type" content="article">
-  <meta property="og:title" content="إزالة الموسيقى من الأناشيد وعزل الصوت البشري | HaramLite">
-  <meta property="og:description" content="كيف تعزل الصوت البشري من نشيد فيه إيقاعات أو موسيقى خلفية، وما الذي يحدث للكورال والغناء الجماعي.">
-  <meta property="og:url" content="https://haramlite.com/guides/remove-music-from-nasheed.html">
-  <meta property="og:image" content="https://haramlite.com/assets/og.png">
-  <meta name="twitter:card" content="summary_large_image">
-  <link rel="icon" href="../assets/favicon.ico" sizes="any">
-  <link rel="icon" type="image/png" sizes="32x32" href="../assets/icon-32.png">
-  <link rel="apple-touch-icon" href="../assets/icon-180.png">
-  <link rel="stylesheet" href="../assets/site.css"/>
+
+<html dir="rtl" lang="ar"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<style>@layer base { html, body { margin: 0; padding: 0; } body { overscroll-behavior: none; } main > :first-child { margin-top: 0 !important; } main > :last-child { margin-bottom: 0 !important; } } ::-webkit-scrollbar { display: none; }</style>  <link rel="stylesheet" href="../assets/site.css"/>
   <link rel="preload" href="../assets/thmanyah-serif-bold.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="../assets/thmanyah-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
-  <script type="application/ld+json">
-  {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "هل يبقى الكورال في النشيد؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "نعم، لأن الموديل يصنّف أصوات الكورال صوتاً بشرياً أصيلاً فيُبقيها. وإن أردت إبقاء الكلام فقط في مقطع حوار فاستخدم وضع «مقطع عادي»."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "أي صيغة أفضل للناتج؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "MP3 للأناشيد لأنك تحتاج الصوت وحده، وهو أسرع ترميزاً وأصغر حجماً. واختر MP4 إن أردت الاحتفاظ بالصورة."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "هل يعمل بلا إنترنت؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "نعم، بعد التثبيت يعمل كاملاً بلا شبكة. الإنترنت يلزم فقط إن أردت لصق رابط خارجي."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "هل تُرفع الأناشيد إلى أي خدمة؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "لا. لا يوجد خادم في مسار المعالجة: الفصل والتحسين والترميز كلها على جهازك."
+  <link rel="canonical" href="https://haramlite.com/guides/remove-music-from-nasheed.html">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://haramlite.com/assets/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+</head><body class="bg-surface font-body-md text-on-surface antialiased selection:bg-primary-container selection:text-on-primary-container"><header class="fixed top-0 w-full z-50 bg-coal-surface/90 backdrop-blur-xl border-b border-border-muted"><div class="h-16 max-w-7xl mx-auto px-gutter lg:px-margin-desktop flex items-center justify-between gap-stack-md"><div class="flex items-center gap-stack-md"><a class="flex items-center gap-stack-sm" data-path="home" href="#"><img alt="HaramLite brand app icon: acoustic fork / two-track audio branches converging into one pure stem, with the left music track cleanly severed by an angled cut-line and dimmed, while the right speech/vocal track remains solid and flows through to the pure audio base, rendered in Clay and Coal palette." class="h-8 w-auto object-contain" src="../assets/icon-32.png"/><div class="flex flex-col text-right"><span class="font-headline-lg text-cream-text tracking-tight text-[18px] leading-tight">HaramLite</span><span class="font-label-sm text-outline text-[11px] leading-none">معالجة محلية 100%</span></div></a><nav class="hidden md:flex items-center gap-1 mr-stack-md" data-active-classes="text-cream-text bg-surface-container font-semibold"><a class="px-stack-sm py-unit rounded text-on-surface-variant hover:text-cream-text transition-colors font-label-md text-label-md" data-path="home" href="#">الرئيسية</a><a aria-current="page" class="px-stack-sm py-unit rounded transition-colors text-cream-text bg-surface-container font-semibold" data-path="guides" href="#">الأدلة</a><a class="px-stack-sm py-unit rounded text-on-surface-variant hover:text-cream-text transition-colors font-label-md text-label-md" data-path="browser-extension" href="#">إضافة المتصفح</a><a class="px-stack-sm py-unit rounded text-on-surface-variant hover:text-cream-text transition-colors font-label-md text-label-md" data-path="faq" href="#">الأسئلة الشائعة</a></nav></div><div class="flex items-center gap-stack-sm"><a class="inline-flex items-center gap-stack-sm bg-clay-accent text-coal-surface hover:bg-primary px-stack-md py-unit rounded-lg transition-colors font-label-md text-label-md font-bold" data-path="download" href="#"><span class="material-symbols-outlined text-[18px]">download</span><span>تحميل HaramLite</span><span class="bg-surface-container-lowest text-cream-text font-mono-code text-label-sm px-1.5 py-0.5 rounded">v0.2.2</span></a><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-16 bg-surface"><div class="max-w-4xl mx-auto px-4 py-8"><div class="flex flex-col w-full">
+<!-- Interactive Navigation / Breadcrumb -->
+<nav aria-label="فتات الخبز" class="flex items-center gap-stack-sm font-label-md text-label-md text-outline mb-stack-lg">
+<a class="hover:text-cream-text transition-colors flex items-center gap-1" data-path="home" href="#">
+<span class="material-symbols-outlined text-[16px]">home</span>
+<span>الرئيسية</span>
+</a>
+<span class="material-symbols-outlined text-[14px] rotate-180">chevron_left</span>
+<a class="hover:text-cream-text transition-colors" data-path="guides" href="#">الأدلة</a>
+<span class="material-symbols-outlined text-[14px] rotate-180">chevron_left</span>
+<span class="text-clay-accent font-semibold">عزل الصوت البشري وإزالة الموسيقى من الأناشيد</span>
+</nav>
+<!-- Editorial Guide Header -->
+<section class="relative bg-surface-container rounded-xl p-stack-lg md:p-margin-desktop mb-stack-lg shadow-xl overflow-hidden">
+<div class="absolute -top-24 -left-24 w-80 h-80 bg-clay-accent/10 rounded-full blur-3xl pointer-events-none"></div>
+<div class="absolute top-1/2 -right-20 w-64 h-64 bg-warn-yellow/5 rounded-full blur-3xl pointer-events-none"></div>
+<div class="relative z-10 flex flex-col gap-stack-md max-w-3xl">
+<div class="inline-flex items-center gap-stack-sm self-start px-stack-md py-unit rounded-full bg-surface-container-highest text-clay-accent font-label-sm text-label-sm font-semibold">
+<span class="w-2 h-2 rounded-full bg-clay-accent animate-ping"></span>
+<span class="material-symbols-outlined text-[16px]">graphic_eq</span>
+<span>وضع الأغنية (Song Mode) · عزل صوتي فائق الدقة</span>
+</div>
+<h1 class="font-headline-xl text-headline-xl text-cream-text font-black leading-tight tracking-tight">
+        إزالة الموسيقى والمؤثرات من الأناشيد مع الإبقاء الكامل على الصوت البشري
+      </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed">
+        تحويل المقاطع الإنشادية المشوبة بالموسيقى أو الإيقاعات الاصطناعية المبالغ فيها إلى صوت نقي خالص، بالاعتماد الكامل على عزل المسارات العصبية محلياً داخل جهازك بنسبة خصوصية 100% ودون الحاجة لرفع المقطع لخوادم خارجية.
+      </p>
+<div class="flex flex-wrap items-center gap-stack-md pt-unit text-outline font-label-sm text-label-sm">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px] text-clay-accent">verified_user</span>
+<span>معالجة محلية 100% (أمان تام)</span>
+</div>
+<span class="text-border-muted">•</span>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px] text-warn-yellow">bolt</span>
+<span>تطبيع المعايير التلقائي LUFS -14</span>
+</div>
+<span class="text-border-muted">•</span>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px] text-tertiary">group</span>
+<span>احتفاظ آمن بالكورال الجماعي</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Visual Spectrum & Stem Infographic Section -->
+<section class="bg-surface-container-low rounded-xl p-stack-lg md:p-margin-desktop mb-stack-lg shadow-md">
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-stack-md mb-stack-lg">
+<div class="flex flex-col gap-stack-sm">
+<span class="font-mono-code text-label-sm text-clay-accent">ACOUSTIC STEM ISOLATION // 01</span>
+<h2 class="font-headline-lg text-headline-lg text-cream-text font-bold">
+          كيف يعزل وضع «أغنية» الصوت البشري في المقطوعات الإنشادية؟
+        </h2>
+</div>
+<span class="font-label-sm text-label-sm text-outline">تحليل مسار الترددات الحية ومطابقة النماذج</span>
+</div>
+<!-- STEM Breakdown Visual Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-stack-md mb-stack-lg">
+<!-- Drum & Synths Channel (Removed) -->
+<div class="bg-surface-container-lowest rounded-lg p-stack-md flex flex-col justify-between relative overflow-hidden group">
+<div class="absolute top-0 right-0 w-1.5 h-full bg-error"></div>
+<div>
+<div class="flex items-center justify-between mb-stack-sm">
+<span class="font-label-md text-label-md text-error flex items-center gap-1 font-semibold">
+<span class="material-symbols-outlined text-[18px]">cancel</span>
+              المسار المعزول والمحذوف
+            </span>
+<span class="bg-surface-container px-2 py-0.5 rounded font-mono-code text-label-sm text-on-surface-variant">Cut @ 99.4%</span>
+</div>
+<h3 class="font-headline-lg text-headline-lg-mobile text-cream-text mb-stack-sm">الآلات، الدفوف، والإيقاع المركب</h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-stack-md">
+            يتم التعرف الفوري على نبضات الـ Synths والمؤثرات الإيقاعية الرقمية والدفوف ذات الصدى الطويل وإزالتها تماماً دون هدم النبرة الأساسية للمنشد.
+          </p>
+</div>
+<!-- Stylized waveform graphic (Red / Suppressed) -->
+<div class="h-16 w-full flex items-center justify-between gap-1 px-1 bg-surface-container/60 rounded">
+<span class="w-1 bg-error/30 h-4 rounded-full"></span>
+<span class="w-1 bg-error/40 h-8 rounded-full"></span>
+<span class="w-1 bg-error/20 h-3 rounded-full"></span>
+<span class="w-1 bg-error/60 h-12 rounded-full"></span>
+<span class="w-1 bg-error/30 h-6 rounded-full"></span>
+<span class="w-1 bg-error/50 h-10 rounded-full"></span>
+<span class="w-1 bg-error/20 h-2 rounded-full"></span>
+<span class="w-1 bg-error/40 h-7 rounded-full"></span>
+<span class="w-1 bg-error/70 h-14 rounded-full"></span>
+<span class="w-1 bg-error/20 h-4 rounded-full"></span>
+<span class="w-1 bg-error/50 h-9 rounded-full"></span>
+<span class="w-1 bg-error/30 h-5 rounded-full"></span>
+</div>
+</div>
+<!-- Human Vocals & Choral Stems (Preserved) -->
+<div class="bg-surface-container-lowest rounded-lg p-stack-md flex flex-col justify-between relative overflow-hidden group">
+<div class="absolute top-0 right-0 w-1.5 h-full bg-clay-accent"></div>
+<div>
+<div class="flex items-center justify-between mb-stack-sm">
+<span class="font-label-md text-label-md text-clay-accent flex items-center gap-1 font-semibold">
+<span class="material-symbols-outlined text-[18px]">check_circle</span>
+              الصوت الأصيل المحفوظ
+            </span>
+<span class="bg-surface-container px-2 py-0.5 rounded font-mono-code text-label-sm text-clay-accent">Preserved 100%</span>
+</div>
+<h3 class="font-headline-lg text-headline-lg-mobile text-cream-text mb-stack-sm">صوت المنشد والكورال الجماعي</h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-stack-md">
+            يُصنف النشيد الجماعي وتناغم الطبقات البشرية المتعددة كأصوات حية، فيتم استبقاؤها بكامل تفاصيل الخشوع والطبقات الصوتية الدافئة.
+          </p>
+</div>
+<!-- Stylized waveform graphic (Clay / Resonant) -->
+<div class="h-16 w-full flex items-center justify-between gap-1 px-1 bg-surface-container/60 rounded">
+<span class="w-1 bg-clay-accent h-6 rounded-full"></span>
+<span class="w-1 bg-clay-accent h-10 rounded-full"></span>
+<span class="w-1 bg-clay-accent h-14 rounded-full"></span>
+<span class="w-1 bg-clay-accent h-8 rounded-full"></span>
+<span class="w-1 bg-clay-accent h-12 rounded-full"></span>
+<span class="w-1 bg-clay-accent h-16 rounded-full"></span>
+<span class="w-1 bg-clay-accent h-11 rounded-full"></span>
+<span class="w-1 bg-clay-accent h-15 rounded-full"></span>
+<span class="w-1 bg-clay-accent h-7 rounded-full"></span>
+<span class="w-1 bg-clay-accent h-13 rounded-full"></span>
+<span class="w-1 bg-clay-accent h-9 rounded-full"></span>
+<span class="w-1 bg-clay-accent h-5 rounded-full"></span>
+</div>
+</div>
+<!-- Auto Mastering Pipeline -->
+<div class="bg-surface-container-lowest rounded-lg p-stack-md flex flex-col justify-between relative overflow-hidden group">
+<div class="absolute top-0 right-0 w-1.5 h-full bg-tertiary"></div>
+<div>
+<div class="flex items-center justify-between mb-stack-sm">
+<span class="font-label-md text-label-md text-tertiary flex items-center gap-1 font-semibold">
+<span class="material-symbols-outlined text-[18px]">equalizer</span>
+              السلسلة التلقائية المدمجة
+            </span>
+<span class="bg-surface-container px-2 py-0.5 rounded font-mono-code text-label-sm text-tertiary">LUFS -14</span>
+</div>
+<h3 class="font-headline-lg text-headline-lg-mobile text-cream-text mb-stack-sm">معالجة الحضور وتعويض الصدى</h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-stack-md">
+            يتم تفعيل Presence Boost تلقائياً وتعويض فراغات الصدى الناشئة عن قص الإيقاع، مع ضبط مستوى الصوت العام لمعيار البث الصوتي النقي.
+          </p>
+</div>
+<!-- Stylized pipeline indicators -->
+<div class="flex items-center justify-around p-2 bg-surface-container/60 rounded gap-1 font-mono-code text-label-sm text-outline">
+<div class="flex flex-col items-center">
+<span class="text-tertiary font-bold">+2.5dB</span>
+<span>Presence</span>
+</div>
+<span class="text-border-muted">›</span>
+<div class="flex flex-col items-center">
+<span class="text-tertiary font-bold">Auto</span>
+<span>De-reverb</span>
+</div>
+<span class="text-border-muted">›</span>
+<div class="flex flex-col items-center">
+<span class="text-tertiary font-bold">-14dB</span>
+<span>Target</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Architectural Workflow Diagram -->
+<div class="bg-surface-container p-stack-md rounded-lg flex flex-col gap-stack-sm">
+<div class="flex items-center gap-2 text-cream-text font-label-md text-label-md font-bold">
+<span class="material-symbols-outlined text-clay-accent text-[20px]">account_tree</span>
+<span>مخطط السريان الصوتي التناظري-الرقمي داخل HaramLite</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-4 gap-2 text-center pt-unit">
+<div class="bg-surface-container-low p-stack-sm rounded">
+<span class="font-mono-code text-label-sm text-outline block mb-1">01. الدخل الإنشادي</span>
+<span class="font-label-md text-label-md text-cream-text">موجة صوت مركبة (Audio/Video)</span>
+</div>
+<div class="bg-surface-container-low p-stack-sm rounded">
+<span class="font-mono-code text-label-sm text-clay-accent block mb-1">02. نموذج الشبكة العصبية</span>
+<span class="font-label-md text-label-md text-cream-text">عزل الطيف الترددي للأغنية</span>
+</div>
+<div class="bg-surface-container-low p-stack-sm rounded">
+<span class="font-mono-code text-label-sm text-warn-yellow block mb-1">03. اقتطاع الصمت الدقيق</span>
+<span class="font-label-md text-label-md text-cream-text">ردم الفواصل الموسيقية الفارغة</span>
+</div>
+<div class="bg-surface-container-low p-stack-sm rounded">
+<span class="font-mono-code text-label-sm text-tertiary block mb-1">04. التصدير النهائي</span>
+<span class="font-label-md text-label-md text-cream-text">نشيد نقي بصيغة MP3 أو MP4</span>
+</div>
+</div>
+</div>
+</section>
+<!-- 4 Actionable Steps -->
+<section class="mb-stack-lg">
+<div class="mb-stack-md">
+<span class="font-mono-code text-label-sm text-clay-accent">USER MANUAL // 02</span>
+<h2 class="font-headline-lg text-headline-lg text-cream-text font-bold">
+        أربع خطوات عملية لعزل النشيد في دقائق
+      </h2>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-stack-md">
+<!-- Step 1 -->
+<div class="bg-surface-container p-stack-md rounded-xl flex gap-stack-md items-start">
+<div class="w-10 h-10 rounded-lg bg-surface-container-highest text-clay-accent flex items-center justify-center font-headline-lg font-bold shrink-0">
+          ١
+        </div>
+<div class="flex flex-col gap-1">
+<h3 class="font-label-md text-label-md text-cream-text font-bold">اختيار وضع «أغنية» (Song Mode)</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            من القائمة العلوية داخل التطبيق، اختر نمط «أغنية» بدلاً من «فيديو عادي»، لتهييج طبقات العزل الصوتي الدقيق واستدعاء نموذج الفصل المخصص للألحان الموسيقية العميقة.
+          </p>
+</div>
+</div>
+<!-- Step 2 -->
+<div class="bg-surface-container p-stack-md rounded-xl flex gap-stack-md items-start">
+<div class="w-10 h-10 rounded-lg bg-surface-container-highest text-clay-accent flex items-center justify-center font-headline-lg font-bold shrink-0">
+          ٢
+        </div>
+<div class="flex flex-col gap-1">
+<h3 class="font-label-md text-label-md text-cream-text font-bold">إفلات الملف أو إدراج الرابط المباشر</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            اسحب ملف النشيد الصوتي أو الفيديو إلى نافذة البرنامج، أو الصق رابط يوتيوب/ساوندكلاود ليقوم التطبيق بسحبه محلياً والبدء في تجزئته فورياً دون رفع بياناتك.
+          </p>
+</div>
+</div>
+<!-- Step 3 -->
+<div class="bg-surface-container p-stack-md rounded-xl flex gap-stack-md items-start">
+<div class="w-10 h-10 rounded-lg bg-surface-container-highest text-clay-accent flex items-center justify-center font-headline-lg font-bold shrink-0">
+          ٣
+        </div>
+<div class="flex flex-col gap-1">
+<h3 class="font-label-md text-label-md text-cream-text font-bold">تفعيل ميزة «قص الصمت» (Silence Removal)</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            حافظ على هذا الخيار مفعّلاً. تضمن هذه الميزة قص المقاطع الطويلة التي كانت تحتوي موسيقى منفردة في النشيد، لتفادي الانتظار الصامت بين فقرات الأداء.
+          </p>
+</div>
+</div>
+<!-- Step 4 -->
+<div class="bg-surface-container p-stack-md rounded-xl flex gap-stack-md items-start">
+<div class="w-10 h-10 rounded-lg bg-surface-container-highest text-clay-accent flex items-center justify-center font-headline-lg font-bold shrink-0">
+          ٤
+        </div>
+<div class="flex flex-col gap-1">
+<h3 class="font-label-md text-label-md text-cream-text font-bold">استلام وحفظ الملف بصوت آدمي نقي</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+            اضغط على «بدء العزل». يستغرق النشيد مدة تقارب 30 إلى 50 ثانية لمعالجته، لتستلم ملف MP3 نقي للغاية أو ملف MP4 مع إبقاء الفيديو متزامناً بالكامل.
+          </p>
+</div>
+</div>
+</div>
+</section>
+<!-- Technical Reality & Honesty Comparison Cards -->
+<section class="bg-surface-container-low rounded-xl p-stack-lg md:p-margin-desktop mb-stack-lg">
+<div class="mb-stack-md">
+<span class="font-mono-code text-label-sm text-clay-accent">TECHNICAL INTEGRITY // 03</span>
+<h2 class="font-headline-lg text-headline-lg text-cream-text font-bold">
+        ما الذي يبقى بصراحة وأمانة فنية؟
+      </h2>
+<p class="font-body-md text-body-md text-on-surface-variant">
+        نلتزم بالشفافية الكاملة مع مستخدمينا؛ إليك الفوارق الدقيقة بين ما يقدمه HaramLite والحدود الصوتية المتوقعة:
+      </p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-stack-md">
+<!-- Card 1: Choral & Harmony -->
+<div class="bg-surface-container p-stack-md rounded-lg flex flex-col justify-between">
+<div>
+<div class="flex items-center gap-2 mb-2 text-clay-accent">
+<span class="material-symbols-outlined text-[20px]">groups_3</span>
+<span class="font-label-md text-label-md font-bold">الكورال والخلفيات البشرية المتعددة</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-3">
+            تعتمد العديد من الأناشيد على همهمات صوتية (Vocal Harmonization) لإعطاء إحساس الإيقاع. يتعامل النموذج مع هذه الترددات كصوت بشري أصيل، وتبقى واضحة ونقية دون أن تشوهها الفلاتر.
+          </p>
+</div>
+<div class="bg-surface-container-lowest p-stack-sm rounded font-mono-code text-label-sm text-tertiary flex items-center justify-between">
+<span>النتيجة: بقاء كامل ودفء طبيعي</span>
+<span class="material-symbols-outlined text-[16px]">done</span>
+</div>
+</div>
+<!-- Card 2: Aggressive Autotune & Synths -->
+<div class="bg-surface-container p-stack-md rounded-lg flex flex-col justify-between">
+<div>
+<div class="flex items-center gap-2 mb-2 text-warn-yellow">
+<span class="material-symbols-outlined text-[20px]">tune</span>
+<span class="font-label-md text-label-md font-bold">الأوتوتيون الصارخ والمؤثرات الكهربائية الملتصقة</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-3">
+            إذا تم تسجيل الصوت البشري مع تشويه كهرومغناطيسي مفرط أو أوتوتيون إلكتروني حاد يندمج مع النغمات، فقد يلاحظ أثر طفيف (Artifacts) حيث تجاهد الخوارزمية لفرز النبرة الطبيعية.
+          </p>
+</div>
+<div class="bg-surface-container-lowest p-stack-sm rounded font-mono-code text-label-sm text-warn-yellow flex items-center justify-between">
+<span>النتيجة: تنقية ممتازة مع بعض التحوير الطفيف</span>
+<span class="material-symbols-outlined text-[16px]">info</span>
+</div>
+</div>
+<!-- Card 3: Drums and Reverb -->
+<div class="bg-surface-container p-stack-md rounded-lg flex flex-col justify-between">
+<div>
+<div class="flex items-center gap-2 mb-2 text-clay-accent">
+<span class="material-symbols-outlined text-[20px]">blur_off</span>
+<span class="font-label-md text-label-md font-bold">الصدى الممتد والدفوف الإيقاعية</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-3">
+            تحذف الإيقاعات والدفوف تماماً، بينما تُعالج أصداء الصوت البشري لكي لا يظهر الصوت جافاً كأنما سُجل داخل صندوق كرتوني، بل يبقى عريضاً وجذاباً ومريحاً للأذن.
+          </p>
+</div>
+<div class="bg-surface-container-lowest p-stack-sm rounded font-mono-code text-label-sm text-tertiary flex items-center justify-between">
+<span>النتيجة: إزالة تامة للإيقاع مع صدى ناعم</span>
+<span class="material-symbols-outlined text-[16px]">done</span>
+</div>
+</div>
+<!-- Card 4: Local Processing & Privacy -->
+<div class="bg-surface-container p-stack-md rounded-lg flex flex-col justify-between">
+<div>
+<div class="flex items-center gap-2 mb-2 text-clay-accent">
+<span class="material-symbols-outlined text-[20px]">lock</span>
+<span class="font-label-md text-label-md font-bold">الخصوصية التامة والعمل دون إنترنت</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-3">
+            المعالجة لا تستهلك أي سعة من بيانات الإنترنت لديك بعد التحميل الأولي، ولا ترسل تسجيلاتك أو ملفاتك الصوتية العائلية والخاصة إلى أي جهة أو سيرفر سحابي نهائياً.
+          </p>
+</div>
+<div class="bg-surface-container-lowest p-stack-sm rounded font-mono-code text-label-sm text-clay-accent flex items-center justify-between">
+<span>النتيجة: صفر مشاركة بيانات (Zero-Log)</span>
+<span class="material-symbols-outlined text-[16px]">security</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Interactive FAQ Section -->
+<section class="mb-stack-lg">
+<div class="mb-stack-md">
+<span class="font-mono-code text-label-sm text-clay-accent">KNOWLEDGE BASE // 04</span>
+<h2 class="font-headline-lg text-headline-lg text-cream-text font-bold">
+        الأسئلة الشائعة حول تنقية الأناشيد
+      </h2>
+</div>
+<div class="flex flex-col gap-stack-sm" id="faq-accordion">
+<!-- FAQ Item 1 -->
+<div class="bg-surface-container rounded-lg overflow-hidden transition-colors">
+<button class="w-full p-stack-md flex items-center justify-between text-right font-label-md text-label-md text-cream-text font-bold focus:outline-none" onclick="toggleFaq(this)" type="button">
+<span class="flex items-center gap-2">
+<span class="material-symbols-outlined text-clay-accent text-[18px]">help_outline</span>
+<span>ما الفرق بين «وضع أغنية» و«وضع الفيديو العادي» في البرنامج؟</span>
+</span>
+<span class="material-symbols-outlined text-outline transition-transform duration-200 transform faq-icon">expand_more</span>
+</button>
+<div class="hidden px-stack-md pb-stack-md text-on-surface-variant font-body-md text-body-md">
+          الوضع العادي مُعد للمقاطع الحوارية والبودكاست والمحاضرات لتصفية الموسيقى الخلفية الخفيفة. أما وضع «أغنية» فيستخدم مصفوفة تدريب مخصصة للاشتباك مع الترددات الموسيقية المعقدة والطبقات المتداخلة في الأناشيد دون أن يؤثر ذلك على أصوات الكورال والإنشاد.
+        </div>
+</div>
+<!-- FAQ Item 2 -->
+<div class="bg-surface-container rounded-lg overflow-hidden transition-colors">
+<button class="w-full p-stack-md flex items-center justify-between text-right font-label-md text-label-md text-cream-text font-bold focus:outline-none" onclick="toggleFaq(this)" type="button">
+<span class="flex items-center gap-2">
+<span class="material-symbols-outlined text-clay-accent text-[18px]">help_outline</span>
+<span>هل تضيع المؤثرات الصوتية الطبيعية مثل صوت الرياح أو قطرات المطر في النشيد؟</span>
+</span>
+<span class="material-symbols-outlined text-outline transition-transform duration-200 transform faq-icon">expand_more</span>
+</button>
+<div class="hidden px-stack-md pb-stack-md text-on-surface-variant font-body-md text-body-md">
+          الأصوات المحيطية الطبيعية التي لا تحتوي على نوتات موسيقية متناغمة قد تبقى مسموعة بشكل جزئي إذا كانت مسجلة في خلفية الصوت البشري، بينما تُحذف الإيقاعات والآلات الوترية والنحاسية بشكل قاطع.
+        </div>
+</div>
+<!-- FAQ Item 3 -->
+<div class="bg-surface-container rounded-lg overflow-hidden transition-colors">
+<button class="w-full p-stack-md flex items-center justify-between text-right font-label-md text-label-md text-cream-text font-bold focus:outline-none" onclick="toggleFaq(this)" type="button">
+<span class="flex items-center gap-2">
+<span class="material-symbols-outlined text-clay-accent text-[18px]">help_outline</span>
+<span>هل يمكنني استخراج ملف الصوت المعزول كملف فيديو MP4 أيضاً؟</span>
+</span>
+<span class="material-symbols-outlined text-outline transition-transform duration-200 transform faq-icon">expand_more</span>
+</button>
+<div class="hidden px-stack-md pb-stack-md text-on-surface-variant font-body-md text-body-md">
+          نعم بالتأكيد. إذا قمت بإفلات ملف فيديو (MP4, MKV, MOV)، يتيح لك البرنامج حفظ النتيجة كفيديو جديد بنفس الدقة والجودة المرئية ولكن بمسار الصوت البشري النقي فقط، مع تزامن مثالي بنسبة 100% بين حركة الشفاه والصوت.
+        </div>
+</div>
+<!-- FAQ Item 4 -->
+<div class="bg-surface-container rounded-lg overflow-hidden transition-colors">
+<button class="w-full p-stack-md flex items-center justify-between text-right font-label-md text-label-md text-cream-text font-bold focus:outline-none" onclick="toggleFaq(this)" type="button">
+<span class="flex items-center gap-2">
+<span class="material-symbols-outlined text-clay-accent text-[18px]">help_outline</span>
+<span>ما هي متطلبات تشغيل البرنامج على الحاسوب ليعمل العزل بسرعة؟</span>
+</span>
+<span class="material-symbols-outlined text-outline transition-transform duration-200 transform faq-icon">expand_more</span>
+</button>
+<div class="hidden px-stack-md pb-stack-md text-on-surface-variant font-body-md text-body-md">
+          يعمل البرنامج على أي معالج حديث (Intel Core i5 أو AMD Ryzen أو Apple Silicon M1 وما فوق). إذا كان لديك كرت شاشة يدعم تقنيات تسريع العتاد فسيتم العزل في ثوانٍ معدودة، وإذا كان المعالج عادياً سيستغرق دقيقة واحدة تقريباً لكل 4 دقائق نشيد.
+        </div>
+</div>
+</div>
+</section>
+<!-- Download Call-to-Action & Related Guides -->
+<section class="bg-surface-container rounded-xl p-stack-lg md:p-margin-desktop mb-stack-lg flex flex-col md:flex-row items-center justify-between gap-stack-lg shadow-xl relative overflow-hidden">
+<div class="flex flex-col gap-stack-sm max-w-xl text-right z-10">
+<div class="inline-flex items-center gap-1 text-warn-yellow font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[16px]">terminal</span>
+<span>مفتوح المصدر وخالٍ تماماً من التتبع</span>
+</div>
+<h3 class="font-headline-lg text-headline-lg text-cream-text font-bold">
+        جرّب عزل أناشيدك المفضلة الآن
+      </h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+        احصل على أحدث نسخة مستقرة من برنامج HaramLite لنظام ويندوز أو ماك أو لينكس، وابدأ بتحويل مكتبتك الصوتية إلى نسخ نقية متوافقة مع قناعاتك وتفضيلاتك.
+      </p>
+</div>
+<div class="flex flex-col sm:flex-row items-center gap-stack-sm shrink-0 z-10 w-full md:w-auto">
+<a class="w-full sm:w-auto inline-flex items-center justify-center gap-stack-sm bg-clay-accent text-coal-surface hover:bg-primary px-stack-lg py-stack-sm rounded-lg transition-colors font-label-md text-label-md font-bold shadow-md" data-path="download" href="#">
+<span class="material-symbols-outlined text-[20px]">download</span>
+<span>تحميل HaramLite مجاناً</span>
+</a>
+<a class="w-full sm:w-auto inline-flex items-center justify-center gap-stack-sm bg-surface-container-highest text-cream-text hover:bg-surface-bright px-stack-md py-stack-sm rounded-lg transition-colors font-label-md text-label-md" data-path="browser-extension" href="#">
+<span class="material-symbols-outlined text-[20px]">extension</span>
+<span>إضافة المتصفح</span>
+</a>
+</div>
+</section>
+<!-- Related Guides Navigation Footer -->
+<footer class="flex flex-col md:flex-row items-center justify-between gap-stack-md p-stack-md bg-surface-container-low rounded-lg text-outline font-label-sm text-label-sm">
+<div class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-clay-accent text-[18px]">bookmark_border</span>
+<span>أدلة أخرى قد تهمك:</span>
+<a class="hover:text-cream-text transition-colors underline underline-offset-4" data-path="guide-browser-extension" href="#">تصفية يوتيوب مباشرة بالإكستنشن</a>
+<span class="text-border-muted">•</span>
+<a class="hover:text-cream-text transition-colors underline underline-offset-4" data-path="guide-podcast-cleaning" href="#">تنقية حلقات البودكاست من الفواصل</a>
+</div>
+<div class="flex items-center gap-1 text-on-surface-variant">
+<span>آخر تحديث للمستند: فبراير 2026</span>
+</div>
+</footer>
+<!-- Script for Interactive FAQ accordion micro-interaction -->
+<script>
+    function toggleFaq(button) {
+      const content = button.nextElementSibling;
+      const icon = button.querySelector('.faq-icon');
+      const isExpanded = !content.classList.contains('hidden');
+
+      if (isExpanded) {
+        content.classList.add('hidden');
+        icon.classList.remove('rotate-180');
+      } else {
+        content.classList.remove('hidden');
+        icon.classList.add('rotate-180');
       }
     }
-  ]
-}
   </script>
-</head>
-<body class="min-h-screen flex flex-col bg-coal-surface text-cream-text">
-
-  <header class="sticky top-0 z-50 bg-coal-surface/90 backdrop-blur-md border-b border-coal-border">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-      <a href="../" class="flex items-center gap-3 group">
-        <img src="../assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded-lg shadow-sm border border-coal-border group-hover:border-clay/50 transition-colors">
-        <span class="flex flex-col">
-          <span class="font-serif font-bold text-lg tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span>
-          <span class="text-[10px] text-cream-muted leading-tight -mt-0.5">معالجة محلية 100%</span>
-        </span>
-      </a>
-      <div class="flex items-center gap-3 sm:gap-4">
-        <a href="#faq" class="text-xs sm:text-sm text-cream-muted hover:text-cream-text transition-colors">الأسئلة الشائعة</a>
-        <a href="../#download" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-clay text-coal-surface font-semibold text-xs sm:text-sm hover:bg-clay-hover shadow-sm transition-all">
-          <span class="material-symbols-outlined text-xs">download</span><span>تحميل فوري</span>
+</div></div>
+    <nav class="related-guides mt-12 pt-6 border-t border-coal-border">
+      <h4 class="font-bold text-xs uppercase tracking-wider text-cream-muted mb-3">أدلة ذات صلة</h4>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <a href="remove-music-from-video.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">إزالة الموسيقى من الفيديو</span>
+        </a>
+        <a href="watch-youtube-without-music.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">مشاهدة يوتيوب بدون موسيقى</span>
+        </a>
+        <a href="ai-vocal-separation.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">كيف يفصل الذكاء الاصطناعي الصوت؟</span>
+        </a>
+        <a href="remove-music-from-podcast.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">إزالة الموسيقى من البودكاست</span>
         </a>
       </div>
-    </div>
-  </header>
-
-  <main class="flex-grow max-w-3xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12">
-
-    <nav class="flex items-center gap-2 text-xs text-cream-muted mb-4">
-      <a href="../" class="hover:text-clay transition-colors">الرئيسية</a>
-      <span class="material-symbols-outlined text-[10px] opacity-60">chevron_left</span>
-      <a href="./" class="hover:text-clay transition-colors">الأدلة</a>
-      <span class="material-symbols-outlined text-[10px] opacity-60">chevron_left</span>
-      <span class="text-cream-text font-medium truncate">إزالة الموسيقى من الأناشيد</span>
     </nav>
+  </main><footer class="w-full bg-surface-container-low border-t border-border-muted py-stack-lg"><div class="max-w-7xl mx-auto px-gutter lg:px-margin-desktop flex flex-col md:flex-row items-center justify-between gap-stack-md text-center md:text-right"><div class="font-label-sm text-label-sm text-outline">© 2026 HaramLite · معالجة صوتية محلية 100% دون سحابة</div><div class="flex flex-wrap items-center justify-center gap-stack-md font-label-sm text-label-sm text-on-surface-variant"><a class="hover:text-cream-text transition-colors" data-path="privacy-policy" href="#">سياسة الخصوصية</a><a class="hover:text-cream-text transition-colors" data-path="open-source-github" href="#">المستودع المفتوح GitHub</a><a class="hover:text-cream-text transition-colors" data-path="chrome-web-store" href="#">متجر كروم</a><a class="hover:text-cream-text transition-colors" data-path="report-issue" href="#">الإبلاغ عن مشكلة</a></div></div></footer></body></html>
 
-    <section class="mb-8">
-      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-clay/10 border border-clay/25 text-clay text-xs font-semibold mb-3">
-        <span class="material-symbols-outlined text-xs">bolt</span><span>دليل مبسط · لعزل الصوت البشري</span>
-      </div>
-      <h1 class="font-serif text-2xl sm:text-4xl font-bold text-cream-text leading-tight mb-4">إزالة الموسيقى من الأناشيد</h1>
-      <p class="text-base sm:text-lg text-cream-muted leading-relaxed">النشيد حالة خاصة: الصوت البشري هو المقصود، وكل ما سواه زائد. لهذا صُمّم <strong class="text-clay font-bold">وضع «أغنية»</strong> — عزل كامل للصوت البشري مع تحسين حضوره.</p>
-    </section>
-
-    <div id="quick-download" class="my-6 p-5 sm:p-6 rounded-2xl bg-coal-card border-glow-clay relative overflow-hidden">
-      <div class="flex flex-col sm:flex-row items-center justify-between gap-5 relative z-10">
-        <div class="text-center sm:text-right space-y-1">
-          <div class="flex items-center justify-center sm:justify-start gap-2">
-            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span class="text-xs font-medium text-cream-muted">مجاني ومفتوح المصدر · الإصدار 0.2.2</span>
-          </div>
-          <h2 class="font-serif font-bold text-lg sm:text-xl text-cream-text">برنامج HaramLite لنظام ويندوز 10 / 11</h2>
-          <p class="text-xs sm:text-sm text-cream-muted">حجم خفيف (~220MB متكامل) · معالجة 100% محلية · بلا اشتراك ولا حساب</p>
-        </div>
-        <a href="../#download" class="shrink-0 inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all shadow-lg">
-          <span class="material-symbols-outlined ">download</span><span>حمّل المثبّت (.exe)</span>
-        </a>
-      </div>
-    </div>
-
-    <section class="mt-10 mb-12">
-      <div class="flex items-center justify-between mb-5 border-b border-coal-border pb-3">
-        <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text flex items-center gap-2.5"><span class="material-symbols-outlined text-clay text-lg">checklist</span> أربع خطوات</h2>
-        <span class="text-xs text-cream-muted">دقيقة للبدء</span>
-      </div>
-      <div class="grid grid-cols-1 gap-3.5">
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">1</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">افتح التطبيق واختر وضع «أغنية»</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">هذا الوضع مصمّم للمحتوى الغنائي: يعزل الصوت البشري بالكامل بدل الاكتفاء بإزالة الآلات.</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">2</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">أفلت الملف أو الصق الرابط</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">اسحب ملف النشيد (MP4 · MKV · MP3 · WAV)، أو الصق رابطاً فيُجلب ويعالج في خطوة واحدة.</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">3</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">اترك «قصّ الصمت» مفعّلاً</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">في المقاطع الإنشادية تبقى فراغات صامتة مكان الموسيقى المحذوفة، فيتخطّاها التطبيق ليبقى الإنشاد متصلاً.</p>
-          </div>
-        </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">4</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">خذ الناتج بجانب الأصل</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">MP3 لو أردت الصوت وحده (الأنسب للأناشيد)، أو MP4 إن أردت الاحتفاظ بالصورة.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="my-10 p-5 sm:p-6 rounded-2xl bg-coal-card border border-coal-border">
-      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-4 flex items-center gap-2"><span class="material-symbols-outlined text-clay">tune</span> ما الذي قد يبقى؟ (بصراحة)</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">👥</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">الكورال والغناء الجماعي</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> يُصنَّف صوتاً بشرياً أصيلاً فيبقى في المسار — وهذا سلوك مقصود، فالأداة لا تعرف «منشداً واحداً» لتفصله عن البقية.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🥁</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">الإيقاعات القوية</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> الدفوف والإيقاعات تختفي غالباً، لكن الإيقاع الشديد جداً قد يُبقي أثراً خفيفاً.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🎚️</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">تحسين الحضور</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> يُطبَّق على الصوت المفصول تحسين حضور وصدى وموازنة مستوى، فيبدو أوضح بعد إزالة الموسيقى لا أضعف.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🔒</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">على جهازك</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> كل المعالجة محلية: لا رفع، ولا حساب، ويعمل بلا إنترنت بعد التثبيت.</p>
-        </div>
-      </div>
-    </section>
-    <section class="my-10">
-      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">verified_user</span> حدود صريحة وأمانة فنية</h2>
-      <p class="text-xs sm:text-sm text-cream-muted mb-4">لا توجد أداة في العالم تعطي فصلاً مثالياً 100%؛ والفرق الحقيقي هو جودة العزل دون تشويه نبرة الصوت:</p>
-      <ul class="space-y-2.5 text-xs sm:text-sm text-cream-muted bg-coal-card p-4 sm:p-5 rounded-xl border border-coal-border">
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">لا فصل مثالي 100%:</strong> قد تبقى ترسبات خفيفة عند التداخل الشديد بين الغناء والإيقاع — وهذا حدّ التقنية اليوم لا حدّ هذه الأداة.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">جرّب الوضعين:</strong> أحياناً يعطي «مقطع عادي» نتيجة أنسب لو كان النشيد هادئاً وقريباً من الكلام.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">الجودة تعتمد على الأصل:</strong> تسجيل نظيف بجودة عالية يعطي عزلاً أنقى من تسجيل مضغوط أو مسجّل من مكبّر صوت.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-emerald-400 mt-1 text-xs shrink-0">check_circle</span>
-          <span><strong class="text-cream-text">لا حدود على الطول:</strong> لا حدّ على مدة المقطع ولا على عدد الملفات، والمعالجة بالدفعات متاحة.</span>
-        </li>
-      </ul>
-    </section>
-
-    <section id="faq" class="my-12">
-      <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text mb-6 border-b border-coal-border pb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">help</span> الأسئلة الشائعة</h2>
-      <div class="space-y-3.5">
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل يبقى الكورال في النشيد؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">نعم، لأن الموديل يصنّف أصوات الكورال صوتاً بشرياً أصيلاً فيُبقيها. وإن أردت إبقاء الكلام فقط في مقطع حوار فاستخدم وضع «مقطع عادي».</div>
-        </details>
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>أي صيغة أفضل للناتج؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">MP3 للأناشيد لأنك تحتاج الصوت وحده، وهو أسرع ترميزاً وأصغر حجماً. واختر MP4 إن أردت الاحتفاظ بالصورة.</div>
-        </details>
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل يعمل بلا إنترنت؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">نعم، بعد التثبيت يعمل كاملاً بلا شبكة. الإنترنت يلزم فقط إن أردت لصق رابط خارجي.</div>
-        </details>
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل تُرفع الأناشيد إلى أي خدمة؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">لا. لا يوجد خادم في مسار المعالجة: الفصل والتحسين والترميز كلها على جهازك.</div>
-        </details>
-      </div>
-    </section>
-
-    <div class="p-6 rounded-2xl bg-coal-card border border-coal-border text-center space-y-4 my-8">
-      <h3 class="font-serif font-bold text-xl text-cream-text">اعزل الصوت البشري بنفسك</h3>
-      <p class="text-xs sm:text-sm text-cream-muted max-w-md mx-auto">حمّل التطبيق وجرّب وضع «أغنية» على مقطعك.</p>
-      <div class="flex flex-wrap items-center justify-center gap-3 pt-1">
-        <a href="../#download" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all shadow-md"><span class="material-symbols-outlined ">download</span><span>تحميل HaramLite لويندوز</span></a>
-        <a href="../bridge.html" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-coal-surface border border-coal-border text-cream-muted hover:text-cream-text hover:border-clay/40 text-sm transition-colors"><span class="material-symbols-outlined ">extension</span><span>إضافة المتصفح</span></a>
-      </div>
-    </div>
-
-    <nav class="mt-12 pt-6 border-t border-coal-border">
-      <h4 class="font-bold text-xs uppercase tracking-wider text-cream-dim mb-3">أدلة ذات صلة</h4>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-      <a href="remove-music-from-video.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">إزالة الموسيقى من الفيديو <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">الخطوات والوضع المناسب وحدود الفصل</p>
-      </a>
-      <a href="watch-youtube-without-music.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">مشاهدة يوتيوب بدون موسيقى <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">تخطي الصمت المباشر في المتصفح</p>
-      </a>
-      <a href="ai-vocal-separation.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">كيف يفصل الذكاء الاصطناعي الصوت؟ <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">شرح تقني مبسّط لموديل الفصل</p>
-      </a>
-      </div>
-    </nav>
-
-    <p class="mt-8 text-xs text-cream-dim leading-relaxed">كل المعالجة تحدث على جهازك: لا يُرفع أي ملف، ولا حساب ولا تتبّع. راجع <a href="../PRIVACY.html" class="text-clay hover:underline">سياسة الخصوصية</a>.</p>
-  </main>
-
-  <footer class="border-t border-coal-border py-6 bg-coal-surface mt-auto">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-cream-muted">
-      <span>© 2026 HaramLite · إزالة الموسيقى محلياً على جهازك، بلا رفع ولا حساب.</span>
-      <div class="flex items-center gap-4">
-        <a href="../PRIVACY.html" class="hover:text-clay transition-colors">الخصوصية</a>
-        <a href="https://github.com/SMSMy/HaramLite" target="_blank" rel="noreferrer" class="hover:text-clay transition-colors">المستودع</a>
-      </div>
-    </div>
-  </footer>
-</body>
-</html>

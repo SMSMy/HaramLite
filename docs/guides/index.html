@@ -1,101 +1,835 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>أدلة HaramLite — إزالة الموسيقى من الفيديو والصوت</title>
-  <meta name="description" content="أدلة قصيرة وعملية: إزالة الموسيقى من الفيديو، والمشاهدة داخل المتصفح، وكيف يعمل الفصل بالذكاء الاصطناعي، ومعالجة البودكاست بالدفعات.">
-  <link rel="canonical" href="https://haramlite.com/guides/">
-  <meta name="theme-color" content="#151311">
-  <meta property="og:type" content="website">
-  <meta property="og:title" content="أدلة HaramLite">
-  <meta property="og:description" content="أدلة قصيرة وعملية لإزالة الموسيقى على جهازك.">
-  <meta property="og:url" content="https://haramlite.com/guides/">
-  <meta property="og:image" content="https://haramlite.com/assets/og.png">
-  <link rel="icon" href="../assets/favicon.ico" sizes="any">
-  <link rel="icon" type="image/png" sizes="32x32" href="../assets/icon-32.png">
-  <link rel="apple-touch-icon" href="../assets/icon-180.png">
-  <link rel="stylesheet" href="../assets/site.css"/>
+
+<html dir="rtl" lang="ar"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<style>@layer base { html, body { margin: 0; padding: 0; } body { overscroll-behavior: none; } main > :first-child { margin-top: 0 !important; } main > :last-child { margin-bottom: 0 !important; } } ::-webkit-scrollbar { display: none; }</style>  <link rel="stylesheet" href="../assets/site.css"/>
   <link rel="preload" href="../assets/thmanyah-serif-bold.woff2" as="font" type="font/woff2" crossorigin>
-</head>
-<body class="min-h-screen flex flex-col bg-coal-surface text-cream-text">
-  <header class="sticky top-0 z-50 bg-coal-surface/90 backdrop-blur-md border-b border-coal-border">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-      <a href="../" class="flex items-center gap-3">
-        <img src="../assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded-lg shadow-sm border border-coal-border">
-        <span class="font-serif font-bold text-lg tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span>
-      </a>
-      <a href="../#download" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-clay text-coal-surface font-semibold text-xs sm:text-sm hover:bg-clay-hover transition-all"><span class="material-symbols-outlined text-xs">download</span><span>تحميل فوري</span></a>
-    </div>
-  </header>
-  <main class="flex-grow max-w-3xl mx-auto w-full px-4 sm:px-6 py-10 sm:py-14">
-    <h1 class="font-serif text-3xl sm:text-4xl font-bold text-cream-text mb-3">أدلة سريعة</h1>
-    <p class="text-base sm:text-lg text-cream-muted leading-relaxed mb-8">شروحات قصيرة: كل دليل يقرأ في دقيقة، ويقول الحدود بصراحة قبل أن يعدك بشيء.</p>
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-      <a href="watch-without-music-on-phone.html" class="group block p-5 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <h2 class="font-serif font-bold text-lg text-cream-text mb-1.5 group-hover:text-clay transition-colors">المشاهدة بدون موسيقى على الجوال</h2>
-        <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">ثلاث طرق للوصول من هاتفك إلى معالجة HaramLite: روبوت تيليجرام، أو إرسال الرابط، أو تشغيل الحاسوب عن بُعد.</p>
-      </a>
-      <a href="remove-music-from-lectures.html" class="group block p-5 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <h2 class="font-serif font-bold text-lg text-cream-text mb-1.5 group-hover:text-clay transition-colors">إزالة موسيقى الخلفية من المحاضرات</h2>
-        <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">لمعلّم أو طالب: كيف تزيل الموسيقى الخلفية من درس مسجّل وتحافظ على وضوح الشرح، وبأي وضع.</p>
-      </a>
-      <a href="video-to-mp3-without-music.html" class="group block p-5 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <h2 class="font-serif font-bold text-lg text-cream-text mb-1.5 group-hover:text-clay transition-colors">تحويل فيديو إلى MP3 بدون موسيقى</h2>
-        <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">استخرج الكلام من الفيديو بصيغة MP3 بعد إزالة الموسيقى: الخطوات، ومتى تختار MP3 بدل MP4.</p>
-      </a>
-      <a href="online-vs-offline-removal.html" class="group block p-5 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <h2 class="font-serif font-bold text-lg text-cream-text mb-1.5 group-hover:text-clay transition-colors">أونلاين أم برنامج محلي؟</h2>
-        <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">مقارنة عملية: السرعة، والحدود، والخصوصية، والتكلفة، والجودة — لتختار الطريقة المناسبة لحالتك.</p>
-      </a>
-      <a href="remove-music-from-nasheed.html" class="group block p-5 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <h2 class="font-serif font-bold text-lg text-cream-text mb-1.5 group-hover:text-clay transition-colors">إزالة الموسيقى من الأناشيد</h2>
-        <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">كيف تعزل الصوت البشري من نشيد فيه إيقاعات أو موسيقى خلفية، وما الذي يحدث للكورال والغناء الجماعي.</p>
-      </a>
-      <a href="is-removing-music-legal.html" class="group block p-5 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <h2 class="font-serif font-bold text-lg text-cream-text mb-1.5 group-hover:text-clay transition-colors">هل إزالة الموسيقى قانونية؟</h2>
-        <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">ما تفعله الأداة وما لا تفعله، والمسؤولية في الاستخدام.</p>
-      </a>
-      <a href="remove-audio-keep-video.html" class="group block p-5 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <h2 class="font-serif font-bold text-lg text-cream-text mb-1.5 group-hover:text-clay transition-colors">إزالة الصوت مع إبقاء الصورة</h2>
-        <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">الفرق بين كتم الصوت وإزالته، وهل تتأثر جودة الصورة.</p>
-      </a>
-      <a href="best-tool-to-remove-music.html" class="group block p-5 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <h2 class="font-serif font-bold text-lg text-cream-text mb-1.5 group-hover:text-clay transition-colors">أفضل برنامج لإزالة الموسيقى</h2>
-        <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">ما الذي يفرّق فعلاً بين البرامج: الموديل والمعالجة المحلية والحدود.</p>
-      </a>
-      <a href="telegram-remote-control.html" class="group block p-5 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <h2 class="font-serif font-bold text-lg text-cream-text mb-1.5 group-hover:text-clay transition-colors">التحكم من الجوال عبر تيليجرام</h2>
-        <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">أرسل رابطاً أو ملفاً من هاتفك ويعالجه حاسوبك ثم يعيده إليك.</p>
-      </a>
-      <a href="remove-music-from-video.html" class="group block p-5 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <h2 class="font-serif font-bold text-lg text-cream-text mb-1.5 group-hover:text-clay transition-colors">إزالة الموسيقى من الفيديو على الكمبيوتر</h2>
-        <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">تخطي الصمت المباشر داخل المتصفح</p>
-      </a>
-      <a href="watch-youtube-without-music.html" class="group block p-5 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <h2 class="font-serif font-bold text-lg text-cream-text mb-1.5 group-hover:text-clay transition-colors">مشاهدة يوتيوب بدون موسيقى</h2>
-        <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">تخطي الصمت المباشر في المتصفح</p>
-      </a>
-      <a href="ai-vocal-separation.html" class="group block p-5 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <h2 class="font-serif font-bold text-lg text-cream-text mb-1.5 group-hover:text-clay transition-colors">كيف يفصل الذكاء الاصطناعي الصوت؟</h2>
-        <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">شرح تقني مبسّط لموديل الفصل</p>
-      </a>
-      <a href="remove-music-from-podcast.html" class="group block p-5 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <h2 class="font-serif font-bold text-lg text-cream-text mb-1.5 group-hover:text-clay transition-colors">إزالة الموسيقى من البودكاست</h2>
-        <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">مجلد مراقبة ودفعات لسلاسل طويلة</p>
-      </a>
-    </div>
-    <div class="mt-10 p-6 rounded-2xl bg-coal-card border-glow-clay text-center space-y-3">
-      <h2 class="font-serif font-bold text-xl text-cream-text">التطبيق مجاني ومفتوح المصدر</h2>
-      <p class="text-xs sm:text-sm text-cream-muted">ويندوز ١٠/١١ · معالجة محلية 100% · بلا حساب ولا رفع.</p>
-      <a href="../#download" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all"><span class="material-symbols-outlined ">download</span><span>تحميل HaramLite</span></a>
-    </div>
-  </main>
-  <footer class="border-t border-coal-border py-6 bg-coal-surface mt-auto">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-cream-muted">
-      <span>© 2026 HaramLite · إزالة الموسيقى محلياً على جهازك.</span>
-      <a href="../PRIVACY.html" class="hover:text-clay transition-colors">الخصوصية</a>
-    </div>
-  </footer>
-</body>
-</html>
+  <link rel="preload" href="../assets/thmanyah-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="canonical" href="https://haramlite.com/guides/">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="https://haramlite.com/assets/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+</head><body class="bg-surface font-body-md text-on-surface antialiased selection:bg-primary-container selection:text-on-primary-container"><header class="fixed top-0 w-full z-50 bg-coal-surface/90 backdrop-blur-xl border-b border-border-muted"><div class="h-16 max-w-7xl mx-auto px-gutter lg:px-margin-desktop flex items-center justify-between gap-stack-md"><div class="flex items-center gap-stack-md"><a class="flex items-center gap-stack-sm" data-path="home" href="#"><img alt="HaramLite brand app icon: acoustic fork / two-track audio branches converging into one pure stem, with the left music track cleanly severed by an angled cut-line and dimmed, while the right speech/vocal track remains solid and flows through to the pure audio base, rendered in Clay and Coal palette." class="h-8 w-auto object-contain" src="../assets/icon-32.png"/><div class="flex flex-col text-right"><span class="font-headline-lg text-cream-text tracking-tight text-[18px] leading-tight">HaramLite</span><span class="font-label-sm text-outline text-[11px] leading-none">معالجة محلية 100%</span></div></a><nav class="hidden md:flex items-center gap-1 mr-stack-md" data-active-classes="text-cream-text bg-surface-container font-semibold"><a class="px-stack-sm py-unit rounded text-on-surface-variant hover:text-cream-text transition-colors font-label-md text-label-md" data-path="home" href="#">الرئيسية</a><a aria-current="page" class="px-stack-sm py-unit rounded transition-colors text-cream-text bg-surface-container font-semibold" data-path="guides" href="#">الأدلة</a><a class="px-stack-sm py-unit rounded text-on-surface-variant hover:text-cream-text transition-colors font-label-md text-label-md" data-path="browser-extension" href="#">إضافة المتصفح</a><a class="px-stack-sm py-unit rounded text-on-surface-variant hover:text-cream-text transition-colors font-label-md text-label-md" data-path="faq" href="#">الأسئلة الشائعة</a></nav></div><div class="flex items-center gap-stack-sm"><a class="inline-flex items-center gap-stack-sm bg-clay-accent text-coal-surface hover:bg-primary px-stack-md py-unit rounded-lg transition-colors font-label-md text-label-md font-bold" data-path="download" href="#"><span class="material-symbols-outlined text-[18px]">download</span><span>تحميل HaramLite</span><span class="bg-surface-container-lowest text-cream-text font-mono-code text-label-sm px-1.5 py-0.5 rounded">v0.2.2</span></a><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></header><main class="w-full pt-16 bg-surface"><div class="max-w-4xl mx-auto px-4 py-8"><div class="flex flex-col w-full">
+<!-- Interactive Filter state manager -->
+<div class="flex flex-col gap-stack-lg">
+<!-- Top Editorial Header (No duplicate primary app title) -->
+<section class="relative overflow-hidden bg-coal-bg rounded-xl p-stack-lg md:p-10 shadow-md">
+<!-- Ambient decorative gradient glow -->
+<div class="absolute -top-24 -left-24 w-80 h-80 bg-clay-accent/10 rounded-full blur-3xl pointer-events-none"></div>
+<div class="absolute -bottom-24 -right-24 w-72 h-72 bg-tertiary/10 rounded-full blur-3xl pointer-events-none"></div>
+<div class="relative z-10 flex flex-col gap-stack-md">
+<!-- Badges Bar -->
+<div class="flex flex-wrap items-center gap-stack-sm">
+<span class="inline-flex items-center gap-1.5 px-3 py-1 bg-surface-container-highest text-clay-accent font-mono-code text-label-sm rounded-full">
+<span class="w-2 h-2 rounded-full bg-clay-accent"></span>
+            DOCUMENT_28 KNOWLEDGE BASE
+          </span>
+<span class="inline-flex items-center gap-1.5 px-3 py-1 bg-coal-surface text-cream-text font-label-sm text-label-sm rounded-full">
+<span class="material-symbols-outlined text-clay-accent text-[16px]">verified_user</span>
+            12 دليلاً عملياً مفتوحاً · معالجة محلية 100%
+          </span>
+</div>
+<!-- Section Title & Lead -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-stack-md">
+<div class="flex flex-col gap-2 max-w-2xl">
+<h1 class="font-headline-xl text-headline-xl text-cream-text tracking-tight leading-tight">
+              مكتبة المعرفة وهندسة الصوت النقي
+            </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed">
+              مرجعك الشامل لتفكيك المسارات الصوتية، أتمتة إزالة الموسيقى في الخلفية، وفهم خوارزميات الفصل العصبي بدون رفع أي بت إلى السحابة.
+            </p>
+</div>
+<!-- Quick Terminal Meta Stats -->
+<div class="flex flex-wrap sm:flex-nowrap gap-stack-sm shrink-0">
+<div class="flex flex-col bg-coal-surface px-4 py-2.5 rounded-lg">
+<span class="font-label-sm text-label-sm text-outline">معدل القراءة</span>
+<span class="font-headline-lg text-headline-lg text-cream-text">1.5 <span class="font-label-sm text-label-sm text-clay-accent">دقيقة/دليل</span></span>
+</div>
+<div class="flex flex-col bg-coal-surface px-4 py-2.5 rounded-lg">
+<span class="font-label-sm text-label-sm text-outline">مستوى الخصوصية</span>
+<span class="font-headline-lg text-headline-lg text-tertiary">0% <span class="font-label-sm text-label-sm text-outline">تخزين خارجي</span></span>
+</div>
+<div class="flex flex-col bg-coal-surface px-4 py-2.5 rounded-lg">
+<span class="font-label-sm text-label-sm text-outline">النظام المدعوم</span>
+<span class="font-headline-lg text-headline-lg text-cream-text">Win 10/11</span>
+</div>
+</div>
+</div>
+<!-- Search Bar & Instant Filter Row -->
+<div class="mt-4 pt-4 flex flex-col sm:flex-row items-center gap-3 bg-coal-surface/70 backdrop-blur-md p-2 rounded-xl">
+<div class="flex items-center gap-2 px-3 py-2 flex-1 w-full bg-surface-container-lowest rounded-lg focus-within:ring-1 focus-within:ring-clay-accent">
+<span class="material-symbols-outlined text-outline">search</span>
+<input class="w-full bg-transparent text-cream-text placeholder-outline text-body-md font-body-md focus:outline-none" id="guides-search-input" oninput="filterGuides(this.value)" placeholder="ابحث في الأدلة: عزل الأناشيد، يوتيوب، Gap-Skip، تيليجرام، تحويل MP3..." type="text"/>
+<button class="text-outline hover:text-cream-text hidden" id="clear-search-btn" onclick="clearSearch()">
+<span class="material-symbols-outlined text-[18px]">close</span>
+</button>
+</div>
+<div class="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0" id="filter-pills">
+<button class="cat-pill px-3 py-1.5 rounded-lg font-label-sm text-label-sm bg-clay-accent text-coal-surface font-semibold shrink-0 transition-all" data-cat="all" onclick="setCategory('all')">الكل (12)</button>
+<button class="cat-pill px-3 py-1.5 rounded-lg font-label-sm text-label-sm bg-surface-container-highest text-cream-text hover:bg-surface-bright shrink-0 transition-all" data-cat="mobile" onclick="setCategory('mobile')">جوال وتنقل</button>
+<button class="cat-pill px-3 py-1.5 rounded-lg font-label-sm text-label-sm bg-surface-container-highest text-cream-text hover:bg-surface-bright shrink-0 transition-all" data-cat="students" onclick="setCategory('students')">الطلاب والأكاديميا</button>
+<button class="cat-pill px-3 py-1.5 rounded-lg font-label-sm text-label-sm bg-surface-container-highest text-cream-text hover:bg-surface-bright shrink-0 transition-all" data-cat="browser" onclick="setCategory('browser')">إضافة المتصفح</button>
+<button class="cat-pill px-3 py-1.5 rounded-lg font-label-sm text-label-sm bg-surface-container-highest text-cream-text hover:bg-surface-bright shrink-0 transition-all" data-cat="tech" onclick="setCategory('tech')">الذكاء والتنقية</button>
+</div>
+</div>
+</div>
+</section>
+<!-- SECTION 2: Decision Tree / Visual Compass (Interactive Interactive Infographic) -->
+<section class="flex flex-col gap-stack-md">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-clay-accent">alt_route</span>
+<h2 class="font-headline-lg text-headline-lg text-cream-text">بوصلة التوجيه الصوتي السريع</h2>
+</div>
+<span class="font-mono-code text-label-sm text-outline">Acoustic Decision Matrix</span>
+</div>
+<!-- Bento Grid Compass -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-stack-sm">
+<!-- Quadrant 1: Mobile & Remote -->
+<div class="cursor-pointer group relative overflow-hidden bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all flex flex-col justify-between shadow-sm" onclick="setCategory('mobile')">
+<div class="flex items-start justify-between">
+<div class="w-10 h-10 rounded-lg bg-surface-container-highest flex items-center justify-center text-clay-accent group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">smartphone</span>
+</div>
+<span class="font-mono-code text-label-sm text-outline">01 / REMOTE</span>
+</div>
+<div class="mt-4">
+<h3 class="font-headline-lg text-[18px] text-cream-text group-hover:text-clay-accent transition-colors">مستخدم هاتف أو تيليجرام؟</h3>
+<p class="font-body-md text-label-sm text-on-surface-variant mt-1">تفريغ المحاضرات وحذف الشيلات عبر روبوت تلغرام المرتبط بسيرفرك المنزلي الخاص.</p>
+</div>
+<div class="mt-4 pt-3 flex items-center justify-between text-clay-accent font-label-sm text-label-sm">
+<span>استعراض دلائل الجوال</span>
+<span class="material-symbols-outlined text-[16px] transform group-hover:-translate-x-1 transition-transform">arrow_back</span>
+</div>
+</div>
+<!-- Quadrant 2: Students & Podcasts -->
+<div class="cursor-pointer group relative overflow-hidden bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all flex flex-col justify-between shadow-sm" onclick="setCategory('students')">
+<div class="flex items-start justify-between">
+<div class="w-10 h-10 rounded-lg bg-surface-container-highest flex items-center justify-center text-tertiary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">school</span>
+</div>
+<span class="font-mono-code text-label-sm text-outline">02 / ACADEMIC</span>
+</div>
+<div class="mt-4">
+<h3 class="font-headline-lg text-[18px] text-cream-text group-hover:text-tertiary transition-colors">تستمع لبودكاست أو محاضرات؟</h3>
+<p class="font-body-md text-label-sm text-on-surface-variant mt-1">تحويل سريع لـ MP3، تخطي الفواصل الإعلانية الموسيقية، ورفع نقاوة صوت المحاضر.</p>
+</div>
+<div class="mt-4 pt-3 flex items-center justify-between text-tertiary font-label-sm text-label-sm">
+<span>استعراض أدلة الطلبة</span>
+<span class="material-symbols-outlined text-[16px] transform group-hover:-translate-x-1 transition-transform">arrow_back</span>
+</div>
+</div>
+<!-- Quadrant 3: YouTube & Web Extension -->
+<div class="cursor-pointer group relative overflow-hidden bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all flex flex-col justify-between shadow-sm" onclick="setCategory('browser')">
+<div class="flex items-start justify-between">
+<div class="w-10 h-10 rounded-lg bg-surface-container-highest flex items-center justify-center text-warn-yellow group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">extension</span>
+</div>
+<span class="font-mono-code text-label-sm text-outline">03 / STREAM</span>
+</div>
+<div class="mt-4">
+<h3 class="font-headline-lg text-[18px] text-cream-text group-hover:text-warn-yellow transition-colors">تشاهد يوتيوب مباشرة؟</h3>
+<p class="font-body-md text-label-sm text-on-surface-variant mt-1">تشغيل إضافة المتصفح، تنزيل المقاطع خالية من النغمات بنقرة واحدة عبر زر عائم.</p>
+</div>
+<div class="mt-4 pt-3 flex items-center justify-between text-warn-yellow font-label-sm text-label-sm">
+<span>أدلة المتصفح واليوتيوب</span>
+<span class="material-symbols-outlined text-[16px] transform group-hover:-translate-x-1 transition-transform">arrow_back</span>
+</div>
+</div>
+<!-- Quadrant 4: Technical & Engineering -->
+<div class="cursor-pointer group relative overflow-hidden bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all flex flex-col justify-between shadow-sm" onclick="setCategory('tech')">
+<div class="flex items-start justify-between">
+<div class="w-10 h-10 rounded-lg bg-surface-container-highest flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined">memory</span>
+</div>
+<span class="font-mono-code text-label-sm text-outline">04 / CORE LAB</span>
+</div>
+<div class="mt-4">
+<h3 class="font-headline-lg text-[18px] text-cream-text group-hover:text-primary transition-colors">باحث صوتي أو مهندس؟</h3>
+<p class="font-body-md text-label-sm text-on-surface-variant mt-1">تفكيك خوارزمية demucs، إبقاء المؤثرات، عزل الأناشيد متعددة الطبقات والآداب.</p>
+</div>
+<div class="mt-4 pt-3 flex items-center justify-between text-primary font-label-sm text-label-sm">
+<span>الدلائل التقنية العميقة</span>
+<span class="material-symbols-outlined text-[16px] transform group-hover:-translate-x-1 transition-transform">arrow_back</span>
+</div>
+</div>
+</div>
+</section>
+<!-- SECTION 3: Visual Showcase / Architecture Blueprint -->
+<section class="grid grid-cols-1 lg:grid-cols-12 gap-stack-md bg-coal-bg p-stack-lg rounded-xl items-center shadow-md">
+<div class="lg:col-span-7 flex flex-col gap-stack-sm">
+<div class="flex items-center gap-2">
+<span class="px-2.5 py-0.5 rounded bg-surface-container-highest text-tertiary font-mono-code text-label-sm">ARCHITECTURE SNAPSHOT</span>
+<span class="text-outline text-label-sm font-label-sm">معيار الفصل المحلي الصارم</span>
+</div>
+<h2 class="font-headline-lg text-headline-lg text-cream-text">
+          كيف يعمل محرك HaramLite بدون أي إنترنت؟
+        </h2>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+          يمر المقطع عبر خط تصنيف خفيف الوزن يحلل أطياف التردد (Spectrogram Decomposition)، ثم يعزل جذوع الآلات الوترية والإيقاعية، مع الإبقاء على مخارج الأصوات الحنجرية والهمسات البشرية بدقة متناهية. لا يتم حفظ التسجيل في أي مجلد خارجي مؤقت.
+        </p>
+<!-- Live Mini Waveform Visualizer simulation -->
+<div class="bg-coal-surface p-stack-sm rounded-lg flex flex-col gap-2 mt-2">
+<div class="flex items-center justify-between font-mono-code text-label-sm text-outline">
+<span>[SRC_TRACK.WAV]</span>
+<span class="text-clay-accent">Demuxing: Vocal / Noise / Melody</span>
+</div>
+<div class="flex items-end gap-1 h-12 w-full px-2 py-1 bg-surface-container-lowest rounded">
+<span class="w-1 bg-clay-accent rounded-t h-4"></span>
+<span class="w-1 bg-tertiary rounded-t h-8"></span>
+<span class="w-1 bg-clay-accent rounded-t h-10"></span>
+<span class="w-1 bg-surface-container-highest rounded-t h-3"></span>
+<span class="w-1 bg-clay-accent rounded-t h-7"></span>
+<span class="w-1 bg-tertiary rounded-t h-11"></span>
+<span class="w-1 bg-clay-accent rounded-t h-9"></span>
+<span class="w-1 bg-tertiary rounded-t h-6"></span>
+<span class="w-1 bg-surface-container-highest rounded-t h-2"></span>
+<span class="w-1 bg-clay-accent rounded-t h-8"></span>
+<span class="w-1 bg-tertiary rounded-t h-12"></span>
+<span class="w-1 bg-clay-accent rounded-t h-5"></span>
+<span class="w-1 bg-surface-container-highest rounded-t h-4"></span>
+<span class="w-1 bg-tertiary rounded-t h-10"></span>
+<span class="w-1 bg-clay-accent rounded-t h-6"></span>
+<span class="w-1 bg-tertiary rounded-t h-8"></span>
+<span class="w-1 bg-surface-container-highest rounded-t h-3"></span>
+<span class="w-1 bg-clay-accent rounded-t h-11"></span>
+<span class="w-1 bg-tertiary rounded-t h-7"></span>
+<span class="w-1 bg-clay-accent rounded-t h-9"></span>
+<span class="w-1 bg-surface-container-highest rounded-t h-4"></span>
+<span class="w-1 bg-tertiary rounded-t h-6"></span>
+<span class="w-1 bg-clay-accent rounded-t h-10"></span>
+<span class="w-1 bg-surface-container-highest rounded-t h-2"></span>
+</div>
+<div class="flex justify-between text-label-sm font-label-sm text-outline">
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-clay-accent inline-block"></span> الصوت البشري المُنقى</span>
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-tertiary inline-block"></span> الآلات والإيقاعات المعزولة</span>
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-surface-container-highest inline-block"></span> الصمت المقتطع (Gap-Skip)</span>
+</div>
+</div>
+</div>
+<!-- Conceptual Art Visual -->
+<div class="lg:col-span-5 flex flex-col gap-2">
+<div class="relative overflow-hidden rounded-xl bg-surface-container h-64 flex items-center justify-center">
+
+<div class="absolute inset-0 bg-gradient-to-t from-coal-surface/90 via-transparent to-transparent flex items-end p-stack-md">
+<span class="font-label-sm text-label-sm text-cream-text bg-coal-surface/80 px-2.5 py-1 rounded backdrop-blur-sm">
+              معالجة بالذكاء الاصطناعي عبر مكتبات PyTorch و ONNX المضمنة
+            </span>
+</div>
+</div>
+</div>
+</section>
+<!-- SECTION 4: Grid of 12 Master Guides (Interactive Search/Filter Target) -->
+<section class="flex flex-col gap-stack-md">
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<h2 class="font-headline-lg text-headline-lg text-cream-text">فهرس الأدلة التفصيلية (12 دليلاً)</h2>
+<span class="font-body-md text-label-sm text-on-surface-variant">اختر دليلاً للاطلاع على خطوات العمل التقنية خطوة بخطوة</span>
+</div>
+<span class="font-mono-code text-label-sm px-3 py-1 bg-surface-container-highest text-clay-accent rounded-full" id="active-count">
+          عرض 12 من 12
+        </span>
+</div>
+<!-- Guides Container -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-stack-md" id="guides-grid">
+<!-- Guide 1: Telegram Bot Integration -->
+<article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="mobile">
+<div class="flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-0.5 rounded bg-clay-accent/15 text-clay-accent font-mono-code text-label-sm">MOBILE &amp; BOT</span>
+<span class="text-outline font-label-sm text-label-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span> 1 دقيقة
+              </span>
+</div>
+<h3 class="font-headline-lg text-[20px] text-cream-text leading-snug">دليل تشغيل روبوت تيليجرام الخاص للتنقية من الهاتف</h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-3">
+              كيفية إعداد روبوتك الخاص وربط حسابك برمز اقتران، ليستقبل حاسوبك منزلياً روابطك وملفاتك أثناء تنقلك ويعيدها منقّاة.
+            </p>
+</div>
+<div class="mt-6 pt-3 flex items-center justify-between">
+<span class="font-mono-code text-label-sm text-outline">GUIDE_01</span>
+<button class="inline-flex items-center gap-1 font-label-md text-label-md text-clay-accent hover:text-cream-text font-bold transition-colors" onclick="openGuideModal('telegram')">
+<span>قراءة الدليل</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Guide 2: Browser Extension Quick Start -->
+<article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="browser">
+<div class="flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-0.5 rounded bg-warn-yellow/15 text-warn-yellow font-mono-code text-label-sm">WEB EXTENSION</span>
+<span class="text-outline font-label-sm text-label-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span> 2 دقيقة
+              </span>
+</div>
+<h3 class="font-headline-lg text-[20px] text-cream-text leading-snug">إضافة كروم وإيدج: تنقية اليوتيوب المباشرة</h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-3">
+              تثبيت إضافة المتصفح، تفعيل زر «تحميل خالي من الموسيقى» المدمج مباشرة تحت مشغل يوتيوب وإكس (تويتر) بدون برامج وسيطة.
+            </p>
+</div>
+<div class="mt-6 pt-3 flex items-center justify-between">
+<span class="font-mono-code text-label-sm text-outline">GUIDE_02</span>
+<button class="inline-flex items-center gap-1 font-label-md text-label-md text-warn-yellow hover:text-cream-text font-bold transition-colors" onclick="openGuideModal('extension')">
+<span>قراءة الدليل</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Guide 3: Lecture Separation (Students) -->
+<article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="students">
+<div class="flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-0.5 rounded bg-tertiary/15 text-tertiary font-mono-code text-label-sm">STUDENTS</span>
+<span class="text-outline font-label-sm text-label-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span> دقائق معدودة
+              </span>
+</div>
+<h3 class="font-headline-lg text-[20px] text-cream-text leading-snug">تنقية المحاضرات الصوتية وتكبير نقاوة الإلقاء</h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-3">
+              طريقة تفريغ المحاضرات الجامعية وإزالة أصوات المكيفات والموسيقى التصويرية المرافقة للمقاطع الوثائقية التعليمية بنقرة واحدة.
+            </p>
+</div>
+<div class="mt-6 pt-3 flex items-center justify-between">
+<span class="font-mono-code text-label-sm text-outline">GUIDE_03</span>
+<button class="inline-flex items-center gap-1 font-label-md text-label-md text-tertiary hover:text-cream-text font-bold transition-colors" onclick="openGuideModal('lecture')">
+<span>قراءة الدليل</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Guide 4: Gap-Skip Silence & Music Elimination -->
+<article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="browser">
+<div class="flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-0.5 rounded bg-warn-yellow/15 text-warn-yellow font-mono-code text-label-sm">INNOVATION</span>
+<span class="text-outline font-label-sm text-label-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span> 1 دقيقة
+              </span>
+</div>
+<h3 class="font-headline-lg text-[20px] text-cream-text leading-snug">تقنية Gap-Skip: القفز الذكي عن الفواصل الموسيقية</h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-3">
+              بدلاً من كتم الصوت، يقوم Gap-Skip بتقديم الفيديو تلقائياً عبر المتصفح متى بدأت الموسيقى وانعدم الكلام البشري، مع استئناف فوري.
+            </p>
+</div>
+<div class="mt-6 pt-3 flex items-center justify-between">
+<span class="font-mono-code text-label-sm text-outline">GUIDE_04</span>
+<button class="inline-flex items-center gap-1 font-label-md text-label-md text-warn-yellow hover:text-cream-text font-bold transition-colors" onclick="openGuideModal('gap-skip')">
+<span>قراءة الدليل</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Guide 5: Batch Conversion to MP3 for Audio Players -->
+<article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="students">
+<div class="flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-0.5 rounded bg-tertiary/15 text-tertiary font-mono-code text-label-sm">AUDIO CONVERT</span>
+<span class="text-outline font-label-sm text-label-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span> 1 دقيقة
+              </span>
+</div>
+<h3 class="font-headline-lg text-[20px] text-cream-text leading-snug">تحويل السلاسل الكاملة إلى MP3 نقي للسيارة</h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-3">
+              كيفية معالجة مجلد يضم عشرات المقاطع الصوتية دفعة واحدة وحفظها بترميز MP3 أو Opus عالي الجودة مع وسوم ID3 التلقائية.
+            </p>
+</div>
+<div class="mt-6 pt-3 flex items-center justify-between">
+<span class="font-mono-code text-label-sm text-outline">GUIDE_05</span>
+<button class="inline-flex items-center gap-1 font-label-md text-label-md text-tertiary hover:text-cream-text font-bold transition-colors" onclick="openGuideModal('batch')">
+<span>قراءة الدليل</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Guide 6: AI Separation Engine Explained -->
+<article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="tech">
+<div class="flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-0.5 rounded bg-primary/15 text-primary font-mono-code text-label-sm">CORE ML</span>
+<span class="text-outline font-label-sm text-label-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span> 3 دقائق
+              </span>
+</div>
+<h3 class="font-headline-lg text-[20px] text-cream-text leading-snug">كيف يفصل الذكاء الاصطناعي الموسيقى عن الكلام؟</h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-3">
+              نظرة معمارية في شبكات Demucs وMDX-Net، وكيف يحلل النموذج المويجات الترددية لبناء قناع عازل (Spectrogram Masking).
+            </p>
+</div>
+<div class="mt-6 pt-3 flex items-center justify-between">
+<span class="font-mono-code text-label-sm text-outline">GUIDE_06</span>
+<button class="inline-flex items-center gap-1 font-label-md text-label-md text-primary hover:text-cream-text font-bold transition-colors" onclick="openGuideModal('ml-engine')">
+<span>قراءة الدليل</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Guide 7: Nasheed & Vocal Choir Separation -->
+<article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="tech">
+<div class="flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-0.5 rounded bg-primary/15 text-primary font-mono-code text-label-sm">VOCAL STEM</span>
+<span class="text-outline font-label-sm text-label-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span> 2 دقيقة
+              </span>
+</div>
+<h3 class="font-headline-lg text-[20px] text-cream-text leading-snug">عزل الأناشيد: التمييز بين الآلات والكورال البشري</h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-3">
+              إعدادات حساسية النبرة لمنع الذكاء الاصطناعي من حذف الهمهمات والتآلفات الصوتية البشرية النقية المتزامنة مع الإنشاد.
+            </p>
+</div>
+<div class="mt-6 pt-3 flex items-center justify-between">
+<span class="font-mono-code text-label-sm text-outline">GUIDE_07</span>
+<button class="inline-flex items-center gap-1 font-label-md text-label-md text-primary hover:text-cream-text font-bold transition-colors" onclick="openGuideModal('nasheed')">
+<span>قراءة الدليل</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Guide 8: GPU Acceleration & CPU Fallback -->
+<article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="tech">
+<div class="flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-0.5 rounded bg-primary/15 text-primary font-mono-code text-label-sm">HARDWARE</span>
+<span class="text-outline font-label-sm text-label-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span> 2 دقيقة
+              </span>
+</div>
+<h3 class="font-headline-lg text-[20px] text-cream-text leading-snug">تسريع المعالجة عبر كروت NVIDIA و AMD والمعالجات العادية</h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-3">
+              تفعيل تسريع CUDA أو DirectML لتقليص زمن فصل مقطع مدته ساعة كاملة إلى أقل من 90 ثانية، مع خيارات العمل بأمان على المعالج المركزي.
+            </p>
+</div>
+<div class="mt-6 pt-3 flex items-center justify-between">
+<span class="font-mono-code text-label-sm text-outline">GUIDE_08</span>
+<button class="inline-flex items-center gap-1 font-label-md text-label-md text-primary hover:text-cream-text font-bold transition-colors" onclick="openGuideModal('gpu')">
+<span>قراءة الدليل</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Guide 9: Podcast Studio Workflow -->
+<article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="students">
+<div class="flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-0.5 rounded bg-tertiary/15 text-tertiary font-mono-code text-label-sm">STUDIO</span>
+<span class="text-outline font-label-sm text-label-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span> 1 دقيقة
+              </span>
+</div>
+<h3 class="font-headline-lg text-[20px] text-cream-text leading-snug">حذف الموسيقى من حلقات البودكاست الطويلة</h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-3">
+              سير عمل معتمد لصناع المحتوى والسامعين لإزالة الفواصل الموسيقية المزعجة من المقابلات والحوارات دون الإخلال بتسلسل الحوار.
+            </p>
+</div>
+<div class="mt-6 pt-3 flex items-center justify-between">
+<span class="font-mono-code text-label-sm text-outline">GUIDE_09</span>
+<button class="inline-flex items-center gap-1 font-label-md text-label-md text-tertiary hover:text-cream-text font-bold transition-colors" onclick="openGuideModal('podcast')">
+<span>قراءة الدليل</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Guide 10: Legal, Ethics and Fair Use -->
+<article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="tech">
+<div class="flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-0.5 rounded bg-surface-container-highest text-cream-text font-mono-code text-label-sm">COMPLIANCE</span>
+<span class="text-outline font-label-sm text-label-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span> 2 دقيقة
+              </span>
+</div>
+<h3 class="font-headline-lg text-[20px] text-cream-text leading-snug">الجوانب القانونية والاستخدام الشخصي العادل</h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-3">
+              حقوق الملكية الفكرية، ضوابط المعالجة العادلة دون إعادة النشر التجاري، ولماذا تعتبر المعالجة المحلية على جهازك قانونية بنسبة 100%.
+            </p>
+</div>
+<div class="mt-6 pt-3 flex items-center justify-between">
+<span class="font-mono-code text-label-sm text-outline">GUIDE_10</span>
+<button class="inline-flex items-center gap-1 font-label-md text-label-md text-cream-text hover:text-clay-accent font-bold transition-colors" onclick="openGuideModal('legal')">
+<span>قراءة الدليل</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Guide 11: Phone Offline Storage & Playlists -->
+<article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="mobile">
+<div class="flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-0.5 rounded bg-clay-accent/15 text-clay-accent font-mono-code text-label-sm">OFFLINE SYNC</span>
+<span class="text-outline font-label-sm text-label-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span> دقائق معدودة
+              </span>
+</div>
+<h3 class="font-headline-lg text-[20px] text-cream-text leading-snug">مزامنة المجلد النقي مع هاتف آيفون وأندرويد</h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-3">
+              استخدام Syncthing أو مشاركة الشبكة المحلية لنقل كل ملف يتم تنقيته على حاسوبك تلقائياً لتطبيق الصوت في هاتفك.
+            </p>
+</div>
+<div class="mt-6 pt-3 flex items-center justify-between">
+<span class="font-mono-code text-label-sm text-outline">GUIDE_11</span>
+<button class="inline-flex items-center gap-1 font-label-md text-label-md text-clay-accent hover:text-cream-text font-bold transition-colors" onclick="openGuideModal('sync')">
+<span>قراءة الدليل</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</article>
+<!-- Guide 12: Tool Comparison (HaramLite vs Cloud Tools) -->
+<article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="tech">
+<div class="flex flex-col gap-stack-sm">
+<div class="flex items-center justify-between">
+<span class="px-2.5 py-0.5 rounded bg-primary/15 text-primary font-mono-code text-label-sm">BENCHMARK</span>
+<span class="text-outline font-label-sm text-label-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span> 2.5 دقيقة
+              </span>
+</div>
+<h3 class="font-headline-lg text-[20px] text-cream-text leading-snug">مقارنة شاملة: HaramLite مقابل المنصات السحابية</h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-3">
+              مقارنة صريحة بين برامج العزل السحابية ومحرك HaramLite المحلي من حيث الأمان، الرسوم، الجودة، وسرعة معالجة الملفات الكبيرة.
+            </p>
+</div>
+<div class="mt-6 pt-3 flex items-center justify-between">
+<span class="font-mono-code text-label-sm text-outline">GUIDE_12</span>
+<button class="inline-flex items-center gap-1 font-label-md text-label-md text-primary hover:text-cream-text font-bold transition-colors" onclick="openGuideModal('benchmark')">
+<span>قراءة الدليل</span>
+<span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</button>
+</div>
+</article>
+</div>
+</section>
+<!-- SECTION 5: Interactive Cheat Sheet (Modes Matrix) -->
+<section class="bg-coal-bg rounded-xl p-stack-lg shadow-md flex flex-col gap-stack-md">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-stack-sm">
+<div>
+<span class="font-mono-code text-label-sm text-clay-accent">OPERATIONAL MODES CHEAT SHEET</span>
+<h2 class="font-headline-lg text-headline-lg text-cream-text">متى تستخدم كل وضع في البرنامج؟</h2>
+</div>
+<p class="font-body-md text-label-sm text-on-surface-variant max-w-md">
+          جدول المرجعية السريعة للمفاضلة بين أوضاع العمل لتحقيق أفضل سرعة وأعلى نقاوة صوتية.
+        </p>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-right border-collapse">
+<thead>
+<tr class="bg-surface-container-lowest text-outline font-mono-code text-label-sm">
+<th class="p-3">الوضع (Mode)</th>
+<th class="p-3">نوع المحتوى المستهدف</th>
+<th class="p-3">زمن المعالجة</th>
+<th class="p-3">استهلاك العتاد</th>
+<th class="p-3">النتيجة المتوقعة</th>
+</tr>
+</thead>
+<tbody class="divide-y-0 font-body-md text-label-sm text-cream-text">
+<tr class="hover:bg-coal-surface transition-colors">
+<td class="p-3 flex items-center gap-2">
+<span class="w-2.5 h-2.5 rounded bg-clay-accent shrink-0"></span>
+<span class="font-semibold text-clay-accent">وضع المقطع (Clip Mode)</span>
+</td>
+<td class="p-3 text-on-surface-variant">مقاطع يوتيوب ريلز، وثائقيات قصيرة</td>
+<td class="p-3 font-mono-code">10-25 ثانية</td>
+<td class="p-3 text-tertiary">خفيف جداً</td>
+<td class="p-3">صوت بشري نقي مع خلفية خالية</td>
+</tr>
+<tr class="hover:bg-coal-surface transition-colors">
+<td class="p-3 flex items-center gap-2">
+<span class="w-2.5 h-2.5 rounded bg-warn-yellow shrink-0"></span>
+<span class="font-semibold text-warn-yellow">وضع الأناشيد (Vocal Stem)</span>
+</td>
+<td class="p-3 text-on-surface-variant">أناشيد بكورال، خلفيات مؤثرات صوتية</td>
+<td class="p-3 font-mono-code">45-75 ثانية</td>
+<td class="p-3 text-warn-yellow">متوسط (تفضيل كرت شاشة)</td>
+<td class="p-3">حفظ طبقات الصوت البشري بالكامل</td>
+</tr>
+<tr class="hover:bg-coal-surface transition-colors">
+<td class="p-3 flex items-center gap-2">
+<span class="w-2.5 h-2.5 rounded bg-tertiary shrink-0"></span>
+<span class="font-semibold text-tertiary">الدفعة الكاملة (Batch Watch)</span>
+</td>
+<td class="p-3 text-on-surface-variant">مجلدات كاملة، دورات مسجلة طويلة</td>
+<td class="p-3 font-mono-code">معالجة خلفية مستمرة</td>
+<td class="p-3 text-outline">تلقائي بحسب الجدولة</td>
+<td class="p-3">أرشفة مجلد كامل بصيغة MP3</td>
+</tr>
+<tr class="hover:bg-coal-surface transition-colors">
+<td class="p-3 flex items-center gap-2">
+<span class="w-2.5 h-2.5 rounded bg-cream-text shrink-0"></span>
+<span class="font-semibold text-cream-text">إضافة المتصفح (Gap-Skip)</span>
+</td>
+<td class="p-3 text-on-surface-variant">تصفح الويب المباشر ومشاهدة تويتر</td>
+<td class="p-3 font-mono-code">لحظي (Realtime)</td>
+<td class="p-3 text-tertiary">لا يستهلك كرت الشاشة</td>
+<td class="p-3">قفز ذكي على أجزاء النغمات</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<!-- SECTION 6: High Impact CTA Box -->
+<section class="relative overflow-hidden bg-gradient-to-r from-clay-accent/15 via-coal-bg to-coal-bg rounded-xl p-stack-lg md:p-10 flex flex-col md:flex-row items-center justify-between gap-stack-md shadow-lg">
+<div class="flex flex-col gap-2 max-w-xl text-center md:text-right">
+<span class="font-mono-code text-label-sm text-clay-accent">READY TO PURIFY YOUR AUDIO?</span>
+<h2 class="font-headline-lg text-headline-lg text-cream-text leading-tight">
+          ابدأ التنقية الصوتية المحلية على حاسوبك الآن مجاناً
+        </h2>
+<p class="font-body-md text-body-md text-on-surface-variant">
+          حزمة تثبيت مستقلة لويندوز 10 و11 تتضمن النماذج الخوارزمية مع دعم العمل الفوري دون إنترنت ودون تسجيل حساب.
+        </p>
+</div>
+<div class="flex flex-col sm:flex-row items-center gap-3 shrink-0 w-full sm:w-auto">
+<a class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-clay-accent text-coal-surface hover:bg-primary font-label-md text-label-md font-bold rounded-lg transition-colors shadow-sm" data-path="download" href="#">
+<span class="material-symbols-outlined text-[20px]">download</span>
+<span>تحميل HaramLite v0.2.2</span>
+</a>
+<a class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3.5 bg-coal-surface text-cream-text hover:bg-surface-container-highest font-label-md text-label-md rounded-lg transition-colors" data-path="open-source-github" href="#">
+<span class="material-symbols-outlined text-[18px]">code</span>
+<span>شفرة المصدر على GitHub</span>
+</a>
+</div>
+</section>
+</div>
+<!-- Interactive Guide Reader Drawer / Modal (Inline Vanilla JS) -->
+<div class="fixed inset-0 z-50 bg-coal-surface/80 backdrop-blur-sm hidden items-center justify-center p-4" id="guide-modal">
+<div class="bg-coal-bg max-w-2xl w-full rounded-xl p-stack-lg shadow-xl flex flex-col gap-stack-md max-h-[85vh] overflow-y-auto">
+<div class="flex items-center justify-between">
+<span class="font-mono-code text-label-sm px-2.5 py-0.5 rounded bg-clay-accent/20 text-clay-accent" id="modal-category">GUIDE</span>
+<button class="w-8 h-8 rounded bg-surface-container-highest flex items-center justify-center text-cream-text hover:bg-clay-accent hover:text-coal-surface transition-colors" onclick="closeGuideModal()">
+<span class="material-symbols-outlined text-[18px]">close</span>
+</button>
+</div>
+<div class="flex flex-col gap-2">
+<h3 class="font-headline-lg text-headline-lg text-cream-text leading-tight" id="modal-title">عنوان الدليل التفصيلي</h3>
+<span class="font-mono-code text-label-sm text-outline" id="modal-meta">وقت القراءة: دقيقة واحدة · معالجة أوفلاين</span>
+</div>
+<div class="font-body-md text-body-md text-on-surface-variant leading-relaxed space-y-3" id="modal-content">
+<!-- Content gets injected dynamically -->
+</div>
+<div class="flex items-center justify-between pt-4 bg-coal-surface -mx-stack-lg -mb-stack-lg p-stack-md rounded-b-xl">
+<span class="text-label-sm text-outline font-label-sm">هل كان هذا الدليل مفيداً لتجربتك؟</span>
+<div class="flex items-center gap-2">
+<button class="px-3 py-1 bg-surface-container-highest text-cream-text rounded font-label-sm hover:bg-clay-accent hover:text-coal-surface transition-colors" onclick="alert('شكراً لتقييمك!'); closeGuideModal();">نعم، مفيد جداً</button>
+<button class="px-3 py-1 bg-transparent text-outline hover:text-cream-text font-label-sm transition-colors" onclick="closeGuideModal()">إغلاق</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Client-side Logic Script for Instant Filtering & Modal Preview -->
+<script>
+    const guideDetails = {
+      'telegram': {
+        cat: 'MOBILE & BOT',
+        title: 'دليل تشغيل روبوت تيليجرام الخاص للتنقية من الهاتف',
+        meta: 'قراءة: دقائق معدودة · للمستخدمين المتنقلين',
+        body: `
+          <p class="font-bold text-cream-text">خطوات الربط الآمن:</p>
+          <ol class="list-decimal list-inside space-y-2 pr-2">
+            <li>قم بفتح نافذة الإعدادات في HaramLite على جهاز الحاسوب الخاص بك.</li>
+            <li>فعّل خيار <code>Telegram Daemon Bridge</code> وأدخل رمز رمز الروبوت الخاص بروبوتك من @BotFather.</li>
+            <li>سيقوم البرنامج بالاستماع محلياً؛ كلما أرسلت تسجيلاً أو رابطاً لحساب الروبوت على هاتفك، سيتولى حاسوبك عزل الموسيقى تلقائياً عبر النموذج وإعادة إرسال الملف المفرغ لك فوراً كرسالة صوتية.</li>
+          </ol>
+          <div class="p-3 bg-coal-surface rounded text-label-sm text-clay-accent font-mono-code">
+            ميزة الخصوصية: التسجيلات لا تمر بأي خادم وسيط على الإطلاق سوى تشفير تيليجرام المباشر إلى جهازك الشخصي.
+          </div>
+        `
+      },
+      'extension': {
+        cat: 'WEB EXTENSION',
+        title: 'إضافة كروم وإيدج: تنقية اليوتيوب المباشرة',
+        meta: 'قراءة: دقيقتان · المتصفح',
+        body: `
+          <p class="font-bold text-cream-text">طريقة التركيب والاستخدام:</p>
+          <p>تثبت الإضافة رسمياً من متجر كروم. بمجرد فتح أي مقطع على يوتيوب ستلاحظ ظهور زر مخصص بلون Clay بجوار زر الإعجاب والمشاركة باسم "تنزيل منقى".</p>
+          <ul class="list-disc list-inside space-y-1.5 pr-2">
+            <li>نقرة واحدة ترسل الرابط لتطبيق HaramLite المثبت لمعالجته فورياً.</li>
+            <li>الاستماع المباشر في المتصفح مع كتم النغمات تلقائياً عبر ميزة الصوت التكيفي.</li>
+          </ul>
+        `
+      },
+      'lecture': {
+        cat: 'STUDENTS & LECTURES',
+        title: 'تنقية المحاضرات الصوتية وتكبير نقاوة الإلقاء',
+        meta: 'قراءة: دقيقة واحدة · الطلبة والباحثون',
+        body: `
+          <p>تم تصميم هذا الوضع لتقليل الضوضاء المحيطة في قاعات الدراسة وحذف الموسيقى التي يضعها بعض صناع المحتوى في المقاطع التعليمية.</p>
+          <p>يوصى باختيار نمط <code>High Vocals Clarity</code> لرفع ترددات الحروف الصامتة لضمان فهم الكلمات الدقيقة للمحاضر.</p>
+        `
+      },
+      'gap-skip': {
+        cat: 'GAP-SKIP INNOVATION',
+        title: 'تقنية Gap-Skip: القفز الذكي عن الفواصل الموسيقية',
+        meta: 'قراءة: دقيقة واحدة · ابتكار حصري',
+        body: `
+          <p>العديد من المقاطع تحتوي على فواصل موسيقية بحتة لا يتخللها كلام بشري. مع تفعيل Gap-Skip، تراقب الإضافة إشارة الصوت في المتصفح:</p>
+          <div class="p-3 bg-coal-surface rounded text-label-sm font-mono-code text-warn-yellow">
+            حالة [الكلام = 0 && النغمات = 1] -> تقديم تلقائي 10 ثوانٍ للأمام حتى عودة المتحدث.
+          </div>
+        `
+      },
+      'batch': {
+        cat: 'BATCH PROCESSING',
+        title: 'تحويل السلاسل الكاملة إلى MP3 نقي للسيارة',
+        meta: 'قراءة: دقيقة واحدة · أرشفة',
+        body: `
+          <p>اسحب مجلد يحوي 50 أو 100 حلقة بودكاست وأفلته في نافذة البرنامج الرئيسية. سيقوم البرنامج بإنشاء مجلد موازي باسم <code>_Purified</code> يحوي النسخ المنقاة مع الحفاظ التام على الأسماء والوسوم التعريفية.</p>
+        `
+      },
+      'ml-engine': {
+        cat: 'MACHINE LEARNING CORE',
+        title: 'كيف يفصل الذكاء الاصطناعي الموسيقى عن الكلام؟',
+        meta: 'قراءة: 3 دقائق · تقني معماري',
+        body: `
+          <p>تعتمد النواة على شبكة عصبية تدربت على آلاف الساعات لفك ارتباط الترددات المتداخلة. يتم توليد خريطة أطياف صوتية (STFT) ثم تطبيق مصفوفة تصفية دقيقة لعزل الآلات الموسيقية في مسار مهمل وتمرير الصوت الطبيعي البشري فقط.</p>
+        `
+      },
+      'nasheed': {
+        cat: 'VOCAL STEM TUNING',
+        title: 'عزل الأناشيد: التمييز بين الآلات والكورال البشري',
+        meta: 'قراءة: دقيقتان · أدبيات الإنشاد',
+        body: `
+          <p>الأناشيد تحتوي على آهات وتناغمات بشرية قد تظنها الخوارزميات آلات وترية. من خلال وضع <code>Preserve Vocal Choirs</code>، يتم ضبط حد العتبة الترددية لتجنب خنق أصوات الكورال البشري المتعدد الطبقات.</p>
+        `
+      },
+      'gpu': {
+        cat: 'HARDWARE ACCELERATION',
+        title: 'تسريع المعالجة عبر كروت الشاشة',
+        meta: 'قراءة: دقيقتان · إعدادات العتاد',
+        body: `
+          <p>يدعم البرنامج تسريع CUDA لكروت NVIDIA وتوليد مكتبات DirectML لكروت AMD وIntel الحديثة. يمكن معالجة مقطع فيديو مدته ساعتان خلال أقل من 3 دقائق على كرت شاشة متوسط الفئة مثل RTX 3060.</p>
+        `
+      },
+      'podcast': {
+        cat: 'PODCAST PRODUCTION',
+        title: 'حذف الموسيقى من حلقات البودكاست الطويلة',
+        meta: 'قراءة: دقيقة واحدة · الإنتاج الصوتي',
+        body: `
+          <p>دليل إعداد مسار العمل لتنزيل البودكاست عبر خلاصات RSS أو يوتيوب ومعالجته تلقائياً ليصبح صالحاً للاستماع الهادئ الخالي من الشيلات والوصلات الصاخبة.</p>
+        `
+      },
+      'legal': {
+        cat: 'LEGAL & FAIR USE',
+        title: 'الجوانب القانونية والاستخدام الشخصي العادل',
+        meta: 'قراءة: دقيقتان · الامتثال والخصوصية',
+        body: `
+          <p>المعالجة المحلية على حاسوبك الشخصي تقع ضمن الاستخدام العادل (Fair Use) المماثل لتعديل معادل الصوت (Equalizer) في مشغل الوسائط، حيث لا يتم إعادة بث المحتوى تجارياً أو استغلاله كنسخة غير قانونية.</p>
+        `
+      },
+      'sync': {
+        cat: 'OFFLINE SYNC',
+        title: 'مزامنة المجلد النقي مع هاتف آيفون وأندرويد',
+        meta: 'قراءة: دقائق معدودة · مزامنة محلية',
+        body: `
+          <p>شرح إعداد مجلد مشترك عبر تطبيق Syncthing المفتوح، لكي يتم نقل المقاطع التي انتهت معالجتها إلى تطبيق مشغل الصوت على هاتفك بدون كابلات وبدون استخدام الإنترنت الخارجي.</p>
+        `
+      },
+      'benchmark': {
+        cat: 'BENCHMARK AUDIT',
+        title: 'مقارنة شاملة: HaramLite مقابل المنصات السحابية',
+        meta: 'قراءة: دقيقتان ونصف · مقارنة رقمية',
+        body: `
+          <p>مقارنة تحليلية بالأرقام توضح تفوق المعالجة المحلية من حيث سرعة الإنجاز بدون قيود الرفع والتنزيل، وانعدام أي تكاليف اشتراك شهرية، مع ضمان سرية وأمان البيانات بنسبة 100%.</p>
+        `
+      }
+    };
+
+    function filterGuides(query) {
+      const q = query.toLowerCase().trim();
+      const cards = document.querySelectorAll('.guide-card');
+      const clearBtn = document.getElementById('clear-search-btn');
+      let visibleCount = 0;
+
+      if (q.length > 0) {
+        clearBtn.classList.remove('hidden');
+      } else {
+        clearBtn.classList.add('hidden');
+      }
+
+      cards.forEach(card => {
+        const text = card.innerText.toLowerCase();
+        if (text.includes(q)) {
+          card.classList.remove('hidden');
+          visibleCount++;
+        } else {
+          card.classList.add('hidden');
+        }
+      });
+
+      document.getElementById('active-count').innerText = `عرض ${visibleCount} من 12`;
+    }
+
+    function clearSearch() {
+      const input = document.getElementById('guides-search-input');
+      input.value = '';
+      filterGuides('');
+    }
+
+    function setCategory(cat) {
+      const pills = document.querySelectorAll('.cat-pill');
+      pills.forEach(p => {
+        if (p.getAttribute('data-cat') === cat) {
+          p.className = 'cat-pill px-3 py-1.5 rounded-lg font-label-sm text-label-sm bg-clay-accent text-coal-surface font-semibold shrink-0 transition-all';
+        } else {
+          p.className = 'cat-pill px-3 py-1.5 rounded-lg font-label-sm text-label-sm bg-surface-container-highest text-cream-text hover:bg-surface-bright shrink-0 transition-all';
+        }
+      });
+
+      const cards = document.querySelectorAll('.guide-card');
+      let visibleCount = 0;
+      cards.forEach(card => {
+        const cardCat = card.getAttribute('data-category');
+        if (cat === 'all' || cardCat === cat) {
+          card.classList.remove('hidden');
+          visibleCount++;
+        } else {
+          card.classList.add('hidden');
+        }
+      });
+
+      document.getElementById('active-count').innerText = `عرض ${visibleCount} من 12`;
+    }
+
+    function openGuideModal(guideKey) {
+      const data = guideDetails[guideKey];
+      if (!data) return;
+
+      document.getElementById('modal-category').innerText = data.cat;
+      document.getElementById('modal-title').innerText = data.title;
+      document.getElementById('modal-meta').innerText = data.meta;
+      document.getElementById('modal-content').innerHTML = data.body;
+      
+      const modal = document.getElementById('guide-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeGuideModal() {
+      const modal = document.getElementById('guide-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    // Close on escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeGuideModal();
+      }
+    });
+  </script>
+</div></div>
+    <nav class="related-guides mt-12 pt-6 border-t border-coal-border">
+      <h4 class="font-bold text-xs uppercase tracking-wider text-cream-muted mb-3">أدلة ذات صلة</h4>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <a href="remove-music-from-video.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">إزالة الموسيقى من الفيديو</span>
+        </a>
+        <a href="watch-youtube-without-music.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">مشاهدة يوتيوب بدون موسيقى</span>
+        </a>
+        <a href="ai-vocal-separation.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">كيف يفصل الذكاء الاصطناعي الصوت؟</span>
+        </a>
+        <a href="remove-music-from-podcast.html" class="p-3 rounded-xl bg-coal-card border border-coal-border hover:border-clay/40 transition-all block">
+          <span class="text-xs font-semibold text-cream-text">إزالة الموسيقى من البودكاست</span>
+        </a>
+      </div>
+    </nav>
+  </main><footer class="w-full bg-surface-container-low border-t border-border-muted py-stack-lg"><div class="max-w-7xl mx-auto px-gutter lg:px-margin-desktop flex flex-col md:flex-row items-center justify-between gap-stack-md text-center md:text-right"><div class="font-label-sm text-label-sm text-outline">© 2026 HaramLite · معالجة صوتية محلية 100% دون سحابة</div><div class="flex flex-wrap items-center justify-center gap-stack-md font-label-sm text-label-sm text-on-surface-variant"><a class="hover:text-cream-text transition-colors" data-path="privacy-policy" href="#">سياسة الخصوصية</a><a class="hover:text-cream-text transition-colors" data-path="open-source-github" href="#">المستودع المفتوح GitHub</a><a class="hover:text-cream-text transition-colors" data-path="chrome-web-store" href="#">متجر كروم</a><a class="hover:text-cream-text transition-colors" data-path="report-issue" href="#">الإبلاغ عن مشكلة</a></div></div></footer></body></html>
+
