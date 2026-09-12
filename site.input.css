@@ -9,17 +9,20 @@
 @tailwind utilities;
 
 /* ── Thmanyah (same files the desktop app ships, copied from font/) ───────── */
-@font-face { font-family: 'Thmanyah Sans'; src: url('thmanyah-sans-regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
-@font-face { font-family: 'Thmanyah Sans'; src: url('thmanyah-sans-medium.otf') format('opentype'); font-weight: 500; font-display: swap; }
-@font-face { font-family: 'Thmanyah Sans'; src: url('thmanyah-sans-bold.otf') format('opentype'); font-weight: 700; font-display: swap; }
-@font-face { font-family: 'Thmanyah Serif Display'; src: url('thmanyah-serif-bold.otf') format('opentype'); font-weight: 700; font-display: swap; }
-@font-face { font-family: 'Thmanyah Serif Display'; src: url('thmanyah-serif-black.otf') format('opentype'); font-weight: 900; font-display: swap; }
+/* الخطوط: WOFF2 مضغوط (كل خط ~77KB بدل ~240KB) — وثلاثة أوزان فقط هي
+   المستخدمة فعلاً في الموقع؛ sans-medium و serif-black أُزيلا لأنهما غير مستخدمين. */
+@font-face { font-family: 'Thmanyah Sans'; src: url('thmanyah-sans-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Thmanyah Sans'; src: url('thmanyah-sans-bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Thmanyah Serif Display'; src: url('thmanyah-serif-bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+/* وزن 500 و 900 يقعان على الأقرب المتاح، فلا يطلب المتصفح ملفاً غير موجود */
+@font-face { font-family: 'Thmanyah Sans'; src: url('thmanyah-sans-bold.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Thmanyah Serif Display'; src: url('thmanyah-serif-bold.woff2') format('woff2'); font-weight: 900; font-display: swap; }
 
 /* ── Material Symbols (self-hosted, exactly as the app does it) ───────────── */
 @font-face {
   font-family: 'Material Symbols Outlined';
   font-style: normal;
-  font-weight: 100 700;
+  font-weight: 400;
   font-display: swap;
   src: url('material-symbols-outlined.woff2') format('woff2');
 }

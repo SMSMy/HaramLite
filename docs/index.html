@@ -22,9 +22,72 @@
 <link rel="apple-touch-icon" href="assets/icon-180.png">
 <title>HaramLite — إزالة الموسيقى من الفيديو، محلياً على جهازك</title>
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"HaramLite","applicationCategory":"MultimediaApplication","operatingSystem":"Windows 10, Windows 11","softwareVersion":"0.2.2","description":"أداة مجانية لإزالة الموسيقى من المقاطع الصوتية والمرئية بالذكاء الاصطناعي، تعمل محلياً بالكامل على جهاز المستخدم.","url":"https://haramlite.com/","downloadUrl":"https://github.com/SMSMy/HaramLite/releases/latest","license":"https://haramlite.com/LICENSE.txt","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://haramlite.com/#org",
+      "name": "HaramLite",
+      "url": "https://haramlite.com/",
+      "logo": "https://haramlite.com/assets/icon-128.png",
+      "sameAs": [
+        "https://github.com/SMSMy/HaramLite"
+      ]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://haramlite.com/#website",
+      "url": "https://haramlite.com/",
+      "name": "HaramLite",
+      "inLanguage": "ar",
+      "publisher": {
+        "@id": "https://haramlite.com/#org"
+      }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "name": "HaramLite",
+      "applicationCategory": "MultimediaApplication",
+      "applicationSubCategory": "Audio separation",
+      "operatingSystem": "Windows 10, Windows 11",
+      "softwareVersion": "0.2.2",
+      "inLanguage": [
+        "ar",
+        "en"
+      ],
+      "url": "https://haramlite.com/",
+      "downloadUrl": "https://github.com/SMSMy/HaramLite/releases/latest",
+      "screenshot": "https://haramlite.com/assets/og.png",
+      "license": "https://github.com/SMSMy/HaramLite/blob/main/LICENSE",
+      "isAccessibleForFree": true,
+      "featureList": [
+        "إزالة الموسيقى من الفيديو والصوت على الجهاز",
+        "وضع «أغنية» لعزل الصوت البشري",
+        "تخطي فترات الصمت",
+        "مجلد مراقبة ومعالجة بالدفعات",
+        "إضافة متصفح للمشاهدة بعد إزالة الموسيقى",
+        "روبوت تيليجرام اختياري"
+      ],
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "publisher": {
+        "@id": "https://haramlite.com/#org"
+      }
+    }
+  ]
+}
 </script>
-<style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><link rel="stylesheet" href="assets/site.css"/></head><body class="bg-coal-surface font-body-md text-cream-text selection:bg-clay-accent selection:text-coal-surface"><header class="fixed top-0 w-full z-50 bg-coal-surface/90 backdrop-blur-xl border-b border-border-muted"><div class="h-16 max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter"><div class="flex items-center gap-stack-lg"><a class="flex items-center gap-stack-sm focus:outline-none" data-path="home" href="/"><img src="assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded shadow-sm"><span class="font-label-md text-label-md tracking-wider text-cream-text font-bold uppercase">HaramLite</span></a><nav class="hidden lg:flex items-center gap-stack-lg" data-active-classes="text-cream-text border-b-2 border-clay-accent font-bold"><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="download" href="#download">التحميل</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="features" href="#features">المميزات</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" href="bridge.html">إضافة المتصفح</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="whats-new" href="#whatsnew">الجديد</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="privacy" href="#privacy">الخصوصية</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="developers" href="#dev">للمطورين</a></nav></div><div class="flex items-center gap-stack-sm"><button id="lang-btn" class="flex items-center gap-unit px-stack-sm py-unit rounded border border-border-muted font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text hover:border-outline transition-colors cursor-pointer" type="button" aria-label="تغيير اللغة / Change language"><span class="material-symbols-outlined text-[16px]">language</span><span id="lang-btn-label">English</span></button><a class="hidden sm:inline-flex items-center justify-center px-stack-md py-unit rounded bg-clay-accent text-coal-surface font-label-md text-label-md hover:bg-primary transition-colors font-bold" data-path="download" href="#download">تحميل التطبيق</a></div></div></header><main class="w-full pt-16 bg-coal-surface min-h-[calc(100vh-160px)]"><div class="flex flex-col w-full">
+<style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><link rel="stylesheet" href="assets/site.css"/>
+  <!-- تحميل مسبق للخطوط الثلاثة المستخدمة فوق الطية: يقلّل زمن أول رسم ويمنع
+       إزاحة النص عند تبديل الخط الاحتياطي (CLS). الملفات محليّة فلا اتصال خارجي. -->
+  <link rel="preload" href="assets/thmanyah-serif-bold.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/thmanyah-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/thmanyah-sans-bold.woff2" as="font" type="font/woff2" crossorigin>
+</head><body class="bg-coal-surface font-body-md text-cream-text selection:bg-clay-accent selection:text-coal-surface"><header class="fixed top-0 w-full z-50 bg-coal-surface/90 backdrop-blur-xl border-b border-border-muted"><div class="h-16 max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter"><div class="flex items-center gap-stack-lg"><a class="flex items-center gap-stack-sm focus:outline-none" data-path="home" href="/"><img src="assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded shadow-sm"><span class="font-label-md text-label-md tracking-wider text-cream-text font-bold uppercase">HaramLite</span></a><nav class="hidden lg:flex items-center gap-stack-lg" data-active-classes="text-cream-text border-b-2 border-clay-accent font-bold"><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="download" href="#download">التحميل</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="features" href="#features">المميزات</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" href="bridge.html">إضافة المتصفح</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="whats-new" href="#whatsnew">الجديد</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="privacy" href="#privacy">الخصوصية</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="developers" href="#dev">للمطورين</a></nav></div><div class="flex items-center gap-stack-sm"><button id="lang-btn" class="flex items-center gap-unit px-stack-sm py-unit rounded border border-border-muted font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text hover:border-outline transition-colors cursor-pointer" type="button" aria-label="تغيير اللغة / Change language"><span class="material-symbols-outlined text-[16px]">language</span><span id="lang-btn-label">English</span></button><a class="hidden sm:inline-flex items-center justify-center px-stack-md py-unit rounded bg-clay-accent text-coal-surface font-label-md text-label-md hover:bg-primary transition-colors font-bold" data-path="download" href="#download">تحميل التطبيق</a></div></div></header><main class="w-full pt-16 bg-coal-surface min-h-[calc(100vh-160px)]"><div class="flex flex-col w-full">
 <!-- Interactive Localization & Audio Wave Simulation State Script -->
 <script>
     window.HaramLiteState = {
@@ -197,7 +260,7 @@
 <!-- Direct URL Input Mock -->
 <div class="w-full flex items-center gap-stack-sm bg-surface-container rounded p-unit px-stack-sm">
 <span class="material-symbols-outlined text-on-surface-variant text-[18px]">link</span>
-<input class="w-full bg-transparent font-mono-code text-mono-code text-cream-text focus:outline-none cursor-default" readonly="" type="text" value="https://www.youtube.com/watch?v=sample-tech-talk"/>
+<input class="w-full bg-transparent font-mono-code text-mono-code text-cream-text focus:outline-none cursor-default" readonly="" type="text" value="https://www.youtube.com/watch?v=sample-tech-talk"/ aria-label="عنوان التاب النشط في المتصفح">
 <button class="px-stack-sm py-unit rounded bg-clay-accent text-coal-surface font-label-sm text-label-sm font-bold" type="button">
 <span data-i18n-ar="جلب ومعالجة الرابط" data-i18n-en="Fetch &amp; Process">جلب ومعالجة الرابط</span>
 </button>
@@ -639,7 +702,7 @@
 <span class="material-symbols-outlined text-[28px]">code</span>
 </div>
 <div>
-<h4 class="font-headline-lg text-headline-lg text-cream-text" data-i18n-ar="مستودع المشروع على GitHub" data-i18n-en="GitHub Repository">مستودع المشروع على GitHub</h4>
+<h3 class="font-headline-lg text-headline-lg text-cream-text" data-i18n-ar="مستودع المشروع على GitHub" data-i18n-en="GitHub Repository">مستودع المشروع على GitHub</h3>
 <p class="font-mono-code text-mono-code text-on-surface-variant">https://github.com/SMSMy/HaramLite</p>
 </div>
 </div>
