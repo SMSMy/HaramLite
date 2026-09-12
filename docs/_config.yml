@@ -14,6 +14,7 @@ theme: jekyll-theme-cayman
 exclude:
   - AUDIT.md
   - STORE.md
+  - SITE.md
   - FUNCTIONAL_AUDIT.md
   - CUDA_RUNTIME_PLAN.md
   - CONTRIBUTING.md
