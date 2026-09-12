@@ -49,7 +49,7 @@
 
 <div class="topbar">
   <div class="wrap">
-    <img src="assets/icon-32.png" alt="HaramLite">
+    <img src="assets/icon-180.png" alt="HaramLite">
     <span class="name">HaramLite</span>
     <span class="spacer"></span>
     <button class="langbtn" id="langbtn" type="button">English</button>
@@ -64,14 +64,14 @@
     <p class="lead" data-i18n="lead">أداة خفيفة لإزالة الموسيقى من المقاطع الصوتية والمرئية بالذكاء الاصطناعي — كل خطوة تحدث على جهازك: لا رفع لأي ملف، ولا سحابة، ولا تسجيل حسابات.</p>
 
     <div class="badges">
-      <span class="badge"><b data-i18n="badge_version">الإصدار 0.2.1</b></span>
+      <span class="badge"><b><span data-i18n="badge_version_pre">الإصدار</span> <span data-latest-version>0.2.1</span></b></span>
       <span class="badge" data-i18n="badge_os">ويندوز 10/11 (x64)</span>
       <span class="badge" data-i18n="badge_local">معالجة محلية 100%</span>
       <span class="badge"><a href="https://github.com/SMSMy/HaramLite/releases/latest" data-i18n="badge_release">أحدث إصدار على GitHub</a></span>
     </div>
 
     <div class="btns">
-      <a class="btn" href="https://github.com/SMSMy/HaramLite/releases/latest" data-i18n="cta_download">⬇ تحميل للتطبيق</a>
+      <a class="btn" href="https://github.com/SMSMy/HaramLite/releases/latest" data-dl="nsis" data-i18n="cta_download">⬇ تحميل للتطبيق</a>
       <a class="btn ghost" href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg" data-i18n="cta_ext">إضافة المتصفح</a>
       <a class="btn ghost" href="#download" data-i18n="cta_how">كيف أبدأ؟</a>
     </div>
@@ -101,11 +101,11 @@
       </thead>
       <tbody>
         <tr>
-          <td><code>HaramLite_0.2.1_x64-setup.exe</code></td>
+          <td><code data-latest-asset="nsis">HaramLite_0.2.1_x64-setup.exe</code></td>
           <td data-i18n="dl_nsis"><b>الموصى به</b> — مثبّت NSIS يثبّت كل شيء تلقائياً: VC++ Redist، أدوات المعالجة (FFmpeg وyt-dlp)، ونموذج الفصل.</td>
         </tr>
         <tr>
-          <td><code>HaramLite_0.2.1_x64_en-US.msi</code></td>
+          <td><a data-dl="msi" data-latest-asset="msi" href="https://github.com/SMSMy/HaramLite/releases/latest"><code>HaramLite_0.2.1_x64_en-US.msi</code></a></td>
           <td data-i18n="dl_msi">نسخة MSI للبيئات التي تُدار بالنطاق أو التثبيت الصامت.</td>
         </tr>
       </tbody>
@@ -242,10 +242,9 @@
       <a href="PRIVACY.html" data-i18n="f_pv">الخصوصية</a>
       <a href="LICENSE.txt" data-i18n="f_lic">الرخصة</a>
       <a href="https://github.com/SMSMy/HaramLite" data-i18n="f_src">المصدر</a>
-      <a href="https://github.com/SMSMy/HaramLite/issues/new" data-i18n="f_iss">الدعم</a>
+      <a href="https://github.com/SMSMy/HaramLite/issues/new" data-i18n="f_iss">هل واجهت مشكلة أو لديك اقتراح؟</a>
     </nav>
     <div data-i18n="f_credit">شكر خاص لمشروع <b>HaramMute</b> — الملهم الأول لهذا العمل.</div>
-    <div class="small" data-i18n="f_disclaimer">يوتيوب علامة تجارية لشركة Google LLC. هذا المشروع مستقل وغير مرتبط بها ولا معتمد منها، والمستخدم مسؤول عن احترام حقوق المحتوى الذي يعالجه.</div>
     <div class="small">© <span id="year">2026</span> HaramLite · <a href="https://haramlite.com">haramlite.com</a></div>
   </div>
 </footer>
@@ -256,7 +255,7 @@ const I18N = {
   en: {
     slogan: "Music has no place in a heart that seeks tranquillity",
     lead: "A lightweight tool that removes music from audio and video with AI — every step happens on your machine: nothing is uploaded, no cloud, no accounts.",
-    badge_version: "Version 0.2.1",
+    badge_version_pre: "Version",
     badge_os: "Windows 10/11 (x64)",
     badge_local: "100% local processing",
     badge_release: "Latest release on GitHub",
@@ -330,9 +329,8 @@ const I18N = {
     sup_title: "Problems or suggestions?",
     sup_body: "Open an issue on GitHub, or from inside the app: Settings → <b>Report a problem</b> (it attaches the event log automatically).",
     sup_btn: "Open an issue",
-    f_dl: "Download", f_new: "What's new", f_pv: "Privacy", f_lic: "License", f_src: "Source", f_iss: "Support",
+    f_dl: "Download", f_new: "What's new", f_pv: "Privacy", f_lic: "License", f_src: "Source", f_iss: "Hit a problem or have a suggestion?",
     f_credit: "Special thanks to the <b>HaramMute</b> project — the first inspiration for this work.",
-    f_disclaimer: "YouTube is a trademark of Google LLC. This project is independent, not affiliated with or endorsed by them, and users are responsible for respecting the rights of the content they process."
   }
 };
 
@@ -362,6 +360,41 @@ const I18N = {
   btn.addEventListener('click', function () {
     apply(document.documentElement.lang === 'ar' ? 'en' : 'ar');
   });
+  /* ── آخر إصدار: يُقرأ من GitHub عند فتح الصفحة ─────────────────────────
+     الرقم وأسماء الملفات وروابط التحميل المباشر تُحدَّث من واجهة GitHub، فلا
+     تبقى الصفحة على إصدار قديم. وإن فشل الطلب (بلا شبكة أو حدّ معدّل) يبقى
+     كل شيء على القيم المكتوبة في الصفحة — والأزرار تشير إلى /releases/latest. */
+  function applyRelease(rel) {
+    if (!rel || !rel.tag_name) return;
+    const ver = String(rel.tag_name).replace(/^v/i, '');
+    document.querySelectorAll('[data-latest-version]').forEach(function (el) { el.textContent = ver; });
+    const assets = rel.assets || [];
+    const pick = function (re) { for (const a of assets) { if (re.test(a.name)) return a; } return null; };
+    const nsis = pick(/setup\.exe$/i);
+    const msi = pick(/\.msi$/i);
+    if (nsis) {
+      document.querySelectorAll('[data-dl="nsis"]').forEach(function (a) { a.href = nsis.browser_download_url; });
+      document.querySelectorAll('[data-latest-asset="nsis"]').forEach(function (el) { el.textContent = nsis.name; });
+    }
+    if (msi) {
+      document.querySelectorAll('[data-dl="msi"]').forEach(function (a) { a.href = msi.browser_download_url; });
+      document.querySelectorAll('[data-latest-asset="msi"]').forEach(function (el) { el.textContent = msi.name; });
+    }
+  }
+  (function () {
+    let cached = null;
+    try { cached = sessionStorage.getItem('hl.release'); } catch (e) {}
+    if (cached) { try { applyRelease(JSON.parse(cached)); return; } catch (e) {} }
+    fetch('https://api.github.com/repos/SMSMy/HaramLite/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (rel) {
+        if (!rel) return;
+        applyRelease(rel);
+        try { sessionStorage.setItem('hl.release', JSON.stringify({ tag_name: rel.tag_name, assets: rel.assets })); } catch (e) {}
+      })
+      .catch(function () { /* القيم المكتوبة تبقى صالحة */ });
+  })();
+
   let saved = null;
   try { saved = localStorage.getItem('hl.site.lang'); } catch (e) {}
   // العربية هي الأصل؛ والزائر غير العربي يرى الإنجليزية تلقائياً.
