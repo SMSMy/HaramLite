@@ -70,7 +70,7 @@
 </button>
 </div>
 <div class="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0" id="filter-pills">
-<button class="cat-pill px-3 py-1.5 rounded-lg font-label-sm text-label-sm bg-clay-accent text-coal-surface font-semibold shrink-0 transition-all" data-cat="all" onclick="setCategory('all')">الكل (12)</button>
+<button class="cat-pill px-3 py-1.5 rounded-lg font-label-sm text-label-sm bg-clay-accent text-coal-surface font-semibold shrink-0 transition-all" data-cat="all" onclick="setCategory('all')">الكل (13)</button>
 <button class="cat-pill px-3 py-1.5 rounded-lg font-label-sm text-label-sm bg-surface-container-highest text-cream-text hover:bg-surface-bright shrink-0 transition-all" data-cat="mobile" onclick="setCategory('mobile')">جوال وتنقل</button>
 <button class="cat-pill px-3 py-1.5 rounded-lg font-label-sm text-label-sm bg-surface-container-highest text-cream-text hover:bg-surface-bright shrink-0 transition-all" data-cat="students" onclick="setCategory('students')">الطلاب والأكاديميا</button>
 <button class="cat-pill px-3 py-1.5 rounded-lg font-label-sm text-label-sm bg-surface-container-highest text-cream-text hover:bg-surface-bright shrink-0 transition-all" data-cat="browser" onclick="setCategory('browser')">إضافة المتصفح</button>
@@ -224,7 +224,7 @@
 </div>
 </div>
 </section>
-<!-- SECTION 4: Grid of 12 Master Guides (Interactive Search/Filter Target) -->
+<!-- SECTION 4: Grid of 13 Master Guides (Interactive Search/Filter Target) -->
 <section class="flex flex-col gap-stack-md">
 <div class="flex items-center justify-between">
 <div class="flex flex-col">
@@ -232,29 +232,12 @@
 <span class="font-body-md text-label-sm text-on-surface-variant">اختر دليلاً للاطلاع على خطوات العمل التقنية خطوة بخطوة</span>
 </div>
 <span class="font-mono-code text-label-sm px-3 py-1 bg-surface-container-highest text-clay-accent rounded-full" id="active-count">
-          عرض 12 من 12
+          عرض 13 من 13
         </span>
 </div>
 <!-- Guides Container -->
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-stack-md" id="guides-grid">
-<!-- Guide 1: Telegram Bot Integration -->
-<article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="core" onclick="if(!event.target.closest('a'))location.href='remove-audio-keep-video.html'" style="cursor:pointer">
-                <div class="flex flex-col gap-stack-sm">
-                  <div class="flex items-center justify-between flex-wrap gap-2">
-                    <span class="font-mono-code text-label-sm">AUDIO / VIDEO</span>
-                    <span class="text-outline font-label-sm text-label-sm flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">schedule</span> 1 دقيقة</span>
-                  </div>
-                  <h3 class="font-headline-lg text-[20px] text-cream-text leading-snug">إزالة الصوت من الفيديو مع إبقاء الصورة</h3>
-                  <p class="font-body-md text-body-md text-on-surface-variant line-clamp-3">الفرق بين كتم الصوت وإزالته، وهل تتأثر جودة الصورة، وكيف يبقى التزامن صحيحاً.</p>
-                </div>
-                <div class="mt-6 pt-3 flex items-center justify-between">
-                  <span class="font-mono-code text-label-sm text-outline">GUIDE_13</span>
-                  <a class="inline-flex items-center gap-1 font-label-md text-label-md text-clay-accent hover:text-cream-text font-bold transition-colors" href="remove-audio-keep-video.html">
-                    <span>قراءة الدليل</span>
-                    <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
-                  </a>
-                </div>
-              </article>
+<!-- GUIDE_01: دليل تشغيل روبوت تيليجرام الخاص للتنقية من الهاتف -->
 <article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="mobile" onclick="if(!event.target.closest('a'))location.href='telegram-remote-control.html'" style="cursor:pointer">
 <div class="flex flex-col gap-stack-sm">
 <div class="flex items-center justify-between">
@@ -276,7 +259,8 @@
 </a>
 </div>
 </article>
-<!-- Guide 2: Browser Extension Quick Start -->
+
+<!-- GUIDE_02: إضافة كروم وإيدج: تنقية اليوتيوب المباشرة -->
 <article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="browser" onclick="if(!event.target.closest('a'))location.href='watch-youtube-without-music.html'" style="cursor:pointer">
 <div class="flex flex-col gap-stack-sm">
 <div class="flex items-center justify-between">
@@ -295,10 +279,11 @@
 <a class="inline-flex items-center gap-1 font-label-md text-label-md text-warn-yellow hover:text-cream-text font-bold transition-colors" href="watch-youtube-without-music.html">
 <span>قراءة الدليل</span>
 <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
-</button>
+</a>
 </div>
 </article>
-<!-- Guide 3: Lecture Separation (Students) -->
+
+<!-- GUIDE_03: تنقية المحاضرات الصوتية وتكبير نقاوة الإلقاء -->
 <article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="students" onclick="if(!event.target.closest('a'))location.href='remove-music-from-lectures.html'" style="cursor:pointer">
 <div class="flex flex-col gap-stack-sm">
 <div class="flex items-center justify-between">
@@ -317,10 +302,11 @@
 <a class="inline-flex items-center gap-1 font-label-md text-label-md text-tertiary hover:text-cream-text font-bold transition-colors" href="remove-music-from-lectures.html">
 <span>قراءة الدليل</span>
 <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
-</button>
+</a>
 </div>
 </article>
-<!-- Guide 4: Gap-Skip Silence & Music Elimination -->
+
+<!-- GUIDE_04: إزالة الموسيقى من الفيديو على الكمبيوتر -->
 <article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="browser" onclick="if(!event.target.closest('a'))location.href='remove-music-from-video.html'" style="cursor:pointer">
 <div class="flex flex-col gap-stack-sm">
 <div class="flex items-center justify-between">
@@ -337,10 +323,11 @@
 <a class="inline-flex items-center gap-1 font-label-md text-label-md text-warn-yellow hover:text-cream-text font-bold transition-colors" href="remove-music-from-video.html">
 <span>قراءة الدليل</span>
 <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
-</button>
+</a>
 </div>
 </article>
-<!-- Guide 5: Batch Conversion to MP3 for Audio Players -->
+
+<!-- GUIDE_05: تحويل السلاسل الكاملة إلى MP3 نقي للسيارة -->
 <article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="students" onclick="if(!event.target.closest('a'))location.href='video-to-mp3-without-music.html'" style="cursor:pointer">
 <div class="flex flex-col gap-stack-sm">
 <div class="flex items-center justify-between">
@@ -359,10 +346,11 @@
 <a class="inline-flex items-center gap-1 font-label-md text-label-md text-tertiary hover:text-cream-text font-bold transition-colors" href="video-to-mp3-without-music.html">
 <span>قراءة الدليل</span>
 <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
-</button>
+</a>
 </div>
 </article>
-<!-- Guide 6: AI Separation Engine Explained -->
+
+<!-- GUIDE_06: كيف يفصل الذكاء الاصطناعي الموسيقى عن الكلام؟ -->
 <article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="tech" onclick="if(!event.target.closest('a'))location.href='ai-vocal-separation.html'" style="cursor:pointer">
 <div class="flex flex-col gap-stack-sm">
 <div class="flex items-center justify-between">
@@ -381,10 +369,11 @@
 <a class="inline-flex items-center gap-1 font-label-md text-label-md text-primary hover:text-cream-text font-bold transition-colors" href="ai-vocal-separation.html">
 <span>قراءة الدليل</span>
 <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
-</button>
+</a>
 </div>
 </article>
-<!-- Guide 7: Nasheed & Vocal Choir Separation -->
+
+<!-- GUIDE_07: عزل الأناشيد: التمييز بين الآلات والكورال البشري -->
 <article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="tech" onclick="if(!event.target.closest('a'))location.href='remove-music-from-nasheed.html'" style="cursor:pointer">
 <div class="flex flex-col gap-stack-sm">
 <div class="flex items-center justify-between">
@@ -403,10 +392,11 @@
 <a class="inline-flex items-center gap-1 font-label-md text-label-md text-primary hover:text-cream-text font-bold transition-colors" href="remove-music-from-nasheed.html">
 <span>قراءة الدليل</span>
 <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
-</button>
+</a>
 </div>
 </article>
-<!-- Guide 8: GPU Acceleration & CPU Fallback -->
+
+<!-- GUIDE_08: أفضل برنامج لإزالة الموسيقى من الفيديو؟ -->
 <article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="tech" onclick="if(!event.target.closest('a'))location.href='best-tool-to-remove-music.html'" style="cursor:pointer">
 <div class="flex flex-col gap-stack-sm">
 <div class="flex items-center justify-between">
@@ -423,10 +413,11 @@
 <a class="inline-flex items-center gap-1 font-label-md text-label-md text-primary hover:text-cream-text font-bold transition-colors" href="best-tool-to-remove-music.html">
 <span>قراءة الدليل</span>
 <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
-</button>
+</a>
 </div>
 </article>
-<!-- Guide 9: Podcast Studio Workflow -->
+
+<!-- GUIDE_09: حذف الموسيقى من حلقات البودكاست الطويلة -->
 <article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="students" onclick="if(!event.target.closest('a'))location.href='remove-music-from-podcast.html'" style="cursor:pointer">
 <div class="flex flex-col gap-stack-sm">
 <div class="flex items-center justify-between">
@@ -445,10 +436,11 @@
 <a class="inline-flex items-center gap-1 font-label-md text-label-md text-tertiary hover:text-cream-text font-bold transition-colors" href="remove-music-from-podcast.html">
 <span>قراءة الدليل</span>
 <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
-</button>
+</a>
 </div>
 </article>
-<!-- Guide 10: Legal, Ethics and Fair Use -->
+
+<!-- GUIDE_10: الجوانب القانونية والاستخدام الشخصي العادل -->
 <article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="tech" onclick="if(!event.target.closest('a'))location.href='is-removing-music-legal.html'" style="cursor:pointer">
 <div class="flex flex-col gap-stack-sm">
 <div class="flex items-center justify-between">
@@ -467,10 +459,11 @@
 <a class="inline-flex items-center gap-1 font-label-md text-label-md text-cream-text hover:text-clay-accent font-bold transition-colors" href="is-removing-music-legal.html">
 <span>قراءة الدليل</span>
 <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
-</button>
+</a>
 </div>
 </article>
-<!-- Guide 11: Phone Offline Storage & Playlists -->
+
+<!-- GUIDE_11: مزامنة المجلد النقي مع هاتف آيفون وأندرويد -->
 <article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="mobile" onclick="if(!event.target.closest('a'))location.href='watch-without-music-on-phone.html'" style="cursor:pointer">
 <div class="flex flex-col gap-stack-sm">
 <div class="flex items-center justify-between">
@@ -492,7 +485,8 @@
 </a>
 </div>
 </article>
-<!-- Guide 12: Tool Comparison (HaramLite vs Cloud Tools) -->
+
+<!-- GUIDE_12: مقارنة شاملة: HaramLite مقابل المنصات السحابية -->
 <article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="tech" onclick="if(!event.target.closest('a'))location.href='online-vs-offline-removal.html'" style="cursor:pointer">
 <div class="flex flex-col gap-stack-sm">
 <div class="flex items-center justify-between">
@@ -511,9 +505,29 @@
 <a class="inline-flex items-center gap-1 font-label-md text-label-md text-primary hover:text-cream-text font-bold transition-colors" href="online-vs-offline-removal.html">
 <span>قراءة الدليل</span>
 <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
-</button>
+</a>
 </div>
 </article>
+
+<!-- GUIDE_13: إزالة الصوت من الفيديو مع إبقاء الصورة -->
+<article class="guide-card flex flex-col justify-between bg-coal-bg p-stack-md rounded-xl hover:bg-surface-container transition-all shadow-sm" data-category="core" onclick="if(!event.target.closest('a'))location.href='remove-audio-keep-video.html'" style="cursor:pointer">
+                <div class="flex flex-col gap-stack-sm">
+                  <div class="flex items-center justify-between flex-wrap gap-2">
+                    <span class="font-mono-code text-label-sm">AUDIO / VIDEO</span>
+                    <span class="text-outline font-label-sm text-label-sm flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">schedule</span> 1 دقيقة</span>
+                  </div>
+                  <h3 class="font-headline-lg text-[20px] text-cream-text leading-snug">إزالة الصوت من الفيديو مع إبقاء الصورة</h3>
+                  <p class="font-body-md text-body-md text-on-surface-variant line-clamp-3">الفرق بين كتم الصوت وإزالته، وهل تتأثر جودة الصورة، وكيف يبقى التزامن صحيحاً.</p>
+                </div>
+                <div class="mt-6 pt-3 flex items-center justify-between">
+                  <span class="font-mono-code text-label-sm text-outline">GUIDE_13</span>
+                  <a class="inline-flex items-center gap-1 font-label-md text-label-md text-clay-accent hover:text-cream-text font-bold transition-colors" href="remove-audio-keep-video.html">
+                    <span>قراءة الدليل</span>
+                    <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+                  </a>
+                </div>
+              </article>
+
 </div>
 </section>
 <!-- SECTION 5: Interactive Cheat Sheet (Modes Matrix) -->
@@ -635,7 +649,7 @@
         }
       });
 
-      document.getElementById('active-count').innerText = `عرض ${visibleCount} من 12`;
+      document.getElementById('active-count').innerText = `عرض ${visibleCount} من ${cards.length}`;
     }
 
     function clearSearch() {
@@ -666,7 +680,7 @@
         }
       });
 
-      document.getElementById('active-count').innerText = `عرض ${visibleCount} من 12`;
+      document.getElementById('active-count').innerText = `عرض ${visibleCount} من ${cards.length}`;
     }
 
     // Close on escape key
@@ -675,9 +689,14 @@
         closeGuideModal();
       }
     });
+
+    /* العداد يُصحَّح عند الإقلاع من عدد البطاقات الفعلي في الصفحة، فلا يتخلّف
+       الرقم المكتوب في HTML إذا أُضيف دليل أو حُذف. */
+    setCategory('all');
   </script>
-</div></div>
-    <nav class="related-guides mt-12 pt-6 border-t border-coal-border">
+  </div>
+  <div class="max-w-4xl mx-auto px-4 pb-4">
+  <nav class="related-guides mt-12 pt-6 border-t border-coal-border">
       <h4 class="font-bold text-xs uppercase tracking-wider text-cream-muted mb-3">أدلة ذات صلة</h4>
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <a href="remove-music-from-video.html" class="px-2.5 py-2 rounded-lg bg-coal-card border border-coal-border hover:border-clay/40 transition-colors block text-center">
@@ -694,5 +713,6 @@
         </a>
       </div>
     </nav>
-  </main><footer class="w-full bg-surface-container-low border-t border-border-muted py-stack-lg"><div class="max-w-7xl mx-auto px-gutter lg:px-margin-desktop flex flex-col md:flex-row items-center justify-between gap-stack-md text-center md:text-right"><div class="font-label-sm text-label-sm text-outline">© 2026 HaramLite · معالجة صوتية محلية 100% دون سحابة</div><div class="flex flex-wrap items-center justify-center gap-stack-md font-label-sm text-label-sm text-on-surface-variant"><a class="hover:text-cream-text transition-colors" data-path="privacy-policy" href="../PRIVACY.html">سياسة الخصوصية</a><a class="hover:text-cream-text transition-colors" data-path="open-source-github" href="https://github.com/SMSMy/HaramLite">المستودع المفتوح GitHub</a><a class="hover:text-cream-text transition-colors" data-path="chrome-web-store" href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg">متجر كروم</a><a class="hover:text-cream-text transition-colors" data-path="report-issue" href="https://github.com/SMSMy/HaramLite/issues/new">الإبلاغ عن مشكلة</a></div></div></footer></body></html>
+  </div>
+</main><footer class="w-full bg-surface-container-low border-t border-border-muted py-stack-lg"><div class="max-w-7xl mx-auto px-gutter lg:px-margin-desktop flex flex-col md:flex-row items-center justify-between gap-stack-md text-center md:text-right"><div class="font-label-sm text-label-sm text-outline">© 2026 HaramLite · معالجة صوتية محلية 100% دون سحابة</div><div class="flex flex-wrap items-center justify-center gap-stack-md font-label-sm text-label-sm text-on-surface-variant"><a class="hover:text-cream-text transition-colors" data-path="privacy-policy" href="../PRIVACY.html">سياسة الخصوصية</a><a class="hover:text-cream-text transition-colors" data-path="open-source-github" href="https://github.com/SMSMy/HaramLite">المستودع المفتوح GitHub</a><a class="hover:text-cream-text transition-colors" data-path="chrome-web-store" href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg">متجر كروم</a><a class="hover:text-cream-text transition-colors" data-path="report-issue" href="https://github.com/SMSMy/HaramLite/issues/new">الإبلاغ عن مشكلة</a></div></div></footer></body></html>
 

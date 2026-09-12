@@ -13,7 +13,7 @@
     "pack:ext": "node ./scripts/pack-extension.js --target chrome",
     "pack:ext:firefox": "node ./scripts/pack-extension.js --target firefox",
     "tauri": "tauri",
-    "site:check": "node scripts/check-site-css.cjs && node scripts/check-site-pages.cjs"
+    "site:check": "node scripts/check-site-css.cjs && node scripts/check-site-pages.cjs && node scripts/check-site-tags.cjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
