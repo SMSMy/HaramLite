@@ -44,9 +44,14 @@ pnpm pack:ext:firefox  # للفايرفوكس (يبقي browser_specific_setting
 | اللغة الأساسية | العربية (`ar`) |
 | لغات إضافية | الإنجليزية (`en`) |
 | الفئة | **Productivity** (الإنتاجية) |
-| الموقع الرسمي | `https://github.com/SMSMy/HaramLite` |
-| سياسة الخصوصية | `https://github.com/SMSMy/HaramLite/blob/main/docs/PRIVACY.md` |
+| الموقع الرسمي | `https://smsmy.github.io/HaramLite/` — وبعد ربط الدومين: **`https://haramlite.com`** |
+| سياسة الخصوصية | `https://smsmy.github.io/HaramLite/PRIVACY.html` — وبعد الربط: **`https://haramlite.com/PRIVACY.html`** |
 | الدعم | `https://github.com/SMSMy/HaramLite/issues` |
+
+> **لا تستخدم رابط المستودع كموقع رسمي**: `github.com/SMSMy/HaramLite/…` لا يخدم
+> الملفات على مسار الجذر (تحقق حيّ: **404**)، ولا يمكن إثبات ملكيته لأنه نطاق لا
+> نملكه. موقع Pages مخدوم ومتحقَّق منه فعلاً (**200**) للصفحة الرئيسية وملف إثبات
+> قوقل وسياسة الخصوصية.
 
 ## الأسماء
 

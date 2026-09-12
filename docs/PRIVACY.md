@@ -57,6 +57,9 @@
 للأسئلة أو لطلب توضيح: [Issues المستودع](https://github.com/SMSMy/HaramLite/issues)
 أو من داخل التطبيق: الإعدادات ← **الإبلاغ عن مشكلة**.
 
+> هذه السياسة منشورة على الموقع الرسمي: <https://smsmy.github.io/HaramLite/PRIVACY.html>
+> (وبعد ربط الدومين: <https://haramlite.com/PRIVACY.html>).
+
 ## ملاحظات قانونية
 
 يوتيوب علامة تجارية لشركة Google LLC. هذه الإضافة مشروع مستقل غير مرتبط بـGoogle
