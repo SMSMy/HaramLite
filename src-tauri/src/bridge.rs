@@ -34,14 +34,11 @@ pub const HOST_NAME: &str = "com.harammute.haramlite";
 /// Id of an UNPACKED build: derived from the `key` embedded in the repo's
 /// manifest.json (verified by re-deriving it with Chrome's algorithm).
 pub const CHROME_EXT_ID: &str = "jchaeejligdfbkgkbgneimclkagoopig";
-/// The STORE build gets an id the store invents when the item is created, so it
-/// cannot be known before the first publication. This constant is where that id
-/// goes once the listing exists — and until then the native host only trusts the
-/// unpacked build, deliberately: an id we have not verified must never be
-/// allowed to drive this app. (An earlier revision trusted `bbkb…` on the wrong
-/// assumption that an archived extension in the repo was our published item —
-/// it belongs to a different extension we do not control, so it was removed.)
-pub const CHROME_STORE_EXT_ID: Option<&str> = None;
+/// The STORE build's id. The store invents it when the item is created, so it is
+/// filled in here once the listing exists (it was read from the developer
+/// dashboard after the first — unlisted — upload, 2026-09-11). The rule stays:
+/// only ids we have actually verified may drive this app.
+pub const CHROME_STORE_EXT_ID: Option<&str> = Some("kaijaffkolenjhfcbaepmjndheahhikg");
 pub const FIREFOX_EXT_ID: &str = "haramlite_bridge@harammute.app";
 
 /// The native-messaging host manifest (pure — unit-tested). `allowed_origins`

@@ -10,10 +10,19 @@ name: Release
 #
 # ⚠ The updater.key file is gitignored — never commit it.
 
+# ── Tag trigger DISABLED on purpose (2026-09-11) ────────────────────────────
+# The GitHub account ran out of Actions storage (90% used), and this workflow
+# uploads ~650MB of installers per run. Releases are therefore built and
+# published locally (`pnpm tauri build` + `gh release create`) and this runs
+# only when a human asks for it from the Actions tab.
+#
+# To restore automatic releases once the quota allows it, put this back:
+#
+#   push:
+#     tags:
+#       - 'v*'
+#
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 permissions:
