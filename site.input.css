@@ -169,8 +169,11 @@ html[lang='ar'] body { line-height: 1.75; }
   border-color: #DA7756;
   box-shadow: 0 0 0 1px rgba(218, 119, 86, .45), 0 0 26px rgba(218, 119, 86, .18);
 }
-.entry-card.is-flipped .entry-card__back .entry-card__desc::after {
+html[lang='ar'] .entry-card.is-flipped .entry-card__back .entry-card__desc::after {
   content: ' · انقر خارج البطاقة للرجوع';
-  color: #a38c85;
-  font-size: 11px;
+  color: #a38c85; font-size: 11px;
+}
+html[lang='en'] .entry-card.is-flipped .entry-card__back .entry-card__desc::after {
+  content: ' · click outside to flip back';
+  color: #a38c85; font-size: 11px;
 }

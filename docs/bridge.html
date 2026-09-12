@@ -22,9 +22,6 @@
 <link rel="icon" href="assets/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/icon-32.png">
 <link rel="apple-touch-icon" href="assets/icon-180.png">
-  <title>HaramLite Bridge — إضافة المتصفح لإزالة الموسيقى محلياً</title>
-  
-  
   <!-- نظام الخط والرموز -->
   
   <link rel="stylesheet" href="assets/site.css"/>
@@ -62,7 +59,7 @@
     }
   </style>
 </head>
-<body class="selection:bg-clay/30 selection:text-sand-100 min-h-screen flex flex-col">
+<body class="selection:bg-clay/30 selection:text-coal-900 min-h-screen flex flex-col">
 
   <!-- الشريط العلوي والتنقل المباشر -->
   <header class="sticky top-0 z-50 bg-[#151311]/90 backdrop-blur-md border-b border-coal-700/80">
@@ -74,7 +71,7 @@
           </div>
           <div class="flex flex-col">
             <div class="flex items-center gap-1.5">
-              <span class="font-serif font-bold text-lg tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span></span></span>
+              <span class="font-serif font-bold text-lg tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span>
               <span class="text-clay font-medium text-xs px-2 py-0.5 rounded-full bg-clay/10 border border-clay/30">Bridge</span>
             </div>
             <span class="text-[11px] text-sand-400">إضافة المتصفح الذكية</span>
@@ -84,17 +81,31 @@
 
       <nav class="hidden md:flex items-center gap-6 text-sm text-sand-400 font-medium">
         <a href="#how-it-works" class="hover:text-sand-100 transition-colors" data-i18n-ar="طريقة العمل" data-i18n-en="How it works">طريقة العمل</a>
-        <a href="#youtube-player" class="hover:text-sand-100 transition-colors" data-i18n-ar="داخل يوتيوب" data-i18n-en="Inside YouTube">داخل يوتيوب</a>
+        <a href="#popup-preview" class="hover:text-sand-100 transition-colors" data-i18n-ar="داخل يوتيوب" data-i18n-en="Inside YouTube">داخل يوتيوب</a>
         <a href="#video" class="hover:text-sand-100 transition-colors" data-i18n-ar="شرح بالفيديو" data-i18n-en="Video guide">شرح بالفيديو</a> <a href="#install" class="hover:text-sand-100 transition-colors" data-i18n-ar="التثبيت والمتاجر" data-i18n-en="Install & stores">التثبيت والمتاجر</a>
         <a href="#privacy" class="hover:text-sand-100 transition-colors" data-i18n-ar="الخصوصية المحلية" data-i18n-en="Local privacy">الخصوصية المحلية</a>
       </nav>
+        <details class="lg:hidden relative">
+          <summary class="list-none cursor-pointer p-2 rounded border border-coal-border text-on-surface-variant hover:text-cream-text transition-colors" aria-label="القائمة">
+            <span class="material-symbols-outlined text-[20px] block">menu</span>
+          </summary>
+          <div class="absolute left-0 top-full mt-2 w-56 p-2 rounded-lg bg-coal-surface border border-coal-border shadow-lg z-50 flex flex-col">
+            <a class="px-3 py-2 rounded hover:bg-surface-container text-on-surface-variant hover:text-cream-text text-label-md font-label-md transition-colors" href="/#download">التحميل</a>
+            <a class="px-3 py-2 rounded hover:bg-surface-container text-on-surface-variant hover:text-cream-text text-label-md font-label-md transition-colors" href="/#features">المميزات</a>
+            <a class="px-3 py-2 rounded hover:bg-surface-container text-on-surface-variant hover:text-cream-text text-label-md font-label-md transition-colors" href="/guides/">الأدلة</a>
+            <a class="px-3 py-2 rounded hover:bg-surface-container text-on-surface-variant hover:text-cream-text text-label-md font-label-md transition-colors" href="/bridge.html">إضافة المتصفح</a>
+            <a class="px-3 py-2 rounded hover:bg-surface-container text-on-surface-variant hover:text-cream-text text-label-md font-label-md transition-colors" href="/#whatsnew">الجديد</a>
+            <a class="px-3 py-2 rounded hover:bg-surface-container text-on-surface-variant hover:text-cream-text text-label-md font-label-md transition-colors" href="/PRIVACY.html">الخصوصية</a>
+            <a class="px-3 py-2 rounded hover:bg-surface-container text-on-surface-variant hover:text-cream-text text-label-md font-label-md transition-colors" href="/#dev">للمطورين</a>
+          </div>
+        </details>
 
       <div class="flex items-center gap-3">
         <div class="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-coal-800/90 border border-coal-700 text-xs text-status-ok">
           <span class="w-2 h-2 rounded-full bg-status-ok pulse-dot"></span>
           <span>الإصدار 1.1.0</span>
         </div>
-        <button id="bridge-lang-btn" type="button" class="px-3 py-1 rounded-full border border-coal-700 hover:border-clay text-sand-400 hover:text-sand-100 text-xs transition-colors" aria-label="Change language">English</button> <a href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg" target="_blank" class="px-4 py-2 bg-clay text-sand-100 rounded-full text-xs md:text-sm font-semibold hover:bg-clay-bright transition-all shadow-md shadow-clay/20 flex items-center gap-2">
+        <button id="bridge-lang-btn" type="button" class="px-3 py-1 rounded-full border border-coal-700 hover:border-clay text-sand-400 hover:text-sand-100 text-xs transition-colors" aria-label="Change language">English</button> <a href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg" target="_blank" class="px-4 py-2 bg-clay text-coal-900 rounded-full text-xs md:text-sm font-semibold hover:bg-clay-bright transition-all shadow-md shadow-clay/20 flex items-center gap-2">
           <span data-i18n-ar="تثبيت الإضافة" data-i18n-en="Install the extension">تثبيت الإضافة</span>
           <svg class="w-4 h-4 rtl:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
@@ -133,7 +144,7 @@
 
         <!-- أزرار الإجراء السريع -->
         <div class="flex flex-wrap items-center justify-center gap-4">
-          <a href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg" target="_blank" class="px-7 py-3.5 rounded-2xl bg-clay text-sand-100 font-semibold text-sm hover:bg-clay-bright transition-all shadow-xl shadow-clay/25 flex items-center gap-3">
+          <a href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg" target="_blank" class="px-7 py-3.5 rounded-2xl bg-clay text-coal-900 font-semibold text-sm hover:bg-clay-bright transition-all shadow-xl shadow-clay/25 flex items-center gap-3">
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 0C8.21 0 4.831 1.757 2.632 4.501l3.953 6.848A5.454 5.454 0 0 1 12 6.545h10.691A12 12 0 0 0 12 0zM1.931 5.47A11.943 11.943 0 0 0 0 12c0 6.012 4.42 10.991 10.189 11.864l3.953-6.847a5.45 5.45 0 0 1-6.865-2.29L1.931 5.47zm13.472 6.53a5.45 5.45 0 0 1-2.146 4.316l-3.953 6.848C10.22 23.633 11.1 24 12 24c6.627 0 12-5.373 12-12 0-.806-.08-1.593-.231-2.355H12.67l2.733 2.355z"/>
             </svg>
@@ -157,7 +168,7 @@
       </div>
 
       <!-- محاكاة تفاعلية بصرية حية لزر المشغل ومنبثقة الإضافة -->
-      <div id="popup-preview" class="relative max-w-5xl mx-auto mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div id="popup-preview" data-anchor="youtube-player" class="relative max-w-5xl mx-auto mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
         <!-- القسم الأيسر / الرئيسي: محاكاة أزرار مشغل YouTube المتزامنة -->
         <div class="lg:col-span-7 glass-card rounded-3xl p-6 shadow-2xl border border-coal-700 relative overflow-hidden">
@@ -219,7 +230,7 @@
                   <span class="text-clay">✨</span>
                 </button>
                 <!-- زر شاهد بعد إزالة الموسيقى -->
-                <button class="h-8 px-3.5 rounded-full bg-clay text-sand-100 text-xs font-semibold flex items-center gap-1.5 hover:bg-clay-bright shadow-lg shadow-clay/30 transition-all">
+                <button class="h-8 px-3.5 rounded-full bg-clay text-coal-900 text-xs font-semibold flex items-center gap-1.5 hover:bg-clay-bright shadow-lg shadow-clay/30 transition-all">
                   <span>شاهد بعد إزالة الموسيقى</span>
                   <span>▶</span>
                 </button>
@@ -405,7 +416,7 @@
       <div class="space-y-4">
         <!-- خطوة 1 -->
         <div class="bg-coal-800/80 border border-coal-700 p-5 rounded-2xl flex items-start gap-4">
-          <div class="w-8 h-8 rounded-full bg-clay text-sand-100 flex items-center justify-center font-bold text-sm shrink-0 mt-0.5">
+          <div class="w-8 h-8 rounded-full bg-clay text-coal-900 flex items-center justify-center font-bold text-sm shrink-0 mt-0.5">
             1
           </div>
           <div class="flex-1">
@@ -424,7 +435,7 @@
 
         <!-- خطوة 2 -->
         <div class="bg-coal-800/80 border border-coal-700 p-5 rounded-2xl flex items-start gap-4">
-          <div class="w-8 h-8 rounded-full bg-clay text-sand-100 flex items-center justify-center font-bold text-sm shrink-0 mt-0.5">
+          <div class="w-8 h-8 rounded-full bg-clay text-coal-900 flex items-center justify-center font-bold text-sm shrink-0 mt-0.5">
             2
           </div>
           <div class="flex-1">
@@ -437,7 +448,7 @@
 
         <!-- خطوة 3 -->
         <div class="bg-coal-800/80 border border-coal-700 p-5 rounded-2xl flex items-start gap-4">
-          <div class="w-8 h-8 rounded-full bg-clay text-sand-100 flex items-center justify-center font-bold text-sm shrink-0 mt-0.5">
+          <div class="w-8 h-8 rounded-full bg-clay text-coal-900 flex items-center justify-center font-bold text-sm shrink-0 mt-0.5">
             3
           </div>
           <div class="flex-1">
@@ -446,7 +457,7 @@
               أضف الإضافة إلى متصفحك (متوافقة مع Google Chrome، Microsoft Edge، Brave، وجميع متصفحات Chromium).
             </p>
             <div class="flex flex-wrap gap-3">
-              <a href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg" target="_blank" class="px-4 py-2 rounded-xl bg-clay text-sand-100 text-xs font-semibold hover:bg-clay-bright transition-all flex items-center gap-2 shadow-md shadow-clay/20">
+              <a href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg" target="_blank" class="px-4 py-2 rounded-xl bg-clay text-coal-900 text-xs font-semibold hover:bg-clay-bright transition-all flex items-center gap-2 shadow-md shadow-clay/20">
                 <span>متجر Chrome الإلكتروني</span>
                 <span>↗</span>
               </a>
@@ -567,7 +578,7 @@
   /* تبديل عربي/إنجليزي: يبدّل lang/dir ونصوص العناصر الموسومة data-i18n-ar/en،
      ويحفظ الاختيار في المتصفح فلا يعود الزائر إلى العربية في كل زيارة. */
   (function () {
-    var KEY = 'hl.bridge.lang';
+    var KEY = 'hl.lang';
     function applyLang(lang) {
       var l = lang === 'en' ? 'en' : 'ar';
       document.documentElement.lang = l;

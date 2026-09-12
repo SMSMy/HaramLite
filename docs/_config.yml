@@ -19,6 +19,7 @@ exclude:
   - CUDA_RUNTIME_PLAN.md
   - CONTRIBUTING.md
   - RELEASE-0.2.1.md
+  - RELEASE-0.2.2.md
   - rebuild/
 
 # ملاحظة: عند ربط الدومين المخصص أضف ملف CNAME يحوي haramlite.com في هذا المجلد،

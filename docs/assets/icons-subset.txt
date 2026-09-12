@@ -87,6 +87,7 @@ lock
 lock_open
 meeting_room
 memory
+menu
 menu_book
 mic
 mic_off
@@ -103,7 +104,6 @@ open_in_new
 output
 package_2
 payments
-person
 phone_iphone
 pin
 place

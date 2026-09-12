@@ -1,31 +1,49 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>الصفحة غير موجودة — HaramLite</title>
-<meta name="robots" content="noindex">
-<link rel="icon" href="/assets/favicon.ico" sizes="any">
-<link rel="icon" type="image/png" sizes="32x32" href="/assets/icon-32.png">
-<link rel="stylesheet" href="/assets/site.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>الصفحة غير موجودة | HaramLite</title>
+  <meta name="description" content="الرابط الذي طلبته غير موجود. يمكنك العودة إلى الصفحة الرئيسية أو تصفّح أدلة الاستخدام.">
+  <meta name="robots" content="noindex,follow">
+  <meta name="theme-color" content="#151311">
+  <link rel="icon" href="/assets/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/icon-32.png">
+  <link rel="apple-touch-icon" href="/assets/icon-180.png">
+  <link rel="stylesheet" href="/assets/site.css"/>
+  <link rel="preload" href="/assets/thmanyah-serif-bold.woff2" as="font" type="font/woff2" crossorigin>
 </head>
-<body>
-<div class="topbar">
-  <div class="wrap">
-    <img src="/assets/icon-180.png" alt="HaramLite">
-    <span class="font-serif font-bold text-lg tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span>
-    <span class="spacer"></span>
-    <a class="langbtn" href="/">الصفحة الرئيسية</a>
-  </div>
-</div>
-<main class="wrap" style="text-align:center; padding: 90px 22px;">
-  <h1 style="font-size:3.4rem; margin:0;">404</h1>
-  <p class="lead">هذه الصفحة غير موجودة. قد يكون الرابط قديماً أو مكتوباً خطأً.</p>
-  <p class="small" style="direction:ltr">This page does not exist — the link may be old or mistyped.</p>
-  <div class="btns" style="margin-top:26px">
-    <a class="btn" href="/">العودة إلى الرئيسية</a>
-    <a class="btn ghost" href="https://github.com/SMSMy/HaramLite/releases/latest">التحميل</a>
-  </div>
-</main>
+<body class="min-h-screen flex flex-col bg-coal-surface text-cream-text">
+  <header class="border-b border-coal-border">
+    <div class="h-16 max-w-4xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between">
+      <a href="/" class="flex items-center gap-stack-sm">
+        <img src="/assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded shadow-sm">
+        <span class="font-serif font-bold text-lg tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span>
+      </a>
+      <a href="/#download" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-clay text-coal-surface font-bold text-xs sm:text-sm hover:bg-clay-hover transition-all">تحميل التطبيق</a>
+    </div>
+  </header>
+
+  <main class="flex-grow flex items-center justify-center px-margin-mobile py-16">
+    <div class="max-w-lg w-full text-center">
+      <div class="font-serif font-bold text-[84px] leading-none text-clay/30 mb-2">404</div>
+      <h1 class="font-headline-lg text-headline-lg text-cream-text mb-3">هذه الصفحة غير موجودة</h1>
+      <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-8">
+        الرابط الذي طلبته تغيّر أو لم يكن موجوداً. لا مشكلة — كل شيء مهم موجود في مكانين:
+      </p>
+      <div class="flex flex-wrap items-center justify-center gap-3 mb-8">
+        <a href="/" class="inline-flex items-center gap-2 px-5 py-2.5 rounded bg-clay text-coal-surface font-label-md text-label-md font-bold hover:bg-clay-hover transition-colors">الصفحة الرئيسية</a>
+        <a href="/guides/" class="inline-flex items-center gap-2 px-5 py-2.5 rounded bg-surface-container border border-coal-border text-cream-text font-label-md text-label-md hover:border-clay/40 transition-colors">أدلة الاستخدام</a>
+      </div>
+      <p class="font-label-sm text-label-sm text-cream-muted">أو تصفّح مباشرة: <a class="text-clay hover:underline" href="/guides/remove-music-from-video.html">إزالة الموسيقى من الفيديو</a> · <a class="text-clay hover:underline" href="/guides/watch-youtube-without-music.html">المشاهدة داخل المتصفح</a> · <a class="text-clay hover:underline" href="/PRIVACY.html">الخصوصية</a></p>
+    </div>
+  </main>
+
+  <footer class="border-t border-coal-border py-6">
+    <div class="max-w-4xl mx-auto px-margin-mobile lg:px-margin-desktop flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-cream-muted">
+      <span>© 2026 HaramLite · إزالة الموسيقى محلياً على جهازك، بلا رفع ولا حساب.</span>
+      <a href="https://github.com/SMSMy/HaramLite" rel="noreferrer" target="_blank" class="hover:text-clay transition-colors">المستودع المفتوح</a>
+    </div>
+  </footer>
 </body>
 </html>

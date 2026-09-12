@@ -78,5 +78,5 @@ module.exports = {
       })(), fontFamily: Object.assign({}, (design.theme.extend && design.theme.extend.fontFamily) || {}, (bridge.theme.extend && bridge.theme.extend.fontFamily) || {}, { serif: ['"Thmanyah Serif Display"', 'Georgia', 'serif'], sans: ['"Thmanyah Sans"', '"Segoe UI"', 'system-ui', 'sans-serif'] }),
     }),
   },
-  content: ['./docs/index.html', './docs/bridge.html', './docs/PRIVACY.html', './docs/guides/*.html'],
+  content: ['./docs/*.html', './docs/guides/*.html'],
 };
