@@ -55,10 +55,10 @@ pnpm pack:ext:firefox  # للفايرفوكس (يبقي browser_specific_setting
 
 ## الأسماء
 
-- **العربية**: `HaramLite Bridge — شاهد يوتيوب بعد إزالة الموسيقى`
-- **English**: `HaramLite Bridge — Watch YouTube Without Music`
+- **العربية**: `HaramLite Bridge — شاهد بلا موسيقى`
+- **English**: `HaramLite Bridge — Watch without music`
 
-> ملاحظة: الاسم يذكر يوتيوب لأنه المكان الذي يعمل فيه الزر، مع إبقاء سطر العلامة التجارية في آخر الوصف.
+> ملاحظة مقصودة: **الاسم لا يذكر يوتيوب** (علامة تجارية + إشارة قد تُربط بأدوات التنزيل)، ويُذكر يوتيوب داخل الوصف فقط مع سطر العلامة التجارية في آخره.
 
 ## الوصف المختصر (≤ 132 حرفاً)
 
@@ -71,7 +71,7 @@ pnpm pack:ext:firefox  # للفايرفوكس (يبقي browser_specific_setting
 HaramLite Bridge يجعل مشاهدة يوتيوب بلا موسيقى ممكنة داخل الصفحة نفسها، عبر تطبيق HaramLite
 المكتبي الذي ثبّته أنت على جهازك. لا حساب، ولا خدمة سحابية، ولا يُرفع أي ملف.
 
-⚠ يلزم تطبيق HaramLite المكتبي (ويندوز): https://github.com/SMSMy/HaramLite
+⚠ يلزم تطبيق HaramLite المكتبي (ويندوز): https://haramlite.com
 بدون التطبيق لا تعمل الإضافة — فهي واجهة متصفح لتطبيقك، والمعالجة كلها تحدث على جهازك.
 
 ■ ما تفعله الإضافة داخل الصفحة
@@ -98,9 +98,6 @@ HaramLite Bridge يجعل مشاهدة يوتيوب بلا موسيقى ممكن
 ONNX محلي ثم تحسينه وقصّ الصمت)، ثم تُشغّل الإضافة الناتج داخل المشغّل بدل صوت الصفحة.
 ويبقى كل شيء على جهازك: لا رفع، ولا وسيط، ولا تخزين خارجي.
 
-■ الأدوات المستخدمة (مفتوحة المصدر)
-الإضافة: JavaScript بلا أي مكتبة خارجية. التطبيق: Tauri وRust وONNX Runtime وFFmpeg وyt-dlp —
-وكلها تعمل محلياً على جهازك.
 
 يوتيوب علامة تجارية لشركة Google LLC. هذه الإضافة مستقلة وغير مرتبطة بهم ولا معتمدة منهم.
 لقطة الشاشة في صفحة المتجر تُظهر فيلم Big Buck Bunny (مؤسسة Blender) برخصة المشاع الإبداعي.
@@ -113,7 +110,7 @@ HaramLite Bridge makes watching YouTube without music possible inside the page i
 HaramLite desktop app that you install and run on your own computer. No account, no cloud service,
 and nothing is ever uploaded.
 
-⚠ Requires the HaramLite desktop app (Windows): https://github.com/SMSMy/HaramLite
+⚠ Requires the HaramLite desktop app (Windows): https://haramlite.com
 Without the app the extension does nothing - it is a browser front end for your app, and all
 processing happens on your machine.
 
@@ -142,9 +139,6 @@ music with a local ONNX model, then polishing it and trimming silence); the exte
 result inside the player in place of the page audio. Everything stays on your computer: no upload, no
 middleman, no external storage.
 
-■ Built with (open source)
-The extension is plain JavaScript with no third-party libraries. The app uses Tauri, Rust, ONNX
-Runtime, FFmpeg and yt-dlp - all running locally on your machine.
 
 YouTube is a trademark of Google LLC. This extension is independent, not affiliated with or endorsed
 by them. The store screenshot shows Big Buck Bunny (Blender Foundation) under a Creative Commons
@@ -252,7 +246,7 @@ www.haramlite.com. 1 IN CNAME smsmy.github.io.
 > Reads the URL of the active tab only at the moment the user clicks the extension, so that URL can be handed to their desktop app for processing. There is no background access, no browsing-history access and no access to any other tab or site.
 
 **Host permission for `*://*.youtube.com/*`**
-> A content script runs on YouTube pages only, to add two buttons to the video player ("process this video" and "watch without music") and to play the audio that was processed locally on the user's machine in sync with the page video. It reads no other content on the page, stores nothing, downloads nothing itself, and never sends anything off the device.
+> A content script runs on YouTube pages only, to add two buttons to the video player ("process this video" and "watch without music") and to play the audio that was processed locally on the user's machine in sync with the page video. It reads no other content on the page, stores nothing, downloads nothing itself, and never sends anything off the device. It does not download media, does not access cookies or login state, and calls no network API: it only overlays locally processed audio on a video the user is already watching.
 
 #### العربية (بديل مقبول)
 

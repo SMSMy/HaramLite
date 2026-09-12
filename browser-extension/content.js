@@ -158,7 +158,7 @@
       procBtn.style.background = 'rgba(21,19,17,.94)';
       procBtn.style.borderColor = T.accent;
       procBtn.style.color = T.text;
-      procBtn.textContent = 'عالج هذا الفيديو ⬇';
+      procBtn.textContent = 'عالج هذا الفيديو';
       procBtn.title = 'HaramLite — معالجة هذا الفيديو على جهازك';
     }
   }

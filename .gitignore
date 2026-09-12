@@ -47,3 +47,39 @@ docs/rebuild/
 
 # Store listing artwork (contains YouTube screenshots — local only)
 /store-assets/
+# ── أُضيفت بعد مراجعة خبير (2026-09-12) ──────────────────────────────────────
+# أرشيفات تصدير التصميم (ستيتش) — ليست مصدراً
+/site/*.zip
+# حِزم الإضافة وتوقيعها
+*.crx
+*.xpi
+# مفتاح تحزيم إضافة كروم (.pem سرّ — الحقل key في المانيفست عام ويبقى)
+*.pem
+*.p12
+# مثبتات مبنية
+HaramLite_*.exe
+HaramLite_*.msi
+# ثنائيات وأوزان بأي مسار (لا في /bin فقط)
+**/ffmpeg.exe
+**/ffprobe.exe
+**/yt-dlp.exe
+**/*.onnx
+*.pdb
+# كاش وأدوات
+.vite/
+.pnpm-store/
+*.tsbuildinfo
+coverage/
+*.lcov
+# بيئة
+.env.*
+!.env.example
+# ويندوز
+Thumbs.db
+Desktop.ini
+# بيانات تشغيل محلية (yt-dlp / التطبيق)
+cookies.txt
+*.part
+*.ytdl
+# فيديو عرض الإضافة — مكانه المناسب الإصدارات لا المستودع
+/browser-extension/*.mp4
