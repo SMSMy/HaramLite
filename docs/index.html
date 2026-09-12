@@ -87,7 +87,7 @@
   <link rel="preload" href="assets/thmanyah-serif-bold.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="assets/thmanyah-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="assets/thmanyah-sans-bold.woff2" as="font" type="font/woff2" crossorigin>
-</head><body class="bg-coal-surface font-body-md text-cream-text selection:bg-clay-accent selection:text-coal-surface"><header class="fixed top-0 w-full z-50 bg-coal-surface/90 backdrop-blur-xl border-b border-border-muted"><div class="h-16 max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter"><div class="flex items-center gap-stack-lg"><a class="flex items-center gap-stack-sm focus:outline-none" data-path="home" href="/"><img src="assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded shadow-sm"><span class="font-label-md text-label-md tracking-wider text-cream-text font-bold uppercase">HaramLite</span></a><nav class="hidden lg:flex items-center gap-stack-lg" data-active-classes="text-cream-text border-b-2 border-clay-accent font-bold"><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="download" href="#download">التحميل</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="features" href="#features">المميزات</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" href="guides/">الأدلة</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" href="bridge.html">إضافة المتصفح</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="whats-new" href="#whatsnew">الجديد</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="privacy" href="#privacy">الخصوصية</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="developers" href="#dev">للمطورين</a></nav></div><div class="flex items-center gap-stack-sm"><button id="lang-btn" class="flex items-center gap-unit px-stack-sm py-unit rounded border border-border-muted font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text hover:border-outline transition-colors cursor-pointer" type="button" aria-label="تغيير اللغة / Change language"><span class="material-symbols-outlined text-[16px]">language</span><span id="lang-btn-label">English</span></button><a class="hidden sm:inline-flex items-center justify-center px-stack-md py-unit rounded bg-clay-accent text-coal-surface font-label-md text-label-md hover:bg-primary transition-colors font-bold" data-path="download" href="#download">تحميل التطبيق</a></div></div></header><main class="w-full pt-16 bg-coal-surface min-h-[calc(100vh-160px)]"><div class="flex flex-col w-full">
+</head><body class="bg-coal-surface font-body-md text-cream-text selection:bg-clay-accent selection:text-coal-surface"><header class="fixed top-0 w-full z-50 bg-coal-surface/90 backdrop-blur-xl border-b border-border-muted"><div class="h-16 max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter"><div class="flex items-center gap-stack-lg"><a class="flex items-center gap-stack-sm focus:outline-none" data-path="home" href="/"><img src="assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded shadow-sm"><span class="font-serif font-bold text-base tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span></a><nav class="hidden lg:flex items-center gap-stack-lg" data-active-classes="text-cream-text border-b-2 border-clay-accent font-bold"><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="download" href="#download">التحميل</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="features" href="#features">المميزات</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" href="guides/">الأدلة</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" href="bridge.html">إضافة المتصفح</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="whats-new" href="#whatsnew">الجديد</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="privacy" href="#privacy">الخصوصية</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="developers" href="#dev">للمطورين</a></nav></div><div class="flex items-center gap-stack-sm"><button id="lang-btn" class="flex items-center gap-unit px-stack-sm py-unit rounded border border-border-muted font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text hover:border-outline transition-colors cursor-pointer" type="button" aria-label="تغيير اللغة / Change language"><span class="material-symbols-outlined text-[16px]">language</span><span id="lang-btn-label">English</span></button><a class="hidden sm:inline-flex items-center justify-center px-stack-md py-unit rounded bg-clay-accent text-coal-surface font-label-md text-label-md hover:bg-primary transition-colors font-bold" data-path="download" href="#download">تحميل التطبيق</a></div></div></header><main class="w-full pt-16 bg-coal-surface min-h-[calc(100vh-160px)]"><div class="flex flex-col w-full">
 <!-- Interactive Localization & Audio Wave Simulation State Script -->
 <script>
     window.HaramLiteState = {
@@ -143,22 +143,34 @@
     }
   };
   document.addEventListener('DOMContentLoaded', function () {
-    /* الأجهزة اللمسية لا تعرف «المرور بالفأرة»: النقرة الأولى تقلب البطاقة
-       ليرى المستخدم الشرح، والنقرة التالية على الرابط تفتحه. */
-    document.querySelectorAll('.entry-card').forEach(function (card) {
-      card.addEventListener('click', function (e) {
-        if (!card.classList.contains('is-flipped')) {
+    /* الأجهزة اللمسية لا تعرف «المرور بالفأرة»: النقرة الأولى تقلب البطاقة ليرى
+       المستخدم الشرح، والنقرة التالية على الرابط تفتحه. والنقر خارج البطاقة —
+       أو على الوجه الخلفي بعيداً عن الرابط — يُرجِعها، وتبقى البطاقة المثبَّتة
+       بحدّ طيني وتوهّج ليعرف المستخدم أنها لم تعد في وضعها الأول. */
+    (function () {
+      var cards = document.querySelectorAll('.entry-card');
+      cards.forEach(function (card) {
+        card.addEventListener('click', function (e) {
+          var onLink = e.target.closest && e.target.closest('.entry-card__link');
+          if (card.classList.contains('is-flipped')) {
+            if (!onLink) card.classList.remove('is-flipped');
+            return;
+          }
           card.classList.add('is-flipped');
           e.preventDefault();
+        });
+        card.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            if (!card.classList.contains('is-flipped')) { card.classList.add('is-flipped'); e.preventDefault(); }
+          }
+        });
+      });
+      document.addEventListener('click', function (e) {
+        if (!e.target.closest || !e.target.closest('.entry-card')) {
+          cards.forEach(function (c) { c.classList.remove('is-flipped'); });
         }
       });
-      card.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' || e.key === ' ') {
-          if (!card.classList.contains('is-flipped')) { card.classList.add('is-flipped'); e.preventDefault(); }
-        }
-      });
-      card.addEventListener('blur', function () { card.classList.remove('is-flipped'); });
-    });
+    })();
 
     var S = window.HaramLiteState;
     var saved = null;
@@ -221,7 +233,7 @@
       <div class="entry-grid mb-10" id="entry-grid">
         <div class="entry-card" tabindex="0" role="button" aria-label="استخدام البرنامج مباشرة">
           <div class="entry-card__inner">
-            <div class="entry-card__face">
+            <div class="entry-card__face entry-card__front">
               <span class="entry-card__icon">widgets</span>
               <span class="entry-card__title" data-i18n-ar="استخدم البرنامج مباشرة" data-i18n-en="Use the app directly">استخدم البرنامج مباشرة</span>
               <span class="entry-card__hint" data-i18n-ar="مرّر لتعرف كيف" data-i18n-en="Hover to see how">مرّر لتعرف كيف</span>
@@ -235,21 +247,21 @@
 
         <div class="entry-card" tabindex="0" role="button" aria-label="روبوت تيليجرام">
           <div class="entry-card__inner">
-            <div class="entry-card__face">
+            <div class="entry-card__face entry-card__front">
               <span class="entry-card__icon">send</span>
               <span class="entry-card__title" data-i18n-ar="من جوالك عبر تيليجرام" data-i18n-en="From your phone via Telegram">من جوالك عبر تيليجرام</span>
               <span class="entry-card__hint" data-i18n-ar="مرّر لتعرف كيف" data-i18n-en="Hover to see how">مرّر لتعرف كيف</span>
             </div>
             <div class="entry-card__face entry-card__back">
               <p class="entry-card__desc" data-i18n-ar="أرسل الرابط أو الملف إلى روبوتك، ويعالجه حاسوبك ثم يعيده إليك. يُربط برمز من ٦ أرقام." data-i18n-en="Send a link or file to your own bot; your PC processes it and sends it back. Paired with a six-digit code.">أرسل الرابط أو الملف إلى روبوتك، ويعالجه حاسوبك ثم يعيده إليك. يُربط برمز من ٦ أرقام.</p>
-              <a class="entry-card__link" href="guides/remove-music-from-podcast.html" data-i18n-ar="كيف تفعّله ←" data-i18n-en="How to enable it →">كيف تفعّله ←</a>
+              <a class="entry-card__link" href="guides/telegram-remote-control.html" data-i18n-ar="كيف تفعّله ←" data-i18n-en="How to enable it →">كيف تفعّله ←</a>
             </div>
           </div>
         </div>
 
         <div class="entry-card" tabindex="0" role="button" aria-label="إضافة المتصفح">
           <div class="entry-card__inner">
-            <div class="entry-card__face">
+            <div class="entry-card__face entry-card__front">
               <span class="entry-card__icon">extension</span>
               <span class="entry-card__title" data-i18n-ar="داخل متصفحك" data-i18n-en="Inside your browser">داخل متصفحك</span>
               <span class="entry-card__hint" data-i18n-ar="مرّر لتعرف كيف" data-i18n-en="Hover to see how">مرّر لتعرف كيف</span>
@@ -263,7 +275,7 @@
 
         <div class="entry-card" tabindex="0" role="button" aria-label="مجلد المراقبة">
           <div class="entry-card__inner">
-            <div class="entry-card__face">
+            <div class="entry-card__face entry-card__front">
               <span class="entry-card__icon">folder_eye</span>
               <span class="entry-card__title" data-i18n-ar="مجلد المراقبة" data-i18n-en="Watch folder">مجلد المراقبة</span>
               <span class="entry-card__hint" data-i18n-ar="مرّر لتعرف كيف" data-i18n-en="Hover to see how">مرّر لتعرف كيف</span>
@@ -807,5 +819,5 @@
 </div>
 </section>
 </div>
-</div></main><footer class="w-full bg-surface-container-lowest border-t border-border-muted py-stack-lg"><div class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop flex flex-col md:flex-row items-center justify-between gap-stack-md"><div class="flex flex-col sm:flex-row items-center gap-stack-md text-center sm:text-right"><div class="flex items-center gap-stack-sm"><img src="assets/icon-32.png" alt="" width="20" height="20" class="w-5 h-5 rounded-sm"><span class="font-label-sm text-label-sm text-cream-text font-bold">HaramLite</span></div><p class="font-mono-code text-mono-code text-on-surface-variant"><span data-i18n-ar="مبني على أساس مشروع" data-i18n-en="Built on the">مبني على أساس مشروع</span> <a class="text-clay-accent hover:underline" href="https://github.com/alganzory" rel="noreferrer" target="_blank">HaramMute</a></p></div><nav class="flex flex-wrap items-center justify-center gap-stack-md"><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" data-path="download" href="#download">التحميل</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" data-path="features" href="#features">المميزات</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" data-path="whats-new" href="#whatsnew">الجديد</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" data-path="privacy" href="#privacy">الخصوصية</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" data-path="developers" href="#dev">للمطورين</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="bridge.html">إضافة المتصفح</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="PRIVACY.html">سياسة الخصوصية</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="LICENSE.txt">الرخصة</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="https://github.com/SMSMy/HaramLite/issues/new">هل واجهت مشكلة أو لديك اقتراح؟</a></nav><div class="font-label-sm text-label-sm text-on-surface-variant text-center sm:text-right" data-i18n-ar="صُنع بحبٍّ ليخدم كل من أراد محتواه خاليًا من الموسيقى — وكل شيء هنا مفتوح المصدر، ويمكنك استخدامه وتطويره بحرية." data-i18n-en="Made with care for anyone who wants their content clean — and everything here is open source, free to use and build on.">صُنع بحبٍّ ليخدم كل من أراد محتواه خاليًا من الموسيقى — وكل شيء هنا مفتوح المصدر، ويمكنك استخدامه وتطويره بحرية.</div></div></footer></body></html>
+</div></main><footer class="w-full bg-surface-container-lowest border-t border-border-muted py-stack-lg"><div class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop flex flex-col md:flex-row items-center justify-between gap-stack-md"><div class="flex flex-col sm:flex-row items-center gap-stack-md text-center sm:text-right"><div class="flex items-center gap-stack-sm"><img src="assets/icon-32.png" alt="" width="20" height="20" class="w-5 h-5 rounded-sm"><span class="font-serif font-bold text-sm tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span></div><p class="font-mono-code text-mono-code text-on-surface-variant"><span data-i18n-ar="مبني على أساس مشروع" data-i18n-en="Built on the">مبني على أساس مشروع</span> <a class="text-clay-accent hover:underline" href="https://github.com/alganzory" rel="noreferrer" target="_blank">HaramMute</a></p></div><nav class="flex flex-wrap items-center justify-center gap-stack-md"><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" data-path="download" href="#download">التحميل</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" data-path="features" href="#features">المميزات</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" data-path="whats-new" href="#whatsnew">الجديد</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" data-path="privacy" href="#privacy">الخصوصية</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" data-path="developers" href="#dev">للمطورين</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="bridge.html">إضافة المتصفح</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="PRIVACY.html">سياسة الخصوصية</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="LICENSE.txt">الرخصة</a><a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="https://github.com/SMSMy/HaramLite/issues/new">هل واجهت مشكلة أو لديك اقتراح؟</a></nav><div class="font-label-sm text-label-sm text-on-surface-variant text-center sm:text-right" data-i18n-ar="صُنع بحبٍّ ليخدم كل من أراد محتواه خاليًا من الموسيقى — وكل شيء هنا مفتوح المصدر، ويمكنك استخدامه وتطويره بحرية." data-i18n-en="Made with care for anyone who wants their content clean — and everything here is open source, free to use and build on.">صُنع بحبٍّ ليخدم كل من أراد محتواه خاليًا من الموسيقى — وكل شيء هنا مفتوح المصدر، ويمكنك استخدامه وتطويره بحرية.</div></div></footer></body></html>
 

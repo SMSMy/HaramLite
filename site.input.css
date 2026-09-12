@@ -153,3 +153,24 @@ html[lang='ar'] body { line-height: 1.75; }
   border: 1px solid rgba(218, 119, 86, 0.35);
   box-shadow: 0 0 25px rgba(218, 119, 86, 0.08);
 }
+/* الوجه المخفي يجب أن يتوقف عن التقاط اللمس أيضاً: backface-visibility تخفي
+   بصرياً فقط، فكان الوجه الأمامي يبتلع النقرة الثانية بعد الانقلاب (ثلاث نقرات
+   لفتح الرابط). وبعد الانقلاب يُبرز الوجه الخلفي بحدّ وتوهّج ليعرف المستخدم
+   أن البطاقة «ثبتت». */
+.entry-card__front { pointer-events: auto; }
+.entry-card__back { pointer-events: none; }
+.entry-card:hover .entry-card__front,
+.entry-card:focus-within .entry-card__front,
+.entry-card.is-flipped .entry-card__front { pointer-events: none; }
+.entry-card:hover .entry-card__back,
+.entry-card:focus-within .entry-card__back,
+.entry-card.is-flipped .entry-card__back { pointer-events: auto; }
+.entry-card.is-flipped .entry-card__back {
+  border-color: #DA7756;
+  box-shadow: 0 0 0 1px rgba(218, 119, 86, .45), 0 0 26px rgba(218, 119, 86, .18);
+}
+.entry-card.is-flipped .entry-card__back .entry-card__desc::after {
+  content: ' · انقر خارج البطاقة للرجوع';
+  color: #a38c85;
+  font-size: 11px;
+}
