@@ -1,8 +1,13 @@
 /* HaramLite — official site styles.
-   Fonts: Thmanyah (same family the desktop app ships), with system fallbacks. */
-@font-face { font-family: 'Thmanyah'; src: url('thmanyah-regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
-@font-face { font-family: 'Thmanyah'; src: url('thmanyah-medium.otf') format('opentype'); font-weight: 500; font-display: swap; }
-@font-face { font-family: 'Thmanyah'; src: url('thmanyah-bold.otf') format('opentype'); font-weight: 700; font-display: swap; }
+   Typeface: Thmanyah, sourced from the project's own `font/` folder and wired
+   exactly as the desktop app wires it (src/styles.css): Sans for body and
+   labels, Serif Display for the wordmark and the primary action — including the
+   same stylistic sets the app uses (ss01 for the kashida button). */
+@font-face { font-family: 'Thmanyah Sans'; src: url('thmanyah-sans-regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Thmanyah Sans'; src: url('thmanyah-sans-medium.otf') format('opentype'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Thmanyah Sans'; src: url('thmanyah-sans-bold.otf') format('opentype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Thmanyah Serif Display'; src: url('thmanyah-serif-bold.otf') format('opentype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Thmanyah Serif Display'; src: url('thmanyah-serif-black.otf') format('opentype'); font-weight: 900; font-display: swap; }
 
 :root {
   --coal: #151311;
@@ -25,7 +30,7 @@ body {
   margin: 0;
   background: linear-gradient(165deg, var(--coal-2), var(--coal) 55%);
   color: var(--cream);
-  font-family: 'Thmanyah', 'Segoe UI', Tahoma, Arial, sans-serif;
+  font-family: 'Thmanyah Sans', 'Segoe UI', Tahoma, Arial, sans-serif;
   font-size: 17px;
   line-height: 1.9;
   -webkit-font-smoothing: antialiased;
@@ -45,7 +50,7 @@ a:hover { text-decoration: underline; }
 }
 .topbar .wrap { display: flex; align-items: center; gap: 12px; height: 62px; }
 .topbar img { width: 30px; height: 30px; }
-.topbar .name { font-weight: 700; font-size: 1.05rem; }
+.topbar .name { font-family: 'Thmanyah Serif Display', 'Thmanyah Sans', serif; font-weight: 700; font-size: 1.05rem; }
 .topbar .spacer { flex: 1; }
 .langbtn {
   background: transparent; color: var(--cream); border: 1px solid var(--line);
@@ -57,7 +62,11 @@ a:hover { text-decoration: underline; }
 /* ── hero ────────────────────────────────────────────────── */
 .hero { padding: 64px 0 40px; text-align: center; }
 .hero img.app { width: 96px; height: 96px; }
-.hero h1 { font-size: 2.9rem; margin: 14px 0 6px; letter-spacing: .5px; }
+.hero h1 {
+  font-family: 'Thmanyah Serif Display', 'Thmanyah Sans', serif;
+  font-weight: 900;
+  font-size: 2.9rem; margin: 14px 0 6px; letter-spacing: .5px;
+}
 .hero h1 em { color: var(--clay); font-style: normal; }
 .slogan { font-size: 1.25rem; color: var(--cream); opacity: .92; margin: 0 0 4px; }
 .lead { color: var(--sub); font-size: 1.02rem; margin: 0 auto 26px; max-width: 620px; }
@@ -71,7 +80,9 @@ a:hover { text-decoration: underline; }
 
 .btns { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
 .btn {
-  display: inline-block; padding: 13px 26px; border-radius: 11px; font-weight: 700;
+  display: inline-block; padding: 13px 26px; border-radius: 11px;
+  font-family: 'Thmanyah Serif Display', 'Thmanyah Sans', serif;
+  font-weight: 700; font-feature-settings: 'ss01' 1;
   background: var(--clay); color: #1a1512; transition: transform .15s ease, filter .15s ease;
 }
 .btn:hover { transform: translateY(-2px); filter: brightness(1.08); text-decoration: none; }
