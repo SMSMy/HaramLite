@@ -45,7 +45,7 @@ pnpm pack:ext:firefox  # للفايرفوكس (يبقي browser_specific_setting
 | لغات إضافية | الإنجليزية (`en`) |
 | الفئة | **Productivity** (الإنتاجية) |
 | الموقع الرسمي | **`https://haramlite.com`** (ومرآته `https://smsmy.github.io/HaramLite/`) |
-| سياسة الخصوصية | **`https://haramlite.com/PRIVACY.html`** |
+| سياسة الخصوصية | **`https://haramlite.com/bridge-privacy.html`** — صفحة مركَّزة على الإضافة، وهي مقتطف حرفي من [السياسة الكاملة](https://haramlite.com/PRIVACY.html) التي تغطي التطبيق أيضاً |
 | الدعم | `https://github.com/SMSMy/HaramLite/issues` |
 
 > **لا تستخدم رابط المستودع كموقع رسمي**: `github.com/SMSMy/HaramLite/…` لا يخدم
@@ -55,80 +55,101 @@ pnpm pack:ext:firefox  # للفايرفوكس (يبقي browser_specific_setting
 
 ## الأسماء
 
-- **العربية**: `HaramLite Bridge — إزالة الموسيقى من يوتيوب`
-- **English**: `HaramLite Bridge — Remove Music from YouTube`
+- **العربية**: `HaramLite Bridge — شاهد يوتيوب بعد إزالة الموسيقى`
+- **English**: `HaramLite Bridge — Watch YouTube Without Music`
+
+> ملاحظة: الاسم يذكر يوتيوب لأنه المكان الذي يعمل فيه الزر، مع إبقاء سطر العلامة التجارية في آخر الوصف.
 
 ## الوصف المختصر (≤ 132 حرفاً)
 
-- **العربية**: `أرسل أي فيديو إلى تطبيق HaramLite على جهازك لإزالة الموسيقى — المعالجة كاملة محلياً بلا رفع لأي سحابة.`
-- **English**: `Send any video to the HaramLite desktop app to strip its music — processed entirely on your machine, nothing uploaded.`
+- **العربية**: `يُشغّل الصوت بعد إزالة الموسيقى داخل مشغّل يوتيوب، ويتخطّى فترات الصمت — المعالجة على جهازك.`
+- **English**: `Plays your music-free audio inside the YouTube player and skips silent gaps — processed on your own machine.`
 
 ## الوصف الكامل — العربية
 
 ```
-HaramLite Bridge يوصل متصفحك بتطبيق HaramLite المكتبي: تضغط زراً واحداً، فينزّل
-تطبيقك الفيديو ويعالجه ويزيل الموسيقى — كل شيء على جهازك، ولا يُرفع أي ملف إلى
-أي سحابة.
+HaramLite Bridge يجعل مشاهدة يوتيوب بلا موسيقى ممكنة داخل الصفحة نفسها، عبر تطبيق HaramLite
+المكتبي الذي ثبّته أنت على جهازك. لا حساب، ولا خدمة سحابية، ولا يُرفع أي ملف.
 
 ⚠ يلزم تطبيق HaramLite المكتبي (ويندوز): https://github.com/SMSMy/HaramLite
-بدونه لا تعمل الإضافة — فهي جسر إلى تطبيقك، لا خدمة سحابية.
+بدون التطبيق لا تعمل الإضافة — فهي واجهة متصفح لتطبيقك، والمعالجة كلها تحدث على جهازك.
 
-ما تفعله الإضافة:
-• زرّان داخل مشغّل يوتيوب: «حمّل وعالج» يطلب من التطبيق تنزيل الرابط ومعالجته،
-  و«شاهد مفلتراً» يشغّل الصوت المعالَج داخل الصفحة متزامناً مع الفيديو.
-• مشاهدة مفلترة: يُكتم فيديو الصفحة (بإعلان واضح) ويُشغَّل الصوت المعالَج بدلاً
-  منه، مع **تخطي مقاطع الصمت** التي يخلّفها كتم الموسيقى — فتقفز الصورة فوقها
-  فوراً بدل تشغيلها (ويمكن إيقاف التخطي من قائمة الزر الأيمن).
-• إرسال بنقرة يمين: أي رابط أو صفحة أو فيديو ← «أرسل إلى HaramLite».
-• المنبثقة: حالة الاتصال بتطبيقك + زر إرسال الصفحة الحالية.
+■ ما تفعله الإضافة داخل الصفحة
+• «شاهد بعد إزالة الموسيقى»: يُكتم صوت فيديو الصفحة (بإعلان واضح على الشاشة) ويُشغَّل بدلاً منه
+  الصوت الذي عالجه تطبيقك، متزامناً مع الفيديو frame-by-frame.
+• تخطي فترات الصمت: الفترات التي تبقى صامتة بعد إزالة الموسيقى تُتخطّى تلقائياً فلا تشعر بفجوات
+  (ويمكن إيقاف التخطي من قائمة الزر الأيمن).
+• اختيار الوضع داخل النافذة: «مقطع عادي» أو «وضع أغنية»، لكل رابط على حدة.
+• حالة الاتصال بتطبيقك وزرّ إرسال الصفحة الحالية في نافذة الإضافة.
+• إرسال بنقرة يمين: أي رابط أو صفحة ← «أرسل إلى HaramLite».
 
-الخصوصية أولاً:
-• لا تحليلات، لا تتبّع، لا حسابات، ولا أي طلب شبكة من الإضافة نفسها.
-• ما تقرأه الإضافة (رابط التبويب الذي تطلب معالجته) يذهب إلى **تطبيقك على
-  جهازك** عبر Native Messaging — ولا يغادر جهازك إطلاقاً.
-• الصلاحيات عند الحد الأدنى: قائمة يمين + التبويب النشط عند نقرك + التخاطب مع
-  التطبيق المحلي. لا وصول إلى سجل التصفح ولا إلى بقية المواقع.
+■ ما لا تفعله الإضافة — بصراحة
+• لا تُنزّل الإضافة أي محتوى بنفسها، ولا تحفظ أي ملف، ولا تُجري أي طلب شبكة: ما تقرأه هو رابط
+  التبويب الذي تطلب معالجته، ويمرّ إلى تطبيقك على جهازك عبر Native Messaging.
+• لا تتجاوز الإضافة ولا تطبيقها حمايةً تقنية ولا جدار دفع ولا قيد تسجيل دخول، ولا تفكّ تشفيراً.
+  تعمل الإضافة على المحتوى الذي تستطيع مشاهدته أصلاً في متصفحك، والمعالجة مسؤولية المستخدم
+  في المحتوى الذي يملك حق معالجته.
+• لا حساب، ولا تحليلات، ولا تتبّع، ولا إعلانات، ولا كود بعيد.
+• الصلاحيات عند الحد الأدنى: قائمة الزر الأيمن + التبويب النشط عند نقرك + التخاطب مع تطبيقك
+  المحلي. لا وصول إلى سجل التصفح، ولا إلى أي موقع آخر غير youtube.com.
 
-يوتيوب علامة تجارية لشركة Google LLC. هذه الإضافة غير مرتبطة بهم ولا معتمدة
-منهم. لقطة الشاشة في صفحة المتجر تُظهر فيلم Big Buck Bunny (مؤسسة Blender)
-برخصة المشاع الإبداعي.
+■ كيف تعمل بالتفصيل
+يقرأ تطبيقك المحلي الرابط الذي اخترته، ويعالج الصوت على جهازك (فصل الصوت عن الموسيقى بمحرّك
+ONNX محلي ثم تحسينه وقصّ الصمت)، ثم تُشغّل الإضافة الناتج داخل المشغّل بدل صوت الصفحة.
+ويبقى كل شيء على جهازك: لا رفع، ولا وسيط، ولا تخزين خارجي.
+
+■ الأدوات المستخدمة (مفتوحة المصدر)
+الإضافة: JavaScript بلا أي مكتبة خارجية. التطبيق: Tauri وRust وONNX Runtime وFFmpeg وyt-dlp —
+وكلها تعمل محلياً على جهازك.
+
+يوتيوب علامة تجارية لشركة Google LLC. هذه الإضافة مستقلة وغير مرتبطة بهم ولا معتمدة منهم.
+لقطة الشاشة في صفحة المتجر تُظهر فيلم Big Buck Bunny (مؤسسة Blender) برخصة المشاع الإبداعي.
 ```
 
 ## الوصف الكامل — English
 
 ```
-HaramLite Bridge connects your browser to the HaramLite desktop app: one button
-sends the video to your own machine, where it is downloaded, processed and
-stripped of music. Nothing is ever uploaded to a cloud.
+HaramLite Bridge makes watching YouTube without music possible inside the page itself, through the
+HaramLite desktop app that you install and run on your own computer. No account, no cloud service,
+and nothing is ever uploaded.
 
 ⚠ Requires the HaramLite desktop app (Windows): https://github.com/SMSMy/HaramLite
-The extension does nothing on its own — it is a bridge to your app, not a service.
+Without the app the extension does nothing - it is a browser front end for your app, and all
+processing happens on your machine.
 
-What it does:
-• Two buttons in the YouTube player: “Download & process” asks your app to fetch
-  and process the link, and “Watch filtered” plays the processed audio inside the
-  page, in sync with the video.
-• Filtered watching: the page video is muted (clearly announced) and the
-  processed audio takes over, including SKIPPING the silent stretches left by
-  muting the music instead of playing through them (right-click to turn skipping
-  off).
-• Right-click → “Send to HaramLite” for any link, page or video.
-• Popup: connection status plus a button to send the current page.
+■ What the extension does in the page
+• "Watch without music": the page video's audio is muted (clearly announced on screen) and the audio
+  your app produced is played in its place, kept in sync with the video frame by frame.
+• Silence skipping: the stretches that stay silent once the music is gone are skipped automatically,
+  so the video plays without gaps (right-click to turn skipping off).
+• Mode choice in the popup: Clip or Song, per link.
+• Connection status for your app and a button to send the current page.
+• Right-click: "Send to HaramLite" for any link or page.
 
-Privacy first:
-• No analytics, no tracking, no accounts, and no network request from the
-  extension itself.
-• What it reads (the URL you ask it to process) goes to YOUR app on YOUR machine
-  over Native Messaging. It never leaves your device.
-• Minimal permissions: context menu, active tab on your click, and talking to the
-  local app. No browsing-history access, no access to other sites.
+■ What the extension does NOT do - plainly
+• The extension does not download anything itself, store any file, or make any network request. What
+  it reads is the tab URL you asked to process, and it travels to your own app over Native Messaging.
+• Neither the extension nor its app bypasses technical protection measures, paywalls or login
+  restrictions, and it does not break encryption. It works on content you can already watch in your
+  browser, and processing content is the user's responsibility for media they have the right to use.
+• No account, no analytics, no tracking, no ads, no remote code.
+• Minimal permissions: a context-menu item, the active tab when you click, and talking to your local
+  app. No browsing history, and no site other than youtube.com.
 
-YouTube is a trademark of Google LLC. This extension is not affiliated with or
-endorsed by them. The store screenshot shows Big Buck Bunny (Blender Foundation)
-under a Creative Commons licence.
+■ How it works in detail
+Your local app reads the link you chose and processes the audio on your machine (separating voice from
+music with a local ONNX model, then polishing it and trimming silence); the extension then plays that
+result inside the player in place of the page audio. Everything stays on your computer: no upload, no
+middleman, no external storage.
+
+■ Built with (open source)
+The extension is plain JavaScript with no third-party libraries. The app uses Tauri, Rust, ONNX
+Runtime, FFmpeg and yt-dlp - all running locally on your machine.
+
+YouTube is a trademark of Google LLC. This extension is independent, not affiliated with or endorsed
+by them. The store screenshot shows Big Buck Bunny (Blender Foundation) under a Creative Commons
+licence.
 ```
-
----
 
 ## الصور المطلوبة (في `store-assets/`)
 
@@ -231,7 +252,7 @@ www.haramlite.com. 1 IN CNAME smsmy.github.io.
 > Reads the URL of the active tab only at the moment the user clicks the extension, so that URL can be handed to their desktop app for processing. There is no background access, no browsing-history access and no access to any other tab or site.
 
 **Host permission for `*://*.youtube.com/*`**
-> A content script runs on YouTube pages only, to add two buttons to the video player ("download & process" and "watch filtered") and to play the audio that was processed locally on the user's machine in sync with the page video. It reads no other content on the page, and nothing is ever sent off the device.
+> A content script runs on YouTube pages only, to add two buttons to the video player ("process this video" and "watch without music") and to play the audio that was processed locally on the user's machine in sync with the page video. It reads no other content on the page, stores nothing, downloads nothing itself, and never sends anything off the device.
 
 #### العربية (بديل مقبول)
 
@@ -240,7 +261,7 @@ www.haramlite.com. 1 IN CNAME smsmy.github.io.
 | `contextMenus` | «إضافة عنصر واحد «أرسل إلى HaramLite» في قائمة الزر الأيمن، ليرسل المستخدم الرابط أو الصفحة أو الفيديو إلى تطبيقه المكتبي. لا يضيف غيره ولا يقرأ بيانات الصفحة.» |
 | `nativeMessaging` | «للتخاطب مع تطبيق HaramLite المكتبي الذي ثبّته المستخدم على جهازه. تُمرَّر إليه الرابط الذي اختار معالجته ورسائل حالة قصيرة عبر قناة Native Messaging المحلية. لا شيء يُرسَل إلى المطوّر أو إلى أي خادم، والإضافة نفسها لا تُجري أي طلب شبكة. المضيف يُسجّله التطبيق، وعلى المستخدم تفعيل التكامل من إعداداته، وبدونه لا تفعل الإضافة شيئاً.» |
 | `activeTab` | «قراءة رابط التبويب النشط لحظة نقر المستخدم على الإضافة فقط، لتسليمه إلى تطبيقه المكتبي. لا وصول في الخلفية، ولا سجل تصفح، ولا وصول إلى أي تبويب أو موقع آخر.» |
-| محتوى في `*://*.youtube.com/*` | «سكربت محتوى يعمل على صفحات يوتيوب فقط لإضافة زرّين إلى المشغّل («حمّل وعالج» و«شاهد مفلتراً») وتشغيل الصوت المعالَج محلياً بتزامن مع الفيديو. لا يقرأ محتوى آخر، ولا يُرسل شيئاً خارج الجهاز.» |
+| محتوى في `*://*.youtube.com/*` | «سكربت محتوى يعمل على صفحات يوتيوب فقط لإضافة زرّين إلى المشغّل («عالج هذا الفيديو» و«شاهد بعد إزالة الموسيقى») وتشغيل الصوت المعالَج محلياً بتزامن مع الفيديو. لا يقرأ محتوى آخر، ولا يُرسل شيئاً خارج الجهاز.» |
 
 #### سؤال «الكود البعيد» (Remote code)
 

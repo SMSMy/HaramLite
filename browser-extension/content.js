@@ -1,6 +1,6 @@
 // HaramLite Bridge — YouTube content script.
 // Two bar buttons, no panels, no questions asked:
-//   1. Download+Process — idle ("حمّل وعالج") → click starts (video paused,
+//   1. Process — idle ("عالج هذا الفيديو") → click starts (video paused,
 //      live % on the button) → click while busy cancels + resets → done dims
 //      ("تم التجهيز") and enables Watch.
 //   2. Watch — disabled until ready → enabled ("شاهد بعد إزالة الموسيقى") → click
@@ -158,8 +158,8 @@
       procBtn.style.background = 'rgba(21,19,17,.94)';
       procBtn.style.borderColor = T.accent;
       procBtn.style.color = T.text;
-      procBtn.textContent = 'حمّل وعالج ⬇';
-      procBtn.title = 'HaramLite — حمّل وعالج هذا الفيديو';
+      procBtn.textContent = 'عالج هذا الفيديو ⬇';
+      procBtn.title = 'HaramLite — معالجة هذا الفيديو على جهازك';
     }
   }
   function setWatchBtn(state) {
@@ -434,7 +434,7 @@
   async function startWatch() {
     if (WATCH) return;
     if (!LAST) {
-      toast('✗ ابنِ الخريطة أولاً — اضغط «حمّل وعالج»', 4000);
+      toast('✗ ابنِ الخريطة أولاً — اضغط «عالج هذا الفيديو»', 4000);
       return;
     }
     const video = pageVideo();
