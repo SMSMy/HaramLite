@@ -22,14 +22,14 @@
 <link rel="apple-touch-icon" href="assets/icon-180.png">
 <title>HaramLite — إزالة الموسيقى من الفيديو، محلياً على جهازك</title>
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"HaramLite","applicationCategory":"MultimediaApplication","operatingSystem":"Windows 10, Windows 11","softwareVersion":"0.2.1","description":"أداة مجانية لإزالة الموسيقى من المقاطع الصوتية والمرئية بالذكاء الاصطناعي، تعمل محلياً بالكامل على جهاز المستخدم.","url":"https://haramlite.com/","downloadUrl":"https://github.com/SMSMy/HaramLite/releases/latest","license":"https://haramlite.com/LICENSE.txt","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"HaramLite","applicationCategory":"MultimediaApplication","operatingSystem":"Windows 10, Windows 11","softwareVersion":"0.2.2","description":"أداة مجانية لإزالة الموسيقى من المقاطع الصوتية والمرئية بالذكاء الاصطناعي، تعمل محلياً بالكامل على جهاز المستخدم.","url":"https://haramlite.com/","downloadUrl":"https://github.com/SMSMy/HaramLite/releases/latest","license":"https://haramlite.com/LICENSE.txt","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
 </script>
 <style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><link rel="stylesheet" href="assets/site.css"/></head><body class="bg-coal-surface font-body-md text-cream-text selection:bg-clay-accent selection:text-coal-surface"><header class="fixed top-0 w-full z-50 bg-coal-surface/90 backdrop-blur-xl border-b border-border-muted"><div class="h-16 max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter"><div class="flex items-center gap-stack-lg"><a class="flex items-center gap-stack-sm focus:outline-none" data-path="home" href="/"><img src="assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded shadow-sm"><span class="font-label-md text-label-md tracking-wider text-cream-text font-bold uppercase">HaramLite</span></a><nav class="hidden lg:flex items-center gap-stack-lg" data-active-classes="text-cream-text border-b-2 border-clay-accent font-bold"><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="download" href="#download">التحميل</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="features" href="#features">المميزات</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" href="bridge.html">إضافة المتصفح</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="whats-new" href="#whatsnew">الجديد</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="privacy" href="#privacy">الخصوصية</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="developers" href="#dev">للمطورين</a></nav></div><div class="flex items-center gap-stack-sm"><button id="lang-btn" class="flex items-center gap-unit px-stack-sm py-unit rounded border border-border-muted font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text hover:border-outline transition-colors cursor-pointer" type="button" aria-label="تغيير اللغة / Change language"><span class="material-symbols-outlined text-[16px]">language</span><span id="lang-btn-label">English</span></button><a class="hidden sm:inline-flex items-center justify-center px-stack-md py-unit rounded bg-clay-accent text-coal-surface font-label-md text-label-md hover:bg-primary transition-colors font-bold" data-path="download" href="#download">تحميل التطبيق</a></div></div></header><main class="w-full pt-16 bg-coal-surface min-h-[calc(100vh-160px)]"><div class="flex flex-col w-full">
 <!-- Interactive Localization & Audio Wave Simulation State Script -->
 <script>
     window.HaramLiteState = {
     lang: 'ar',
-    releases: { tag: 'v0.2.1', exeUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.1/HaramLite_0.2.1_x64-setup.exe', msiUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.1/HaramLite_0.2.1_x64_en-US.msi' },
+    releases: { tag: 'v0.2.2', exeUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.2/HaramLite_0.2.2_x64-setup.exe', msiUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.2/HaramLite_0.2.2_x64_en-US.msi' },
     applyLang(lang) {
       this.lang = lang === 'en' ? 'en' : 'ar';
       document.documentElement.dir = this.lang === 'ar' ? 'rtl' : 'ltr';
@@ -92,7 +92,7 @@
 <div class="inline-flex items-center gap-stack-sm px-stack-md py-unit rounded-full bg-surface-container-high text-on-surface-variant mb-6 shadow-sm">
 <span class="w-2 h-2 rounded-full bg-clay-accent animate-pulse"></span>
 <span class="font-mono-code text-mono-code tracking-wide">
-<span class="text-clay-accent font-bold js-release-tag">v0.2.1</span> • 
+<span class="text-clay-accent font-bold js-release-tag">v0.2.2</span> • 
             <span data-i18n-ar="ويندوز 10/11 (x64)" data-i18n-en="Windows 10/11 (x64)">ويندوز 10/11 (x64)</span> • 
             <span data-i18n-ar="معالجة محلية 100%" data-i18n-en="100% On-Device AI">معالجة محلية 100%</span>
 </span>
@@ -115,7 +115,7 @@
 <div class="flex flex-wrap items-center justify-center gap-stack-md w-full mb-8">
 <a class="js-exe-link inline-flex items-center gap-stack-sm px-stack-lg py-stack-md rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold shadow-md hover:bg-primary transition-all duration-150 transform hover:-translate-y-0.5" href="#download">
 <span class="material-symbols-outlined text-[20px]">download</span>
-<span data-i18n-ar="تحميل المثبّت الذكي (0.2.1)" data-i18n-en="Download Setup (0.2.1)">تحميل المثبّت الذكي (0.2.1)</span>
+<span data-i18n-ar="تحميل المثبّت الذكي (0.2.2)" data-i18n-en="Download Setup (0.2.2)">تحميل المثبّت الذكي (0.2.2)</span>
 <span class="font-mono-code text-mono-code opacity-75 js-exe-size">~120 MB</span>
 </a>
 <a class="inline-flex items-center gap-stack-sm px-stack-lg py-stack-md rounded bg-surface-container text-cream-text font-label-md text-label-md hover:bg-surface-container-high transition-colors shadow-sm" href="bridge.html" rel="noreferrer" target="_blank">
@@ -147,7 +147,7 @@
 <span class="w-3 h-3 rounded-full bg-warn-yellow inline-block"></span>
 <span class="w-3 h-3 rounded-full bg-tertiary inline-block"></span>
 </div>
-<span class="font-mono-code text-mono-code text-on-surface-variant mx-stack-sm">HaramLite Desktop v0.2.1 • [Tauri v2 + ONNX-CUDA/DirectML]</span>
+<span class="font-mono-code text-mono-code text-on-surface-variant mx-stack-sm">HaramLite Desktop v0.2.2 • [Tauri v2 + ONNX-CUDA/DirectML]</span>
 </div>
 <div class="flex items-center gap-stack-sm text-on-surface-variant font-mono-code text-mono-code">
 <span class="material-symbols-outlined text-[16px] text-clay-accent">memory</span>
@@ -288,7 +288,7 @@
 <span class="material-symbols-outlined text-[24px]">info</span>
 </div>
 <div class="flex-1">
-<span class="font-label-md text-label-md text-warn-yellow font-bold block mb-0.5" data-i18n-ar="تنبيه شفاف بخصوص التحديث في الإصدار 0.2.1" data-i18n-en="Transparent Notice Regarding v0.2.1 Auto-Updates">تنبيه شفاف بخصوص التحديث في الإصدار 0.2.1</span>
+<span class="font-label-md text-label-md text-warn-yellow font-bold block mb-0.5" data-i18n-ar="تنبيه شفاف بخصوص التحديث في الإصدار 0.2.2" data-i18n-en="Transparent Notice Regarding v0.2.2 Auto-Updates">تنبيه شفاف بخصوص التحديث في الإصدار 0.2.2</span>
 <p class="font-body-md text-body-md text-cream-text/90" data-i18n-ar="التحديث الذاتي التلقائي موقوف حالياً في هذا الإصدار لأن مفتاح توقيع الإصدارات الرقمي غير مدمج في خط إنتاج المستودع بعد. يتم الترقية مستقبلاً بتنزيل المثبّت الجديد مباشرة من صفحة الإصدارات." data-i18n-en="Automatic in-app updates are currently disabled in this build as release signing keys are not yet configured in CI. Future upgrades are performed by running the new installer directly from GitHub Releases.">التحديث الذاتي التلقائي موقوف حالياً في هذا الإصدار لأن مفتاح توقيع الإصدارات الرقمي غير مدمج في خط إنتاج المستودع بعد. يتم الترقية مستقبلاً بتنزيل المثبّت الجديد مباشرة من صفحة الإصدارات.</p>
 </div>
 </div>
@@ -306,10 +306,10 @@
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="مثبّت متكامل يجهّز بيئة العمل تلقائياً: يثبت VC++ Redistributable، ومسارات FFmpeg، ونموذج الذكاء الاصطناعي مع اختصارات سطح المكتب." data-i18n-en="All-in-one setup wizard: installs required VC++ redistributable, FFmpeg binaries, and AI models with desktop shortcuts.">مثبّت متكامل يجهّز بيئة العمل تلقائياً: يثبت VC++ Redistributable، ومسارات FFmpeg، ونموذج الذكاء الاصطناعي مع اختصارات سطح المكتب.</p>
 <div class="font-mono-code text-mono-code text-on-surface-variant/80 bg-surface-container-lowest p-stack-sm rounded mb-6">
-              HaramLite_0.2.1_x64-setup.exe
+              HaramLite_0.2.2_x64-setup.exe
             </div>
 </div>
-<a class="js-exe-link w-full py-stack-md rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold text-center hover:bg-primary transition-colors flex items-center justify-center gap-stack-sm shadow" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.1/HaramLite_0.2.1_x64-setup.exe">
+<a class="js-exe-link w-full py-stack-md rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold text-center hover:bg-primary transition-colors flex items-center justify-center gap-stack-sm shadow" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.2/HaramLite_0.2.2_x64-setup.exe">
 <span class="material-symbols-outlined text-[20px]">download</span>
 <span data-i18n-ar="تحميل المثبّت (.exe)" data-i18n-en="Download Setup (.exe)">تحميل المثبّت (.exe)</span>
 </a>
@@ -323,10 +323,10 @@
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="حزمة MSI القياسية المخصصة لمدراء الأنظمة والنطاقات (Domain Admins)، تدعم التثبيت الصامت عبر سياسات المجموعات (GPO / InTune)." data-i18n-en="Standard MSI package tailored for system admins, supporting silent deployment, GPO automation, and MDM policies.">حزمة MSI القياسية المخصصة لمدراء الأنظمة والنطاقات (Domain Admins)، تدعم التثبيت الصامت عبر سياسات المجموعات (GPO / InTune).</p>
 <div class="font-mono-code text-mono-code text-on-surface-variant/80 bg-surface-container-lowest p-stack-sm rounded mb-6">
-              HaramLite_0.2.1_x64_en-US.msi
+              HaramLite_0.2.2_x64_en-US.msi
             </div>
 </div>
-<a class="js-msi-link w-full py-stack-md rounded bg-surface-container-high text-cream-text font-label-md text-label-md font-bold text-center hover:bg-surface-bright transition-colors flex items-center justify-center gap-stack-sm" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.1/HaramLite_0.2.1_x64_en-US.msi">
+<a class="js-msi-link w-full py-stack-md rounded bg-surface-container-high text-cream-text font-label-md text-label-md font-bold text-center hover:bg-surface-bright transition-colors flex items-center justify-center gap-stack-sm" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.2/HaramLite_0.2.2_x64_en-US.msi">
 <span class="material-symbols-outlined text-[20px]">folder_zip</span>
 <span data-i18n-ar="تحميل حزمة MSI" data-i18n-en="Download MSI Package">تحميل حزمة MSI</span>
 </a>
@@ -338,7 +338,7 @@
 <span class="material-symbols-outlined text-on-surface-variant text-[28px]">package_2</span>
 <h3 class="font-headline-lg text-headline-lg text-on-surface-variant">Portable Version</h3>
 </div>
-<p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="تنويه: النسخة المحمولة الخالصة (Zip Portable) لم تُشحن في إصدار 0.2.1 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في التحديثات اللاحقة بعد ضغط النماذج." data-i18n-en="Notice: Standalone portable archive is paused in 0.2.1 due to required bin/ and models/ payload constraints (~515MB). Will return in upcoming pruned model updates.">تنويه: النسخة المحمولة الخالصة (Zip Portable) لم تُشحن في إصدار 0.2.1 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في التحديثات اللاحقة بعد ضغط النماذج.</p>
+<p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="تنويه: النسخة المحمولة الخالصة (Zip Portable) لم تُشحن في إصدار 0.2.2 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في التحديثات اللاحقة بعد ضغط النماذج." data-i18n-en="Notice: Standalone portable archive is paused in 0.2.2 due to required bin/ and models/ payload constraints (~515MB). Will return in upcoming pruned model updates.">تنويه: النسخة المحمولة الخالصة (Zip Portable) لم تُشحن في إصدار 0.2.2 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في التحديثات اللاحقة بعد ضغط النماذج.</p>
 </div>
 <div class="p-stack-sm bg-surface-container-lowest rounded text-center font-mono-code text-mono-code text-on-surface-variant">
             Status: Reserved for v0.3
@@ -490,41 +490,61 @@
 </div>
 </div>
 </section>
-<!-- 6. WHAT'S NEW IN 0.2.1 (#whatsnew) -->
-<section class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop mb-24 scroll-mt-20" id="whatsnew">
-<div class="bg-surface-container-high rounded-xl p-stack-lg sm:p-12 shadow-lg">
-<div class="flex flex-col md:flex-row md:items-center justify-between gap-stack-md mb-8 pb-stack-md border-b border-border-muted">
-<div>
-<div class="inline-flex items-center gap-stack-sm px-stack-sm py-0.5 rounded bg-clay-accent/15 text-clay-accent font-mono-code text-mono-code font-bold mb-2">
-              Changelog • Release 0.2.1
-            </div>
-<h2 class="font-headline-xl text-headline-xl text-cream-text" data-i18n-ar="الجديد في إصدار 0.2.1" data-i18n-en="What's New in v0.2.1">الجديد في إصدار 0.2.1</h2>
-</div>
-<a class="inline-flex items-center gap-stack-sm font-label-md text-label-md text-clay-accent hover:underline" href="https://github.com/SMSMy/HaramLite/releases/tag/v0.2.1" rel="noreferrer" target="_blank">
-<span data-i18n-ar="عرض تقرير الإصدار في GitHub" data-i18n-en="View release on GitHub">عرض تقرير الإصدار في GitHub</span>
-<span class="material-symbols-outlined text-[16px]">arrow_outward</span>
-</a>
-</div>
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-stack-lg">
-<!-- Detailed item: Telegram bot security -->
-<div class="space-y-stack-sm">
-<div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
-<span class="material-symbols-outlined text-clay-accent">shield_person</span>
-<span data-i18n-ar="إطلاق بوت تيليجرام ونظام الاقتران الآمن (PIN)" data-i18n-en="Telegram Bot Launch with Ephemeral PIN">إطلاق بوت تيليجرام ونظام الاقتران الآمن (PIN)</span>
-</div>
-<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="أصبح بإمكانك ربط تيليجرام بجهازك الشخصي عبر رمز أمان رقمي (6 أرقام) صالح لمدة 10 دقائق فقط لمنع أي متطفل من استغلال عتاد جهازك. تم ضبط حدود المعالجة الافتراضية بأمانة: 50MB للملفات و 20MB للمقاطع الصوتية، مع خيار رفع الحد حتى 2GB عبر تشغيل Telegram Bot API المحلي." data-i18n-en="Link Telegram to your machine using a temporary 6-digit PIN valid for 10 minutes. Standard file bounds: 50MB for general files, 20MB for audio, with custom local Telegram Bot API support unlocking up to 2GB payload processing.">أصبح بإمكانك ربط تيليجرام بجهازك الشخصي عبر رمز أمان رقمي (6 أرقام) صالح لمدة 10 دقائق فقط لمنع أي متطفل من استغلال عتاد جهازك. تم ضبط حدود المعالجة الافتراضية بأمانة: 50MB للملفات و 20MB للمقاطع الصوتية، مع خيار رفع الحد حتى 2GB عبر تشغيل Telegram Bot API المحلي.</p>
-</div>
-<!-- Detailed item: DPAPI & Local Data Protection -->
-<div class="space-y-stack-sm">
-<div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
-<span class="material-symbols-outlined text-clay-accent">enhanced_encryption</span>
-<span data-i18n-ar="تشفير الإعدادات محلياً بتقنية Windows DPAPI" data-i18n-en="Native Windows DPAPI Settings Encryption">تشفير الإعدادات محلياً بتقنية Windows DPAPI</span>
-</div>
-<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="يتم الآن حفظ رموز البوت، المسارات الخاصة، وتفضيلات المعالجة داخل مجلد %LOCALAPPDATA% مشفرة بالكامل بمفاتيح نظام ويندوز (DPAPI). لا يمكن لأي مستخدم آخر على النظام أو تطبيق خارجي قراءة بياناتك السرية." data-i18n-en="Bot tokens, custom paths, and parameters are stored strictly under %LOCALAPPDATA%, encrypted via Windows Data Protection API (DPAPI). Other user accounts and rogue apps cannot read your stored secrets.">يتم الآن حفظ رموز البوت، المسارات الخاصة، وتفضيلات المعالجة داخل مجلد %LOCALAPPDATA% مشفرة بالكامل بمفاتيح نظام ويندوز (DPAPI). لا يمكن لأي مستخدم آخر على النظام أو تطبيق خارجي قراءة بياناتك السرية.</p>
-</div>
-</div>
-</div>
-</section>
+<!-- 6. WHAT'S NEW IN 0.2.2 (#whatsnew) -->
+<!-- 6. WHAT'S NEW IN 0.2.2 (#whatsnew) -->
+  <section class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop mb-24 scroll-mt-20" id="whatsnew">
+    <div class="bg-surface-container-high rounded-xl p-stack-lg sm:p-12 shadow-lg">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-stack-md mb-8 pb-stack-md border-b border-border-muted">
+        <div>
+          <div class="inline-flex items-center gap-stack-sm px-stack-sm py-0.5 rounded bg-clay-accent/15 text-clay-accent font-mono-code text-mono-code font-bold mb-2">
+            Changelog • Release 0.2.2
+          </div>
+          <h2 class="font-headline-xl text-headline-xl text-cream-text" data-i18n-ar="الجديد في إصدار 0.2.2" data-i18n-en="What's New in v0.2.2">الجديد في إصدار 0.2.2</h2>
+        </div>
+        <a class="inline-flex items-center gap-stack-sm font-label-md text-label-md text-clay-accent hover:underline" href="https://github.com/SMSMy/HaramLite/releases/latest" rel="noreferrer" target="_blank">
+          <span data-i18n-ar="عرض تقرير الإصدار في GitHub" data-i18n-en="View release on GitHub">عرض تقرير الإصدار في GitHub</span>
+          <span class="material-symbols-outlined text-[16px]">arrow_outward</span>
+        </a>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-stack-lg">
+
+        <div class="space-y-stack-sm">
+          <div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
+            <span class="material-symbols-outlined text-clay-accent">rocket_launch</span>
+            <span data-i18n-ar="التشغيل مع بدء تشغيل ويندوز" data-i18n-en="Start with Windows">التشغيل مع بدء تشغيل ويندوز</span>
+          </div>
+          <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="خيار جديد يسألك عنه البرنامج مرة واحدة بعد التثبيت: أن يقلع مع النظام في الخلفية بلا فتح نافذة، فيبقى بوت تيليجرام وتكامل المتصفح جاهزين بعد كل إقلاع. وتجده في أي وقت من الإعدادات، وتفتح النافذة متى شئت من أيقونة الشريط." data-i18n-en="A new option the app asks you about once after installation: boot with Windows in the background without opening a window, so the Telegram bot and browser integration stay ready after every restart. It stays in the settings, and the window opens any time from the tray icon.">خيار جديد يسألك عنه البرنامج مرة واحدة بعد التثبيت: أن يقلع مع النظام في الخلفية بلا فتح نافذة، فيبقى بوت تيليجرام وتكامل المتصفح جاهزين بعد كل إقلاع. وتجده في أي وقت من الإعدادات، وتفتح النافذة متى شئت من أيقونة الشريط.</p>
+        </div>
+
+        <div class="space-y-stack-sm">
+          <div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
+            <span class="material-symbols-outlined text-clay-accent">extension</span>
+            <span data-i18n-ar="البرنامج يعرف إن كانت الإضافة موجودة" data-i18n-en="The app knows whether the extension is there">البرنامج يعرف إن كانت الإضافة موجودة</span>
+          </div>
+          <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="لا يستطيع أي برنامج مكتبي أن يعدّ إضافات متصفحك، لكن مضيف الاتصال يسجّل أصل كل إضافة تتصل به. فإن لم يتصل متصفح قط، يعرض البرنامج في الإعدادات رابط صفحة الإضافة ليوجّهك إلى التثبيت بدل أن تبحث بنفسك." data-i18n-en="No desktop app can enumerate your browser extensions, but the messaging host records the origin of every extension that calls it. When no browser has ever called, the settings show a link to the extension page so you are pointed at the install instead of guessing.">لا يستطيع أي برنامج مكتبي أن يعدّ إضافات متصفحك، لكن مضيف الاتصال يسجّل أصل كل إضافة تتصل به. فإن لم يتصل متصفح قط، يعرض البرنامج في الإعدادات رابط صفحة الإضافة ليوجّهك إلى التثبيت بدل أن تبحث بنفسك.</p>
+        </div>
+
+        <div class="space-y-stack-sm">
+          <div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
+            <span class="material-symbols-outlined text-clay-accent">tune</span>
+            <span data-i18n-ar="اختيار الوضع من نافذة الإضافة" data-i18n-en="Pick the mode from the extension">اختيار الوضع من نافذة الإضافة</span>
+          </div>
+          <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="صار بإمكانك تحديد «مقطع عادي» أو «وضع أغنية» داخل نافذة الإضافة لكل طلب على حدة، فيحترم البرنامج اختيارك لهذا الرابط بدل أن يتبع إعداداً عاماً." data-i18n-en="You can now choose Clip or Song inside the extension popup per request, and the app honours that choice for that link instead of following a global setting.">صار بإمكانك تحديد «مقطع عادي» أو «وضع أغنية» داخل نافذة الإضافة لكل طلب على حدة، فيحترم البرنامج اختيارك لهذا الرابط بدل أن يتبع إعداداً عاماً.</p>
+        </div>
+
+        <div class="space-y-stack-sm">
+          <div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
+            <span class="material-symbols-outlined text-clay-accent">build</span>
+            <span data-i18n-ar="إصلاحات في الواجهة" data-i18n-en="Interface fixes">إصلاحات في الواجهة</span>
+          </div>
+          <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="قائمة الإعدادات صارت قابلة للتمرير فلا تختفي بنودها على الشاشات الصغيرة، وانتقل «حول البرنامج» ليكون آخر عنصر فيها، وتحسّن سلوك الإلغاء وإيقاف الدفعات." data-i18n-en="The settings menu now scrolls so its entries cannot fall off a short screen, About moved to the last position, and cancelling a running batch behaves predictably.">قائمة الإعدادات صارت قابلة للتمرير فلا تختفي بنودها على الشاشات الصغيرة، وانتقل «حول البرنامج» ليكون آخر عنصر فيها، وتحسّن سلوك الإلغاء وإيقاف الدفعات.</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  
 <!-- 7. STRICT ZERO-COMPROMISE PRIVACY (#privacy) -->
 <section class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop mb-24 scroll-mt-20" id="privacy">
 <div class="bg-surface-container rounded-xl p-stack-lg sm:p-12 shadow-md">
