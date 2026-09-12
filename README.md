@@ -16,8 +16,8 @@
 </p>
 
 <p align="center">
-  <a href="https://haramlite.com/"><img src="https://img.shields.io/badge/الموقع_الرسمي-haramlite.com-0F766E?style=for-the-badge" alt="الموقع الرسمي"></a>
-  <a href="https://haramlite.com/#download"><img src="https://img.shields.io/badge/تحميل-Windows_x64-111827?style=for-the-badge" alt="تحميل"></a>
+  <a href="https://haramlite.com/"><img src="https://img.shields.io/badge/Website-haramlite.com-0F766E?style=for-the-badge" alt="Website — haramlite.com"></a>
+  <a href="https://haramlite.com/#download"><img src="https://img.shields.io/badge/Download-Windows_x64-111827?style=for-the-badge" alt="Download — Windows x64"></a>
   <a href="https://github.com/SMSMy/HaramLite/releases/latest"><img src="https://img.shields.io/github/v/release/SMSMy/HaramLite?style=for-the-badge&label=Release" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-2F6F4E?style=for-the-badge" alt="MIT License"></a>
 </p>
