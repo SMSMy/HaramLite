@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HaramLite — إزالة الموسيقى من الفيديو، محلياً على جهازك</title>
+<meta name="description" content="أداة مجانية لإزالة الموسيقى من المقاطع الصوتية والمرئية بالذكاء الاصطناعي — كل المعالجة على جهازك، بلا رفع لأي سحابة.">
+<style>
+  :root { --coal:#151311; --coal2:#221E1A; --clay:#DA7756; --cream:#F5F2ED; --sub:#A38C85; --line:#3A342F; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:linear-gradient(160deg,var(--coal2),var(--coal) 60%); color:var(--cream);
+         font-family:"Segoe UI",Tahoma,Arial,sans-serif; line-height:1.8; }
+  .wrap { max-width:860px; margin:0 auto; padding:56px 22px 72px; }
+  header { text-align:center; margin-bottom:40px; }
+  h1 { font-size:2.4rem; margin:0 0 6px; letter-spacing:.5px; }
+  h1 span { color:var(--clay); }
+  .tag { color:var(--sub); font-size:1.05rem; margin:0; }
+  h2 { font-size:1.3rem; margin:44px 0 14px; padding-bottom:8px; border-bottom:1px solid var(--line); }
+  .btns { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; margin:26px 0 8px; }
+  a.btn { display:inline-block; padding:13px 24px; border-radius:10px; text-decoration:none; font-weight:700;
+          background:var(--clay); color:#1a1512; transition:transform .15s ease, filter .15s ease; }
+  a.btn:hover { transform:translateY(-2px); filter:brightness(1.08); }
+  a.btn.ghost { background:transparent; color:var(--cream); border:1px solid var(--line); font-weight:600; }
+  .note { background:rgba(218,119,86,.08); border:1px solid rgba(218,119,86,.35); border-radius:10px;
+          padding:14px 18px; margin:22px 0; font-size:.95rem; }
+  ul { padding-inline-start:22px; }
+  li { margin:6px 0; }
+  code { background:#0f0d0c; border:1px solid var(--line); border-radius:5px; padding:1px 6px; font-size:.9em; direction:ltr; display:inline-block; }
+  footer { margin-top:52px; padding-top:20px; border-top:1px solid var(--line); color:var(--sub); font-size:.9rem; text-align:center; }
+  a { color:var(--clay); }
+  .en { direction:ltr; text-align:left; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Haram<span>Lite</span></h1>
+  <p class="tag">إزالة الموسيقى من الفيديو بالذكاء الاصطناعي — <strong>محلياً 100% على جهازك</strong></p>
+</header>
+
+<div class="btns">
+  <a class="btn" href="https://github.com/SMSMy/HaramLite/releases/latest">⬇ تحميل للتطبيق (ويندوز)</a>
+  <a class="btn ghost" href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg">إضافة المتصفح</a>
+</div>
+
+<div class="note">
+  ⚠️ <strong>إضافة المتصفح تحتاج تطبيق HaramLite المكتبي</strong> — فهي جسر إلى تطبيقك لا خدمة سحابية.
+  ثبّت التطبيق أولاً، ثم فعّل <em>التكامل مع المتصفح</em> من الإعدادات.
+</div>
+
+<h2>ماذا يفعل؟</h2>
+<ul>
+  <li><strong>وضع «أغنية»:</strong> فصل الموسيقى + مؤثرات إحياء + قصّ الصمت تلقائياً.</li>
+  <li><strong>وضع «مقطع عادي»:</strong> إزالة الموسيقى فقط مع إبقاء الكلام طبيعياً.</li>
+  <li><strong>من رابط مباشرة:</strong> الصق رابط يوتيوب وغيره، والتطبيق ينزّل ويعالج.</li>
+  <li><strong>دفعات ومجلد مراقبة:</strong> أفلت عدة ملفات، أو اجعل مجلداً كاملاً يُعالج تلقائياً.</li>
+  <li><strong>إضافة المتصفح:</strong> زرّان داخل مشغّل يوتيوب + مشاهدة مفلترة تتخطّى مقاطع الصمت.</li>
+  <li><strong>بوت تيليجرام (اختياري):</strong> أرسل رابطاً أو ملفاً من هاتفك، والبوت يعالج على جهازك ويعيد الناتج.</li>
+</ul>
+
+<h2>الخصوصية</h2>
+<p>
+  كل خطوة — الفحص، الفصل بالذكاء الاصطناعي، المؤثرات، والترميز — تحدث <strong>على جهازك</strong>.
+  لا رفع لأي ملف، ولا حسابات، ولا تحليلات. وحتى إضافة المتصفح لا تُجري أي طلب شبكة:
+  ما تقرأه يذهب إلى تطبيقك المحلي عبر Native Messaging.
+  التفاصيل في <a href="PRIVACY.html">سياسة الخصوصية</a>.
+</p>
+
+<h2>المتطلبات</h2>
+<ul>
+  <li>ويندوز 10/11 بمعمارية x64 — والمثبت يتولى الباقي (VC++ وأدوات المعالجة والنموذج).</li>
+  <li>للسرعة: كرت NVIDIA (CUDA) أو أي كرت DX12 (DirectML) يُستخدم تلقائياً عند تفعيله.</li>
+</ul>
+
+<h2>المصدر والرخصة</h2>
+<p>
+  المشروع مفتوح المصدر على <a href="https://github.com/SMSMy/HaramLite">GitHub</a> —
+  والرخصة في <a href="https://github.com/SMSMy/HaramLite/blob/main/LICENSE">LICENSE</a>.
+</p>
+
+<footer>
+  <div class="en">
+    <strong>HaramLite</strong> — AI music removal that runs entirely on your machine.
+    <a href="https://github.com/SMSMy/HaramLite/releases/latest">Download for Windows</a> ·
+    <a href="PRIVACY.html">Privacy policy</a> ·
+    <a href="https://github.com/SMSMy/HaramLite">Source</a>
+  </div>
+  <p style="margin-top:14px">يوتيوب علامة تجارية لشركة Google LLC — هذا المشروع غير مرتبط بها ولا معتمد منها.</p>
+</footer>
+
+</div>
+</body>
+</html>
