@@ -44,8 +44,8 @@ pnpm pack:ext:firefox  # للفايرفوكس (يبقي browser_specific_setting
 | اللغة الأساسية | العربية (`ar`) |
 | لغات إضافية | الإنجليزية (`en`) |
 | الفئة | **Productivity** (الإنتاجية) |
-| الموقع الرسمي | `https://smsmy.github.io/HaramLite/` — وبعد ربط الدومين: **`https://haramlite.com`** |
-| سياسة الخصوصية | `https://smsmy.github.io/HaramLite/PRIVACY.html` — وبعد الربط: **`https://haramlite.com/PRIVACY.html`** |
+| الموقع الرسمي | **`https://haramlite.com`** (ومرآته `https://smsmy.github.io/HaramLite/`) |
+| سياسة الخصوصية | **`https://haramlite.com/PRIVACY.html`** |
 | الدعم | `https://github.com/SMSMy/HaramLite/issues` |
 
 > **لا تستخدم رابط المستودع كموقع رسمي**: `github.com/SMSMy/HaramLite/…` لا يخدم
@@ -144,10 +144,11 @@ under a Creative Commons licence.
 
 ---
 
-## ربط الدومين `haramlite.com` بـGitHub Pages
+## ربط الدومين `haramlite.com` بـGitHub Pages — **تمّ ✓ (2026-09-12)**
 
-حالة النطاق (فُحصت 2026-09-12): مُشترى من Cloudflare مع خوادم أسماء عاملة
-(`phoenix.ns.cloudflare.com` · `lou.ns.cloudflare.com`) و**بلا أي سجلات** بعد.
+المنطقة على Cloudflare (`phoenix.ns.cloudflare.com` · `lou.ns.cloudflare.com`)، والسجلات
+العشرة منشورة ومتحقَّق منها عبر DoH محايد: **4 A** + **4 AAAA** على الجذر، **CNAME**
+لـ`www` → `smsmy.github.io`، و**TXT** لإثبات ملكية قوقل. وكلها **DNS only** (بلا بروكسي).
 
 ### السجلات المطلوبة (كلها **DNS only / سحابة رمادية**)
 
@@ -190,12 +191,12 @@ www.haramlite.com. 1 IN CNAME smsmy.github.io.
    وحده. توكن بنطاق `Workers` **لا يصلح** (فُحص: يُقرأ المنطقة لكنه يُرجع **403**
    على سجلات DNS). وأي توكن يُشارَك يُبطَل فوراً بعد الاستخدام.
 
-### بعد انتشار السجلات (يتولاه الوكيل)
+### ما نُفِّذ بعد الانتشار
 
-1. إضافة ملف `docs/CNAME` يحوي `haramlite.com` — **لا قبل انتشار DNS**، لأن
-   تفعيله مبكراً يجعل `github.io` يعيد التوجيه إلى نطاق لا يُحلّ فيبدو الموقع معطلاً.
-2. ضبط الدومين المخصص في Pages + فرض HTTPS بعد إصدار الشهادة.
-3. التحقق العملي: `https://haramlite.com/` و`/PRIVACY.html` وملف إثبات قوقل → 200.
+1. ✓ ملف `docs/CNAME` يحوي `haramlite.com` (أُضيف **بعد** انتشار DNS لا قبله).
+2. ✓ ضبط الدومين المخصص في Pages، و✓ **فرض HTTPS** بعد إصدار شهادة Let's Encrypt.
+3. ✓ التحقق العملي: `/` و`/PRIVACY.html` وملف إثبات قوقل → **200** مع شهادة صالحة،
+   و`https://smsmy.github.io/HaramLite/` يحوّل **301** إلى الدومين.
 
 ### إثبات الملكية في Search Console (بعد الربط)
 
