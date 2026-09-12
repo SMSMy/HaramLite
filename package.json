@@ -9,6 +9,8 @@
     "build": "node ./scripts/fetch_redist.js && tailwindcss -c ./tailwind.config.cjs -i ./src/input.css -o ./src/tailwind.css --minify && tsc && vite build",
     "build:css": "tailwindcss -c ./tailwind.config.cjs -i ./src/input.css -o ./src/tailwind.css --minify",
     "preview": "vite preview",
+    "pack:ext": "node ./scripts/pack-extension.js --target chrome",
+    "pack:ext:firefox": "node ./scripts/pack-extension.js --target firefox",
     "tauri": "tauri"
   },
   "dependencies": {
