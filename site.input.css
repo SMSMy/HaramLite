@@ -148,3 +148,8 @@ html[lang='ar'] body { line-height: 1.75; }
 .entry-card__link { margin-top: 10px; font-size: 13px; font-weight: 700; color: #DA7756; }
 .entry-card__link:hover { text-decoration: underline; }
 @media (prefers-reduced-motion: reduce) { .entry-card__inner { transition: none; } }
+/* ── توهّج حدودي حول بطاقة التحميل في صفحات الأدلة (من تصميم المالك) ───────── */
+.border-glow-clay {
+  border: 1px solid rgba(218, 119, 86, 0.35);
+  box-shadow: 0 0 25px rgba(218, 119, 86, 0.08);
+}

@@ -50,6 +50,17 @@ const bridge =
       }
     }
 ;
+  /* رموز تصميم صفحات الأدلة (من تصدير المالك) — تُدمج دمجاً عميقاً مع
+     رموز الجسر لأن Object.assign يستبدل المفتاح كاملاً ولو دمجناه سطحياً
+     لضاع تدرّج coal و clay في صفحة الإضافة. */
+  const guidePalette =
+  {
+    coal: { base: '#100e0c', surface: '#151311', card: '#1d1b19', cardhover: '#24211e', border: '#2E2C29', muted: '#3b3834' },
+    clay: { DEFAULT: '#DA7756', hover: '#e88665', dark: '#b85f40' },
+    cream: { text: '#F5F2ED', muted: '#A38C85', dim: '#6E6763' },
+  };
+
+
 
 const merge = (a, b) => Object.assign({}, a || {}, b || {});
 
@@ -57,8 +68,15 @@ module.exports = {
   darkMode: 'class',
   theme: {
     extend: Object.assign({}, design.theme.extend, bridge.theme.extend, {
-      colors: merge(design.theme.extend.colors, bridge.theme.extend.colors),
+      colors: (() => {
+        const base = merge(design.theme.extend.colors, bridge.theme.extend.colors);
+        return Object.assign({}, base, {
+          coal: Object.assign({}, base.coal || {}, guidePalette.coal),
+          clay: Object.assign({}, base.clay || {}, guidePalette.clay),
+          cream: guidePalette.cream,
+        });
+      })(), fontFamily: { serif: ['"Thmanyah Serif Display"', 'Georgia', 'serif'], sans: ['"Thmanyah Sans"', '"Segoe UI"', 'system-ui', 'sans-serif'] },
     }),
   },
-  content: ['./docs/index.html', './docs/bridge.html', './docs/PRIVACY.html'],
+  content: ['./docs/index.html', './docs/bridge.html', './docs/PRIVACY.html', './docs/guides/*.html'],
 };

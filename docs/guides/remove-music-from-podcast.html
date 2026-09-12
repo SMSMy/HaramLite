@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>إزالة الموسيقى من البودكاست والمحاضرات | HaramLite</title>
-  <meta name="description" content="لمعالجة حلقات كثيرة: مجلد مراقبة، ومعالجة بالدفعات مع إيقاف، وإرسال من الهاتف، وناتج MP3 خفيف.">
+  <meta name="description" content="لمعالجة حلقات كثيرة: مجلد مراقبة يعالج تلقائياً، ودفعات مع إيقاف، وإرسال من الهاتف، وناتج MP3 خفيف.">
   <link rel="canonical" href="https://haramlite.com/guides/remove-music-from-podcast.html">
   <meta name="theme-color" content="#151311">
   <meta property="og:type" content="article">
   <meta property="og:title" content="إزالة الموسيقى من البودكاست والمحاضرات | HaramLite">
-  <meta property="og:description" content="لمعالجة حلقات كثيرة: مجلد مراقبة، ومعالجة بالدفعات مع إيقاف، وإرسال من الهاتف، وناتج MP3 خفيف.">
+  <meta property="og:description" content="لمعالجة حلقات كثيرة: مجلد مراقبة يعالج تلقائياً، ودفعات مع إيقاف، وإرسال من الهاتف، وناتج MP3 خفيف.">
   <meta property="og:url" content="https://haramlite.com/guides/remove-music-from-podcast.html">
   <meta property="og:image" content="https://haramlite.com/assets/og.png">
   <meta name="twitter:card" content="summary_large_image">
@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="../assets/icon-180.png">
   <link rel="stylesheet" href="../assets/site.css"/>
   <link rel="preload" href="../assets/thmanyah-serif-bold.woff2" as="font" type="font/woff2" crossorigin>
-
+  <link rel="preload" href="../assets/thmanyah-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
   <script type="application/ld+json">
   {
   "@context": "https://schema.org",
@@ -37,7 +37,7 @@
       "name": "ما حدود تيليجرام؟",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "يرسل حتى 50MB ولا ينزّل أكثر من 20MB من ملف ترسله، أما الروابط فبلا حد. ومن يشغّل خادم Bot API محلياً يرفع السقف إلى 2GB."
+        "text": "يرسل حتى 50MB ولا ينزّل أكثر من 20MB من ملف ترسله، أما الروابط فبلا حد؛ ومن يشغّل خادم Bot API محلياً يرفع السقف إلى 2GB."
       }
     },
     {
@@ -47,80 +47,197 @@
         "@type": "Answer",
         "text": "نعم، من زر الإلغاء، مع تنظيف الملفات المؤقتة تلقائياً."
       }
+    },
+    {
+      "@type": "Question",
+      "name": "أي وضع أختار للمحاضرة؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "«مقطع عادي»: يُزيل الموسيقى ويُبقي نبرة المتحدثين كما هي."
+      }
     }
   ]
 }
   </script>
 </head>
-<body class="bg-coal-surface font-body-md text-cream-text">
-  <header class="border-b border-border-muted">
-    <div class="h-16 max-w-3xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter">
-      <a class="flex items-center gap-stack-sm" href="../">
-        <img src="../assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded shadow-sm">
-        <span class="font-label-md text-label-md tracking-wider text-cream-text font-bold uppercase">HaramLite</span>
+<body class="min-h-screen flex flex-col bg-coal-surface text-cream-text">
+
+  <header class="sticky top-0 z-50 bg-coal-surface/90 backdrop-blur-md border-b border-coal-border">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      <a href="../" class="flex items-center gap-3 group">
+        <img src="../assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded-lg shadow-sm border border-coal-border group-hover:border-clay/50 transition-colors">
+        <span class="flex flex-col">
+          <span class="font-serif font-bold text-lg tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span>
+          <span class="text-[10px] text-cream-muted leading-tight -mt-0.5">معالجة محلية 100%</span>
+        </span>
       </a>
-      <nav class="flex items-center gap-stack-md">
-        <a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="./">كل الأدلة</a>
-        <a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="../#download">التحميل</a>
-      </nav>
+      <div class="flex items-center gap-3 sm:gap-4">
+        <a href="#faq" class="text-xs sm:text-sm text-cream-muted hover:text-cream-text transition-colors">الأسئلة الشائعة</a>
+        <a href="../#download" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-clay text-coal-surface font-semibold text-xs sm:text-sm hover:bg-clay-hover shadow-sm transition-all">
+          <span class="material-symbols-outlined text-xs">download</span><span>تحميل فوري</span>
+        </a>
+      </div>
     </div>
   </header>
 
-  <main class="max-w-3xl mx-auto px-margin-mobile lg:px-margin-desktop py-10">
-    <h1 class="font-headline-xl text-headline-xl text-cream-text mb-3">إزالة الموسيقى من البودكاست والمحاضرات</h1>
-    <p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed">حلقة واحدة تُعالجها بيدك، أما سلسلة من عشرين حلقة فتحتاج طريقة أخرى.</p>
+  <main class="flex-grow max-w-3xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12">
 
-    <div class="my-8 p-5 rounded-xl bg-surface-container border border-border-muted flex flex-col sm:flex-row items-center justify-between gap-4">
-      <p class="font-body-md text-body-md text-cream-text text-center sm:text-right">التطبيق مجاني ومفتوح المصدر — ويندوز ١٠/١١، وكل المعالجة على جهازك.</p>
-      <a class="shrink-0 inline-flex items-center gap-2 px-stack-md py-stack-sm rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold hover:bg-primary transition-colors" href="../#download">حمّل البرنامج</a>
-    </div>
-
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-8 mb-3">الوضع المناسب</h2>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-3">استخدم <strong class="text-cream-text">«مقطع عادي»</strong>: يُزيل الموسيقى ويُبقي نبرة المتحدثين. أما «أغنية» فهو لعزل الصوت البشري بالكامل — مفيد للأناشيد، ومبالغ فيه لمحاضرة.</p>
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-8 mb-3">ثلاث طرق لسلسلة كاملة</h2>
-    <ul class="space-y-2 font-body-md text-body-md text-on-surface-variant leading-relaxed list-disc pr-5 mb-2">
-      <li><strong class="text-cream-text">مجلد المراقبة:</strong> حدّد مجلداً، وأي ملف تنسخه إليه يُعالج تلقائياً ويُخرج ناتجه في مجلد النتائج.</li>
-      <li><strong class="text-cream-text">الدفعات:</strong> أفلت عدة ملفات معاً، مع إمكانية الإيقاف في أي لحظة.</li>
-      <li><strong class="text-cream-text">من الهاتف (اختياري):</strong> أرسل الرابط أو الملف إلى روبوتك على تيليجرام، ويعالجه حاسوبك ثم يعيده إليك — بعد ربط برمز من ٦ أرقام.</li>
-    </ul>
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-8 mb-3">وفّر الوقت والحجم</h2>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-3">لو كان المحتوى صوتياً فاختر <strong class="text-cream-text">MP3</strong> بدل MP4: وقت ترميز أقل وحجم أصغر. وفي روبوت تيليجرام خيار «الصوت فقط (MP3) دائماً».</p>
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-8 mb-3">نصائح</h2>
-    <ul class="space-y-2 font-body-md text-body-md text-on-surface-variant leading-relaxed list-disc pr-5 mb-2">
-      <li>سمِّ الملفات قبل المعالجة — الناتج يُكتب باسم مشتقّ من الأصل.</li>
-      <li>عالج حلقة واحدة أولاً للتأكد من الوضع، ثم ادفع الباقي دفعة واحدة.</li>
-      <li>فعّل «التشغيل مع بدء تشغيل ويندوز» إن أردت أن يعمل المجلد في الخلفية دائماً.</li>
-    </ul>
-
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-3">أسئلة شائعة</h2>
-    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-5 mb-1">هل تُفقد الحلقة الأصلية؟</h3>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">لا. الأصل لا يُمس، والناتج ملف جديد بجانبه أو في مجلد النتائج.</p>
-    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-5 mb-1">ما حدود تيليجرام؟</h3>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">يرسل حتى 50MB ولا ينزّل أكثر من 20MB من ملف ترسله، أما الروابط فبلا حد. ومن يشغّل خادم Bot API محلياً يرفع السقف إلى 2GB.</p>
-    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-5 mb-1">هل يمكن الإيقاف أثناء دفعة؟</h3>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">نعم، من زر الإلغاء، مع تنظيف الملفات المؤقتة تلقائياً.</p>
-
-    <div class="my-8 p-5 rounded-xl bg-surface-container border border-border-muted flex flex-col sm:flex-row items-center justify-between gap-4">
-      <p class="font-body-md text-body-md text-cream-text text-center sm:text-right">التطبيق مجاني ومفتوح المصدر — ويندوز ١٠/١١، وكل المعالجة على جهازك.</p>
-      <a class="shrink-0 inline-flex items-center gap-2 px-stack-md py-stack-sm rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold hover:bg-primary transition-colors" href="../#download">تحميل HaramLite</a>
-    </div>
-    <nav class="mt-8 pt-5 border-t border-border-muted">
-      <p class="font-label-md text-label-md font-bold text-cream-text mb-2">أدلة أخرى</p>
-      <ul class="space-y-1.5">
-        <li><a class="text-clay-accent hover:underline" href="remove-music-from-video.html">إزالة الموسيقى من الفيديو على الكمبيوتر</a></li>
-        <li><a class="text-clay-accent hover:underline" href="watch-youtube-without-music.html">مشاهدة يوتيوب بدون موسيقى داخل المتصفح</a></li>
-        <li><a class="text-clay-accent hover:underline" href="ai-vocal-separation.html">كيف يفصل الذكاء الاصطناعي الصوت عن الموسيقى</a></li>
-      </ul>
+    <nav class="flex items-center gap-2 text-xs text-cream-muted mb-4">
+      <a href="../" class="hover:text-clay transition-colors">الرئيسية</a>
+      <span class="material-symbols-outlined text-[10px] opacity-60">chevron_left</span>
+      <a href="./" class="hover:text-clay transition-colors">الأدلة</a>
+      <span class="material-symbols-outlined text-[10px] opacity-60">chevron_left</span>
+      <span class="text-cream-text font-medium truncate">البودكاست والمحاضرات</span>
     </nav>
+
+    <section class="mb-8">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-clay/10 border border-clay/25 text-clay text-xs font-semibold mb-3">
+        <span class="material-symbols-outlined text-xs">bolt</span><span>دليل مبسط · للسلاسل الطويلة</span>
+      </div>
+      <h1 class="font-serif text-2xl sm:text-4xl font-bold text-cream-text leading-tight mb-4">إزالة الموسيقى من البودكاست والمحاضرات</h1>
+      <p class="text-base sm:text-lg text-cream-muted leading-relaxed">حلقة واحدة تُعالجها بيدك، أما سلسلة من عشرين حلقة فتحتاج <strong class="text-clay font-bold">طريقة أخرى</strong>.</p>
+    </section>
+
+    <div id="quick-download" class="my-6 p-5 sm:p-6 rounded-2xl bg-coal-card border-glow-clay relative overflow-hidden">
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-5 relative z-10">
+        <div class="text-center sm:text-right space-y-1">
+          <div class="flex items-center justify-center sm:justify-start gap-2">
+            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-xs font-medium text-cream-muted">مجاني ومفتوح المصدر · الإصدار 0.2.2</span>
+          </div>
+          <h2 class="font-serif font-bold text-lg sm:text-xl text-cream-text">برنامج HaramLite لنظام ويندوز 10 / 11</h2>
+          <p class="text-xs sm:text-sm text-cream-muted">حجم خفيف (~220MB متكامل) · معالجة 100% محلية · بلا اشتراك ولا حساب</p>
+        </div>
+        <a href="../#download" class="shrink-0 inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all shadow-lg">
+          <span class="material-symbols-outlined ">download</span><span>حمّل المثبّت (.exe)</span>
+        </a>
+      </div>
+    </div>
+
+    <section class="mt-10 mb-12">
+      <div class="flex items-center justify-between mb-5 border-b border-coal-border pb-3">
+        <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text flex items-center gap-2.5"><span class="material-symbols-outlined text-clay text-lg">checklist</span> ثلاث طرق لسلسلة كاملة</h2>
+        <span class="text-xs text-cream-muted">اختر ما يناسبك</span>
+      </div>
+      <div class="grid grid-cols-1 gap-3.5">
+        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
+          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">1</div>
+          <div class="space-y-1">
+            <h3 class="font-bold text-sm sm:text-base text-cream-text">مجلد المراقبة</h3>
+            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">حدّد مجلداً، وأي ملف تنسخه إليه يُعالج تلقائياً في الخلفية ويُخرج ناتجه في مجلد النتائج.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
+          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">2</div>
+          <div class="space-y-1">
+            <h3 class="font-bold text-sm sm:text-base text-cream-text">الدفعات</h3>
+            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">أفلت عدة ملفات معاً فتُعالج بالترتيب، مع إمكانية الإيقاف في أي لحظة.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
+          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">3</div>
+          <div class="space-y-1">
+            <h3 class="font-bold text-sm sm:text-base text-cream-text">من الهاتف عبر تيليجرام (اختياري)</h3>
+            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">أرسل الرابط أو الملف إلى روبوتك، ويعالجه حاسوبك ثم يعيده إليك — بعد ربطه برمز من ستة أرقام.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="my-10">
+      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">verified_user</span> حدود صريحة وأمانة فنية</h2>
+      <p class="text-xs sm:text-sm text-cream-muted mb-4">لا توجد أداة في العالم تعطي فصلاً مثالياً 100%؛ والفرق الحقيقي هو جودة العزل دون تشويه نبرة الصوت:</p>
+      <ul class="space-y-2.5 text-xs sm:text-sm text-cream-muted bg-coal-card p-4 sm:p-5 rounded-xl border border-coal-border">
+        <li class="flex items-start gap-2.5">
+          <span class="material-symbols-outlined text-emerald-400 mt-1 text-xs shrink-0">check_circle</span>
+          <span><strong class="text-cream-text">وفّر الوقت:</strong> لو كان المحتوى صوتياً فاختر MP3 بدل MP4: ترميز أسرع وحجم أصغر.</span>
+        </li>
+        <li class="flex items-start gap-2.5">
+          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
+          <span><strong class="text-cream-text">سمِّ الملفات أولاً:</strong> الناتج يُكتب باسم مشتقّ من الأصل، فتسمية واضحة توفّر عليك الترتيب لاحقاً.</span>
+        </li>
+        <li class="flex items-start gap-2.5">
+          <span class="material-symbols-outlined text-emerald-400 mt-1 text-xs shrink-0">check_circle</span>
+          <span><strong class="text-cream-text">الأصل لا يُمس:</strong> الناتج ملف جديد بجانبه أو في مجلد النتائج.</span>
+        </li>
+        <li class="flex items-start gap-2.5">
+          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
+          <span><strong class="text-cream-text">في الخلفية:</strong> فعّل «التشغيل مع بدء تشغيل ويندوز» ليعمل مجلد المراقبة دائماً.</span>
+        </li>
+      </ul>
+    </section>
+
+    <section id="faq" class="my-12">
+      <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text mb-6 border-b border-coal-border pb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">help</span> الأسئلة الشائعة</h2>
+      <div class="space-y-3.5">
+        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
+          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
+            <span>هل تُفقد الحلقة الأصلية؟</span>
+            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
+          </summary>
+          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">لا. الأصل لا يُمس، والناتج ملف جديد بجانبه أو في مجلد النتائج.</div>
+        </details>
+        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
+          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
+            <span>ما حدود تيليجرام؟</span>
+            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
+          </summary>
+          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">يرسل حتى 50MB ولا ينزّل أكثر من 20MB من ملف ترسله، أما الروابط فبلا حد؛ ومن يشغّل خادم Bot API محلياً يرفع السقف إلى 2GB.</div>
+        </details>
+        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
+          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
+            <span>هل يمكن الإيقاف أثناء دفعة؟</span>
+            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
+          </summary>
+          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">نعم، من زر الإلغاء، مع تنظيف الملفات المؤقتة تلقائياً.</div>
+        </details>
+        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
+          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
+            <span>أي وضع أختار للمحاضرة؟</span>
+            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
+          </summary>
+          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">«مقطع عادي»: يُزيل الموسيقى ويُبقي نبرة المتحدثين كما هي.</div>
+        </details>
+      </div>
+    </section>
+
+    <div class="p-6 rounded-2xl bg-coal-card border border-coal-border text-center space-y-4 my-8">
+      <h3 class="font-serif font-bold text-xl text-cream-text">عالج سلسلتك كاملة</h3>
+      <p class="text-xs sm:text-sm text-cream-muted max-w-md mx-auto">حدّد مجلداً واترك الباقي على البرنامج.</p>
+      <div class="flex flex-wrap items-center justify-center gap-3 pt-1">
+        <a href="../#download" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all shadow-md"><span class="material-symbols-outlined ">download</span><span>تحميل HaramLite لويندوز</span></a>
+        <a href="../bridge.html" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-coal-surface border border-coal-border text-cream-muted hover:text-cream-text hover:border-clay/40 text-sm transition-colors"><span class="material-symbols-outlined ">extension</span><span>إضافة المتصفح</span></a>
+      </div>
+    </div>
+
+    <nav class="mt-12 pt-6 border-t border-coal-border">
+      <h4 class="font-bold text-xs uppercase tracking-wider text-cream-dim mb-3">أدلة ذات صلة</h4>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+      <a href="remove-music-from-video.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
+        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">إزالة الموسيقى من الفيديو على الكمبيوتر <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
+        <p class="text-[11px] text-cream-muted mt-1 truncate">تخطي الصمت المباشر داخل المتصفح</p>
+      </a>
+      <a href="watch-youtube-without-music.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
+        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">مشاهدة يوتيوب بدون موسيقى <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
+        <p class="text-[11px] text-cream-muted mt-1 truncate">تخطي الصمت المباشر في المتصفح</p>
+      </a>
+      <a href="ai-vocal-separation.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
+        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">كيف يفصل الذكاء الاصطناعي الصوت؟ <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
+        <p class="text-[11px] text-cream-muted mt-1 truncate">شرح تقني مبسّط لموديل الفصل</p>
+      </a>
+      </div>
+    </nav>
+
+    <p class="mt-8 text-xs text-cream-dim leading-relaxed">كل المعالجة تحدث على جهازك: لا يُرفع أي ملف، ولا حساب ولا تتبّع. راجع <a href="../PRIVACY.html" class="text-clay hover:underline">سياسة الخصوصية</a>.</p>
   </main>
 
-  <footer class="border-t border-border-muted py-stack-lg mt-6">
-    <div class="max-w-3xl mx-auto px-margin-mobile lg:px-margin-desktop flex flex-col sm:flex-row items-center justify-between gap-3">
-      <p class="font-label-sm text-label-sm text-on-surface-variant">HaramLite — إزالة الموسيقى على جهازك، بلا رفع ولا حساب.</p>
-      <nav class="flex gap-stack-md">
-        <a class="font-label-sm text-label-sm text-clay-accent hover:underline" href="../PRIVACY.html">الخصوصية</a>
-        <a class="font-label-sm text-label-sm text-clay-accent hover:underline" href="https://github.com/SMSMy/HaramLite" rel="noreferrer" target="_blank">المستودع</a>
-      </nav>
+  <footer class="border-t border-coal-border py-6 bg-coal-surface mt-auto">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-cream-muted">
+      <span>© 2026 HaramLite · إزالة الموسيقى محلياً على جهازك، بلا رفع ولا حساب.</span>
+      <div class="flex items-center gap-4">
+        <a href="../PRIVACY.html" class="hover:text-clay transition-colors">الخصوصية</a>
+        <a href="https://github.com/SMSMy/HaramLite" target="_blank" rel="noreferrer" class="hover:text-clay transition-colors">المستودع</a>
+      </div>
     </div>
   </footer>
 </body>

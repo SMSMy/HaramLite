@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>إزالة الموسيقى من الفيديو على الكمبيوتر | HaramLite</title>
-  <meta name="description" content="كيف تُزيل الموسيقى من فيديو أو ملف صوتي على جهازك: الخطوات الأربع، والوضع المناسب، وحدود الفصل بصراحة.">
+  <title>إزالة الموسيقى من الفيديو على الكمبيوتر | دليل سريع | HaramLite</title>
+  <meta name="description" content="كيف تُزيل الموسيقى من فيديو أو ملف صوتي على جهازك: أربع خطوات، والوضع المناسب، وحدود الفصل بصراحة.">
   <link rel="canonical" href="https://haramlite.com/guides/remove-music-from-video.html">
   <meta name="theme-color" content="#151311">
   <meta property="og:type" content="article">
-  <meta property="og:title" content="إزالة الموسيقى من الفيديو على الكمبيوتر | HaramLite">
-  <meta property="og:description" content="كيف تُزيل الموسيقى من فيديو أو ملف صوتي على جهازك: الخطوات الأربع، والوضع المناسب، وحدود الفصل بصراحة.">
+  <meta property="og:title" content="إزالة الموسيقى من الفيديو على الكمبيوتر | دليل سريع | HaramLite">
+  <meta property="og:description" content="كيف تُزيل الموسيقى من فيديو أو ملف صوتي على جهازك: أربع خطوات، والوضع المناسب، وحدود الفصل بصراحة.">
   <meta property="og:url" content="https://haramlite.com/guides/remove-music-from-video.html">
   <meta property="og:image" content="https://haramlite.com/assets/og.png">
   <meta name="twitter:card" content="summary_large_image">
@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="../assets/icon-180.png">
   <link rel="stylesheet" href="../assets/site.css"/>
   <link rel="preload" href="../assets/thmanyah-serif-bold.woff2" as="font" type="font/woff2" crossorigin>
-
+  <link rel="preload" href="../assets/thmanyah-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
   <script type="application/ld+json">
   {
   "@context": "https://schema.org",
@@ -26,18 +26,18 @@
   "mainEntity": [
     {
       "@type": "Question",
-      "name": "إزالة أم تخفيت؟",
+      "name": "هل هي إزالة حقيقية أم تخفيت؟",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "إزالة: يُحذف مسار الموسيقى المفصول. وقد تبقى آثار خفيفة في الحالات الصعبة مثل اختلاط الغناء بالكلام."
+        "text": "إزالة كاملة: يُفصل مسار الموسيقى ويُحذف من الملف النهائي، لا مجرد خفض ترددات."
       }
     },
     {
       "@type": "Question",
-      "name": "هل أحتاج إنترنت؟",
+      "name": "هل أحتاج اتصالاً دائماً بالإنترنت؟",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "لا. بعد التثبيت يعمل كل شيء بلا شبكة؛ الإنترنت يُستخدم فقط إن طلبت تنزيل رابط أو لتحديث أدوات التنزيل."
+        "text": "لا. بعد التثبيت يعمل بلا شبكة؛ الإنترنت يلزم فقط إن أردت لصق رابط لينزّله البرنامج."
       }
     },
     {
@@ -45,7 +45,7 @@
       "name": "هل تُرفع ملفاتي؟",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "لا. لا يوجد خادم في المسار: الفصل والتحسين والترميز كلها على جهازك."
+        "text": "لا. لا يوجد خادم في مسار المعالجة: كل المراحل في ذاكرة جهازك."
       }
     },
     {
@@ -53,94 +53,228 @@
       "name": "ما الصيغ المدعومة؟",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "ما يفكّه FFmpeg تقريباً: MP4 وMKV وMOV وWEBM للفيديو، وMP3 وWAV وM4A وFLAC للصوت. والناتج MP3 أو MP4."
+        "text": "ما يفكّه FFmpeg تقريباً: MP4 وMKV وMOV وWEBM للفيديو، وMP3 وWAV وM4A وFLAC للصوت. والناتج MP4 أو MP3."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "هل يعمل على فيديو طويل؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "نعم، والزمن يتناسب مع الطول؛ وعلى كرت رسوميات مدعوم تكون المعالجة أسرع بعدّة أضعاف."
       }
     }
   ]
 }
   </script>
 </head>
-<body class="bg-coal-surface font-body-md text-cream-text">
-  <header class="border-b border-border-muted">
-    <div class="h-16 max-w-3xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter">
-      <a class="flex items-center gap-stack-sm" href="../">
-        <img src="../assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded shadow-sm">
-        <span class="font-label-md text-label-md tracking-wider text-cream-text font-bold uppercase">HaramLite</span>
+<body class="min-h-screen flex flex-col bg-coal-surface text-cream-text">
+
+  <header class="sticky top-0 z-50 bg-coal-surface/90 backdrop-blur-md border-b border-coal-border">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      <a href="../" class="flex items-center gap-3 group">
+        <img src="../assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded-lg shadow-sm border border-coal-border group-hover:border-clay/50 transition-colors">
+        <span class="flex flex-col">
+          <span class="font-serif font-bold text-lg tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span>
+          <span class="text-[10px] text-cream-muted leading-tight -mt-0.5">معالجة محلية 100%</span>
+        </span>
       </a>
-      <nav class="flex items-center gap-stack-md">
-        <a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="./">كل الأدلة</a>
-        <a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="../#download">التحميل</a>
-      </nav>
+      <div class="flex items-center gap-3 sm:gap-4">
+        <a href="#faq" class="text-xs sm:text-sm text-cream-muted hover:text-cream-text transition-colors">الأسئلة الشائعة</a>
+        <a href="../#download" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-clay text-coal-surface font-semibold text-xs sm:text-sm hover:bg-clay-hover shadow-sm transition-all">
+          <span class="material-symbols-outlined text-xs">download</span><span>تحميل فوري</span>
+        </a>
+      </div>
     </div>
   </header>
 
-  <main class="max-w-3xl mx-auto px-margin-mobile lg:px-margin-desktop py-10">
-    <h1 class="font-headline-xl text-headline-xl text-cream-text mb-3">إزالة الموسيقى من الفيديو على الكمبيوتر</h1>
-    <p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed">لا فلتر يخفت الترددات، بل <strong>فصل</strong> للمسار الصوتي: يُجزّأ الصوت إلى غناء وموسيقى، ثم تُحذف الموسيقى.</p>
+  <main class="flex-grow max-w-3xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12">
 
-    <div class="my-8 p-5 rounded-xl bg-surface-container border border-border-muted flex flex-col sm:flex-row items-center justify-between gap-4">
-      <p class="font-body-md text-body-md text-cream-text text-center sm:text-right">التطبيق مجاني ومفتوح المصدر — ويندوز ١٠/١١، وكل المعالجة على جهازك.</p>
-      <a class="shrink-0 inline-flex items-center gap-2 px-stack-md py-stack-sm rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold hover:bg-primary transition-colors" href="../#download">حمّل البرنامج</a>
-    </div>
-
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-8 mb-3">الخطوات</h2>
-    <ol class="space-y-3 font-body-md text-body-md text-on-surface-variant leading-relaxed list-decimal pr-5 mb-2">
-      <li><strong class="text-cream-text">ثبّت التطبيق وشغّله</strong> — مثبّت واحد يتولى الباقي، بلا إعداد يدوي.</li>
-      <li><strong class="text-cream-text">أفلت الملف أو الصق رابطاً</strong> — ويُجلب الرابط ويعالج في خطوة واحدة.</li>
-      <li><strong class="text-cream-text">اختر الوضع والصيغة</strong> — والناتج MP3 أو MP4.</li>
-      <li><strong class="text-cream-text">اضغط المعالجة</strong> — الناتج بجانب ملفك الأصلي (وروابط المتصفح في مجلد نتائجك).</li>
-    </ol>
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-8 mb-3">أي وضع تختار؟</h2>
-    <ul class="space-y-2 font-body-md text-body-md text-on-surface-variant leading-relaxed list-disc pr-5 mb-2">
-      <li><strong class="text-cream-text">مقطع عادي:</strong> يُزيل الموسيقى ويُبقي الكلام بنبرته — للدروس والمقابلات والبودكاست.</li>
-      <li><strong class="text-cream-text">أغنية:</strong> عزل كامل للصوت البشري مع تحسين الحضور والصدى — للأناشيد والمقاطع الغنائية.</li>
-      <li>جرّب الاثنين على مقطع قصير أولاً ثم اختر لما بقي.</li>
-    </ul>
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-8 mb-3">حدود صريحة</h2>
-    <ul class="space-y-2 font-body-md text-body-md text-on-surface-variant leading-relaxed list-disc pr-5 mb-2">
-      <li>الغناء المختلط بالكلام: أصعب حالة على أي أداة.</li>
-      <li>الغناء الجماعي أو الكورال يُعامل كصوت بشري فيبقى — سلوك متوقّع لا خطأ.</li>
-      <li>التسجيلات الرديئة وضجيج الخلفية يقلّلان الدقة.</li>
-      <li>لا أداة اليوم تعطي فصلاً مثالياً ١٠٠٪؛ الفرق هو كم يبقى من الموسيقى وكم يتضرر الصوت.</li>
-    </ul>
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-8 mb-3">بلا إعادة معالجة</h2>
-    <ul class="space-y-2 font-body-md text-body-md text-on-surface-variant leading-relaxed list-disc pr-5 mb-2">
-      <li><strong class="text-cream-text">مجلد مراقبة:</strong> أي ملف تنسخه إليه يُعالج تلقائياً في الخلفية.</li>
-      <li><strong class="text-cream-text">دفعات:</strong> أفلت عدة ملفات معاً، مع إمكانية الإيقاف في أي لحظة.</li>
-      <li><strong class="text-cream-text">داخل المتصفح:</strong> شاهد يوتيوب بعد إزالة الموسيقى مع تخطي فترات الصمت.</li>
-    </ul>
-
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-3">أسئلة شائعة</h2>
-    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-5 mb-1">إزالة أم تخفيت؟</h3>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">إزالة: يُحذف مسار الموسيقى المفصول. وقد تبقى آثار خفيفة في الحالات الصعبة مثل اختلاط الغناء بالكلام.</p>
-    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-5 mb-1">هل أحتاج إنترنت؟</h3>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">لا. بعد التثبيت يعمل كل شيء بلا شبكة؛ الإنترنت يُستخدم فقط إن طلبت تنزيل رابط أو لتحديث أدوات التنزيل.</p>
-    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-5 mb-1">هل تُرفع ملفاتي؟</h3>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">لا. لا يوجد خادم في المسار: الفصل والتحسين والترميز كلها على جهازك.</p>
-    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-5 mb-1">ما الصيغ المدعومة؟</h3>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">ما يفكّه FFmpeg تقريباً: MP4 وMKV وMOV وWEBM للفيديو، وMP3 وWAV وM4A وFLAC للصوت. والناتج MP3 أو MP4.</p>
-
-    <div class="my-8 p-5 rounded-xl bg-surface-container border border-border-muted flex flex-col sm:flex-row items-center justify-between gap-4">
-      <p class="font-body-md text-body-md text-cream-text text-center sm:text-right">التطبيق مجاني ومفتوح المصدر — ويندوز ١٠/١١، وكل المعالجة على جهازك.</p>
-      <a class="shrink-0 inline-flex items-center gap-2 px-stack-md py-stack-sm rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold hover:bg-primary transition-colors" href="../#download">تحميل HaramLite</a>
-    </div>
-    <nav class="mt-8 pt-5 border-t border-border-muted">
-      <p class="font-label-md text-label-md font-bold text-cream-text mb-2">أدلة أخرى</p>
-      <ul class="space-y-1.5">
-        <li><a class="text-clay-accent hover:underline" href="watch-youtube-without-music.html">مشاهدة يوتيوب بدون موسيقى داخل المتصفح</a></li>
-        <li><a class="text-clay-accent hover:underline" href="ai-vocal-separation.html">كيف يفصل الذكاء الاصطناعي الصوت عن الموسيقى</a></li>
-        <li><a class="text-clay-accent hover:underline" href="remove-music-from-podcast.html">إزالة الموسيقى من البودكاست والمحاضرات</a></li>
-      </ul>
+    <nav class="flex items-center gap-2 text-xs text-cream-muted mb-4">
+      <a href="../" class="hover:text-clay transition-colors">الرئيسية</a>
+      <span class="material-symbols-outlined text-[10px] opacity-60">chevron_left</span>
+      <a href="./" class="hover:text-clay transition-colors">الأدلة</a>
+      <span class="material-symbols-outlined text-[10px] opacity-60">chevron_left</span>
+      <span class="text-cream-text font-medium truncate">إزالة الموسيقى من الفيديو</span>
     </nav>
+
+    <section class="mb-8">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-clay/10 border border-clay/25 text-clay text-xs font-semibold mb-3">
+        <span class="material-symbols-outlined text-xs">bolt</span><span>دليل مبسط وسريع · لا يتطلب إنترنت بعد التثبيت</span>
+      </div>
+      <h1 class="font-serif text-2xl sm:text-4xl font-bold text-cream-text leading-tight mb-4">إزالة الموسيقى من الفيديو على الكمبيوتر</h1>
+      <p class="text-base sm:text-lg text-cream-muted leading-relaxed">لا فلتر يخفض الترددات، بل <strong class="text-clay font-bold">فصلاً حقيقياً بالذكاء الاصطناعي</strong>: يُعزل مسار الموسيقى ويُحذف، ويبقى الكلام بنبرته — بلا رفع الفيديو إلى أي خادم.</p>
+    </section>
+
+    <div id="quick-download" class="my-6 p-5 sm:p-6 rounded-2xl bg-coal-card border-glow-clay relative overflow-hidden">
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-5 relative z-10">
+        <div class="text-center sm:text-right space-y-1">
+          <div class="flex items-center justify-center sm:justify-start gap-2">
+            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-xs font-medium text-cream-muted">مجاني ومفتوح المصدر · الإصدار 0.2.2</span>
+          </div>
+          <h2 class="font-serif font-bold text-lg sm:text-xl text-cream-text">برنامج HaramLite لنظام ويندوز 10 / 11</h2>
+          <p class="text-xs sm:text-sm text-cream-muted">حجم خفيف (~220MB متكامل) · معالجة 100% محلية · بلا اشتراك ولا حساب</p>
+        </div>
+        <a href="../#download" class="shrink-0 inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all shadow-lg">
+          <span class="material-symbols-outlined ">download</span><span>حمّل المثبّت (.exe)</span>
+        </a>
+      </div>
+    </div>
+
+    <section class="mt-10 mb-12">
+      <div class="flex items-center justify-between mb-5 border-b border-coal-border pb-3">
+        <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text flex items-center gap-2.5"><span class="material-symbols-outlined text-clay text-lg">checklist</span> الخطوات الأربع العملية</h2>
+        <span class="text-xs text-cream-muted">أقل من 3 دقائق للبدء</span>
+      </div>
+      <div class="grid grid-cols-1 gap-3.5">
+        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
+          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">1</div>
+          <div class="space-y-1">
+            <h3 class="font-bold text-sm sm:text-base text-cream-text">ثبّت التطبيق وافتحه</h3>
+            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">مثبّت واحد يتولى إعداد النموذج وأدوات المعالجة تلقائياً، بلا أوامر ولا إعدادات برمجية.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
+          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">2</div>
+          <div class="space-y-1">
+            <h3 class="font-bold text-sm sm:text-base text-cream-text">أفلت الفيديو أو الصق رابطاً</h3>
+            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">اسحب أي ملف (MP4 · MKV · MOV) أو الصق رابط يوتيوب، فيُجلب ويُعالج في خطوة واحدة.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
+          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">3</div>
+          <div class="space-y-1">
+            <h3 class="font-bold text-sm sm:text-base text-cream-text">اختر الوضع المناسب</h3>
+            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">«مقطع عادي» للبودكاست والمحاضرات، أو «أغنية» للأناشيد والمقاطع الغنائية.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
+          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">4</div>
+          <div class="space-y-1">
+            <h3 class="font-bold text-sm sm:text-base text-cream-text">اضغط ابدأ، وخذ الناتج</h3>
+            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">يُحفظ بجانب ملفك الأصلي: MP4 للفيديو أو MP3 للصوت، مع إشعار عند الانتهاء.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="my-10 p-5 sm:p-6 rounded-2xl bg-coal-card border border-coal-border">
+      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-4 flex items-center gap-2"><span class="material-symbols-outlined text-clay">tune</span> أي الوضعين تختار؟</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
+          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🎬</span>
+          <h3 class="font-bold text-cream-text text-sm sm:text-base">وضع: مقطع عادي</h3></div>
+          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> المقابلات والبودكاست والدروس — يزيل الموسيقى الخلفية ويُبقي الكلام بنبرته الطبيعية.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
+          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🎵</span>
+          <h3 class="font-bold text-cream-text text-sm sm:text-base">وضع: أغنية</h3></div>
+          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> الأناشيد والمقاطع الغنائية — عزل كامل للصوت البشري مع تحسين الحضور والصدى، وتخطّي فترات الصمت.</p>
+        </div>
+      </div>
+    </section>
+    <section class="my-10">
+      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">verified_user</span> حدود صريحة وأمانة فنية</h2>
+      <p class="text-xs sm:text-sm text-cream-muted mb-4">لا توجد أداة في العالم تعطي فصلاً مثالياً 100%؛ والفرق الحقيقي هو جودة العزل دون تشويه نبرة الصوت:</p>
+      <ul class="space-y-2.5 text-xs sm:text-sm text-cream-muted bg-coal-card p-4 sm:p-5 rounded-xl border border-coal-border">
+        <li class="flex items-start gap-2.5">
+          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
+          <span><strong class="text-cream-text">اختلاط الغناء بالكلام:</strong> عند التداخل الشديد قد تبقى ترسبات صوتية خفيفة جداً — وهذا أصعب ما يواجه أي أداة.</span>
+        </li>
+        <li class="flex items-start gap-2.5">
+          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
+          <span><strong class="text-cream-text">الكورال والغناء الجماعي:</strong> يُصنَّف صوتاً بشرياً فيبقى في المسار — سلوك مقصود لا خطأ.</span>
+        </li>
+        <li class="flex items-start gap-2.5">
+          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
+          <span><strong class="text-cream-text">التسجيلات الرديئة:</strong> الضجيج والتشويش يقلّلان دقة الفصل.</span>
+        </li>
+        <li class="flex items-start gap-2.5">
+          <span class="material-symbols-outlined text-emerald-400 mt-1 text-xs shrink-0">check_circle</span>
+          <span><strong class="text-cream-text">خصوصية مطلقة:</strong> الفصل والتحسين والترميز كلها على جهازك، ولا يُرسل أي بايت لخادم خارجي.</span>
+        </li>
+      </ul>
+    </section>
+
+    <section id="faq" class="my-12">
+      <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text mb-6 border-b border-coal-border pb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">help</span> الأسئلة الشائعة</h2>
+      <div class="space-y-3.5">
+        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
+          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
+            <span>هل هي إزالة حقيقية أم تخفيت؟</span>
+            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
+          </summary>
+          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">إزالة كاملة: يُفصل مسار الموسيقى ويُحذف من الملف النهائي، لا مجرد خفض ترددات.</div>
+        </details>
+        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
+          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
+            <span>هل أحتاج اتصالاً دائماً بالإنترنت؟</span>
+            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
+          </summary>
+          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">لا. بعد التثبيت يعمل بلا شبكة؛ الإنترنت يلزم فقط إن أردت لصق رابط لينزّله البرنامج.</div>
+        </details>
+        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
+          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
+            <span>هل تُرفع ملفاتي؟</span>
+            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
+          </summary>
+          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">لا. لا يوجد خادم في مسار المعالجة: كل المراحل في ذاكرة جهازك.</div>
+        </details>
+        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
+          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
+            <span>ما الصيغ المدعومة؟</span>
+            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
+          </summary>
+          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">ما يفكّه FFmpeg تقريباً: MP4 وMKV وMOV وWEBM للفيديو، وMP3 وWAV وM4A وFLAC للصوت. والناتج MP4 أو MP3.</div>
+        </details>
+        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
+          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
+            <span>هل يعمل على فيديو طويل؟</span>
+            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
+          </summary>
+          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">نعم، والزمن يتناسب مع الطول؛ وعلى كرت رسوميات مدعوم تكون المعالجة أسرع بعدّة أضعاف.</div>
+        </details>
+      </div>
+    </section>
+
+    <div class="p-6 rounded-2xl bg-coal-card border border-coal-border text-center space-y-4 my-8">
+      <h3 class="font-serif font-bold text-xl text-cream-text">ابدأ الآن بتنقية مقاطعك</h3>
+      <p class="text-xs sm:text-sm text-cream-muted max-w-md mx-auto">تطبيق خفيف، محلي بالكامل، بلا قيود على عدد الملفات أو مدتها.</p>
+      <div class="flex flex-wrap items-center justify-center gap-3 pt-1">
+        <a href="../#download" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all shadow-md"><span class="material-symbols-outlined ">download</span><span>تحميل HaramLite لويندوز</span></a>
+        <a href="../bridge.html" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-coal-surface border border-coal-border text-cream-muted hover:text-cream-text hover:border-clay/40 text-sm transition-colors"><span class="material-symbols-outlined ">extension</span><span>إضافة المتصفح</span></a>
+      </div>
+    </div>
+
+    <nav class="mt-12 pt-6 border-t border-coal-border">
+      <h4 class="font-bold text-xs uppercase tracking-wider text-cream-dim mb-3">أدلة ذات صلة</h4>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+      <a href="watch-youtube-without-music.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
+        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">مشاهدة يوتيوب بدون موسيقى <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
+        <p class="text-[11px] text-cream-muted mt-1 truncate">تخطي الصمت المباشر في المتصفح</p>
+      </a>
+      <a href="ai-vocal-separation.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
+        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">كيف يفصل الذكاء الاصطناعي الصوت؟ <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
+        <p class="text-[11px] text-cream-muted mt-1 truncate">شرح تقني مبسّط لموديل الفصل</p>
+      </a>
+      <a href="remove-music-from-podcast.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
+        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">إزالة الموسيقى من البودكاست <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
+        <p class="text-[11px] text-cream-muted mt-1 truncate">مجلد مراقبة ودفعات لسلاسل طويلة</p>
+      </a>
+      </div>
+    </nav>
+
+    <p class="mt-8 text-xs text-cream-dim leading-relaxed">كل المعالجة تحدث على جهازك: لا يُرفع أي ملف، ولا حساب ولا تتبّع. راجع <a href="../PRIVACY.html" class="text-clay hover:underline">سياسة الخصوصية</a>.</p>
   </main>
 
-  <footer class="border-t border-border-muted py-stack-lg mt-6">
-    <div class="max-w-3xl mx-auto px-margin-mobile lg:px-margin-desktop flex flex-col sm:flex-row items-center justify-between gap-3">
-      <p class="font-label-sm text-label-sm text-on-surface-variant">HaramLite — إزالة الموسيقى على جهازك، بلا رفع ولا حساب.</p>
-      <nav class="flex gap-stack-md">
-        <a class="font-label-sm text-label-sm text-clay-accent hover:underline" href="../PRIVACY.html">الخصوصية</a>
-        <a class="font-label-sm text-label-sm text-clay-accent hover:underline" href="https://github.com/SMSMy/HaramLite" rel="noreferrer" target="_blank">المستودع</a>
-      </nav>
+  <footer class="border-t border-coal-border py-6 bg-coal-surface mt-auto">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-cream-muted">
+      <span>© 2026 HaramLite · إزالة الموسيقى محلياً على جهازك، بلا رفع ولا حساب.</span>
+      <div class="flex items-center gap-4">
+        <a href="../PRIVACY.html" class="hover:text-clay transition-colors">الخصوصية</a>
+        <a href="https://github.com/SMSMy/HaramLite" target="_blank" rel="noreferrer" class="hover:text-clay transition-colors">المستودع</a>
+      </div>
     </div>
   </footer>
 </body>
