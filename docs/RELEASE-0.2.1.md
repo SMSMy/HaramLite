@@ -73,6 +73,16 @@
 ## بصمات الملفات
 
 ```
-HaramLite_0.2.1_x64-setup.exe   <يُضاف عند إنشاء الإصدار>
-HaramLite_0.2.1_x64_en-US.msi   <يُضاف عند إنشاء الإصدار>
+HaramLite_0.2.1_x64-setup.exe   220.1 MB   sha256:8DDD7924C4080D36E04E2041698E0E5CDD099DEE51C52E9125E097EE2DACDD1A
+HaramLite_0.2.1_x64_en-US.msi   431.4 MB   sha256:A4D56224AE40D4CDF4FA8911C99B8E39A2BDF2D73EBD1A18DBACBA53EF0D488C
 ```
+
+> هذه النسخ بُنيت محلياً (بلا GitHub Actions) وطُبعت بصماتها من الملفات نفسها.
+> المثبت يحمل `bin/` (FFmpeg وyt-dlp) و`models/` (نموذج الفصل) و`vc_redist.x64.exe`
+> داخله، فهو مكتفٍ بذاته.
+
+## ملاحظة للنسخة القادمة
+
+إضافة المتجر معرّفها `kaijaffkolenjhfcbaepmjndheahhikg` وهو **مقبول في هذا الإصدار**
+(أُضيف إلى قائمة الأصول الموثوقة في مضيف التكامل). نسخة أقدم من 0.2.1 لن تتخاطب مع
+نسخة المتجر من الإضافة.
