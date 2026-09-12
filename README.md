@@ -1,5 +1,7 @@
 # HaramLite 🎵
 
+<img src="IMG/haramless-app-icon.png" alt="أيقونة HaramLite" width="120" align="right">
+
 ![واجهة البرنامج](IMG/blank_interface.png)
 
 **أداة رأي خفيفة لإزالة الموسيقى من المقاطع الصوتية والمرئية بالذكاء الاصطناعي** —
