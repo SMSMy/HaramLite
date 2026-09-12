@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>إزالة الموسيقى من الفيديو على الكمبيوتر — الطريقة الكاملة | HaramLite</title>
-  <meta name="description" content="كيف تُزيل الموسيقى من فيديو أو مقطع صوتي على جهازك بلا رفع ولا حساب: الخطوات، ومتى يعمل الفصل جيداً، وحدوده الحقيقية.">
+  <title>إزالة الموسيقى من الفيديو على الكمبيوتر | HaramLite</title>
+  <meta name="description" content="كيف تُزيل الموسيقى من فيديو أو ملف صوتي على جهازك: الخطوات الأربع، والوضع المناسب، وحدود الفصل بصراحة.">
   <link rel="canonical" href="https://haramlite.com/guides/remove-music-from-video.html">
   <meta name="theme-color" content="#151311">
   <meta property="og:type" content="article">
-  <meta property="og:title" content="إزالة الموسيقى من الفيديو على الكمبيوتر — الطريقة الكاملة | HaramLite">
-  <meta property="og:description" content="كيف تُزيل الموسيقى من فيديو أو مقطع صوتي على جهازك بلا رفع ولا حساب: الخطوات، ومتى يعمل الفصل جيداً، وحدوده الحقيقية.">
+  <meta property="og:title" content="إزالة الموسيقى من الفيديو على الكمبيوتر | HaramLite">
+  <meta property="og:description" content="كيف تُزيل الموسيقى من فيديو أو ملف صوتي على جهازك: الخطوات الأربع، والوضع المناسب، وحدود الفصل بصراحة.">
   <meta property="og:url" content="https://haramlite.com/guides/remove-music-from-video.html">
   <meta property="og:image" content="https://haramlite.com/assets/og.png">
   <meta name="twitter:card" content="summary_large_image">
@@ -18,7 +18,6 @@
   <link rel="apple-touch-icon" href="../assets/icon-180.png">
   <link rel="stylesheet" href="../assets/site.css"/>
   <link rel="preload" href="../assets/thmanyah-serif-bold.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="../assets/thmanyah-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
 
   <script type="application/ld+json">
   {
@@ -27,18 +26,10 @@
   "mainEntity": [
     {
       "@type": "Question",
-      "name": "هل تُزال الموسيقى نهائياً أم تخفت فقط؟",
+      "name": "إزالة أم تخفيت؟",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "يُفصل المسار الصوتي إلى غناء وموسيقى ثم يُحذف مسار الموسيقى — فهي إزالة لا تخفيت. لكن قد تبقى آثار خفيفة في حالات صعبة مثل اختلاط الغناء بالكلام."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "هل يعمل على فيديو طويل؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "نعم، لكن الزمن يتناسب مع الطول؛ على كرت رسوميات مدعوم تكون المعالجة أسرع بعدّة أضعاف من المعالج وحده."
+        "text": "إزالة: يُحذف مسار الموسيقى المفصول. وقد تبقى آثار خفيفة في الحالات الصعبة مثل اختلاط الغناء بالكلام."
       }
     },
     {
@@ -46,15 +37,15 @@
       "name": "هل أحتاج إنترنت؟",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "لا. بعد التثبيت يعمل كل شيء بلا شبكة. الإنترنت يُستخدم فقط إن طلبت تنزيل رابط أو لتحديث أدوات التنزيل."
+        "text": "لا. بعد التثبيت يعمل كل شيء بلا شبكة؛ الإنترنت يُستخدم فقط إن طلبت تنزيل رابط أو لتحديث أدوات التنزيل."
       }
     },
     {
       "@type": "Question",
-      "name": "هل تُرفع ملفاتي إلى خادم؟",
+      "name": "هل تُرفع ملفاتي؟",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "لا. لا يوجد خادم في المسار أصلاً: الفصل والتحسين والترميز كلها على جهازك، والتطبيق لا يفتح اتصالاً صادراً من تلقاء نفسه."
+        "text": "لا. لا يوجد خادم في المسار: الفصل والتحسين والترميز كلها على جهازك."
       }
     },
     {
@@ -62,7 +53,7 @@
       "name": "ما الصيغ المدعومة؟",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "كل ما يفكّه FFmpeg تقريباً — MP4 وMKV وMOV وWEBM للفيديو، وMP3 وWAV وM4A وFLAC وOGG للصوت. والناتج MP3 أو MP4."
+        "text": "ما يفكّه FFmpeg تقريباً: MP4 وMKV وMOV وWEBM للفيديو، وMP3 وWAV وM4A وFLAC للصوت. والناتج MP3 أو MP4."
       }
     }
   ]
@@ -71,7 +62,7 @@
 </head>
 <body class="bg-coal-surface font-body-md text-cream-text">
   <header class="border-b border-border-muted">
-    <div class="h-16 max-w-4xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter">
+    <div class="h-16 max-w-3xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter">
       <a class="flex items-center gap-stack-sm" href="../">
         <img src="../assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded shadow-sm">
         <span class="font-label-md text-label-md tracking-wider text-cream-text font-bold uppercase">HaramLite</span>
@@ -83,86 +74,68 @@
     </div>
   </header>
 
-  <main class="max-w-4xl mx-auto px-margin-mobile lg:px-margin-desktop py-12">
-    <p class="font-mono-code text-mono-code text-clay-accent mb-3">دليل · آخر تحديث 2026-09-12</p>
-    <h1 class="font-headline-xl text-headline-xl text-cream-text mb-4">إزالة الموسيقى من الفيديو على الكمبيوتر</h1>
-    <p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed mb-10">الطريقة التي تعمل فعلاً ليست «فلتراً» يخفت الترددات، بل <strong>فصل</strong> للمسار الصوتي: يُجزّأ الصوت إلى مسارين — غناء وموسيقى — ثم يُحذف الثاني. وهذا الدليل يشرح الخطوات، ومتى ينجح الفصل، وأين حدوده الحقيقية.</p>
+  <main class="max-w-3xl mx-auto px-margin-mobile lg:px-margin-desktop py-10">
+    <h1 class="font-headline-xl text-headline-xl text-cream-text mb-3">إزالة الموسيقى من الفيديو على الكمبيوتر</h1>
+    <p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed">لا فلتر يخفت الترددات، بل <strong>فصل</strong> للمسار الصوتي: يُجزّأ الصوت إلى غناء وموسيقى، ثم تُحذف الموسيقى.</p>
 
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">لماذا لا تعمل «الفلاتر» التقليدية؟</h2>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-4">الفلاتر التقليدية تقصّ نطاقاً من الترددات (مثلاً تحت ٢٠٠ هرتز وفوق ٨ كيلوهرتز)، فتصبح النتيجة صوتاً مكتوماً مضغوطاً: يختفي الإيقاع لكن يختفي معه جزء من نبرة المتحدث أيضاً. أما الفصل بالموديل العصبي فيعامل الصوت كمزيج من مصادر، ويُدرَّب على إخراج المسار البشري وحده حتى لو تشارك مع الموسيقى في الترددات نفسها.</p>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">لهذا يمكن أن تسمع فرقاً واضحاً: كلام طبيعي بنبرته، مع اختفاء الآلات — بدل صوت «معلّب» تحت ماء.</p>
+    <div class="my-8 p-5 rounded-xl bg-surface-container border border-border-muted flex flex-col sm:flex-row items-center justify-between gap-4">
+      <p class="font-body-md text-body-md text-cream-text text-center sm:text-right">التطبيق مجاني ومفتوح المصدر — ويندوز ١٠/١١، وكل المعالجة على جهازك.</p>
+      <a class="shrink-0 inline-flex items-center gap-2 px-stack-md py-stack-sm rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold hover:bg-primary transition-colors" href="../#download">حمّل البرنامج</a>
+    </div>
 
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">الخطوات الأربع</h2>
-    <ol class="space-y-4 font-body-md text-body-md text-on-surface-variant leading-relaxed">
-      <li><strong class="text-cream-text">١. ثبّت التطبيق وشغّله</strong> — مثبّت واحد يتولى الباقي: أدوات المعالجة والنموذج. لا تحتاج تثبيت Python ولا ffmpeg يدوياً.</li>
-      <li><strong class="text-cream-text">٢. أفلت الملف أو الصق الرابط</strong> — اسحب الفيديو إلى النافذة، أو الصق رابطاً من يوتيوب وغيره فيُجلب ويعالج في خطوة واحدة.</li>
-      <li><strong class="text-cream-text">٣. اختر الوضع والصيغة</strong> — «مقطع عادي» إن أردت إبقاء الكلام كما هو، و«أغنية» إن أردت عزلاً كاملاً للصوت البشري. والناتج MP3 أو MP4.</li>
-      <li><strong class="text-cream-text">٤. اضغط المعالجة</strong> — يظهر التقدّم، ويُكتب الناتج بجانب ملفك الأصلي (وروابط المتصفح في مجلد نتائجك).</li>
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-8 mb-3">الخطوات</h2>
+    <ol class="space-y-3 font-body-md text-body-md text-on-surface-variant leading-relaxed list-decimal pr-5 mb-2">
+      <li><strong class="text-cream-text">ثبّت التطبيق وشغّله</strong> — مثبّت واحد يتولى الباقي، بلا إعداد يدوي.</li>
+      <li><strong class="text-cream-text">أفلت الملف أو الصق رابطاً</strong> — ويُجلب الرابط ويعالج في خطوة واحدة.</li>
+      <li><strong class="text-cream-text">اختر الوضع والصيغة</strong> — والناتج MP3 أو MP4.</li>
+      <li><strong class="text-cream-text">اضغط المعالجة</strong> — الناتج بجانب ملفك الأصلي (وروابط المتصفح في مجلد نتائجك).</li>
     </ol>
-
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">أي وضع تختار؟</h2>
-    <div class="overflow-x-auto my-6">
-      <table class="w-full text-right font-body-md text-body-md">
-        <thead><tr class="border-b border-border-muted text-cream-text">
-          <th class="py-2">الحالة</th><th class="py-2">الوضع</th><th class="py-2">ما يحدث</th>
-        </tr></thead>
-        <tbody class="text-on-surface-variant">
-          <tr class="border-b border-border-muted"><td class="py-2">محاضرة أو درس فيه موسيقى خلفية</td><td class="py-2">مقطع عادي</td><td class="py-2">تُزال الموسيقى ويبقى الكلام بنبرته</td></tr>
-          <tr class="border-b border-border-muted"><td class="py-2">مقطع إنشاد أو أغنية بلا موسيقى</td><td class="py-2">أغنية</td><td class="py-2">عزل كامل للصوت البشري مع تحسين حضور وصدى</td></tr>
-          <tr><td class="py-2">مقابلة فيها موسيقى متقطّعة</td><td class="py-2">مقطع عادي</td><td class="py-2">الأفضل أن تبدأ به ثم تجرّب الآخر للمقارنة</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">متى يكون الفصل صعباً؟ (بصراحة)</h2>
-    <ul class="space-y-3 font-body-md text-body-md text-on-surface-variant leading-relaxed list-disc pr-6">
-      <li><strong class="text-cream-text">الغناء والكلام في الوقت نفسه:</strong> أصعب حالة؛ لأن الموديل يجب أن يقرّر أيّ صوت بشري يُبقي.</li>
-      <li><strong class="text-cream-text">الموسيقى المنخفضة جداً تحت الكلام:</strong> تختفي غالباً، لكن قد تبقى بقايا خفيفة في المقاطع الهادئة.</li>
-      <li><strong class="text-cream-text">الغناء الجماعي أو الكورال:</strong> يُعامل كصوت بشري، فيبقى مع الكلام — وهذا سلوك متوقّع لا خطأ.</li>
-      <li><strong class="text-cream-text">التسجيلات الرديئة:</strong> كل ما زاد الضجيج والتشويش، قلّت دقة الفصل.</li>
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-8 mb-3">أي وضع تختار؟</h2>
+    <ul class="space-y-2 font-body-md text-body-md text-on-surface-variant leading-relaxed list-disc pr-5 mb-2">
+      <li><strong class="text-cream-text">مقطع عادي:</strong> يُزيل الموسيقى ويُبقي الكلام بنبرته — للدروس والمقابلات والبودكاست.</li>
+      <li><strong class="text-cream-text">أغنية:</strong> عزل كامل للصوت البشري مع تحسين الحضور والصدى — للأناشيد والمقاطع الغنائية.</li>
+      <li>جرّب الاثنين على مقطع قصير أولاً ثم اختر لما بقي.</li>
     </ul>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mt-4">لا يوجد برنامج اليوم — محلياً أو سحابياً — يعطي فصلاً مثالياً بنسبة ١٠٠٪. الفرق الحقيقي بين الأدوات هو <em>كم تبقى من الموسيقى</em> و<em>كم تتضرر نبرة الصوت</em>، وهنا يظهر فرق الموديل المدرَّب.</p>
-
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">أشياء تُنجزها بلا إعادة معالجة</h2>
-    <ul class="space-y-3 font-body-md text-body-md text-on-surface-variant leading-relaxed list-disc pr-6">
-      <li><strong class="text-cream-text">مجلد مراقبة:</strong> أي ملف تنسخه إلى مجلد معيّن يُعالج تلقائياً في الخلفية.</li>
-      <li><strong class="text-cream-text">دفعات:</strong> أفلت عدة ملفات معاً — وتستطيع إيقاف المعالجة في أي لحظة.</li>
-      <li><strong class="text-cream-text">مشاهدة داخل المتصفح:</strong> مع إضافة المتصفح تُشغّل الصوت المعالَج فوق الفيديو نفسه مع تخطي فترات الصمت.</li>
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-8 mb-3">حدود صريحة</h2>
+    <ul class="space-y-2 font-body-md text-body-md text-on-surface-variant leading-relaxed list-disc pr-5 mb-2">
+      <li>الغناء المختلط بالكلام: أصعب حالة على أي أداة.</li>
+      <li>الغناء الجماعي أو الكورال يُعامل كصوت بشري فيبقى — سلوك متوقّع لا خطأ.</li>
+      <li>التسجيلات الرديئة وضجيج الخلفية يقلّلان الدقة.</li>
+      <li>لا أداة اليوم تعطي فصلاً مثالياً ١٠٠٪؛ الفرق هو كم يبقى من الموسيقى وكم يتضرر الصوت.</li>
+    </ul>
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-8 mb-3">بلا إعادة معالجة</h2>
+    <ul class="space-y-2 font-body-md text-body-md text-on-surface-variant leading-relaxed list-disc pr-5 mb-2">
+      <li><strong class="text-cream-text">مجلد مراقبة:</strong> أي ملف تنسخه إليه يُعالج تلقائياً في الخلفية.</li>
+      <li><strong class="text-cream-text">دفعات:</strong> أفلت عدة ملفات معاً، مع إمكانية الإيقاف في أي لحظة.</li>
+      <li><strong class="text-cream-text">داخل المتصفح:</strong> شاهد يوتيوب بعد إزالة الموسيقى مع تخطي فترات الصمت.</li>
     </ul>
 
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">خصوصيتك</h2>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">كل خطوة — الفصل والتحسين وقصّ الصمت والترميز — تحدث على جهازك، ولا يُرفع أي ملف. والإنترنت اختياري: لا يُستخدم إلا إن طلبت تنزيل رابط، أو لتحديث أدوات التنزيل، أو لروبوت تيليجرام إن فعّلته. التفاصيل في <a class="text-clay-accent hover:underline" href="../PRIVACY.html">سياسة الخصوصية</a>.</p>
-  
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-3">أسئلة شائعة</h2>
+    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-5 mb-1">إزالة أم تخفيت؟</h3>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">إزالة: يُحذف مسار الموسيقى المفصول. وقد تبقى آثار خفيفة في الحالات الصعبة مثل اختلاط الغناء بالكلام.</p>
+    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-5 mb-1">هل أحتاج إنترنت؟</h3>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">لا. بعد التثبيت يعمل كل شيء بلا شبكة؛ الإنترنت يُستخدم فقط إن طلبت تنزيل رابط أو لتحديث أدوات التنزيل.</p>
+    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-5 mb-1">هل تُرفع ملفاتي؟</h3>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">لا. لا يوجد خادم في المسار: الفصل والتحسين والترميز كلها على جهازك.</p>
+    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-5 mb-1">ما الصيغ المدعومة؟</h3>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">ما يفكّه FFmpeg تقريباً: MP4 وMKV وMOV وWEBM للفيديو، وMP3 وWAV وM4A وFLAC للصوت. والناتج MP3 أو MP4.</p>
 
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-12 mb-4">أسئلة شائعة</h2>
-    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">هل تُزال الموسيقى نهائياً أم تخفت فقط؟</h3>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">يُفصل المسار الصوتي إلى غناء وموسيقى ثم يُحذف مسار الموسيقى — فهي إزالة لا تخفيت. لكن قد تبقى آثار خفيفة في حالات صعبة مثل اختلاط الغناء بالكلام.</p>
-    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">هل يعمل على فيديو طويل؟</h3>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">نعم، لكن الزمن يتناسب مع الطول؛ على كرت رسوميات مدعوم تكون المعالجة أسرع بعدّة أضعاف من المعالج وحده.</p>
-    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">هل أحتاج إنترنت؟</h3>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">لا. بعد التثبيت يعمل كل شيء بلا شبكة. الإنترنت يُستخدم فقط إن طلبت تنزيل رابط أو لتحديث أدوات التنزيل.</p>
-    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">هل تُرفع ملفاتي إلى خادم؟</h3>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">لا. لا يوجد خادم في المسار أصلاً: الفصل والتحسين والترميز كلها على جهازك، والتطبيق لا يفتح اتصالاً صادراً من تلقاء نفسه.</p>
-    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">ما الصيغ المدعومة؟</h3>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">كل ما يفكّه FFmpeg تقريباً — MP4 وMKV وMOV وWEBM للفيديو، وMP3 وWAV وM4A وFLAC وOGG للصوت. والناتج MP3 أو MP4.</p>
-
-    <div class="mt-12 p-6 rounded-xl bg-surface-container border border-border-muted">
-      <p class="font-body-md text-body-md text-cream-text mb-4">جرّبه بنفسك: التطبيق مجاني ومفتوح المصدر، ويعمل على ويندوز ١٠/١١.</p>
-      <a class="inline-flex items-center gap-2 px-stack-md py-stack-sm rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold hover:bg-primary transition-colors" href="../#download">تحميل HaramLite</a>
+    <div class="my-8 p-5 rounded-xl bg-surface-container border border-border-muted flex flex-col sm:flex-row items-center justify-between gap-4">
+      <p class="font-body-md text-body-md text-cream-text text-center sm:text-right">التطبيق مجاني ومفتوح المصدر — ويندوز ١٠/١١، وكل المعالجة على جهازك.</p>
+      <a class="shrink-0 inline-flex items-center gap-2 px-stack-md py-stack-sm rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold hover:bg-primary transition-colors" href="../#download">تحميل HaramLite</a>
     </div>
-
-    <nav class="mt-10 pt-6 border-t border-border-muted">
-      <p class="font-label-md text-label-md font-bold text-cream-text mb-3">أدلة أخرى</p>
-      <ul class="space-y-2">
-        <li><a class="font-body-md text-body-md text-clay-accent hover:underline" href="watch-youtube-without-music.html">مشاهدة يوتيوب بدون موسيقى داخل المتصفح</a></li>
-        <li><a class="font-body-md text-body-md text-clay-accent hover:underline" href="ai-vocal-separation.html">كيف يفصل الذكاء الاصطناعي الصوت عن الموسيقى</a></li>
-        <li><a class="font-body-md text-body-md text-clay-accent hover:underline" href="remove-music-from-podcast.html">إزالة الموسيقى من البودكاست والمحاضرات</a></li>
+    <nav class="mt-8 pt-5 border-t border-border-muted">
+      <p class="font-label-md text-label-md font-bold text-cream-text mb-2">أدلة أخرى</p>
+      <ul class="space-y-1.5">
+        <li><a class="text-clay-accent hover:underline" href="watch-youtube-without-music.html">مشاهدة يوتيوب بدون موسيقى داخل المتصفح</a></li>
+        <li><a class="text-clay-accent hover:underline" href="ai-vocal-separation.html">كيف يفصل الذكاء الاصطناعي الصوت عن الموسيقى</a></li>
+        <li><a class="text-clay-accent hover:underline" href="remove-music-from-podcast.html">إزالة الموسيقى من البودكاست والمحاضرات</a></li>
       </ul>
     </nav>
   </main>
 
-  <footer class="border-t border-border-muted py-stack-lg mt-8">
-    <div class="max-w-4xl mx-auto px-margin-mobile lg:px-margin-desktop flex flex-col sm:flex-row items-center justify-between gap-stack-md">
+  <footer class="border-t border-border-muted py-stack-lg mt-6">
+    <div class="max-w-3xl mx-auto px-margin-mobile lg:px-margin-desktop flex flex-col sm:flex-row items-center justify-between gap-3">
       <p class="font-label-sm text-label-sm text-on-surface-variant">HaramLite — إزالة الموسيقى على جهازك، بلا رفع ولا حساب.</p>
       <nav class="flex gap-stack-md">
         <a class="font-label-sm text-label-sm text-clay-accent hover:underline" href="../PRIVACY.html">الخصوصية</a>

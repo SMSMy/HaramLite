@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>إزالة الموسيقى من البودكاست والمحاضرات | HaramLite</title>
-  <meta name="description" content="لمعالجة حلقات كثيرة: مجلد مراقبة يعالج تلقائياً، ومعالجة بالدفعات مع إيقاف، وإرسال من الهاتف عبر روبوت تيليجرام، وناتج MP3 خفيف.">
+  <meta name="description" content="لمعالجة حلقات كثيرة: مجلد مراقبة، ومعالجة بالدفعات مع إيقاف، وإرسال من الهاتف، وناتج MP3 خفيف.">
   <link rel="canonical" href="https://haramlite.com/guides/remove-music-from-podcast.html">
   <meta name="theme-color" content="#151311">
   <meta property="og:type" content="article">
   <meta property="og:title" content="إزالة الموسيقى من البودكاست والمحاضرات | HaramLite">
-  <meta property="og:description" content="لمعالجة حلقات كثيرة: مجلد مراقبة يعالج تلقائياً، ومعالجة بالدفعات مع إيقاف، وإرسال من الهاتف عبر روبوت تيليجرام، وناتج MP3 خفيف.">
+  <meta property="og:description" content="لمعالجة حلقات كثيرة: مجلد مراقبة، ومعالجة بالدفعات مع إيقاف، وإرسال من الهاتف، وناتج MP3 خفيف.">
   <meta property="og:url" content="https://haramlite.com/guides/remove-music-from-podcast.html">
   <meta property="og:image" content="https://haramlite.com/assets/og.png">
   <meta name="twitter:card" content="summary_large_image">
@@ -18,21 +18,12 @@
   <link rel="apple-touch-icon" href="../assets/icon-180.png">
   <link rel="stylesheet" href="../assets/site.css"/>
   <link rel="preload" href="../assets/thmanyah-serif-bold.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="../assets/thmanyah-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
 
   <script type="application/ld+json">
   {
   "@context": "https://schema.org",
   "@type": "FAQPage",
   "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "هل أستطيع معالجة عشرات الحلقات في الليل؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "نعم عبر مجلد المراقبة أو الدفعات، ويمكن تشغيل البرنامج في الخلفية مع بدء تشغيل ويندوز إن فعّلت ذلك من الإعدادات."
-      }
-    },
     {
       "@type": "Question",
       "name": "هل تُفقد الحلقة الأصلية؟",
@@ -43,18 +34,18 @@
     },
     {
       "@type": "Question",
-      "name": "ما حدّ الملفات في تيليجرام؟",
+      "name": "ما حدود تيليجرام؟",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "يرسل الروبوت حتى 50MB ولا ينزّل أكثر من 20MB من ملف ترسله، أما الروابط فبلا حد. ومن يشغّل خادم Bot API محلياً يرفع السقف إلى 2GB."
+        "text": "يرسل حتى 50MB ولا ينزّل أكثر من 20MB من ملف ترسله، أما الروابط فبلا حد. ومن يشغّل خادم Bot API محلياً يرفع السقف إلى 2GB."
       }
     },
     {
       "@type": "Question",
-      "name": "هل يمكن إيقاف المعالجة أثناء دفعة؟",
+      "name": "هل يمكن الإيقاف أثناء دفعة؟",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "نعم، من زر الإلغاء في الواجهة، مع تنظيف الملفات المؤقتة تلقائياً."
+        "text": "نعم، من زر الإلغاء، مع تنظيف الملفات المؤقتة تلقائياً."
       }
     }
   ]
@@ -63,7 +54,7 @@
 </head>
 <body class="bg-coal-surface font-body-md text-cream-text">
   <header class="border-b border-border-muted">
-    <div class="h-16 max-w-4xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter">
+    <div class="h-16 max-w-3xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter">
       <a class="flex items-center gap-stack-sm" href="../">
         <img src="../assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded shadow-sm">
         <span class="font-label-md text-label-md tracking-wider text-cream-text font-bold uppercase">HaramLite</span>
@@ -75,60 +66,56 @@
     </div>
   </header>
 
-  <main class="max-w-4xl mx-auto px-margin-mobile lg:px-margin-desktop py-12">
-    <p class="font-mono-code text-mono-code text-clay-accent mb-3">دليل · آخر تحديث 2026-09-12</p>
-    <h1 class="font-headline-xl text-headline-xl text-cream-text mb-4">إزالة الموسيقى من البودكاست والمحاضرات</h1>
-    <p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed mb-10">حلقة واحدة تُعالجها بيدك، لكن سلسلة من عشرين حلقة تحتاج طريقة أخرى. هذا الدليل للسلاسل الطويلة: مجلد مراقبة، ودفعات، وإرسال من الهاتف، وناتج صوتي خفيف.</p>
+  <main class="max-w-3xl mx-auto px-margin-mobile lg:px-margin-desktop py-10">
+    <h1 class="font-headline-xl text-headline-xl text-cream-text mb-3">إزالة الموسيقى من البودكاست والمحاضرات</h1>
+    <p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed">حلقة واحدة تُعالجها بيدك، أما سلسلة من عشرين حلقة فتحتاج طريقة أخرى.</p>
 
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">الوضع المناسب للكلام</h2>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">استخدم <strong class="text-cream-text">«مقطع عادي»</strong>: يُزيل الموسيقى ويُبقي نبرة المتحدثين وأصوات البيئة كما هي. أما «أغنية» فهو لعزل الصوت البشري بالكامل مع تحسين الحضور والصدى — مفيد للمقاطع الإنشادية، ومبالغ فيه لمحاضرة عادية.</p>
-
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">ثلاث طرق لمعالجة سلسلة كاملة</h2>
-    <ol class="space-y-4 font-body-md text-body-md text-on-surface-variant leading-relaxed">
-      <li><strong class="text-cream-text">مجلد المراقبة:</strong> حدّد مجلداً في إعدادات التطبيق؛ وأي ملف تنسخه إليه يُعالج تلقائياً في الخلفية ويُخرج الناتج في مجلد النتائج — بلا أن تفتح النافذة أصلاً.</li>
-      <li><strong class="text-cream-text">الدفعات:</strong> أفلت عدة ملفات معاً منستُعالج بالترتيب، ويمكنك <strong class="text-cream-text">إيقاف المعالجة</strong> في أي لحظة إن احتجت.</li>
-      <li><strong class="text-cream-text">من الهاتف عبر روبوت تيليجرام (اختياري):</strong> أرسل الرابط أو الملف إلى روبوتك الخاص، ويعالجه حاسوبك ثم يعيده إليك. ولا يستجيب الروبوت لأي حساب قبل أن تربطه برمز اقتران من ست أرقام.</li>
-    </ol>
-
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">ناتج MP3 بدل MP4</h2>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-4">لو كان المحتوى صوتياً فلا حاجة لترميز الفيديو: اختر <strong class="text-cream-text">MP3</strong> فيوفّر وقتاً وحجماً كبيراً. وفي روبوت تيليجرام يوجد خيار «إرسال الصوت فقط (MP3) دائماً» لتوفير وقت الرندرة.</p>
-
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">نصائح من الاستخدام الفعلي</h2>
-    <ul class="space-y-3 font-body-md text-body-md text-on-surface-variant leading-relaxed list-disc pr-6">
-      <li>سمِّ الملفات قبل المعالجة لا بعدها — الناتج يُكتب بجانب الأصل باسم مشتقّ منه.</li>
-      <li>عالج حلقة واحدة أولاً لتتأكد من الوضع المناسب، ثم ادفع الباقي دفعة واحدة.</li>
-      <li>المعالجة تحدث على جهازك، فلا تُغلق الجهاز أثناء دفعة كبيرة إن كنت تريد إتمامها الآن.</li>
-      <li>للمقاطع الصامتة في نهاية الحلقات: التطبيق يقصّ الصمت في وضع «أغنية» تلقائياً.</li>
-    </ul>
-  
-
-    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-12 mb-4">أسئلة شائعة</h2>
-    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">هل أستطيع معالجة عشرات الحلقات في الليل؟</h3>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">نعم عبر مجلد المراقبة أو الدفعات، ويمكن تشغيل البرنامج في الخلفية مع بدء تشغيل ويندوز إن فعّلت ذلك من الإعدادات.</p>
-    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">هل تُفقد الحلقة الأصلية؟</h3>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">لا. الأصل لا يُمس، والناتج ملف جديد بجانبه أو في مجلد النتائج.</p>
-    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">ما حدّ الملفات في تيليجرام؟</h3>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">يرسل الروبوت حتى 50MB ولا ينزّل أكثر من 20MB من ملف ترسله، أما الروابط فبلا حد. ومن يشغّل خادم Bot API محلياً يرفع السقف إلى 2GB.</p>
-    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">هل يمكن إيقاف المعالجة أثناء دفعة؟</h3>
-    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">نعم، من زر الإلغاء في الواجهة، مع تنظيف الملفات المؤقتة تلقائياً.</p>
-
-    <div class="mt-12 p-6 rounded-xl bg-surface-container border border-border-muted">
-      <p class="font-body-md text-body-md text-cream-text mb-4">جرّبه بنفسك: التطبيق مجاني ومفتوح المصدر، ويعمل على ويندوز ١٠/١١.</p>
-      <a class="inline-flex items-center gap-2 px-stack-md py-stack-sm rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold hover:bg-primary transition-colors" href="../#download">تحميل HaramLite</a>
+    <div class="my-8 p-5 rounded-xl bg-surface-container border border-border-muted flex flex-col sm:flex-row items-center justify-between gap-4">
+      <p class="font-body-md text-body-md text-cream-text text-center sm:text-right">التطبيق مجاني ومفتوح المصدر — ويندوز ١٠/١١، وكل المعالجة على جهازك.</p>
+      <a class="shrink-0 inline-flex items-center gap-2 px-stack-md py-stack-sm rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold hover:bg-primary transition-colors" href="../#download">حمّل البرنامج</a>
     </div>
 
-    <nav class="mt-10 pt-6 border-t border-border-muted">
-      <p class="font-label-md text-label-md font-bold text-cream-text mb-3">أدلة أخرى</p>
-      <ul class="space-y-2">
-        <li><a class="font-body-md text-body-md text-clay-accent hover:underline" href="remove-music-from-video.html">إزالة الموسيقى من الفيديو على الكمبيوتر</a></li>
-        <li><a class="font-body-md text-body-md text-clay-accent hover:underline" href="watch-youtube-without-music.html">مشاهدة يوتيوب بدون موسيقى داخل المتصفح</a></li>
-        <li><a class="font-body-md text-body-md text-clay-accent hover:underline" href="ai-vocal-separation.html">كيف يفصل الذكاء الاصطناعي الصوت عن الموسيقى</a></li>
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-8 mb-3">الوضع المناسب</h2>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-3">استخدم <strong class="text-cream-text">«مقطع عادي»</strong>: يُزيل الموسيقى ويُبقي نبرة المتحدثين. أما «أغنية» فهو لعزل الصوت البشري بالكامل — مفيد للأناشيد، ومبالغ فيه لمحاضرة.</p>
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-8 mb-3">ثلاث طرق لسلسلة كاملة</h2>
+    <ul class="space-y-2 font-body-md text-body-md text-on-surface-variant leading-relaxed list-disc pr-5 mb-2">
+      <li><strong class="text-cream-text">مجلد المراقبة:</strong> حدّد مجلداً، وأي ملف تنسخه إليه يُعالج تلقائياً ويُخرج ناتجه في مجلد النتائج.</li>
+      <li><strong class="text-cream-text">الدفعات:</strong> أفلت عدة ملفات معاً، مع إمكانية الإيقاف في أي لحظة.</li>
+      <li><strong class="text-cream-text">من الهاتف (اختياري):</strong> أرسل الرابط أو الملف إلى روبوتك على تيليجرام، ويعالجه حاسوبك ثم يعيده إليك — بعد ربط برمز من ٦ أرقام.</li>
+    </ul>
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-8 mb-3">وفّر الوقت والحجم</h2>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-3">لو كان المحتوى صوتياً فاختر <strong class="text-cream-text">MP3</strong> بدل MP4: وقت ترميز أقل وحجم أصغر. وفي روبوت تيليجرام خيار «الصوت فقط (MP3) دائماً».</p>
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-8 mb-3">نصائح</h2>
+    <ul class="space-y-2 font-body-md text-body-md text-on-surface-variant leading-relaxed list-disc pr-5 mb-2">
+      <li>سمِّ الملفات قبل المعالجة — الناتج يُكتب باسم مشتقّ من الأصل.</li>
+      <li>عالج حلقة واحدة أولاً للتأكد من الوضع، ثم ادفع الباقي دفعة واحدة.</li>
+      <li>فعّل «التشغيل مع بدء تشغيل ويندوز» إن أردت أن يعمل المجلد في الخلفية دائماً.</li>
+    </ul>
+
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-3">أسئلة شائعة</h2>
+    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-5 mb-1">هل تُفقد الحلقة الأصلية؟</h3>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">لا. الأصل لا يُمس، والناتج ملف جديد بجانبه أو في مجلد النتائج.</p>
+    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-5 mb-1">ما حدود تيليجرام؟</h3>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">يرسل حتى 50MB ولا ينزّل أكثر من 20MB من ملف ترسله، أما الروابط فبلا حد. ومن يشغّل خادم Bot API محلياً يرفع السقف إلى 2GB.</p>
+    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-5 mb-1">هل يمكن الإيقاف أثناء دفعة؟</h3>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">نعم، من زر الإلغاء، مع تنظيف الملفات المؤقتة تلقائياً.</p>
+
+    <div class="my-8 p-5 rounded-xl bg-surface-container border border-border-muted flex flex-col sm:flex-row items-center justify-between gap-4">
+      <p class="font-body-md text-body-md text-cream-text text-center sm:text-right">التطبيق مجاني ومفتوح المصدر — ويندوز ١٠/١١، وكل المعالجة على جهازك.</p>
+      <a class="shrink-0 inline-flex items-center gap-2 px-stack-md py-stack-sm rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold hover:bg-primary transition-colors" href="../#download">تحميل HaramLite</a>
+    </div>
+    <nav class="mt-8 pt-5 border-t border-border-muted">
+      <p class="font-label-md text-label-md font-bold text-cream-text mb-2">أدلة أخرى</p>
+      <ul class="space-y-1.5">
+        <li><a class="text-clay-accent hover:underline" href="remove-music-from-video.html">إزالة الموسيقى من الفيديو على الكمبيوتر</a></li>
+        <li><a class="text-clay-accent hover:underline" href="watch-youtube-without-music.html">مشاهدة يوتيوب بدون موسيقى داخل المتصفح</a></li>
+        <li><a class="text-clay-accent hover:underline" href="ai-vocal-separation.html">كيف يفصل الذكاء الاصطناعي الصوت عن الموسيقى</a></li>
       </ul>
     </nav>
   </main>
 
-  <footer class="border-t border-border-muted py-stack-lg mt-8">
-    <div class="max-w-4xl mx-auto px-margin-mobile lg:px-margin-desktop flex flex-col sm:flex-row items-center justify-between gap-stack-md">
+  <footer class="border-t border-border-muted py-stack-lg mt-6">
+    <div class="max-w-3xl mx-auto px-margin-mobile lg:px-margin-desktop flex flex-col sm:flex-row items-center justify-between gap-3">
       <p class="font-label-sm text-label-sm text-on-surface-variant">HaramLite — إزالة الموسيقى على جهازك، بلا رفع ولا حساب.</p>
       <nav class="flex gap-stack-md">
         <a class="font-label-sm text-label-sm text-clay-accent hover:underline" href="../PRIVACY.html">الخصوصية</a>
