@@ -73,8 +73,12 @@
 ## بصمات الملفات
 
 ```
-HaramLite_0.2.1_x64-setup.exe   220.1 MB   sha256:8DDD7924C4080D36E04E2041698E0E5CDD099DEE51C52E9125E097EE2DACDD1A
-HaramLite_0.2.1_x64_en-US.msi   431.4 MB   sha256:A4D56224AE40D4CDF4FA8911C99B8E39A2BDF2D73EBD1A18DBACBA53EF0D488C
+HaramLite_0.2.1_x64-setup.exe   220.2 MB   sha256:A076BA4E6F5DABD06A7D2E100F99C9D621C1CE7F64E744DF810E67A71063F2D4
+HaramLite_0.2.1_x64_en-US.msi   431.2 MB   sha256:BD3C7EFF0A598A0F18D3E42427A53CC9A9AC13A5CED66133B41DA41828C25A06
+
+> **أُعيد البناء 2026-09-12** بالأيقونة الجديدة (المالك: لا يوجد مستخدمون بعد). تغيّر
+> الملفان فتبدّلت بصمتاهما؛ والأيقونة تظهر الآن في التنفيذي وفي **مثبّت NSIS** معاً
+> (`bundle.windows.nsis.installerIcon`). الحجم بالميغابايت تقريبي، والمعيار هو البصمة.
 ```
 
 > هذه النسخ بُنيت محلياً (بلا GitHub Actions) وطُبعت بصماتها من الملفات نفسها.
