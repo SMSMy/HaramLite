@@ -607,147 +607,11 @@
 </section>
 </div>
 <!-- Interactive Guide Reader Drawer / Modal (Inline Vanilla JS) -->
-<div class="fixed inset-0 z-50 bg-coal-surface/80 backdrop-blur-sm hidden items-center justify-center p-4" id="guide-modal">
-<div class="bg-coal-bg max-w-2xl w-full rounded-xl p-stack-lg shadow-xl flex flex-col gap-stack-md max-h-[85vh] overflow-y-auto">
-<div class="flex items-center justify-between">
-<span class="font-mono-code text-label-sm px-2.5 py-0.5 rounded bg-clay-accent/20 text-clay-accent" id="modal-category">GUIDE</span>
-<button class="w-8 h-8 rounded bg-surface-container-highest flex items-center justify-center text-cream-text hover:bg-clay-accent hover:text-coal-surface transition-colors" onclick="closeGuideModal()">
-<span class="material-symbols-outlined text-[18px]">close</span>
-</button>
-</div>
-<div class="flex flex-col gap-2">
-<h3 class="font-headline-lg text-headline-lg text-cream-text leading-tight" id="modal-title">عنوان الدليل التفصيلي</h3>
-<span class="font-mono-code text-label-sm text-outline" id="modal-meta">وقت القراءة: دقيقة واحدة · معالجة أوفلاين</span>
-</div>
-<div class="font-body-md text-body-md text-on-surface-variant leading-relaxed space-y-3" id="modal-content">
-<!-- Content gets injected dynamically -->
-</div>
-<div class="flex items-center justify-between pt-4 bg-coal-surface -mx-stack-lg -mb-stack-lg p-stack-md rounded-b-xl">
-<span class="text-label-sm text-outline font-label-sm">هل كان هذا الدليل مفيداً لتجربتك؟</span>
-<div class="flex items-center gap-2">
-<button class="px-3 py-1 bg-surface-container-highest text-cream-text rounded font-label-sm hover:bg-clay-accent hover:text-coal-surface transition-colors" onclick="alert('شكراً لتقييمك!'); closeGuideModal();">نعم، مفيد جداً</button>
-<button class="px-3 py-1 bg-transparent text-outline hover:text-cream-text font-label-sm transition-colors" onclick="closeGuideModal()">إغلاق</button>
-</div>
-</div>
-</div>
+
 </div>
 <!-- Client-side Logic Script for Instant Filtering & Modal Preview -->
 <script>
-    const guideDetails = {
-      'telegram': {
-        cat: 'MOBILE & BOT',
-        title: 'دليل تشغيل روبوت تيليجرام الخاص للتنقية من الهاتف',
-        meta: 'قراءة: دقائق معدودة · للمستخدمين المتنقلين',
-        body: `
-          <p class="font-bold text-cream-text">خطوات الربط الآمن:</p>
-          <ol class="list-decimal list-inside space-y-2 pr-2">
-            <li>قم بفتح نافذة الإعدادات في HaramLite على جهاز الحاسوب الخاص بك.</li>
-            <li>فعّل خيار <code>Telegram Daemon Bridge</code> وأدخل رمز رمز الروبوت الخاص بروبوتك من @BotFather.</li>
-            <li>سيقوم البرنامج بالاستماع محلياً؛ كلما أرسلت تسجيلاً أو رابطاً لحساب الروبوت على هاتفك، سيتولى حاسوبك عزل الموسيقى تلقائياً عبر النموذج وإعادة إرسال الملف المفرغ لك فوراً كرسالة صوتية.</li>
-          </ol>
-          <div class="p-3 bg-coal-surface rounded text-label-sm text-clay-accent font-mono-code">
-            ميزة الخصوصية: التسجيلات لا تمر بأي خادم وسيط على الإطلاق سوى تشفير تيليجرام المباشر إلى جهازك الشخصي.
-          </div>
-        `
-      },
-      'extension': {
-        cat: 'WEB EXTENSION',
-        title: 'إضافة كروم وإيدج: تنقية اليوتيوب المباشرة',
-        meta: 'قراءة: دقيقتان · المتصفح',
-        body: `
-          <p class="font-bold text-cream-text">طريقة التركيب والاستخدام:</p>
-          <p>تثبت الإضافة رسمياً من متجر كروم. بمجرد فتح أي مقطع على يوتيوب ستلاحظ ظهور زر مخصص بلون Clay بجوار زر الإعجاب والمشاركة باسم "تنزيل منقى".</p>
-          <ul class="list-disc list-inside space-y-1.5 pr-2">
-            <li>نقرة واحدة ترسل الرابط لتطبيق HaramLite المثبت لمعالجته فورياً.</li>
-            <li>الاستماع المباشر في المتصفح مع كتم النغمات تلقائياً عبر ميزة الصوت التكيفي.</li>
-          </ul>
-        `
-      },
-      'lecture': {
-        cat: 'STUDENTS & LECTURES',
-        title: 'تنقية المحاضرات الصوتية وتكبير نقاوة الإلقاء',
-        meta: 'قراءة: دقيقة واحدة · الطلبة والباحثون',
-        body: `
-          <p>تم تصميم هذا الوضع لتقليل الضوضاء المحيطة في قاعات الدراسة وحذف الموسيقى التي يضعها بعض صناع المحتوى في المقاطع التعليمية.</p>
-          <p>يوصى باختيار نمط <code>High Vocals Clarity</code> لرفع ترددات الحروف الصامتة لضمان فهم الكلمات الدقيقة للمحاضر.</p>
-        `
-      },
-      'gap-skip': {
-        cat: 'GAP-SKIP INNOVATION',
-        title: 'تقنية Gap-Skip: القفز الذكي عن الفواصل الموسيقية',
-        meta: 'قراءة: دقيقة واحدة · ابتكار حصري',
-        body: `
-          <p>العديد من المقاطع تحتوي على فواصل موسيقية بحتة لا يتخللها كلام بشري. مع تفعيل Gap-Skip، تراقب الإضافة إشارة الصوت في المتصفح:</p>
-          <div class="p-3 bg-coal-surface rounded text-label-sm font-mono-code text-warn-yellow">
-            حالة [الكلام = 0 && النغمات = 1] -> تقديم تلقائي 10 ثوانٍ للأمام حتى عودة المتحدث.
-          </div>
-        `
-      },
-      'batch': {
-        cat: 'BATCH PROCESSING',
-        title: 'تحويل السلاسل الكاملة إلى MP3 نقي للسيارة',
-        meta: 'قراءة: دقيقة واحدة · أرشفة',
-        body: `
-          <p>اسحب مجلد يحوي 50 أو 100 حلقة بودكاست وأفلته في نافذة البرنامج الرئيسية. سيقوم البرنامج بإنشاء مجلد موازي باسم <code>_Purified</code> يحوي النسخ المنقاة مع الحفاظ التام على الأسماء والوسوم التعريفية.</p>
-        `
-      },
-      'ml-engine': {
-        cat: 'MACHINE LEARNING CORE',
-        title: 'كيف يفصل الذكاء الاصطناعي الموسيقى عن الكلام؟',
-        meta: 'قراءة: 3 دقائق · تقني معماري',
-        body: `
-          <p>تعتمد النواة على شبكة عصبية تدربت على آلاف الساعات لفك ارتباط الترددات المتداخلة. يتم توليد خريطة أطياف صوتية (STFT) ثم تطبيق مصفوفة تصفية دقيقة لعزل الآلات الموسيقية في مسار مهمل وتمرير الصوت الطبيعي البشري فقط.</p>
-        `
-      },
-      'nasheed': {
-        cat: 'VOCAL STEM TUNING',
-        title: 'عزل الأناشيد: التمييز بين الآلات والكورال البشري',
-        meta: 'قراءة: دقيقتان · أدبيات الإنشاد',
-        body: `
-          <p>الأناشيد تحتوي على آهات وتناغمات بشرية قد تظنها الخوارزميات آلات وترية. من خلال وضع <code>Preserve Vocal Choirs</code>، يتم ضبط حد العتبة الترددية لتجنب خنق أصوات الكورال البشري المتعدد الطبقات.</p>
-        `
-      },
-      'gpu': {
-        cat: 'HARDWARE ACCELERATION',
-        title: 'تسريع المعالجة عبر كروت الشاشة',
-        meta: 'قراءة: دقيقتان · إعدادات العتاد',
-        body: `
-          <p>يدعم البرنامج تسريع CUDA لكروت NVIDIA وتوليد مكتبات DirectML لكروت AMD وIntel الحديثة. يمكن معالجة مقطع فيديو مدته ساعتان خلال أقل من 3 دقائق على كرت شاشة متوسط الفئة مثل RTX 3060.</p>
-        `
-      },
-      'podcast': {
-        cat: 'PODCAST PRODUCTION',
-        title: 'حذف الموسيقى من حلقات البودكاست الطويلة',
-        meta: 'قراءة: دقيقة واحدة · الإنتاج الصوتي',
-        body: `
-          <p>دليل إعداد مسار العمل لتنزيل البودكاست عبر خلاصات RSS أو يوتيوب ومعالجته تلقائياً ليصبح صالحاً للاستماع الهادئ الخالي من الشيلات والوصلات الصاخبة.</p>
-        `
-      },
-      'legal': {
-        cat: 'LEGAL & FAIR USE',
-        title: 'الجوانب القانونية والاستخدام الشخصي العادل',
-        meta: 'قراءة: دقيقتان · الامتثال والخصوصية',
-        body: `
-          <p>المعالجة المحلية على حاسوبك الشخصي تقع ضمن الاستخدام العادل (Fair Use) المماثل لتعديل معادل الصوت (Equalizer) في مشغل الوسائط، حيث لا يتم إعادة بث المحتوى تجارياً أو استغلاله كنسخة غير قانونية.</p>
-        `
-      },
-      'sync': {
-        cat: 'OFFLINE SYNC',
-        title: 'مزامنة المجلد النقي مع هاتف آيفون وأندرويد',
-        meta: 'قراءة: دقائق معدودة · مزامنة محلية',
-        body: `
-          <p>شرح إعداد مجلد مشترك عبر تطبيق Syncthing المفتوح، لكي يتم نقل المقاطع التي انتهت معالجتها إلى تطبيق مشغل الصوت على هاتفك بدون كابلات وبدون استخدام الإنترنت الخارجي.</p>
-        `
-      },
-      'benchmark': {
-        cat: 'BENCHMARK AUDIT',
-        title: 'مقارنة شاملة: HaramLite مقابل المنصات السحابية',
-        meta: 'قراءة: دقيقتان ونصف · مقارنة رقمية',
-        body: `
-          <p>مقارنة تحليلية بالأرقام توضح تفوق المعالجة المحلية من حيث سرعة الإنجاز بدون قيود الرفع والتنزيل، وانعدام أي تكاليف اشتراك شهرية، مع ضمان سرية وأمان البيانات بنسبة 100%.</p>
-        `
-      }
-    };
+    
 
     function filterGuides(query) {
       const q = query.toLowerCase().trim();
@@ -803,26 +667,6 @@
       });
 
       document.getElementById('active-count').innerText = `عرض ${visibleCount} من 12`;
-    }
-
-    function openGuideModal(guideKey) {
-      const data = guideDetails[guideKey];
-      if (!data) return;
-
-      document.getElementById('modal-category').innerText = data.cat;
-      document.getElementById('modal-title').innerText = data.title;
-      document.getElementById('modal-meta').innerText = data.meta;
-      document.getElementById('modal-content').innerHTML = data.body;
-      
-      const modal = document.getElementById('guide-modal');
-      modal.classList.remove('hidden');
-      modal.classList.add('flex');
-    }
-
-    function closeGuideModal() {
-      const modal = document.getElementById('guide-modal');
-      modal.classList.add('hidden');
-      modal.classList.remove('flex');
     }
 
     // Close on escape key
