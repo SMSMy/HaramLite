@@ -4,91 +4,370 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HaramLite — إزالة الموسيقى من الفيديو، محلياً على جهازك</title>
-<meta name="description" content="أداة مجانية لإزالة الموسيقى من المقاطع الصوتية والمرئية بالذكاء الاصطناعي — كل المعالجة على جهازك، بلا رفع لأي سحابة.">
-<style>
-  :root { --coal:#151311; --coal2:#221E1A; --clay:#DA7756; --cream:#F5F2ED; --sub:#A38C85; --line:#3A342F; }
-  * { box-sizing:border-box; }
-  body { margin:0; background:linear-gradient(160deg,var(--coal2),var(--coal) 60%); color:var(--cream);
-         font-family:"Segoe UI",Tahoma,Arial,sans-serif; line-height:1.8; }
-  .wrap { max-width:860px; margin:0 auto; padding:56px 22px 72px; }
-  header { text-align:center; margin-bottom:40px; }
-  h1 { font-size:2.4rem; margin:0 0 6px; letter-spacing:.5px; }
-  h1 span { color:var(--clay); }
-  .tag { color:var(--sub); font-size:1.05rem; margin:0; }
-  h2 { font-size:1.3rem; margin:44px 0 14px; padding-bottom:8px; border-bottom:1px solid var(--line); }
-  .btns { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; margin:26px 0 8px; }
-  a.btn { display:inline-block; padding:13px 24px; border-radius:10px; text-decoration:none; font-weight:700;
-          background:var(--clay); color:#1a1512; transition:transform .15s ease, filter .15s ease; }
-  a.btn:hover { transform:translateY(-2px); filter:brightness(1.08); }
-  a.btn.ghost { background:transparent; color:var(--cream); border:1px solid var(--line); font-weight:600; }
-  .note { background:rgba(218,119,86,.08); border:1px solid rgba(218,119,86,.35); border-radius:10px;
-          padding:14px 18px; margin:22px 0; font-size:.95rem; }
-  ul { padding-inline-start:22px; }
-  li { margin:6px 0; }
-  code { background:#0f0d0c; border:1px solid var(--line); border-radius:5px; padding:1px 6px; font-size:.9em; direction:ltr; display:inline-block; }
-  footer { margin-top:52px; padding-top:20px; border-top:1px solid var(--line); color:var(--sub); font-size:.9rem; text-align:center; }
-  a { color:var(--clay); }
-  .en { direction:ltr; text-align:left; }
-</style>
+<meta name="description" content="أداة مجانية لإزالة الموسيقى من المقاطع الصوتية والمرئية بالذكاء الاصطناعي — التنزيل والفصل والمؤثرات والترميز كلها على جهازك، بلا رفع لأي سحابة.">
+<link rel="canonical" href="https://haramlite.com/">
+<meta name="theme-color" content="#151311">
+
+<!-- بطاقة المشاركة -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="HaramLite">
+<meta property="og:title" content="HaramLite — إزالة الموسيقى من الفيديو، محلياً">
+<meta property="og:description" content="التنزيل والفصل بالذكاء الاصطناعي والمؤثرات والترميز — كلها على جهازك. بلا رفع لأي سحابة، بلا حسابات، بلا تتبّع.">
+<meta property="og:url" content="https://haramlite.com/">
+<meta property="og:image" content="https://haramlite.com/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="ar_AR">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="HaramLite — إزالة الموسيقى من الفيديو، محلياً">
+<meta name="twitter:description" content="كل المعالجة على جهازك: تنزيل، فصل بالذكاء الاصطناعي، مؤثرات، ترميز.">
+<meta name="twitter:image" content="https://haramlite.com/assets/og.png">
+
+<link rel="icon" href="assets/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icon-32.png">
+<link rel="apple-touch-icon" href="assets/icon-128.png">
+<link rel="stylesheet" href="assets/site.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "HaramLite",
+  "applicationCategory": "MultimediaApplication",
+  "operatingSystem": "Windows 10, Windows 11",
+  "softwareVersion": "0.2.1",
+  "description": "أداة مجانية لإزالة الموسيقى من المقاطع الصوتية والمرئية بالذكاء الاصطناعي، تعمل محلياً بالكامل على جهاز المستخدم.",
+  "url": "https://haramlite.com/",
+  "downloadUrl": "https://github.com/SMSMy/HaramLite/releases/latest",
+  "license": "https://haramlite.com/LICENSE.txt",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
 </head>
 <body>
-<div class="wrap">
 
-<header>
-  <h1>Haram<span>Lite</span></h1>
-  <p class="tag">إزالة الموسيقى من الفيديو بالذكاء الاصطناعي — <strong>محلياً 100% على جهازك</strong></p>
+<div class="topbar">
+  <div class="wrap">
+    <img src="assets/icon-128.png" alt="HaramLite">
+    <span class="name">HaramLite</span>
+    <span class="spacer"></span>
+    <button class="langbtn" id="langbtn" type="button">English</button>
+  </div>
+</div>
+
+<header class="hero">
+  <div class="wrap">
+    <img class="app" src="assets/icon-512.png" alt="أيقونة تطبيق HaramLite">
+    <h1>Haram<em>Lite</em></h1>
+    <p class="slogan" data-i18n="slogan">الموسيقى لا تليق بقلبٍ يريد الطمأنينة</p>
+    <p class="lead" data-i18n="lead">أداة خفيفة لإزالة الموسيقى من المقاطع الصوتية والمرئية بالذكاء الاصطناعي — كل خطوة تحدث على جهازك: لا رفع لأي ملف، ولا سحابة، ولا تسجيل حسابات.</p>
+
+    <div class="badges">
+      <span class="badge"><b data-i18n="badge_version">الإصدار 0.2.1</b></span>
+      <span class="badge" data-i18n="badge_os">ويندوز 10/11 (x64)</span>
+      <span class="badge" data-i18n="badge_local">معالجة محلية 100%</span>
+      <span class="badge"><a href="https://github.com/SMSMy/HaramLite/releases/latest" data-i18n="badge_release">أحدث إصدار على GitHub</a></span>
+    </div>
+
+    <div class="btns">
+      <a class="btn" href="https://github.com/SMSMy/HaramLite/releases/latest" data-i18n="cta_download">⬇ تحميل للتطبيق</a>
+      <a class="btn ghost" href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg" data-i18n="cta_ext">إضافة المتصفح</a>
+      <a class="btn ghost" href="#download" data-i18n="cta_how">كيف أبدأ؟</a>
+    </div>
+  </div>
 </header>
 
-<div class="btns">
-  <a class="btn" href="https://github.com/SMSMy/HaramLite/releases/latest">⬇ تحميل للتطبيق (ويندوز)</a>
-  <a class="btn ghost" href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg">إضافة المتصفح</a>
-</div>
+<main class="wrap">
 
-<div class="note">
-  ⚠️ <strong>إضافة المتصفح تحتاج تطبيق HaramLite المكتبي</strong> — فهي جسر إلى تطبيقك لا خدمة سحابية.
-  ثبّت التطبيق أولاً، ثم فعّل <em>التكامل مع المتصفح</em> من الإعدادات.
-</div>
+  <section id="shot">
+    <figure class="shot">
+      <img src="assets/app-screenshot.png" alt="واجهة تطبيق HaramLite" loading="lazy">
+    </figure>
+    <figcaption data-i18n="shot_cap">واجهة البرنامج: أفلت ملفاً أو الصق رابطاً، اختر الوضع، واضغط «فصل».</figcaption>
+  </section>
 
-<h2>ماذا يفعل؟</h2>
-<ul>
-  <li><strong>وضع «أغنية»:</strong> فصل الموسيقى + مؤثرات إحياء + قصّ الصمت تلقائياً.</li>
-  <li><strong>وضع «مقطع عادي»:</strong> إزالة الموسيقى فقط مع إبقاء الكلام طبيعياً.</li>
-  <li><strong>من رابط مباشرة:</strong> الصق رابط يوتيوب وغيره، والتطبيق ينزّل ويعالج.</li>
-  <li><strong>دفعات ومجلد مراقبة:</strong> أفلت عدة ملفات، أو اجعل مجلداً كاملاً يُعالج تلقائياً.</li>
-  <li><strong>إضافة المتصفح:</strong> زرّان داخل مشغّل يوتيوب + مشاهدة مفلترة تتخطّى مقاطع الصمت.</li>
-  <li><strong>بوت تيليجرام (اختياري):</strong> أرسل رابطاً أو ملفاً من هاتفك، والبوت يعالج على جهازك ويعيد الناتج.</li>
-</ul>
+  <section id="download">
+    <h2 data-i18n="dl_title">التحميل والتثبيت</h2>
 
-<h2>الخصوصية</h2>
-<p>
-  كل خطوة — الفحص، الفصل بالذكاء الاصطناعي، المؤثرات، والترميز — تحدث <strong>على جهازك</strong>.
-  لا رفع لأي ملف، ولا حسابات، ولا تحليلات. وحتى إضافة المتصفح لا تُجري أي طلب شبكة:
-  ما تقرأه يذهب إلى تطبيقك المحلي عبر Native Messaging.
-  التفاصيل في <a href="PRIVACY.html">سياسة الخصوصية</a>.
-</p>
+    <div class="note" data-i18n="dl_update_note">
+      ℹ️ <b>التحديث الذاتي موقوف في هذا الإصدار</b> (مفتاح توقيع الإصدارات غير مضبوط في المستودع بعد)،
+      فالترقية تكون بتنزيل المثبّت الجديد من صفحة الإصدارات. وسيعود بزر واحد بعد ضبط المفتاح.
+    </div>
 
-<h2>المتطلبات</h2>
-<ul>
-  <li>ويندوز 10/11 بمعمارية x64 — والمثبت يتولى الباقي (VC++ وأدوات المعالجة والنموذج).</li>
-  <li>للسرعة: كرت NVIDIA (CUDA) أو أي كرت DX12 (DirectML) يُستخدم تلقائياً عند تفعيله.</li>
-</ul>
+    <table>
+      <thead>
+        <tr><th data-i18n="dl_th_file">الملف</th><th data-i18n="dl_th_desc">الوصف</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>HaramLite_0.2.1_x64-setup.exe</code></td>
+          <td data-i18n="dl_nsis"><b>الموصى به</b> — مثبّت NSIS يثبّت كل شيء تلقائياً: VC++ Redist، أدوات المعالجة (FFmpeg وyt-dlp)، ونموذج الفصل.</td>
+        </tr>
+        <tr>
+          <td><code>HaramLite_0.2.1_x64_en-US.msi</code></td>
+          <td data-i18n="dl_msi">نسخة MSI للبيئات التي تُدار بالنطاق أو التثبيت الصامت.</td>
+        </tr>
+      </tbody>
+    </table>
 
-<h2>المصدر والرخصة</h2>
-<p>
-  المشروع مفتوح المصدر على <a href="https://github.com/SMSMy/HaramLite">GitHub</a> —
-  والرخصة في <a href="https://github.com/SMSMy/HaramLite/blob/main/LICENSE">LICENSE</a>.
-</p>
+    <p class="small" data-i18n="dl_portable">النسخة المحمولة: لم تُشحن في 0.2.1 — المثبّت هو الطريق المدعوم حالياً (المحمولة تحتاج مجلد <code>bin</code> و<code>models</code> بجانب التنفيذي، وحجمها ~515MB).</p>
+
+    <h3 data-i18n="dl_req">المتطلبات</h3>
+    <ul>
+      <li data-i18n="dl_req1">ويندوز 10/11 بمعمارية x64 — ولا شيء آخر، فالمثبّت يتولى الباقي.</li>
+      <li data-i18n="dl_req2">للسرعة: كرت NVIDIA (CUDA) أو أي كرت DX12 (DirectML) يُستخدَم تلقائياً عند تفعيله من الإعدادات.</li>
+    </ul>
+
+    <h3 data-i18n="dl_repair">الإصلاح الذاتي</h3>
+    <p data-i18n="dl_repair_txt">إن حُذف مكوّن (النموذج أو أدوات المعالجة) يظهر <b>معالج إصلاح ذاتي</b> من الإعدادات يعيد تنزيله ويتحقق من بصمته (SHA-256) قبل التثبيت.</p>
+  </section>
+
+  <section id="start">
+    <h2 data-i18n="how_title">طريقة الاستخدام</h2>
+    <ol class="steps">
+      <li data-i18n="how1">شغّل HaramLite (وستجد أيقونته في شريط المهام — وإغلاق النافذة يخفيه إلى الشريط ويُبقي العمل جارياً).</li>
+      <li data-i18n="how2">أفلت ملفاً (فيديو أو صوت)، أو الصق رابطاً من يوتيوب وغيره، أو استخدم زر الإضافة في المتصفح.</li>
+      <li data-i18n="how3">اختر الوضع: <b>أغنية</b> (فصل كامل + قصّ الصمت) أو <b>مقطع عادي</b> (إزالة الموسيقى فقط)، واختر الناتج MP3 أو MP4.</li>
+      <li data-i18n="how4">اضغط «فصل» — والنتيجة تُحفظ بجانب الملف الأصلي، مع إشعار وسجل أحداث حي.</li>
+    </ol>
+  </section>
+
+  <section id="features">
+    <h2 data-i18n="ft_title">ماذا يفعل؟</h2>
+    <div class="grid">
+      <div class="card">
+        <h3 data-i18n="ft1_h">وضعان للمعالجة</h3>
+        <p data-i18n="ft1_b">«أغنية»: فصل الموسيقى + مؤثرات إحياء + قصّ الصمت تلقائياً. «مقطع عادي»: إزالة الموسيقى مع إبقاء الكلام طبيعياً.</p>
+      </div>
+      <div class="card">
+        <h3 data-i18n="ft2_h">من رابط مباشرة</h3>
+        <p data-i18n="ft2_b">الصق رابط يوتيوب وغيره، والبرنامج ينزّل ويعالج تلقائياً — أو أرسل أي رابط بنقرة يمين من المتصفح.</p>
+      </div>
+      <div class="card">
+        <h3 data-i18n="ft3_h">دفعات ومجلد مراقبة</h3>
+        <p data-i18n="ft3_b">أفلت عدة ملفات وتُعالج بالترتيب مع إمكانية الإيقاف، أو فعّل <b>مجلد مراقبة</b> ليُعالج كل ما يُوضع فيه تلقائياً — مع حماية من امتلاء القرص.</p>
+      </div>
+      <div class="card">
+        <h3 data-i18n="ft4_h">مشاهدة مفلترة في المتصفح</h3>
+        <p data-i18n="ft4_b">زرّان داخل مشغّل يوتيوب: «حمّل وعالج»، و«شاهد مفلتراً» الذي يشغّل الصوت المعالَج متزامناً مع الفيديو ويتخطّى مقاطع الصمت.</p>
+      </div>
+      <div class="card">
+        <h3 data-i18n="ft5_h">بوت تيليجرام (اختياري)</h3>
+        <p data-i18n="ft5_b">أرسل رابطاً أو ملفاً من هاتفك، والبوت يسألك «أغنية أم مقطع عادي؟» ثم يعالج على جهازك ويعيد الناتج.</p>
+      </div>
+      <div class="card">
+        <h3 data-i18n="ft6_h">أيقونة الشريط والإشعارات</h3>
+        <p data-i18n="ft6_b">يعمل في الخلفية مع وصول دائم من أيقونة الشريط، وإشعارات انتهاء بصوت خفيف، وسجل أحداث حي.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="whatsnew">
+    <h2 data-i18n="new_title">الجديد في 0.2.1</h2>
+
+    <h3 data-i18n="new_tg_h">بوت تيليجرام (اختياري)</h3>
+    <ul>
+      <li data-i18n="new_tg1"><b>اقتران برمز:</b> لا يستجيب البوت لأي حساب حتى تربط حسابك — الإعدادات تعرض رمزاً من <b>6 أرقام</b> صالحاً <b>10 دقائق</b> و<b>5 محاولات</b> ثم يُبطَل، ترسله للبوت فيُسجَّل معرّفك تلقائياً. وأي حساب آخر يُتجاهل تماماً.</li>
+      <li data-i18n="new_tg2"><b>حدود تيليجرام معلنة:</b> البوت يرسل حتى <b>50MB</b> ولا يستطيع تنزيل أكثر من <b>20MB</b> من ملف مُرسَل (الروابط بلا حد). لذلك يُعاد ترميز الفيديو الكبير ليدخل في الحدّ، وإن كان الضغط سيشوّه الصورة يُرسَل الصوت بجودة كاملة مع بيان السبب.</li>
+      <li data-i18n="new_tg3"><b>خادم Bot API محلي (إعداد متقدم):</b> يرفع السقف إلى <b>2GB</b> وبالجودة الأصلية ونقل فوري من القرص.</li>
+      <li data-i18n="new_tg4">خيار <b>«إرسال الصوت فقط (MP3) دائماً»</b> لتوفير وقت رندرة الفيديو.</li>
+    </ul>
+
+    <h3 data-i18n="new_tray_h">أيقونة الشريط</h3>
+    <p data-i18n="new_tray_b">البرنامج يعمل في الخلفية (بوت/مراقبة/تكامل المتصفح) وزر الإغلاق <b>يُخفي إلى الشريط</b> بدل إنهاء العملية — والإغلاق الكامل من قائمة الأيقونة، والنقر عليها يعيد النافذة. (قبل هذا كان يمكن أن يبقى يعمل بلا أي وسيلة للوصول إليه.)</p>
+
+    <h3 data-i18n="new_ext_h">تكامل المتصفح اكتمل</h3>
+    <p data-i18n="new_ext_b">المشاهدة المفلترة <b>تتخطّى مقاطع الصمت</b> التي يخلّفها كتم الموسيقى (قفز فوري فوقها)، مع خيار في قائمة الزر الأيمن يوقف التخطي، ونتائج التنزيل تُحفظ في مجلد نتائجك.</p>
+
+    <h3 data-i18n="new_sec_h">أمان الإعدادات</h3>
+    <ul>
+      <li data-i18n="new_sec1">توكن البوت و<code>api_hash</code> <b>مشفّران بـ DPAPI</b> (مرتبطان بحسابك وجهازك) — لا نصّ صريح على القرص، ولا نسخة في متصفح الواجهة.</li>
+      <li data-i18n="new_sec2">مجلد بيانات البرنامج انتقل إلى <code>%LOCALAPPDATA%</code> — فلا يسافر مع ملف التعريف المتجول ولا يدخل النسخ السحابي.</li>
+      <li data-i18n="new_sec3">تنقيح التوكن من كل رسالة خطأ، فلا يظهر في السجل ولا في محادثة تيليجرام.</li>
+    </ul>
+
+    <h3 data-i18n="new_fix_h">إصلاحات</h3>
+    <ul>
+      <li data-i18n="new_fix1">حذف المصادر المؤقتة بعد المعالجة، وتنظيف مجلد تيليجرام المؤقت تلقائياً (كان يتراكم إلى مئات الميغابايت).</li>
+      <li data-i18n="new_fix2">إزالة تحذير مكرر في السجل عند كل وظيفة مشاهدة، وحذف مخلفات القتل عند الإقلاع.</li>
+    </ul>
+  </section>
+
+  <section id="privacy">
+    <h2 data-i18n="pv_title">الخصوصية</h2>
+    <p data-i18n="pv_lead">المشروع مبني على قاعدة واحدة: <b>ملفاتك لا تغادر جهازك</b>.</p>
+
+    <h3 data-i18n="pv_app_h">تطبيق ويندوز</h3>
+    <ul>
+      <li data-i18n="pv_app1">الفحص، الفصل بالذكاء الاصطناعي، المؤثرات، والترميز — كلها محلياً. لا رفع لأي ملف، ولا حسابات، ولا تحليلات، ولا تتبّع.</li>
+      <li data-i18n="pv_app2"><b>الاتصال بالإنترنت اختياري:</b> يُستخدم فقط لتنزيل رابط طلبتَه، وتحديث yt-dlp، وفحص التحديثات، وبوت تيليجرام إن فعّلته. ومن لا يستخدم هذه الميزات يمكنه قطع الشبكة والتطبيق يعمل.</li>
+      <li data-i18n="pv_app3"><b>الأسرار مشفّرة:</b> توكن البوت و<code>api_hash</code> محفوظان بـ DPAPI المرتبط بحسابك وجهازك، ولا يعملان إن نُسخ الملف إلى جهاز آخر.</li>
+      <li data-i18n="pv_app4"><b>البوت لا يعمل بلا توكن تضعه أنت ولا بلا اقتران حسابك</b> — ولا يستجيب لأي حساب آخر إطلاقاً.</li>
+    </ul>
+
+    <h3 data-i18n="pv_ext_h">إضافة المتصفح</h3>
+    <ul>
+      <li data-i18n="pv_ext1">لا تُجري أي طلب شبكة: ما تقرأه (رابط التبويب عند نقرك) يذهب إلى تطبيقك المحلي عبر Native Messaging — لا إلى المطوّر ولا إلى أي خادم.</li>
+      <li data-i18n="pv_ext2">الصلاحيات عند الحد الأدنى: قائمة الزر الأيمن، والتبويب النشط عند نقرك، والتخاطب مع التطبيق. لا سجل تصفح، ولا وصول إلى مواقع أخرى.</li>
+      <li data-i18n="pv_ext3">السياسة الكاملة: <a href="PRIVACY.html">سياسة الخصوصية</a>.</li>
+    </ul>
+  </section>
+
+  <section id="dev">
+    <h2 data-i18n="dev_title">للمطورين</h2>
+    <p data-i18n="dev_lead">المشروع مفتوح المصدر، والبناء من المصدر موثّق في <a href="https://github.com/SMSMy/HaramLite/blob/main/docs/CONTRIBUTING.md">CONTRIBUTING</a>.</p>
+    <p><b data-i18n="dev_tech">التقنيات:</b> <span data-i18n="dev_stack">Tauri v2 · Rust · ONNX Runtime (UVR-MDX-NET-Voc_FT) · FFmpeg · yt-dlp · TypeScript/Vite · Tailwind CSS · خط ثمانية (Thmanyah)</span></p>
+    <div class="btns" style="justify-content:flex-start">
+      <a class="btn ghost" href="https://github.com/SMSMy/HaramLite" data-i18n="dev_src">الكود على GitHub</a>
+      <a class="btn ghost" href="LICENSE.txt" data-i18n="dev_lic">الرخصة</a>
+    </div>
+  </section>
+
+  <section id="support">
+    <h2 data-i18n="sup_title">مشاكل أو اقتراحات؟</h2>
+    <p data-i18n="sup_body">افتح تذكرة على GitHub Issues، أو من داخل التطبيق: الإعدادات ← <b>الإبلاغ عن مشكلة</b> (يُرفق سجل الأحداث تلقائياً).</p>
+    <div class="btns" style="justify-content:flex-start">
+      <a class="btn" href="https://github.com/SMSMy/HaramLite/issues/new" data-i18n="sup_btn">افتح تذكرة</a>
+    </div>
+  </section>
+
+</main>
 
 <footer>
-  <div class="en">
-    <strong>HaramLite</strong> — AI music removal that runs entirely on your machine.
-    <a href="https://github.com/SMSMy/HaramLite/releases/latest">Download for Windows</a> ·
-    <a href="PRIVACY.html">Privacy policy</a> ·
-    <a href="https://github.com/SMSMy/HaramLite">Source</a>
+  <div class="wrap">
+    <nav>
+      <a href="#download" data-i18n="f_dl">التحميل</a>
+      <a href="#whatsnew" data-i18n="f_new">الجديد</a>
+      <a href="PRIVACY.html" data-i18n="f_pv">الخصوصية</a>
+      <a href="LICENSE.txt" data-i18n="f_lic">الرخصة</a>
+      <a href="https://github.com/SMSMy/HaramLite" data-i18n="f_src">المصدر</a>
+      <a href="https://github.com/SMSMy/HaramLite/issues/new" data-i18n="f_iss">الدعم</a>
+    </nav>
+    <div data-i18n="f_credit">شكر خاص لمشروع <b>HaramMute</b> — الملهم الأول لهذا العمل.</div>
+    <div class="small" data-i18n="f_disclaimer">يوتيوب علامة تجارية لشركة Google LLC. هذا المشروع مستقل وغير مرتبط بها ولا معتمد منها، والمستخدم مسؤول عن احترام حقوق المحتوى الذي يعالجه.</div>
+    <div class="small">© <span id="year">2026</span> HaramLite · <a href="https://haramlite.com">haramlite.com</a></div>
   </div>
-  <p style="margin-top:14px">يوتيوب علامة تجارية لشركة Google LLC — هذا المشروع غير مرتبط بها ولا معتمد منها.</p>
 </footer>
 
-</div>
+<script>
+/* تبديل عربي/إنجليزي — النص العربي مكتوب في الصفحة، والتبديل يستبدله. */
+const I18N = {
+  en: {
+    slogan: "Music has no place in a heart that seeks tranquillity",
+    lead: "A lightweight tool that removes music from audio and video with AI — every step happens on your machine: nothing is uploaded, no cloud, no accounts.",
+    badge_version: "Version 0.2.1",
+    badge_os: "Windows 10/11 (x64)",
+    badge_local: "100% local processing",
+    badge_release: "Latest release on GitHub",
+    cta_download: "⬇ Download the app",
+    cta_ext: "Browser extension",
+    cta_how: "How do I start?",
+    shot_cap: "The app: drop a file or paste a link, pick a mode, press Separate.",
+    dl_title: "Download and install",
+    dl_update_note: "ℹ️ <b>Self-update is disabled in this build</b> (the release signing key is not configured in the repository yet), so upgrading means downloading the new installer from the releases page. It returns as a one-click button once the key is set.",
+    dl_th_file: "File", dl_th_desc: "Description",
+    dl_nsis: "<b>Recommended</b> — NSIS installer that sets everything up: VC++ Redist, the processing tools (FFmpeg and yt-dlp) and the separation model.",
+    dl_msi: "MSI build for domain-managed or silent installs.",
+    dl_portable: "Portable build: not shipped in 0.2.1 — the installer is the supported path for now (a portable folder needs <code>bin</code> and <code>models</code> next to the executable, ~515MB).",
+    dl_req: "Requirements",
+    dl_req1: "Windows 10/11 x64 — nothing else; the installer handles the rest.",
+    dl_req2: "For speed: an NVIDIA card (CUDA) or any DX12 card (DirectML) is used automatically once enabled in the settings.",
+    dl_repair: "Self-repair",
+    dl_repair_txt: "If a component (the model or the processing tools) is deleted, a <b>repair wizard</b> in the settings downloads it again and verifies its SHA-256 fingerprint before installing.",
+    how_title: "How to use",
+    how1: "Launch HaramLite (its icon sits in the system tray — closing the window hides it there and keeps work running).",
+    how2: "Drop a file (video or audio), paste a link from YouTube or elsewhere, or use the extension button in your browser.",
+    how3: "Pick the mode: <b>Song</b> (full separation + silence trimming) or <b>Clip</b> (music removal only), and pick MP3 or MP4 output.",
+    how4: "Press Separate — the result is saved next to the original file, with a notification and a live event log.",
+    ft_title: "What does it do?",
+    ft1_h: "Two processing modes",
+    ft1_b: "“Song”: separation + revival effects + automatic silence trimming. “Clip”: music removal while speech stays natural.",
+    ft2_h: "Straight from a link",
+    ft2_b: "Paste a YouTube link (or others) and it downloads and processes automatically — or send any link by right-clicking it in your browser.",
+    ft3_h: "Batches and watch folder",
+    ft3_b: "Drop several files and they are processed in order with the option to stop, or enable a <b>watch folder</b> so anything placed in it is processed automatically — with disk-full protection.",
+    ft4_h: "Filtered watching in the browser",
+    ft4_b: "Two buttons inside the YouTube player: “download & process”, and “watch filtered”, which plays the processed audio in sync with the video and skips the silent stretches.",
+    ft5_h: "Telegram bot (optional)",
+    ft5_b: "Send a link or a file from your phone; the bot asks “song or clip?” and processes it on your machine, then sends the result back.",
+    ft6_h: "Tray icon and notifications",
+    ft6_b: "Runs in the background with permanent access from the tray icon, completion notifications with a soft sound, and a live event log.",
+    new_title: "What's new in 0.2.1",
+    new_tg_h: "Telegram bot (optional)",
+    new_tg1: "<b>Pairing by code:</b> the bot answers nobody until you link your account — the settings show a <b>6-digit</b> code valid for <b>10 minutes</b> and <b>5 attempts</b>, then it is invalidated. Send it to the bot and your id is stored automatically. Every other account is ignored completely.",
+    new_tg2: "<b>Telegram's limits, stated plainly:</b> a bot may send up to <b>50MB</b> and may only download <b>20MB</b> of a file you send it (links have no limit). A large video is therefore re-encoded to fit, and if that would ruin the picture the audio is sent in full quality with the reason explained.",
+    new_tg3: "<b>A local Bot API server (advanced setting)</b> lifts the cap to <b>2GB</b>, original quality, straight from disk.",
+    new_tg4: "An <b>“always send audio only (MP3)”</b> option to save the video render time.",
+    new_tray_h: "Tray icon",
+    new_tray_b: "The app runs in the background (bot, watch folder, browser bridge) and the close button now <b>hides it to the tray</b> instead of ending the process — full quit is in the tray menu, and clicking the icon brings the window back. Before this it could keep running with no way to reach it.",
+    new_ext_h: "Browser integration completed",
+    new_ext_b: "Filtered watching now <b>skips the silent stretches</b> left by muting the music (instant jump over them), with an option in the right-click menu to turn skipping off, and downloads are kept in your results folder.",
+    new_sec_h: "Settings security",
+    new_sec1: "The bot token and <code>api_hash</code> are <b>sealed with DPAPI</b> (bound to your account and machine) — no plaintext on disk and no copy in the UI's browser storage.",
+    new_sec2: "The app's data folder moved to <code>%LOCALAPPDATA%</code> — it no longer travels with a roaming profile or cloud sync.",
+    new_sec3: "The token is redacted from every error message, so it can never appear in the log or in a Telegram chat.",
+    new_fix_h: "Fixes",
+    new_fix1: "Sources are deleted after processing, and the Telegram scratch folder is cleaned automatically (it used to pile up to hundreds of megabytes).",
+    new_fix2: "A duplicate log warning on every watch job is gone, and leftovers from a killed run are swept at startup.",
+    pv_title: "Privacy",
+    pv_lead: "One rule holds the whole project together: <b>your files never leave your machine</b>.",
+    pv_app_h: "Windows app",
+    pv_app1: "Probing, AI separation, effects and encoding all run locally. Nothing is uploaded, and there are no accounts, analytics or tracking.",
+    pv_app2: "<b>Internet access is optional:</b> it is used only to download a link you asked for, to update yt-dlp, to check for updates, and for the Telegram bot if you enable it. If you use none of those, the app works with the network unplugged.",
+    pv_app3: "<b>Secrets are encrypted:</b> the bot token and <code>api_hash</code> are stored with DPAPI bound to your account and machine, and they stop working if the file is copied to another computer.",
+    pv_app4: "<b>The bot does nothing without a token you supply and without pairing your account</b> — it never answers any other account.",
+    pv_ext_h: "Browser extension",
+    pv_ext1: "It makes no network request at all: what it reads (the tab URL when you click it) goes to your local app over Native Messaging — not to the developer and not to any server.",
+    pv_ext2: "Minimal permissions: a context-menu item, the active tab when you click, and talking to the app. No browsing history, no access to other sites.",
+    pv_ext3: "Full policy: <a href=\"PRIVACY.html\">privacy policy</a>.",
+    dev_title: "For developers",
+    dev_lead: "The project is open source; building from source is documented in <a href=\"https://github.com/SMSMy/HaramLite/blob/main/docs/CONTRIBUTING.md\">CONTRIBUTING</a>.",
+    dev_tech: "Stack:",
+    dev_stack: "Tauri v2 · Rust · ONNX Runtime (UVR-MDX-NET-Voc_FT) · FFmpeg · yt-dlp · TypeScript/Vite · Tailwind CSS · Thmanyah typeface",
+    dev_src: "Source on GitHub",
+    dev_lic: "License",
+    sup_title: "Problems or suggestions?",
+    sup_body: "Open an issue on GitHub, or from inside the app: Settings → <b>Report a problem</b> (it attaches the event log automatically).",
+    sup_btn: "Open an issue",
+    f_dl: "Download", f_new: "What's new", f_pv: "Privacy", f_lic: "License", f_src: "Source", f_iss: "Support",
+    f_credit: "Special thanks to the <b>HaramMute</b> project — the first inspiration for this work.",
+    f_disclaimer: "YouTube is a trademark of Google LLC. This project is independent, not affiliated with or endorsed by them, and users are responsible for respecting the rights of the content they process."
+  }
+};
+
+(function () {
+  const btn = document.getElementById('langbtn');
+  const year = document.getElementById('year');
+  if (year) year.textContent = new Date().getFullYear();
+  // احفظ النص العربي الأصلي مرة واحدة ثم بدّل بينه وبين الإنجليزية.
+  const originals = new Map();
+  document.querySelectorAll('[data-i18n]').forEach(function (el) {
+    originals.set(el.dataset.i18n, el.innerHTML);
+  });
+  function apply(lang) {
+    document.documentElement.lang = lang;
+    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+    document.querySelectorAll('[data-i18n]').forEach(function (el) {
+      const k = el.dataset.i18n;
+      const val = lang === 'en' ? I18N.en[k] : originals.get(k);
+      if (val !== undefined) el.innerHTML = val;
+    });
+    btn.textContent = lang === 'ar' ? 'English' : 'العربية';
+    document.title = lang === 'en'
+      ? 'HaramLite — remove music from video, entirely on your machine'
+      : 'HaramLite — إزالة الموسيقى من الفيديو، محلياً على جهازك';
+    try { localStorage.setItem('hl.site.lang', lang); } catch (e) {}
+  }
+  btn.addEventListener('click', function () {
+    apply(document.documentElement.lang === 'ar' ? 'en' : 'ar');
+  });
+  let saved = null;
+  try { saved = localStorage.getItem('hl.site.lang'); } catch (e) {}
+  // العربية هي الأصل؛ والزائر غير العربي يرى الإنجليزية تلقائياً.
+  const prefersAr = ((navigator.language || 'ar') + '').toLowerCase().startsWith('ar');
+  apply(saved || (prefersAr ? 'ar' : 'en'));
+})();
+</script>
 </body>
 </html>

@@ -1,0 +1,143 @@
+/* HaramLite — official site styles.
+   Fonts: Thmanyah (same family the desktop app ships), with system fallbacks. */
+@font-face { font-family: 'Thmanyah'; src: url('thmanyah-regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Thmanyah'; src: url('thmanyah-medium.otf') format('opentype'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Thmanyah'; src: url('thmanyah-bold.otf') format('opentype'); font-weight: 700; font-display: swap; }
+
+:root {
+  --coal: #151311;
+  --coal-2: #221E1A;
+  --coal-3: #2C2723;
+  --clay: #DA7756;
+  --clay-soft: rgba(218, 119, 86, .12);
+  --cream: #F5F2ED;
+  --sub: #A38C85;
+  --line: #3A342F;
+  --ok: #5DDAC8;
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: linear-gradient(165deg, var(--coal-2), var(--coal) 55%);
+  color: var(--cream);
+  font-family: 'Thmanyah', 'Segoe UI', Tahoma, Arial, sans-serif;
+  font-size: 17px;
+  line-height: 1.9;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 960px; margin: 0 auto; padding: 0 22px; }
+
+a { color: var(--clay); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── top bar ─────────────────────────────────────────────── */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  background: rgba(21, 19, 17, .82);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.topbar .wrap { display: flex; align-items: center; gap: 12px; height: 62px; }
+.topbar img { width: 30px; height: 30px; }
+.topbar .name { font-weight: 700; font-size: 1.05rem; }
+.topbar .spacer { flex: 1; }
+.langbtn {
+  background: transparent; color: var(--cream); border: 1px solid var(--line);
+  border-radius: 9px; padding: 5px 13px; cursor: pointer; font-family: inherit;
+  font-size: .9rem; font-weight: 500; transition: border-color .2s, color .2s;
+}
+.langbtn:hover { border-color: var(--clay); color: var(--clay); }
+
+/* ── hero ────────────────────────────────────────────────── */
+.hero { padding: 64px 0 40px; text-align: center; }
+.hero img.app { width: 96px; height: 96px; }
+.hero h1 { font-size: 2.9rem; margin: 14px 0 6px; letter-spacing: .5px; }
+.hero h1 em { color: var(--clay); font-style: normal; }
+.slogan { font-size: 1.25rem; color: var(--cream); opacity: .92; margin: 0 0 4px; }
+.lead { color: var(--sub); font-size: 1.02rem; margin: 0 auto 26px; max-width: 620px; }
+
+.badges { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 24px; }
+.badge {
+  border: 1px solid var(--line); border-radius: 999px; padding: 3px 13px;
+  font-size: .84rem; color: var(--sub); background: rgba(255,255,255,.02);
+}
+.badge b { color: var(--cream); font-weight: 500; }
+
+.btns { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.btn {
+  display: inline-block; padding: 13px 26px; border-radius: 11px; font-weight: 700;
+  background: var(--clay); color: #1a1512; transition: transform .15s ease, filter .15s ease;
+}
+.btn:hover { transform: translateY(-2px); filter: brightness(1.08); text-decoration: none; }
+.btn.ghost { background: transparent; color: var(--cream); border: 1px solid var(--line); font-weight: 500; }
+.btn.ghost:hover { border-color: var(--clay); color: var(--clay); }
+
+/* ── sections ────────────────────────────────────────────── */
+section { padding: 34px 0; }
+h2 {
+  font-size: 1.45rem; margin: 0 0 18px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+h3 { font-size: 1.08rem; margin: 22px 0 8px; color: var(--clay); }
+ul { padding-inline-start: 22px; margin: 8px 0; }
+li { margin: 5px 0; }
+code, kbd {
+  background: #0F0D0C; border: 1px solid var(--line); border-radius: 6px;
+  padding: 1px 7px; font-size: .88em; direction: ltr; display: inline-block;
+}
+.small { color: var(--sub); font-size: .9rem; }
+
+.shot { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin-top: 6px; }
+.shot img { display: block; width: 100%; height: auto; }
+figcaption { color: var(--sub); font-size: .88rem; margin-top: 8px; text-align: center; }
+
+.card {
+  background: rgba(255,255,255,.025); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 18px 20px; margin: 12px 0;
+}
+.note {
+  background: var(--clay-soft); border: 1px solid rgba(218,119,86,.38);
+  border-radius: var(--radius); padding: 14px 18px; margin: 16px 0;
+}
+.ok { border-color: rgba(93,218,200,.35); background: rgba(93,218,200,.07); }
+
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: .95rem; }
+th, td { text-align: start; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--sub); font-weight: 500; font-size: .88rem; }
+td code { font-size: .85em; }
+
+.steps { counter-reset: s; list-style: none; padding: 0; }
+.steps li {
+  counter-increment: s; position: relative; padding-inline-start: 46px; margin: 12px 0;
+}
+.steps li::before {
+  content: counter(s); position: absolute; inset-inline-start: 0; top: 4px;
+  width: 30px; height: 30px; border-radius: 50%; background: var(--clay-soft);
+  border: 1px solid rgba(218,119,86,.45); color: var(--clay);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .9rem;
+}
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.grid .card { margin: 0; }
+.grid h3 { margin-top: 0; }
+
+footer {
+  margin-top: 40px; padding: 30px 0 44px; border-top: 1px solid var(--line);
+  color: var(--sub); font-size: .9rem;
+}
+footer .wrap { display: flex; flex-direction: column; gap: 10px; }
+footer nav { display: flex; flex-wrap: wrap; gap: 16px; }
+
+@media (max-width: 640px) {
+  .hero h1 { font-size: 2.2rem; }
+  .hero { padding: 40px 0 26px; }
+  body { font-size: 16px; }
+}
+
+html[dir="ltr"] .hero h1 { letter-spacing: 0; }
