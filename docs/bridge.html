@@ -85,7 +85,7 @@
       <nav class="hidden md:flex items-center gap-6 text-sm text-sand-400 font-medium">
         <a href="#how-it-works" class="hover:text-sand-100 transition-colors">طريقة العمل</a>
         <a href="#youtube-player" class="hover:text-sand-100 transition-colors">داخل يوتيوب</a>
-        <a href="#install" class="hover:text-sand-100 transition-colors">التثبيت والمتاجر</a>
+        <a href="#video" class="hover:text-sand-100 transition-colors">شرح بالفيديو</a> <a href="#install" class="hover:text-sand-100 transition-colors">التثبيت والمتاجر</a>
         <a href="#privacy" class="hover:text-sand-100 transition-colors">الخصوصية المحلية</a>
       </nav>
 
@@ -303,6 +303,22 @@
   </section>
 
   <!-- قسم الميزات الأربعة الرئيسية للإضافة -->
+  <!-- قسم شرح الإضافة بالفيديو — الغلاف محلي، والفيديو يُحمَّل من يوتيوب عند النقر فقط -->
+  <section id="video" class="py-16 bg-coal-950 border-t border-coal-700/80">
+    <div class="max-w-4xl mx-auto px-6 text-center">
+      <h2 class="text-2xl sm:text-3xl font-bold text-sand-100 mb-3">شاهد الإضافة في دقيقة</h2>
+      <p class="text-sand-400 text-sm mb-8">شرح مبسّط لكيفية عمل HaramLite Bridge: التثبيت، وربط الإضافة بالتطبيق، والمشاهدة المفلترة داخل يوتيوب.</p>
+      <div class="video-shell" data-video-id="-9MuAt6qcRU" role="button" tabindex="0" aria-label="تشغيل فيديو الشرح">
+        <img src="assets/bridge-video.jpg" alt="شرح إضافة HaramLite Bridge بالفيديو" width="1280" height="720" loading="lazy">
+        <span class="video-play">
+          <svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        </span>
+      </div>
+      <p class="text-sand-500 text-xs mt-4">لا يُحمَّل الفيديو من يوتيوب إلا عند ضغطك على زر التشغيل — الصفحة نفسها لا تُجري أي طلب خارجي.</p>
+      <p class="text-sand-500 text-xs mt-1">المشاهدة على يوتيوب: <a class="text-clay hover:underline" href="https://www.youtube.com/watch?v=-9MuAt6qcRU" target="_blank" rel="noreferrer" dir="ltr">youtube.com/watch?v=-9MuAt6qcRU</a></p>
+    </div>
+  </section>
+
   <section id="how-it-works" class="py-16 bg-coal-900/70 border-t border-b border-coal-700/80">
     <div class="max-w-6xl mx-auto px-6">
       <div class="text-center max-w-2xl mx-auto mb-12">
@@ -523,7 +539,32 @@
     </div>
   </footer>
 
+
+<script>
+  /* الفيديو لا يُحمَّل إلا بنقرة: يحفظ وعد «لا طلبات خارجية»، ويستخدم نطاق
+     youtube-nocookie فلا تُزرع كوكيز التتبّع عند التشغيل. */
+  document.querySelectorAll('.video-shell').forEach(function (shell) {
+    function play() {
+      var id = shell.dataset.videoId;
+      if (!id || shell.dataset.playing) return;
+      shell.dataset.playing = '1';
+      var f = document.createElement('iframe');
+      f.className = 'video-frame';
+      f.src = 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1&rel=0';
+      f.title = 'شرح إضافة HaramLite Bridge';
+      f.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+      f.allowFullscreen = true;
+      shell.innerHTML = '';
+      shell.appendChild(f);
+    }
+    shell.addEventListener('click', play);
+    shell.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); play(); }
+    });
+  });
+</script>
 </body>
+
 </html>
 
 

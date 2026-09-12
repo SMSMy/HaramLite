@@ -94,5 +94,22 @@ html[lang='ar'] body { line-height: 1.75; }
 
   /* بطاقة زجاجية — من تصميم صفحة الإضافة */
   .glass-card { background: rgba(33, 31, 29, 0.85); backdrop-filter: blur(12px); border: 1px solid #2e2c29; }
+
+  /* غلاف الفيديو في صفحة الإضافة: نسبة 16:9، وزر تشغيل فوق صورة محلية */
+  .video-shell {
+    position: relative; display: block; width: 100%; aspect-ratio: 16 / 9;
+    border-radius: 0.75rem; overflow: hidden; cursor: pointer;
+    border: 1px solid #2e2c29; background: #100e0c;
+  }
+  .video-shell img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0.82; transition: opacity .2s ease, transform .3s ease; }
+  .video-shell:hover img { opacity: 1; transform: scale(1.02); }
+  .video-shell .video-play {
+    position: absolute; inset: 0; margin: auto; width: 4.5rem; height: 4.5rem;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 9999px; background: rgba(218, 119, 86, 0.92); color: #141413;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); transition: transform .2s ease;
+  }
+  .video-shell:hover .video-play { transform: scale(1.08); }
+  .video-shell .video-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 }
 
