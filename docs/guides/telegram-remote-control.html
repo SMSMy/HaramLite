@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>التحكم من الجوال عبر تيليجرام | HaramLite</title>
-  <meta name="description" content="أرسل رابطاً أو ملفاً من هاتفك إلى روبوتك الخاص، ويعالجه حاسوبك ثم يعيده إليك — مع الاقتران برمز من ستة أرقام وحدود معلنة.">
+  <title>التحكم من الجوال عبر تيليجرام | إزالة الموسيقى عن بُعد | HaramLite</title>
+  <meta name="description" content="دليل التحكم في تطبيق HaramLite من هاتفك عبر روبوت تيليجرام خاص: أرسل الروابط والملفات أثناء تنقلك، ويعالجها حاسوبك محلياً ويعيدها إليك.">
   <link rel="canonical" href="https://haramlite.com/guides/telegram-remote-control.html">
   <meta name="theme-color" content="#151311">
   <meta property="og:type" content="article">
   <meta property="og:title" content="التحكم من الجوال عبر تيليجرام | HaramLite">
-  <meta property="og:description" content="أرسل رابطاً أو ملفاً من هاتفك إلى روبوتك الخاص، ويعالجه حاسوبك ثم يعيده إليك — مع الاقتران برمز من ستة أرقام وحدود معلنة.">
+  <meta property="og:description" content="أرسل الروابط والملفات من هاتفك، ويعالجها حاسوبك محلياً ويعيدها إليك.">
   <meta property="og:url" content="https://haramlite.com/guides/telegram-remote-control.html">
   <meta property="og:image" content="https://haramlite.com/assets/og.png">
   <meta name="twitter:card" content="summary_large_image">
@@ -21,43 +21,15 @@
   <link rel="preload" href="../assets/thmanyah-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
   <script type="application/ld+json">
   {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "هل يحتاج فتح منفذ في الراوتر؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "لا. الروبوت يسأل تيليجرام عن الرسائل الجديدة (Polling)، فلا تحتاج فتح منافذ ولا عنواناً ثابتاً."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "ماذا لو أرسل شخص آخر إلى روبوتي؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "يُتجاهل تماماً. لا يستجيب الروبوت إلا لمعرّف الحساب الذي ربطته برمز الاقتران."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "هل تصل رسائلي إلى المطوّر؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "لا. الرسائل تمرّ عبر خوادم تيليجرام كما تمرّ أي رسالة عادية، والمعالجة على جهازك، ولا يطّلع المطوّر على شيء."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "هل يمكن إلغاء الربط؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "نعم، من إعدادات التطبيق: أوقف الروبوت أو احذف الرمز، فيتوقف فوراً عن الاستجابة."
-      }
-    }
-  ]
-}
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      { "@type": "Question", "name": "هل الميزة مجانية أم تتطلب اشتراكاً؟", "acceptedAnswer": { "@type": "Answer", "text": "مجانية بالكامل ومفتوحة المصدر. وإنشاء روبوت تيليجرام مجاني من الشركة نفسها." } },
+      { "@type": "Question", "name": "هل يستطيع المطوّر أو طرف ثالث رؤية ملفاتي؟", "acceptedAnswer": { "@type": "Answer", "text": "لا. الاتصال بين خوادم تيليجرام وجهازك مباشرة عبر Bot API، ولا يمرّ عبر أي خادم وسيط يخصّ HaramLite، والمعالجة على جهازك." } },
+      { "@type": "Question", "name": "هل يمكنني إرسال فيديو واستلامه فيديو؟", "acceptedAnswer": { "@type": "Answer", "text": "نعم إن كان الناتج أقل من 50 ميغابايت. وإن كان أكبر ففعّل خيار «استلام كصوت MP3» ليصلك بصيغة صوتية خفيفة." } },
+      { "@type": "Question", "name": "ماذا يحدث إن انقطع الإنترنت أثناء المعالجة؟", "acceptedAnswer": { "@type": "Answer", "text": "المعالجة لا تحتاج إنترنت وستكتمل محلياً، وبمجرد عودة الاتصال يرسل الروبوت الناتج إلى هاتفك." } }
+    ]
+  }
   </script>
 </head>
 <body class="min-h-screen flex flex-col bg-coal-surface text-cream-text">
@@ -65,16 +37,20 @@
   <header class="sticky top-0 z-50 bg-coal-surface/90 backdrop-blur-md border-b border-coal-border">
     <div class="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
       <a href="../" class="flex items-center gap-3 group">
-        <img src="../assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded-lg shadow-sm border border-coal-border group-hover:border-clay/50 transition-colors">
+        <div class="w-9 h-9 rounded-xl overflow-hidden border border-clay/30 p-0.5 bg-coal-card group-hover:border-clay transition-colors">
+          <img src="../assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-full h-full object-contain">
+        </div>
         <span class="flex flex-col">
           <span class="font-serif font-bold text-lg tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span>
           <span class="text-[10px] text-cream-muted leading-tight -mt-0.5">معالجة محلية 100%</span>
         </span>
       </a>
-      <div class="flex items-center gap-3 sm:gap-4">
-        <a href="#faq" class="text-xs sm:text-sm text-cream-muted hover:text-cream-text transition-colors">الأسئلة الشائعة</a>
-        <a href="../#download" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-clay text-coal-surface font-semibold text-xs sm:text-sm hover:bg-clay-hover shadow-sm transition-all">
-          <span class="material-symbols-outlined text-xs">download</span><span>تحميل فوري</span>
+      <div class="flex items-center gap-3 sm:gap-5 text-xs sm:text-sm">
+        <a class="hidden sm:inline-block text-cream-muted hover:text-cream-text transition-colors" href="#how-it-works">كيف تعمل؟</a>
+        <a class="text-cream-muted hover:text-cream-text transition-colors" href="#steps">خطوات التفعيل</a>
+        <a class="text-cream-muted hover:text-cream-text transition-colors" href="#faq">الأسئلة</a>
+        <a class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-clay text-coal-base font-bold text-xs sm:text-sm hover:bg-clay-hover transition-all" href="../#download">
+          <span class="material-symbols-outlined text-xs">download</span><span>تحميل التطبيق</span>
         </a>
       </div>
     </div>
@@ -82,193 +58,219 @@
 
   <main class="flex-grow max-w-3xl mx-auto w-full px-4 sm:px-6 py-8 sm:py-12">
 
-    <nav class="flex items-center gap-2 text-xs text-cream-muted mb-4">
-      <a href="../" class="hover:text-clay transition-colors">الرئيسية</a>
-      <span class="material-symbols-outlined text-[10px] opacity-60">chevron_left</span>
-      <a href="./" class="hover:text-clay transition-colors">الأدلة</a>
-      <span class="material-symbols-outlined text-[10px] opacity-60">chevron_left</span>
-      <span class="text-cream-text font-medium truncate">التحكم من الجوال</span>
+    <nav class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-coal-card/80 border border-coal-border text-xs text-cream-muted mb-6">
+      <a class="hover:text-clay transition-colors" href="../">الرئيسية</a>
+      <span class="material-symbols-outlined text-[10px] opacity-40">chevron_left</span>
+      <a class="hover:text-clay transition-colors" href="./">الأدلة</a>
+      <span class="material-symbols-outlined text-[10px] opacity-40">chevron_left</span>
+      <span class="text-clay font-medium truncate">التحكم من الجوال</span>
     </nav>
 
     <section class="mb-8">
-      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-clay/10 border border-clay/25 text-clay text-xs font-semibold mb-3">
-        <span class="material-symbols-outlined text-xs">bolt</span><span>دليل مبسط · ميزة اختيارية تحتاج توكن منك</span>
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-clay/10 border border-clay/30 text-clay text-xs font-semibold mb-3.5">
+        <span class="material-symbols-outlined text-sm">send</span><span>ميزة اختيارية · أرسل من هاتفك وحاسوبك يتولى المعالجة</span>
       </div>
-      <h1 class="font-serif text-2xl sm:text-4xl font-bold text-cream-text leading-tight mb-4">التحكم من الجوال عبر روبوت تيليجرام</h1>
-      <p class="text-base sm:text-lg text-cream-muted leading-relaxed">أنت خارج البيت وتريد معالجة مقطع؟ أرسل الرابط أو الملف إلى <strong class="text-clay font-bold">روبوتك الخاص</strong>، فيعمل حاسوبك على المعالجة ويعيد إليك الناتج — بلا وسيط وبلا رفع إلى أي خدمة سحابية.</p>
+      <h1 class="font-serif text-2xl sm:text-4xl font-bold text-cream-text leading-tight mb-4">
+        التحكم الكامل من الجوال عبر <span class="text-clay underline decoration-clay/40 underline-offset-8">تيليجرام</span>
+      </h1>
+      <p class="text-base sm:text-lg text-cream-dim leading-relaxed">
+        أنت خارج المنزل وتريد تنقية حلقة بودكاست أو مقطع يوتيوب الآن؟ أرسل الرابط أو الملف إلى روبوتك الخاص، ويعالجه حاسوبك في المنزل محلياً ويعيد إليك الملف المنقّى مباشرة.
+      </p>
     </section>
 
     <div id="quick-download" class="my-6 p-5 sm:p-6 rounded-2xl bg-coal-card border-glow-clay relative overflow-hidden">
+      <div class="absolute -left-10 -bottom-10 w-44 h-44 bg-clay/10 rounded-full blur-3xl pointer-events-none"></div>
       <div class="flex flex-col sm:flex-row items-center justify-between gap-5 relative z-10">
         <div class="text-center sm:text-right space-y-1">
           <div class="flex items-center justify-center sm:justify-start gap-2">
             <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span class="text-xs font-medium text-cream-muted">مجاني ومفتوح المصدر · الإصدار 0.2.2</span>
+            <span class="text-xs font-medium text-cream-muted">ميزة مدمجة · الإصدار 0.2.2</span>
           </div>
-          <h2 class="font-serif font-bold text-lg sm:text-xl text-cream-text">برنامج HaramLite لنظام ويندوز 10 / 11</h2>
-          <p class="text-xs sm:text-sm text-cream-muted">حجم خفيف (~220MB متكامل) · معالجة 100% محلية · بلا اشتراك ولا حساب</p>
+          <h2 class="font-serif font-bold text-lg sm:text-xl text-cream-text">برنامج HaramLite للكمبيوتر (ويندوز 10 / 11)</h2>
+          <p class="text-xs sm:text-sm text-cream-muted">روبوت خاص بك وحدك · بلا وسيط وبلا اشتراك</p>
         </div>
-        <a href="../#download" class="shrink-0 inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all shadow-lg">
-          <span class="material-symbols-outlined ">download</span><span>حمّل المثبّت (.exe)</span>
+        <a href="../#download" class="shrink-0 inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl bg-clay text-coal-base font-bold text-sm hover:bg-clay-hover transition-all">
+          <span class="material-symbols-outlined ">download</span><span>حمّل التطبيق (.exe)</span>
         </a>
       </div>
     </div>
 
-    <section class="mt-10 mb-12">
+    <section class="my-10 p-5 sm:p-7 rounded-2xl bg-coal-card border border-coal-border" id="how-it-works">
+      <div class="flex items-center justify-between mb-6 pb-3 border-b border-coal-border">
+        <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text flex items-center gap-2.5"><span class="material-symbols-outlined text-clay">account_tree</span> كيف تعمل الفكرة؟</h2>
+        <span class="text-xs text-cream-muted bg-coal-surface px-2.5 py-1 rounded-md border border-coal-border">حاسوبك هو الخادم</span>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/80 flex flex-col items-center text-center hover:border-clay/40 transition-colors">
+          <div class="w-12 h-12 rounded-2xl bg-clay/10 text-clay flex items-center justify-center mb-3 border border-clay/20"><span class="material-symbols-outlined ">smartphone</span></div>
+          <span class="text-xs font-mono text-clay font-bold mb-1">المحطة الأولى</span>
+          <h3 class="font-bold text-sm text-cream-text mb-1.5">جوالك في الخارج</h3>
+          <p class="text-xs text-cream-muted leading-relaxed">تشارك رابط يوتيوب أو ترسل ملفاً صوتياً في محادثة روبوتك على تيليجرام.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-coal-surface border border-clay/30 flex flex-col items-center text-center hover:border-clay/60 transition-colors">
+          <div class="w-12 h-12 rounded-2xl bg-clay text-coal-base flex items-center justify-center mb-3"><span class="material-symbols-outlined ">computer</span></div>
+          <span class="text-xs font-mono text-clay font-bold mb-1">المحطة الثانية</span>
+          <h3 class="font-bold text-sm text-cream-text mb-1.5">حاسوبك في المنزل</h3>
+          <p class="text-xs text-cream-muted leading-relaxed">يستقبل الطلب، ويعزل الموسيقى محلياً بالذكاء الاصطناعي (UVR-MDX-Net)، ويجهّز الصوت.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/80 flex flex-col items-center text-center hover:border-clay/40 transition-colors">
+          <div class="w-12 h-12 rounded-2xl bg-clay/10 text-clay flex items-center justify-center mb-3 border border-clay/20"><span class="material-symbols-outlined ">headphones</span></div>
+          <span class="text-xs font-mono text-clay font-bold mb-1">المحطة الثالثة</span>
+          <h3 class="font-bold text-sm text-cream-text mb-1.5">الملف المنقّى يصلك</h3>
+          <p class="text-xs text-cream-muted leading-relaxed">يعيد الروبوت الناتج إلى محادثتك: MP3 للاستماع، أو MP4 إن أردت الصورة.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="mt-10 mb-12" id="steps">
       <div class="flex items-center justify-between mb-5 border-b border-coal-border pb-3">
-        <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text flex items-center gap-2.5"><span class="material-symbols-outlined text-clay text-lg">checklist</span> أربع خطوات للتفعيل</h2>
+        <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text flex items-center gap-2.5"><span class="material-symbols-outlined text-clay">checklist</span> خطوات الإعداد والاقتران</h2>
         <span class="text-xs text-cream-muted">مرة واحدة فقط</span>
       </div>
-      <div class="grid grid-cols-1 gap-3.5">
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">1</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">أنشئ روبوتاً من BotFather</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">افتح محادثة <strong class="text-cream-text">@BotFather</strong> في تيليجرام، أرسل <code class="text-clay">/newbot</code>، واختر اسماً، فيعطيك <strong class="text-cream-text">رمز البوت (Token)</strong>.</p>
+      <div class="space-y-4">
+        <div class="flex items-start gap-4 p-4 sm:p-5 rounded-2xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
+          <div class="w-9 h-9 rounded-xl bg-clay/15 text-clay font-mono font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">01</div>
+          <div class="space-y-2 flex-grow">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <h3 class="font-bold text-sm sm:text-base text-cream-text">أنشئ روبوتك عبر BotFather</h3>
+              <span class="text-[11px] px-2 py-0.5 rounded bg-coal-surface border border-coal-border text-cream-muted font-mono">مجاني ورسمي</span>
+            </div>
+            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">افتح تيليجرام وابحث عن <a class="text-clay font-mono hover:underline" href="https://t.me/BotFather" rel="noreferrer" target="_blank">@BotFather</a>، أرسل الأمر <code class="px-1.5 py-0.5 rounded bg-coal-base text-clay font-mono text-xs border border-coal-border">/newbot</code>، واختر اسماً ومعرّفاً، فيعطيك مباشرة <strong class="text-cream-text">رمز الروبوت</strong>.</p>
           </div>
         </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">2</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">ضع الرمز في إعدادات التطبيق</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">افتح إعدادات HaramLite ← قسم روبوت تيليجرام، والصق الرمز. ويُخزَّن مشفّراً بـ DPAPI داخل مجلد بياناتك المحلي، فلا يُرسل لأي جهة.</p>
+        <div class="flex items-start gap-4 p-4 sm:p-5 rounded-2xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
+          <div class="w-9 h-9 rounded-xl bg-clay/15 text-clay font-mono font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">02</div>
+          <div class="space-y-2 flex-grow">
+            <h3 class="font-bold text-sm sm:text-base text-cream-text">ضع الرمز في إعدادات HaramLite</h3>
+            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">في برنامج الكمبيوتر، افتح قسم <strong class="text-cream-text">روبوت تيليجرام</strong>، ألصق الرمز وفعّل الخيار. ويُخزَّن الرمز مشفّراً بـ <strong class="text-cream-text">DPAPI</strong> داخل جهازك ولا يغادره.</p>
           </div>
         </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">3</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">اربط حسابك برمز الاقتران</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">يعرض التطبيق رمزاً من <strong class="text-cream-text">ستة أرقام</strong> صالحاً عشر دقائق وبخمس محاولات. أرسله إلى روبوتك، فيُسجَّل معرّف حسابك — وأي حساب آخر يُتجاهل تماماً.</p>
+        <div class="flex items-start gap-4 p-4 sm:p-5 rounded-2xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
+          <div class="w-9 h-9 rounded-xl bg-clay/15 text-clay font-mono font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">03</div>
+          <div class="space-y-2 flex-grow">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <h3 class="font-bold text-sm sm:text-base text-cream-text">اربط حسابك برمز الاقتران</h3>
+              <span class="text-[11px] px-2 py-0.5 rounded bg-clay/10 border border-clay/30 text-clay font-mono">حسابك وحده</span>
+            </div>
+            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">يعرض التطبيق رمزاً مؤقتاً من <strong class="text-cream-text">ستة أرقام</strong> صالحاً عشر دقائق وبخمس محاولات. افتح روبوتك على هاتفك، أرسل <code class="px-1.5 py-0.5 rounded bg-coal-base text-clay font-mono text-xs border border-coal-border">/start</code> ثم الرمز — وأي حساب آخر يُتجاهل تماماً.</p>
+            <div class="mt-2 p-3 rounded-xl bg-coal-surface border border-coal-border text-xs flex items-center justify-between font-mono flex-wrap gap-2">
+              <span class="text-cream-muted">مثال لرمز الاقتران:</span>
+              <span class="text-clay font-bold tracking-widest text-sm bg-coal-base px-3 py-1 rounded border border-clay/30">7 8 2 4 1 0</span>
+              <span class="text-[11px] text-cream-muted">صلاحية 10 دقائق</span>
+            </div>
           </div>
         </div>
-        <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
-          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">4</div>
-          <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">أرسل رابطاً أو ملفاً</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">من أي مكان: أرسل رابط يوتيوب أو ملفاً صوتياً، ويسألك الروبوت عن الوضع، ثم يعيد إليك الناتج معالجاً.</p>
+        <div class="flex items-start gap-4 p-4 sm:p-5 rounded-2xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
+          <div class="w-9 h-9 rounded-xl bg-clay/15 text-clay font-mono font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">04</div>
+          <div class="space-y-2 flex-grow">
+            <h3 class="font-bold text-sm sm:text-base text-cream-text">أرسل واستقبل من هاتفك</h3>
+            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">أرسل رابط يوتيوب أو ملفاً صوتياً/مرئياً إلى روبوتك، ويعالجه برنامجك ثم يرفع الناتج إلى محادثتك مباشرة.</p>
           </div>
         </div>
       </div>
     </section>
 
-    <section class="my-10 p-5 sm:p-6 rounded-2xl bg-coal-card border border-coal-border">
-      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-4 flex items-center gap-2"><span class="material-symbols-outlined text-clay">tune</span> ما الذي يصل إليك؟</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🎬</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">من رابط</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> أرسل الرابط فينزّله حاسوبك ويعالجه ويعيد لك الملف. والروابط بلا حدّ حجم.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🎵</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">الصوت فقط (MP3)</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> خيار «إرسال الصوت فقط دائماً» يوفّر وقت رندرة الفيديو ويرسل لك MP3 مباشرة.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🔐</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">مربوط بحسابك وحده</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> الروبوت لا يستجيب لأي حساب قبل الاقتران، وبعده يتجاهل كل من سواك.</p>
-        </div>
-        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
-          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">💻</span>
-          <h3 class="font-bold text-cream-text text-sm sm:text-base">المعالجة على حاسوبك</h3></div>
-          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> الروبوت واجهة فقط؛ الفصل والتحسين والترميز تحدث على جهازك لا على خادم.</p>
-        </div>
-      </div>
-    </section>
     <section class="my-10">
-      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">verified_user</span> حدود صريحة وأمانة فنية</h2>
-      <p class="text-xs sm:text-sm text-cream-muted mb-4">لا توجد أداة في العالم تعطي فصلاً مثالياً 100%؛ والفرق الحقيقي هو جودة العزل دون تشويه نبرة الصوت:</p>
-      <ul class="space-y-2.5 text-xs sm:text-sm text-cream-muted bg-coal-card p-4 sm:p-5 rounded-xl border border-coal-border">
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">حدّ الإرسال 50MB:</strong> يرسل الروبوت ملفات حتى 50 ميغابايت، ولا ينزّل منك أكثر من 20 ميغابايت. أما الروابط فبلا حد.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">خادم Bot API محلي:</strong> من يشغّله (إعداد متقدم) يرفع السقف إلى 2GB وبالجودة الأصلية.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">يحتاج حاسوبك يعمل:</strong> إن كان الحاسوب مغلقاً فلا معالجة؛ ولهذا يفيد خيار «التشغيل مع بدء تشغيل ويندوز» ليبقى الروبوت جاهزاً.</span>
-        </li>
-        <li class="flex items-start gap-2.5">
-          <span class="material-symbols-outlined text-emerald-400 mt-1 text-xs shrink-0">check_circle</span>
-          <span><strong class="text-cream-text">رمزك يبقى عندك:</strong> رمز البوت محفوظ مشفّراً على جهازك، ولا يمرّ عبر أي خدمة وسيطة.</span>
-        </li>
-      </ul>
+      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-4 flex items-center gap-2"><span class="material-symbols-outlined text-clay">auto_awesome</span> ما الذي تستفيده؟</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="p-4 sm:p-5 rounded-2xl bg-coal-card border border-coal-border space-y-2 hover:border-coal-muted transition-colors">
+          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay flex items-center justify-center text-sm border border-clay/30"><span class="material-symbols-outlined text-[16px]">link</span></div>
+          <h3 class="font-bold text-sm sm:text-base text-cream-text">روابط بلا حدّ حجم</h3>
+          <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">أرسل روابط يوتيوب وغيرها، وينزّلها حاسوبك ويعالجها — فلا تستهلك باقة هاتفك في تنزيل ثقيل.</p>
+        </div>
+        <div class="p-4 sm:p-5 rounded-2xl bg-coal-card border border-coal-border space-y-2 hover:border-coal-muted transition-colors">
+          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay flex items-center justify-center text-sm border border-clay/30"><span class="material-symbols-outlined text-[16px]">graphic_eq</span></div>
+          <h3 class="font-bold text-sm sm:text-base text-cream-text">خيار الصوت فقط (MP3)</h3>
+          <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">وجّه الروبوت ليُخرج MP3 فقط: ترميز أسرع وحجم أصغر، مناسب للاستماع أثناء القيادة أو المشي.</p>
+        </div>
+        <div class="p-4 sm:p-5 rounded-2xl bg-coal-card border border-coal-border space-y-2 hover:border-coal-muted transition-colors">
+          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay flex items-center justify-center text-sm border border-clay/30"><span class="material-symbols-outlined text-[16px]">verified_user</span></div>
+          <h3 class="font-bold text-sm sm:text-base text-cream-text">اقتران لحسابك وحده</h3>
+          <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">لا يستطيع أحد استخدام روبوتك: البرنامج يرفض أي حساب لا يطابق الحساب المقترن بالرمز.</p>
+        </div>
+        <div class="p-4 sm:p-5 rounded-2xl bg-coal-card border border-coal-border space-y-2 hover:border-coal-muted transition-colors">
+          <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay flex items-center justify-center text-sm border border-clay/30"><span class="material-symbols-outlined text-[16px]">lock</span></div>
+          <h3 class="font-bold text-sm sm:text-base text-cream-text">تشفير محلي للرمز</h3>
+          <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">يُحفظ رمز الروبوت مشفّراً بتقنية ويندوز (DPAPI) على جهازك، ولا يُرسل إلى أي قاعدة سحابية.</p>
+        </div>
+      </div>
     </section>
 
-    <section id="faq" class="my-12">
+    <section class="my-10">
+      <div class="p-5 sm:p-6 rounded-2xl bg-coal-card border border-coal-border space-y-4">
+        <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text flex items-center gap-2"><span class="material-symbols-outlined text-clay">info</span> حدود تقنية صريحة</h2>
+        <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">نوضّحها كاملة حتى لا تفاجئك:</p>
+        <ul class="space-y-3 text-xs sm:text-sm text-cream-muted">
+          <li class="flex items-start gap-2.5"><span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">power_settings_new</span><span><strong class="text-cream-text">حاسوبك يجب أن يعمل:</strong> ليستقبل الروبوت طلباتك، يلزم أن يكون التطبيق مفتوحاً والجهاز متصلاً بالإنترنت (ويمكن أن يعمل في الخلفية أو مع بدء تشغيل ويندوز).</span></li>
+          <li class="flex items-start gap-2.5"><span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">inventory_2</span><span><strong class="text-cream-text">حدّ الإرسال 50MB وحدّ التنزيل 20MB:</strong> تفرض تيليجرام حداً أقصى لحجم ما يرسله الروبوت (50 ميغابايت) وما ينزّله من ملف ترسله أنت (20 ميغابايت). أما الروابط فلا تتأثر بهذين الحدّين لأن حاسوبك ينزّلها مباشرة.</span></li>
+          <li class="flex items-start gap-2.5"><span class="material-symbols-outlined text-emerald-400 mt-1 text-xs shrink-0">dns</span><span><strong class="text-cream-text">خيار خادم Bot API المحلي (2GB):</strong> لمن يريد رفع ملفات أكبر، يتيح التطبيق الربط بخادم تيليجرام محلي يرفع السقف إلى 2 غيغابايت.</span></li>
+          <li class="flex items-start gap-2.5"><span class="material-symbols-outlined text-emerald-400 mt-1 text-xs shrink-0">wifi_off</span><span><strong class="text-cream-text">المعالجة لا تحتاج إنترنت:</strong> إن انقطع الاتصال أثناء المعالجة فستكتمل محلياً، ويُرسل الناتج عند عودة الشبكة.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="my-12" id="faq">
       <h2 class="font-serif text-xl sm:text-2xl font-bold text-cream-text mb-6 border-b border-coal-border pb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">help</span> الأسئلة الشائعة</h2>
       <div class="space-y-3.5">
         <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل يحتاج فتح منفذ في الراوتر؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">لا. الروبوت يسأل تيليجرام عن الرسائل الجديدة (Polling)، فلا تحتاج فتح منافذ ولا عنواناً ثابتاً.</div>
+          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none"><span>هل الميزة مجانية أم تتطلب اشتراكاً؟</span><span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span></summary>
+          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">مجانية بالكامل ومفتوحة المصدر، وإنشاء روبوت تيليجرام مجاني من الشركة نفسها.</div>
         </details>
         <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>ماذا لو أرسل شخص آخر إلى روبوتي؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">يُتجاهل تماماً. لا يستجيب الروبوت إلا لمعرّف الحساب الذي ربطته برمز الاقتران.</div>
+          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none"><span>هل يستطيع المطوّر أو طرف ثالث رؤية ملفاتي؟</span><span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span></summary>
+          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">لا. الرسائل تمرّ بين خوادم تيليجرام وجهازك عبر Bot API الرسمي، ولا تمرّ بأي خادم وسيط يخصّ HaramLite — والمعالجة كلها على جهازك.</div>
         </details>
         <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل تصل رسائلي إلى المطوّر؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">لا. الرسائل تمرّ عبر خوادم تيليجرام كما تمرّ أي رسالة عادية، والمعالجة على جهازك، ولا يطّلع المطوّر على شيء.</div>
+          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none"><span>هل أستلم فيديو أم صوتاً فقط؟</span><span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span></summary>
+          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">الاثنان متاحان: MP4 إن كان الناتج أقل من 50 ميغابايت، أو فعّل «الصوت فقط (MP3) دائماً» ليصلك ملف صوتي خفيف دائماً.</div>
         </details>
         <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل يمكن إلغاء الربط؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">نعم، من إعدادات التطبيق: أوقف الروبوت أو احذف الرمز، فيتوقف فوراً عن الاستجابة.</div>
+          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none"><span>ماذا يحدث إن انقطع الإنترنت أثناء المعالجة؟</span><span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span></summary>
+          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">المعالجة لا تحتاج إنترنت وستكتمل محلياً، وبمجرد عودة الاتصال يرسل الروبوت الناتج إلى هاتفك تلقائياً.</div>
         </details>
       </div>
     </section>
 
-    <div class="p-6 rounded-2xl bg-coal-card border border-coal-border text-center space-y-4 my-8">
-      <h3 class="font-serif font-bold text-xl text-cream-text">شغّل روبوتك الخاص</h3>
-      <p class="text-xs sm:text-sm text-cream-muted max-w-md mx-auto">ثبّت التطبيق، وأضف الرمز، وابدأ الإرسال من جوالك.</p>
-      <div class="flex flex-wrap items-center justify-center gap-3 pt-1">
-        <a href="../#download" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-clay text-coal-surface font-bold text-sm hover:bg-clay-hover transition-all shadow-md"><span class="material-symbols-outlined ">download</span><span>تحميل HaramLite لويندوز</span></a>
-        <a href="../bridge.html" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-coal-surface border border-coal-border text-cream-muted hover:text-cream-text hover:border-clay/40 text-sm transition-colors"><span class="material-symbols-outlined ">extension</span><span>إضافة المتصفح</span></a>
+    <div class="p-6 sm:p-8 rounded-2xl bg-coal-card border border-coal-border text-center space-y-4 my-8">
+      <div class="w-12 h-12 rounded-2xl bg-clay/15 text-clay flex items-center justify-center mx-auto border border-clay/30"><span class="material-symbols-outlined ">send</span></div>
+      <h3 class="font-serif font-bold text-xl sm:text-2xl text-cream-text">اجعل حاسوبك خادمك الصوتي الخاص</h3>
+      <p class="text-xs sm:text-sm text-cream-muted max-w-md mx-auto leading-relaxed">استمع لمحتواك منقّى في أي مكان، دون الجلوس أمام الشاشة.</p>
+      <div class="flex flex-wrap items-center justify-center gap-3 pt-2">
+        <a href="../#download" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-clay text-coal-base font-bold text-sm hover:bg-clay-hover transition-all"><span class="material-symbols-outlined ">download</span><span>تحميل HaramLite لويندوز</span></a>
+        <a href="remove-music-from-podcast.html" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-coal-surface border border-coal-border text-cream-muted hover:text-cream-text hover:border-clay/40 text-sm transition-colors"><span class="material-symbols-outlined ">menu_book</span><span>دليل البودكاست والسلاسل</span></a>
       </div>
     </div>
 
     <nav class="mt-12 pt-6 border-t border-coal-border">
-      <h4 class="font-bold text-xs uppercase tracking-wider text-cream-dim mb-3">أدلة ذات صلة</h4>
+      <h4 class="font-bold text-xs uppercase tracking-wider text-cream-muted mb-3.5">أدلة ذات صلة</h4>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-      <a href="remove-music-from-video.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">إزالة الموسيقى من الفيديو <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">الخطوات والوضع المناسب وحدود الفصل</p>
-      </a>
-      <a href="watch-youtube-without-music.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">مشاهدة يوتيوب بدون موسيقى <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">تخطي الصمت المباشر في المتصفح</p>
-      </a>
-      <a href="ai-vocal-separation.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">كيف يفصل الذكاء الاصطناعي الصوت؟ <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">شرح تقني مبسّط لموديل الفصل</p>
-      </a>
+        <a href="remove-music-from-video.html" class="p-3.5 rounded-xl bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all group block">
+          <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">إزالة الموسيقى من الفيديو <span class="material-symbols-outlined text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
+          <p class="text-[11px] text-cream-muted mt-1 truncate">دليل معالجة الملفات على الحاسوب</p>
+        </a>
+        <a href="ai-vocal-separation.html" class="p-3.5 rounded-xl bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all group block">
+          <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">كيف يفصل الذكاء الاصطناعي الصوت؟ <span class="material-symbols-outlined text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
+          <p class="text-[11px] text-cream-muted mt-1 truncate">شرح مبسّط لموديل الفصل</p>
+        </a>
+        <a href="remove-music-from-podcast.html" class="p-3.5 rounded-xl bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all group block">
+          <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">البودكاست والمحاضرات <span class="material-symbols-outlined text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
+          <p class="text-[11px] text-cream-muted mt-1 truncate">سلاسل الحلقات بالدفعات</p>
+        </a>
       </div>
     </nav>
 
-    <p class="mt-8 text-xs text-cream-dim leading-relaxed">كل المعالجة تحدث على جهازك: لا يُرفع أي ملف، ولا حساب ولا تتبّع. راجع <a href="../PRIVACY.html" class="text-clay hover:underline">سياسة الخصوصية</a>.</p>
+    <p class="mt-8 text-xs text-cream-dim leading-relaxed">كل المعالجة على جهازك: لا يُرفع أي ملف، ولا حساب ولا تتبّع. راجع <a href="../PRIVACY.html" class="text-clay hover:underline">سياسة الخصوصية</a>.</p>
   </main>
 
-  <footer class="border-t border-coal-border py-6 bg-coal-surface mt-auto">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-cream-muted">
-      <span>© 2026 HaramLite · إزالة الموسيقى محلياً على جهازك، بلا رفع ولا حساب.</span>
+  <footer class="border-t border-coal-border py-7 bg-coal-surface mt-auto">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-cream-muted">
+      <div class="flex items-center gap-2.5">
+        <img src="../assets/icon-32.png" alt="" width="24" height="24" class="w-6 h-6 rounded-lg border border-coal-border">
+        <span>© 2026 HaramLite</span><span>·</span><span>معالجة صوتية محلية 100% دون سحابة.</span>
+      </div>
       <div class="flex items-center gap-4">
-        <a href="../PRIVACY.html" class="hover:text-clay transition-colors">الخصوصية</a>
-        <a href="https://github.com/SMSMy/HaramLite" target="_blank" rel="noreferrer" class="hover:text-clay transition-colors">المستودع</a>
+        <a href="../PRIVACY.html" class="hover:text-clay transition-colors">سياسة الخصوصية</a>
+        <a href="https://github.com/SMSMy/HaramLite" rel="noreferrer" target="_blank" class="hover:text-clay transition-colors">المستودع المفتوح</a>
       </div>
     </div>
   </footer>

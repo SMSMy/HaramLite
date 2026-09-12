@@ -69,10 +69,28 @@ for (const cls of ['.bg-coal-card', '.border-coal-border', '.text-cream-muted', 
   else fails.push('صنف مفقود: ' + cls);
 }
 
+// ── ٥) الأيقونات: كل أيقونة مستخدمة يجب أن تكون في المجموعة المضغوطة ────────
+// (سبب الإضافة: أيقونات جديدة ظهرت كنصّ «GRAPHIC_EQ» ومربّعات فارغة لأن ملف
+//  الأيقونات قُلّص قبل إضافتها، ولم يكتشف ذلك إلا بلقطة المستخدم.)
+const iconList = path.join(root, 'docs/assets/icons-subset.txt');
+if (!fs.existsSync(iconList)) {
+  fails.push('ملف قائمة الأيقونات مفقود: docs/assets/icons-subset.txt');
+} else {
+  const available = new Set(fs.readFileSync(iconList, 'utf8').split(/\s+/).filter(Boolean));
+  const usedIcons = new Set();
+  for (const rel of contentFiles) {
+    const t = fs.readFileSync(path.join(root, rel), 'utf8');
+    for (const m of t.matchAll(/material-symbols-outlined[^>]*>\s*([a-z_0-9]+)\s*</g)) usedIcons.add(m[1]);
+  }
+  const missing = [...usedIcons].filter(i => !available.has(i));
+  if (missing.length) fails.push('أيقونات مستخدمة وغير موجودة في الخط المضغوط: ' + missing.join(' · ') + ' ⇒ ستظهر كنصّ أو مربّع فارغ');
+  else ok.push('الأيقونات: ' + usedIcons.size + ' مستخدمة وكلها متوفّرة');
+}
+
 console.log(`  حارس CSS: ${ok.length} فحصاً ناجحاً`);
 if (fails.length) {
   console.error('  ✗ فشل الحارس (' + fails.length + '):');
   fails.forEach(f => console.error('     - ' + f));
   process.exit(1);
 }
-console.log('  ✓ الخطوط والألوان والأصناف سليمة');
+console.log('  ✓ الخطوط والألوان والأصناف والأيقونات سليمة');
