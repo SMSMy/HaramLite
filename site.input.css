@@ -116,3 +116,35 @@ html[lang='ar'] body { line-height: 1.75; }
   .video-shell .video-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 }
 
+
+/* ═══ بطاقات المداخل الأربعة ═══════════════════════════════════════════════
+   أمام المستخدم في أعلى الصفحة: البرنامج · تيليجرام · إضافة المتصفح · مجلد المراقبة.
+   تنقلب البطاقة عند المرور عليها بالفأرة، أو عند التركيز بلوحة المفاتيح،
+   أو عند لمسها على الجوال (فالنقرة الأولى تقلب، والثانية تتبع الرابط).
+   الوجه الأمامي: أيقونة وعنوان. الوجه الخلفي: شرح سطرين ورابط مباشر. */
+.entry-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; width: 100%; }
+@media (max-width: 1000px) { .entry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.entry-card { perspective: 1200px; height: 208px; cursor: pointer; outline: none; }
+.entry-card__inner {
+  position: relative; width: 100%; height: 100%;
+  transition: transform .55s cubic-bezier(.4, .2, .2, 1);
+  transform-style: preserve-3d;
+}
+.entry-card:hover .entry-card__inner,
+.entry-card:focus-within .entry-card__inner,
+.entry-card:focus .entry-card__inner,
+.entry-card.is-flipped .entry-card__inner { transform: rotateY(180deg); }
+.entry-card__face {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px; padding: 20px;
+  border-radius: 12px; border: 1px solid #2E2C29; background: #211f1d;
+  text-align: center; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+}
+.entry-card__back { transform: rotateY(180deg); background: #2c2a27; justify-content: center; }
+.entry-card__icon { font-family: 'Material Symbols Outlined'; font-size: 34px; line-height: 1; color: #DA7756; }
+.entry-card__title { font-weight: 700; font-size: 16px; color: #F5F2ED; }
+.entry-card__hint { font-size: 12px; color: #a38c85; }
+.entry-card__desc { font-size: 13px; line-height: 1.75; color: #dbc1b9; }
+.entry-card__link { margin-top: 10px; font-size: 13px; font-weight: 700; color: #DA7756; }
+.entry-card__link:hover { text-decoration: underline; }
+@media (prefers-reduced-motion: reduce) { .entry-card__inner { transition: none; } }

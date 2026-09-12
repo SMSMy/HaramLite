@@ -143,6 +143,23 @@
     }
   };
   document.addEventListener('DOMContentLoaded', function () {
+    /* الأجهزة اللمسية لا تعرف «المرور بالفأرة»: النقرة الأولى تقلب البطاقة
+       ليرى المستخدم الشرح، والنقرة التالية على الرابط تفتحه. */
+    document.querySelectorAll('.entry-card').forEach(function (card) {
+      card.addEventListener('click', function (e) {
+        if (!card.classList.contains('is-flipped')) {
+          card.classList.add('is-flipped');
+          e.preventDefault();
+        }
+      });
+      card.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          if (!card.classList.contains('is-flipped')) { card.classList.add('is-flipped'); e.preventDefault(); }
+        }
+      });
+      card.addEventListener('blur', function () { card.classList.remove('is-flipped'); });
+    });
+
     var S = window.HaramLiteState;
     var saved = null;
     try { saved = localStorage.getItem('hl.lang'); } catch (e) {}
@@ -199,7 +216,67 @@
 <span class="material-symbols-outlined text-[18px]">south</span>
 </a>
 </div>
-<!-- Secondary Language Quick Switch Bar -->
+
+      <!-- بطاقات المداخل: أربع طرق لاستخدام HaramLite — تنقلب عند المرور -->
+      <div class="entry-grid mb-10" id="entry-grid">
+        <div class="entry-card" tabindex="0" role="button" aria-label="استخدام البرنامج مباشرة">
+          <div class="entry-card__inner">
+            <div class="entry-card__face">
+              <span class="entry-card__icon">widgets</span>
+              <span class="entry-card__title" data-i18n-ar="استخدم البرنامج مباشرة" data-i18n-en="Use the app directly">استخدم البرنامج مباشرة</span>
+              <span class="entry-card__hint" data-i18n-ar="مرّر لتعرف كيف" data-i18n-en="Hover to see how">مرّر لتعرف كيف</span>
+            </div>
+            <div class="entry-card__face entry-card__back">
+              <p class="entry-card__desc" data-i18n-ar="اسحب ملفاً أو الصق رابطاً، واختر الوضع، وابدأ. الناتج بجانب ملفك الأصلي." data-i18n-en="Drop a file or paste a link, pick a mode and go. The result lands next to your original file.">اسحب ملفاً أو الصق رابطاً، واختر الوضع، وابدأ. الناتج بجانب ملفك الأصلي.</p>
+              <a class="entry-card__link" href="#download" data-i18n-ar="حمّل البرنامج ←" data-i18n-en="Download the app →">حمّل البرنامج ←</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="entry-card" tabindex="0" role="button" aria-label="روبوت تيليجرام">
+          <div class="entry-card__inner">
+            <div class="entry-card__face">
+              <span class="entry-card__icon">send</span>
+              <span class="entry-card__title" data-i18n-ar="من جوالك عبر تيليجرام" data-i18n-en="From your phone via Telegram">من جوالك عبر تيليجرام</span>
+              <span class="entry-card__hint" data-i18n-ar="مرّر لتعرف كيف" data-i18n-en="Hover to see how">مرّر لتعرف كيف</span>
+            </div>
+            <div class="entry-card__face entry-card__back">
+              <p class="entry-card__desc" data-i18n-ar="أرسل الرابط أو الملف إلى روبوتك، ويعالجه حاسوبك ثم يعيده إليك. يُربط برمز من ٦ أرقام." data-i18n-en="Send a link or file to your own bot; your PC processes it and sends it back. Paired with a six-digit code.">أرسل الرابط أو الملف إلى روبوتك، ويعالجه حاسوبك ثم يعيده إليك. يُربط برمز من ٦ أرقام.</p>
+              <a class="entry-card__link" href="guides/remove-music-from-podcast.html" data-i18n-ar="كيف تفعّله ←" data-i18n-en="How to enable it →">كيف تفعّله ←</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="entry-card" tabindex="0" role="button" aria-label="إضافة المتصفح">
+          <div class="entry-card__inner">
+            <div class="entry-card__face">
+              <span class="entry-card__icon">extension</span>
+              <span class="entry-card__title" data-i18n-ar="داخل متصفحك" data-i18n-en="Inside your browser">داخل متصفحك</span>
+              <span class="entry-card__hint" data-i18n-ar="مرّر لتعرف كيف" data-i18n-en="Hover to see how">مرّر لتعرف كيف</span>
+            </div>
+            <div class="entry-card__face entry-card__back">
+              <p class="entry-card__desc" data-i18n-ar="شاهد يوتيوب بعد إزالة الموسيقى داخل الصفحة نفسها، مع تخطي فترات الصمت." data-i18n-en="Watch YouTube with the music removed inside the page, with silent gaps skipped.">شاهد يوتيوب بعد إزالة الموسيقى داخل الصفحة نفسها، مع تخطي فترات الصمت.</p>
+              <a class="entry-card__link" href="bridge.html" data-i18n-ar="صفحة الإضافة ←" data-i18n-en="Extension page →">صفحة الإضافة ←</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="entry-card" tabindex="0" role="button" aria-label="مجلد المراقبة">
+          <div class="entry-card__inner">
+            <div class="entry-card__face">
+              <span class="entry-card__icon">folder_eye</span>
+              <span class="entry-card__title" data-i18n-ar="مجلد المراقبة" data-i18n-en="Watch folder">مجلد المراقبة</span>
+              <span class="entry-card__hint" data-i18n-ar="مرّر لتعرف كيف" data-i18n-en="Hover to see how">مرّر لتعرف كيف</span>
+            </div>
+            <div class="entry-card__face entry-card__back">
+              <p class="entry-card__desc" data-i18n-ar="حدّد مجلداً، وأي ملف تنسخه إليه يُعالج تلقائياً في الخلفية بلا أن تفتح النافذة." data-i18n-en="Point it at a folder and anything you drop there is processed in the background.">حدّد مجلداً، وأي ملف تنسخه إليه يُعالج تلقائياً في الخلفية بلا أن تفتح النافذة.</p>
+              <a class="entry-card__link" href="guides/remove-music-from-podcast.html" data-i18n-ar="للسلاسل الطويلة ←" data-i18n-en="For long series →">للسلاسل الطويلة ←</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Secondary Language Quick Switch Bar -->
 <div class="flex items-center gap-stack-sm text-on-surface-variant font-label-sm text-label-sm">
 <span class="material-symbols-outlined text-[16px]">translate</span>
 <button class="hover:text-clay-accent underline underline-offset-4" onclick="window.HaramLiteState.switchLang('ar')" type="button">العربية</button>
