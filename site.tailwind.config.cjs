@@ -71,8 +71,8 @@ module.exports = {
       colors: (() => {
         const base = merge(design.theme.extend.colors, bridge.theme.extend.colors);
         return Object.assign({}, base, {
-          coal: Object.assign({}, base.coal || {}, guidePalette.coal),
-          clay: Object.assign({}, base.clay || {}, guidePalette.clay),
+          coal: Object.assign({}, guidePalette.coal, base.coal || {}),
+          clay: Object.assign({}, guidePalette.clay, base.clay || {}),
           cream: guidePalette.cream,
         });
       })(), fontFamily: { serif: ['"Thmanyah Serif Display"', 'Georgia', 'serif'], sans: ['"Thmanyah Sans"', '"Segoe UI"', 'system-ui', 'sans-serif'] },

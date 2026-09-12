@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>كيف يفصل الذكاء الاصطناعي الصوت عن الموسيقى؟ | HaramLite</title>
-  <meta name="description" content="شرح مبسّط لعمل موديل فصل المصادر: لماذا يختلف عن الفلاتر، وما الذي يحدّد جودة النتيجة.">
+  <meta name="description" content="شرح مبسّط لعمل موديل فصل المصادر: لماذا يختلف عن الفلاتر التقليدية، وما الذي يحدّد جودة النتيجة.">
   <link rel="canonical" href="https://haramlite.com/guides/ai-vocal-separation.html">
   <meta name="theme-color" content="#151311">
   <meta property="og:type" content="article">
   <meta property="og:title" content="كيف يفصل الذكاء الاصطناعي الصوت عن الموسيقى؟ | HaramLite">
-  <meta property="og:description" content="شرح مبسّط لعمل موديل فصل المصادر: لماذا يختلف عن الفلاتر، وما الذي يحدّد جودة النتيجة.">
+  <meta property="og:description" content="شرح مبسّط لعمل موديل فصل المصادر: لماذا يختلف عن الفلاتر التقليدية، وما الذي يحدّد جودة النتيجة.">
   <meta property="og:url" content="https://haramlite.com/guides/ai-vocal-separation.html">
   <meta property="og:image" content="https://haramlite.com/assets/og.png">
   <meta name="twitter:card" content="summary_large_image">
@@ -26,10 +26,26 @@
   "mainEntity": [
     {
       "@type": "Question",
+      "name": "ما معنى ONNX؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "صيغة موحّدة لتشغيل موديلات التعلّم الآلي. فائدتها هنا أن الموديل يعمل داخل التطبيق على جهازك بلا خدمات خارجية ولا رفع."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "هل يحتاج كرت رسوميات؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "لا، لكنه يسرّع المعالجة كثيراً. بلا كرت يعمل البرنامج على المعالج."
+      }
+    },
+    {
+      "@type": "Question",
       "name": "هل الفصل مثالي؟",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "لا. يبقى أثر خفيف في الحالات الصعبة، والفرق العملي بين الأدوات هو مقدار ما يبقى من الموسيقى ومقدار ما يتضرر الصوت."
+        "text": "لا. يبقى أثر خفيف في الحالات الصعبة؛ والفرق الحقيقي بين الأدوات هو جودة العزل دون تشويه نبرة الصوت."
       }
     },
     {
@@ -38,22 +54,6 @@
       "acceptedAnswer": {
         "@type": "Answer",
         "text": "لا. الموديل ثابت، وملفاتك لا تُستخدم في تدريب ولا تُرسل لأي جهة."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "هل يحتاج كرت رسوميات؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "لا، لكنه يسرّع المعالجة كثيراً؛ وبلا كرت يعمل البرنامج على المعالج."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "ما معنى ONNX؟",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "صيغة موحّدة لتشغيل موديلات التعلّم الآلي داخل التطبيق على جهازك، بلا خدمات خارجية."
       }
     }
   ]
@@ -95,7 +95,7 @@
         <span class="material-symbols-outlined text-xs">bolt</span><span>شرح مبسّط · بلا مبالغات</span>
       </div>
       <h1 class="font-serif text-2xl sm:text-4xl font-bold text-cream-text leading-tight mb-4">كيف يفصل الذكاء الاصطناعي الصوت عن الموسيقى؟</h1>
-      <p class="text-base sm:text-lg text-cream-muted leading-relaxed">الموديل لا «يحذف» الموسيقى، بل يتعلّم شكل الصوت البشري داخل المزيج ثم <strong class="text-clay font-bold">يعيد بناءه وحده</strong>.</p>
+      <p class="text-base sm:text-lg text-cream-muted leading-relaxed">الموديل لا «يحذف» الموسيقى، بل يتعلّم شكل الصوت البشري داخل المزيج ثم <strong class="text-clay font-bold">يعيد بناءه وحده</strong>. ولهذا يبقى الكلام طبيعياً بدل أن يبدو مكتوماً كالفلاتر التقليدية.</p>
     </section>
 
     <div id="quick-download" class="my-6 p-5 sm:p-6 rounded-2xl bg-coal-card border-glow-clay relative overflow-hidden">
@@ -124,45 +124,70 @@
           <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">1</div>
           <div class="space-y-1">
             <h3 class="font-bold text-sm sm:text-base text-cream-text">تحويل الصوت إلى صورة</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">تمثيل ترددي-زمني للصوت، فيصير «الفصل» مسألة تمييز أنماط في صورة.</p>
+            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">يُحوَّل الصوت إلى تمثيل ترددي-زمني (ما يشبه الصورة)، فيصير «فصل الصوت» مسألة تمييز أنماط في صورة لا أكثر.</p>
           </div>
         </div>
         <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
           <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">2</div>
           <div class="space-y-1">
             <h3 class="font-bold text-sm sm:text-base text-cream-text">تقدير القناع</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">لكل بقعة في هذه الصورة: هل تخصّ الصوت البشري أم الموسيقى؟</p>
+            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">يتوقّع الموديل لكل بقعة في هذه الصورة: هل تخصّ الصوت البشري أم الموسيقى؟ ثم يُبنى مسار الصوت من البقع التي قدّر أنها بشرية.</p>
           </div>
         </div>
         <div class="flex items-start gap-4 p-4 rounded-xl bg-coal-card border border-coal-border hover:border-coal-muted transition-colors">
           <div class="w-8 h-8 rounded-lg bg-clay/15 text-clay font-bold text-sm flex items-center justify-center shrink-0 border border-clay/30">3</div>
           <div class="space-y-1">
-            <h3 class="font-bold text-sm sm:text-base text-cream-text">إعادة البناء</h3>
-            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">يُعاد المسار المفصول إلى موجة، ثم يُحسَّن ويُتخطّى صمته.</p>
+            <h3 class="font-bold text-sm sm:text-base text-cream-text">إعادة البناء والتحسين</h3>
+            <p class="text-xs sm:text-sm text-cream-muted leading-relaxed">يُعاد المسار المفصول إلى موجة صوتية، ثم تُطبَّق عليه تحسينات الحضور والصدى والموازنة، وتُتخطّى فترات صمته.</p>
           </div>
         </div>
       </div>
     </section>
 
+    <section class="my-10 p-5 sm:p-6 rounded-2xl bg-coal-card border border-coal-border">
+      <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-4 flex items-center gap-2"><span class="material-symbols-outlined text-clay">tune</span> ما يحدّد جودة النتيجة؟</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
+          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🧠</span>
+          <h3 class="font-bold text-cream-text text-sm sm:text-base">الموديل المستخدم</h3></div>
+          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> الفرق الأكبر بين الأدوات. HaramLite يستخدم موديلاً مدرَّباً على الغناء والموسيقى تحديداً (UVR-MDX-Net) يعمل بصيغة ONNX محلياً.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
+          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🎚️</span>
+          <h3 class="font-bold text-cream-text text-sm sm:text-base">جودة التسجيل الأصلي</h3></div>
+          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> ضجيج الخلفية والتشويش يقلّلان الدقة، وكذلك التسجيلات المنخفضة الجودة.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
+          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">🎤</span>
+          <h3 class="font-bold text-cream-text text-sm sm:text-base">تداخل المصادر</h3></div>
+          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> إن كان الغناء والكلام في الوقت نفسه فالقرار يصعب على أي موديل — وهذا حدّ التقنية اليوم لا حدّ هذه الأداة.</p>
+        </div>
+        <div class="p-4 rounded-xl bg-coal-surface border border-coal-border/70 space-y-2">
+          <div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full bg-clay/20 text-clay flex items-center justify-center text-xs">⚡</span>
+          <h3 class="font-bold text-cream-text text-sm sm:text-base">تسريع العتاد</h3></div>
+          <p class="text-xs sm:text-sm text-cream-muted"><strong class="text-cream-text">الأفضل لـ:</strong> CUDA على كروت NVIDIA أو DirectML على أي كرت DX12، مع الرجوع التلقائي إلى المعالج عند غيابهما.</p>
+        </div>
+      </div>
+    </section>
     <section class="my-10">
       <h2 class="font-serif text-lg sm:text-xl font-bold text-cream-text mb-3 flex items-center gap-2"><span class="material-symbols-outlined text-clay">verified_user</span> حدود صريحة وأمانة فنية</h2>
       <p class="text-xs sm:text-sm text-cream-muted mb-4">لا توجد أداة في العالم تعطي فصلاً مثالياً 100%؛ والفرق الحقيقي هو جودة العزل دون تشويه نبرة الصوت:</p>
       <ul class="space-y-2.5 text-xs sm:text-sm text-cream-muted bg-coal-card p-4 sm:p-5 rounded-xl border border-coal-border">
         <li class="flex items-start gap-2.5">
           <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">لماذا ليس فلتراً:</strong> الفلتر يحذف نطاقات كاملة فيتضرر الكلام لمشاركته الموسيقى في النطاق نفسه، أما تقدير القناع فيعمل على الزمن والتردد معاً.</span>
+          <span><strong class="text-cream-text">لماذا ليس فلتراً:</strong> الفلتر يحذف نطاقات ترددية كاملة فيتضرر الصوت البشري لمشاركته الموسيقى في النطاق نفسه؛ أما تقدير القناع فيعمل على الزمن والتردد معاً.</span>
         </li>
         <li class="flex items-start gap-2.5">
           <span class="material-symbols-outlined text-clay mt-1 text-xs shrink-0">error</span>
-          <span><strong class="text-cream-text">ما يحدّد الجودة:</strong> الموديل المستخدم، ثم جودة التسجيل الأصلي، ثم مقدار تداخل الغناء بالكلام.</span>
+          <span><strong class="text-cream-text">لا فصل مثالي 100%:</strong> يبقى أثر خفيف في الحالات الصعبة، والفرق العملي بين الأدوات هو مقدار ما يبقى من الموسيقى ومقدار ما يتضرر الصوت.</span>
         </li>
         <li class="flex items-start gap-2.5">
           <span class="material-symbols-outlined text-emerald-400 mt-1 text-xs shrink-0">check_circle</span>
-          <span><strong class="text-cream-text">يعمل محلياً:</strong> يُشغَّل الموديل بصيغة ONNX على جهازك: لا خادم ولا رفع، ويعمل بلا إنترنت بعد التثبيت.</span>
+          <span><strong class="text-cream-text">يعمل محلياً بالكامل:</strong> يُشغَّل الموديل داخل التطبيق على جهازك بلا خدمات خارجية، ويعمل بلا إنترنت بعد التثبيت.</span>
         </li>
         <li class="flex items-start gap-2.5">
           <span class="material-symbols-outlined text-emerald-400 mt-1 text-xs shrink-0">check_circle</span>
-          <span><strong class="text-cream-text">تسريع العتاد:</strong> CUDA على كروت NVIDIA أو DirectML على أي كرت DX12، مع الرجوع للمعالج عند غيابهما.</span>
+          <span><strong class="text-cream-text">ملفاتك لا تُدرَّب:</strong> الموديل ثابت وجاهز، وملفاتك لا تُستخدم في أي تدريب ولا تُرسل لأي جهة.</span>
         </li>
       </ul>
     </section>
@@ -172,10 +197,24 @@
       <div class="space-y-3.5">
         <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
           <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
+            <span>ما معنى ONNX؟</span>
+            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
+          </summary>
+          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">صيغة موحّدة لتشغيل موديلات التعلّم الآلي. فائدتها هنا أن الموديل يعمل داخل التطبيق على جهازك بلا خدمات خارجية ولا رفع.</div>
+        </details>
+        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
+          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
+            <span>هل يحتاج كرت رسوميات؟</span>
+            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
+          </summary>
+          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">لا، لكنه يسرّع المعالجة كثيراً. بلا كرت يعمل البرنامج على المعالج.</div>
+        </details>
+        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
+          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
             <span>هل الفصل مثالي؟</span>
             <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
           </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">لا. يبقى أثر خفيف في الحالات الصعبة، والفرق العملي بين الأدوات هو مقدار ما يبقى من الموسيقى ومقدار ما يتضرر الصوت.</div>
+          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">لا. يبقى أثر خفيف في الحالات الصعبة؛ والفرق الحقيقي بين الأدوات هو جودة العزل دون تشويه نبرة الصوت.</div>
         </details>
         <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
           <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
@@ -183,20 +222,6 @@
             <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
           </summary>
           <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">لا. الموديل ثابت، وملفاتك لا تُستخدم في تدريب ولا تُرسل لأي جهة.</div>
-        </details>
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>هل يحتاج كرت رسوميات؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">لا، لكنه يسرّع المعالجة كثيراً؛ وبلا كرت يعمل البرنامج على المعالج.</div>
-        </details>
-        <details class="group bg-coal-card rounded-xl border border-coal-border p-4 transition-colors hover:border-coal-muted open:border-clay/40">
-          <summary class="flex items-center justify-between gap-3 font-bold text-sm sm:text-base text-cream-text cursor-pointer list-none select-none">
-            <span>ما معنى ONNX؟</span>
-            <span class="material-symbols-outlined text-xs text-cream-muted transition-transform group-open:rotate-180 group-open:text-clay shrink-0">expand_more</span>
-          </summary>
-          <div class="mt-3 pt-3 border-t border-coal-border/60 text-xs sm:text-sm text-cream-muted leading-relaxed">صيغة موحّدة لتشغيل موديلات التعلّم الآلي داخل التطبيق على جهازك، بلا خدمات خارجية.</div>
         </details>
       </div>
     </section>
@@ -214,8 +239,8 @@
       <h4 class="font-bold text-xs uppercase tracking-wider text-cream-dim mb-3">أدلة ذات صلة</h4>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
       <a href="remove-music-from-video.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
-        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">إزالة الموسيقى من الفيديو على الكمبيوتر <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
-        <p class="text-[11px] text-cream-muted mt-1 truncate">تخطي الصمت المباشر داخل المتصفح</p>
+        <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">إزالة الموسيقى من الفيديو <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
+        <p class="text-[11px] text-cream-muted mt-1 truncate">الخطوات والوضع المناسب وحدود الفصل</p>
       </a>
       <a href="watch-youtube-without-music.html" class="group block p-3 rounded-lg bg-coal-card/60 hover:bg-coal-card border border-coal-border hover:border-clay/40 transition-all">
         <span class="text-xs font-semibold text-cream-text group-hover:text-clay transition-colors flex items-center justify-between">مشاهدة يوتيوب بدون موسيقى <span class="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_back</span></span>
