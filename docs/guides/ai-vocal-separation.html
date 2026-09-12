@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>كيف يفصل الذكاء الاصطناعي الصوت عن الموسيقى | HaramLite</title>
+  <meta name="description" content="شرح مبسّط لعمل موديل فصل المصادر: لماذا يختلف عن الفلاتر، وما الذي يحدّد جودة النتيجة، ولماذا تعمل العملية على جهازك.">
+  <link rel="canonical" href="https://haramlite.com/guides/ai-vocal-separation.html">
+  <meta name="theme-color" content="#151311">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="كيف يفصل الذكاء الاصطناعي الصوت عن الموسيقى | HaramLite">
+  <meta property="og:description" content="شرح مبسّط لعمل موديل فصل المصادر: لماذا يختلف عن الفلاتر، وما الذي يحدّد جودة النتيجة، ولماذا تعمل العملية على جهازك.">
+  <meta property="og:url" content="https://haramlite.com/guides/ai-vocal-separation.html">
+  <meta property="og:image" content="https://haramlite.com/assets/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="../assets/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/icon-32.png">
+  <link rel="apple-touch-icon" href="../assets/icon-180.png">
+  <link rel="stylesheet" href="../assets/site.css"/>
+  <link rel="preload" href="../assets/thmanyah-serif-bold.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../assets/thmanyah-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
+
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "هل الفصل مثالي؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "لا. يبقى أثر خفيف في الحالات الصعبة. الفرق العملي بين الأدوات هو مقدار ما يبقى من الموسيقى ومقدار ما يتضرر الصوت البشري."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "هل يُدرَّب الموديل على ملفاتي؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "لا. الموديل ثابت وجاهز، وملفاتك لا تُستخدم في أي تدريب ولا تُرسل لأي جهة."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "ما معنى ONNX؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "صيغة موحّدة لتشغيل موديلات التعلّم الآلي. فائدتها هنا أن الموديل يعمل داخل التطبيق على جهازك بلا خدمات خارجية."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "هل يحتاج كرت رسوميات؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "لا، لكنه يسرّع المعالجة كثيراً. بلا كرت يعمل البرنامج على المعالج."
+      }
+    }
+  ]
+}
+  </script>
+</head>
+<body class="bg-coal-surface font-body-md text-cream-text">
+  <header class="border-b border-border-muted">
+    <div class="h-16 max-w-4xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter">
+      <a class="flex items-center gap-stack-sm" href="../">
+        <img src="../assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded shadow-sm">
+        <span class="font-label-md text-label-md tracking-wider text-cream-text font-bold uppercase">HaramLite</span>
+      </a>
+      <nav class="flex items-center gap-stack-md">
+        <a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="./">كل الأدلة</a>
+        <a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="../#download">التحميل</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-margin-mobile lg:px-margin-desktop py-12">
+    <p class="font-mono-code text-mono-code text-clay-accent mb-3">دليل · آخر تحديث 2026-09-12</p>
+    <h1 class="font-headline-xl text-headline-xl text-cream-text mb-4">كيف يفصل الذكاء الاصطناعي الصوت عن الموسيقى؟</h1>
+    <p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed mb-10">الفكرة أبسط مما تبدو: الموديل لا «يحذف» الموسيقى، بل يتعلّم أن يتعرّف على شكل الصوت البشري داخل المزيج ثم يعيد بناءه وحده. وهذا الشرح يوضّح ما يحدث فعلاً، وما يحدّد جودة النتيجة.</p>
+
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">الفكرة في ثلاث خطوات</h2>
+    <ol class="space-y-4 font-body-md text-body-md text-on-surface-variant leading-relaxed">
+      <li><strong class="text-cream-text">تحويل الصوت إلى صورة:</strong> يُحوَّل الصوت إلى تمثيل ترددي-زمني (ما يشبه الصورة)، فيصير «فصل الصوت» مسألة تمييز أنماط في صورة.</li>
+      <li><strong class="text-cream-text">تقدير القناع:</strong> يتوقّع الموديل لكل بقعة في هذه الصورة: هل تخصّ الصوت البشري أم الموسيقى؟ ثم يُبنى مسار الصوت من البقع التي قدّر أنها بشرية.</li>
+      <li><strong class="text-cream-text">إعادة البناء:</strong> يُعاد المسار المفصول إلى موجة صوتية، ثم تُطبَّق عليه تحسينات (حضور وصدى وموازنة مستوى) وقصّ للصمت.</li>
+    </ol>
+
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">لماذا يختلف عن «فلتر»؟</h2>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-4">الفلتر يحذف نطاقات ترددية كاملة، فيتضرر الصوت البشري لأن طاقته تشارك الموسيقى في النطاق نفسه. أما تقدير القناع فيعمل على الزمن والتردد معاً، فيستطيع أن يُبقي الكلام في لحظة معيّنة ويحذف الموسيقى في اللحظة نفسها — ولهذا يبقى الكلام طبيعياً بدل أن يبدو مكتوماً.</p>
+
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">ما الذي يحدّد الجودة؟</h2>
+    <ul class="space-y-3 font-body-md text-body-md text-on-surface-variant leading-relaxed list-disc pr-6">
+      <li><strong class="text-cream-text">الموديل نفسه:</strong> النموذج المستخدم في HaramLite مدرَّب على الغناء والموسيقى تحديداً، وهو الفرق الأكبر بين الأدوات.</li>
+      <li><strong class="text-cream-text">جودة التسجيل الأصلي:</strong> ضجيج الخلفية والتشويش يقلّلان الدقة.</li>
+      <li><strong class="text-cream-text">تداخل المصادر:</strong> إن كان الغناء والكلام في الوقت نفسه فالقرار يصعب على أي موديل.</li>
+    </ul>
+
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">ولماذا يعمل على جهازك؟</h2>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-4">الأدوات الحديثة تسمح بتشغيل هذه الموديلات محلياً بسرعة معقولة عبر كرت الرسوميات. في HaramLite يُشغَّل الموديل بصيغة ONNX محلياً: لا خادم ولا رفع، فيبقى ملفك عندك، وتعمل الأداة بلا إنترنت بعد التثبيت.</p>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">وتُستخدم عند الحاجة تسريع CUDA على كروت NVIDIA أو DirectML على أي كرت DX12، مع الرجوع تلقائياً إلى المعالج عند غيابهما.</p>
+  
+
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-12 mb-4">أسئلة شائعة</h2>
+    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">هل الفصل مثالي؟</h3>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">لا. يبقى أثر خفيف في الحالات الصعبة. الفرق العملي بين الأدوات هو مقدار ما يبقى من الموسيقى ومقدار ما يتضرر الصوت البشري.</p>
+    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">هل يُدرَّب الموديل على ملفاتي؟</h3>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">لا. الموديل ثابت وجاهز، وملفاتك لا تُستخدم في أي تدريب ولا تُرسل لأي جهة.</p>
+    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">ما معنى ONNX؟</h3>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">صيغة موحّدة لتشغيل موديلات التعلّم الآلي. فائدتها هنا أن الموديل يعمل داخل التطبيق على جهازك بلا خدمات خارجية.</p>
+    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">هل يحتاج كرت رسوميات؟</h3>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">لا، لكنه يسرّع المعالجة كثيراً. بلا كرت يعمل البرنامج على المعالج.</p>
+
+    <div class="mt-12 p-6 rounded-xl bg-surface-container border border-border-muted">
+      <p class="font-body-md text-body-md text-cream-text mb-4">جرّبه بنفسك: التطبيق مجاني ومفتوح المصدر، ويعمل على ويندوز ١٠/١١.</p>
+      <a class="inline-flex items-center gap-2 px-stack-md py-stack-sm rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold hover:bg-primary transition-colors" href="../#download">تحميل HaramLite</a>
+    </div>
+
+    <nav class="mt-10 pt-6 border-t border-border-muted">
+      <p class="font-label-md text-label-md font-bold text-cream-text mb-3">أدلة أخرى</p>
+      <ul class="space-y-2">
+        <li><a class="font-body-md text-body-md text-clay-accent hover:underline" href="remove-music-from-video.html">إزالة الموسيقى من الفيديو على الكمبيوتر</a></li>
+        <li><a class="font-body-md text-body-md text-clay-accent hover:underline" href="watch-youtube-without-music.html">مشاهدة يوتيوب بدون موسيقى داخل المتصفح</a></li>
+        <li><a class="font-body-md text-body-md text-clay-accent hover:underline" href="remove-music-from-podcast.html">إزالة الموسيقى من البودكاست والمحاضرات</a></li>
+      </ul>
+    </nav>
+  </main>
+
+  <footer class="border-t border-border-muted py-stack-lg mt-8">
+    <div class="max-w-4xl mx-auto px-margin-mobile lg:px-margin-desktop flex flex-col sm:flex-row items-center justify-between gap-stack-md">
+      <p class="font-label-sm text-label-sm text-on-surface-variant">HaramLite — إزالة الموسيقى على جهازك، بلا رفع ولا حساب.</p>
+      <nav class="flex gap-stack-md">
+        <a class="font-label-sm text-label-sm text-clay-accent hover:underline" href="../PRIVACY.html">الخصوصية</a>
+        <a class="font-label-sm text-label-sm text-clay-accent hover:underline" href="https://github.com/SMSMy/HaramLite" rel="noreferrer" target="_blank">المستودع</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

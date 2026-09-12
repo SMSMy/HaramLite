@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>مشاهدة يوتيوب بدون موسيقى داخل المتصفح | HaramLite</title>
+  <meta name="description" content="كيف تشاهد فيديو يوتيوب بلا موسيقى داخل الصفحة نفسها: يُكتم صوت الفيديو ويُشغَّل الصوت المعالَج محلياً، مع تخطي فترات الصمت تلقائياً.">
+  <link rel="canonical" href="https://haramlite.com/guides/watch-youtube-without-music.html">
+  <meta name="theme-color" content="#151311">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="مشاهدة يوتيوب بدون موسيقى داخل المتصفح | HaramLite">
+  <meta property="og:description" content="كيف تشاهد فيديو يوتيوب بلا موسيقى داخل الصفحة نفسها: يُكتم صوت الفيديو ويُشغَّل الصوت المعالَج محلياً، مع تخطي فترات الصمت تلقائياً.">
+  <meta property="og:url" content="https://haramlite.com/guides/watch-youtube-without-music.html">
+  <meta property="og:image" content="https://haramlite.com/assets/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="../assets/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="../assets/icon-32.png">
+  <link rel="apple-touch-icon" href="../assets/icon-180.png">
+  <link rel="stylesheet" href="../assets/site.css"/>
+  <link rel="preload" href="../assets/thmanyah-serif-bold.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../assets/thmanyah-sans-regular.woff2" as="font" type="font/woff2" crossorigin>
+
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "هل تعمل على مواقع غير يوتيوب؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "المشاهدة داخل الصفحة تعمل على يوتيوب حالياً. أما إرسال الروابط للمعالجة فيدعم كل موقع تدعمه أدوات التنزيل، عبر قائمة الزر الأيمن."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "هل يبقى الفيديو مسموعاً للآخرين في الغرفة؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "لا؛ يُكتم صوت تبويبك أنت، ويُشغَّل بدلاً منه الصوت المعالَج على جهازك."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "هل تُحفظ نسخة من الفيديو؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "ما يُحفظ هو ناتج المعالجة عندك على الجهاز إن اخترت ذلك. الإضافة نفسها لا تنزّل شيئاً ولا تحفظ ملفاً."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "لماذا يظهر تنبيه عند الكتم؟",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "لأن كتم صوت الصفحة يجب أن يكون معلناً وواضحاً، فلا يُخفي شيئاً عنك ولا يعمل في الخفاء."
+      }
+    }
+  ]
+}
+  </script>
+</head>
+<body class="bg-coal-surface font-body-md text-cream-text">
+  <header class="border-b border-border-muted">
+    <div class="h-16 max-w-4xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter">
+      <a class="flex items-center gap-stack-sm" href="../">
+        <img src="../assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded shadow-sm">
+        <span class="font-label-md text-label-md tracking-wider text-cream-text font-bold uppercase">HaramLite</span>
+      </a>
+      <nav class="flex items-center gap-stack-md">
+        <a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="./">كل الأدلة</a>
+        <a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="../#download">التحميل</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-margin-mobile lg:px-margin-desktop py-12">
+    <p class="font-mono-code text-mono-code text-clay-accent mb-3">دليل · آخر تحديث 2026-09-12</p>
+    <h1 class="font-headline-xl text-headline-xl text-cream-text mb-4">مشاهدة يوتيوب بدون موسيقى داخل المتصفح</h1>
+    <p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed mb-10">بدل أن تنزّل الفيديو ثم تبحث عن مشغّل آخر، تكتم الإضافة صوت الصفحة وتُشغّل مكانه الصوت الذي عالجه تطبيقك على جهازك — متزامناً مع الصورة. وهذا الدليل يشرح كيف يحدث ذلك، وما تحتاجه، وحدود الطريقة.</p>
+
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">كيف تعمل الطريقة؟</h2>
+    <ol class="space-y-4 font-body-md text-body-md text-on-surface-variant leading-relaxed">
+      <li><strong class="text-cream-text">تثبّت تطبيق HaramLite على ويندوز وتشغّله.</strong> التطبيق هو من يفصل الصوت؛ الإضافة واجهة متصفح له لا أكثر.</li>
+      <li><strong class="text-cream-text">تثبّت إضافة المتصفح</strong> وتفعّل «التكامل مع المتصفح» من إعدادات التطبيق.</li>
+      <li><strong class="text-cream-text">تفتح أي فيديو على يوتيوب</strong> — يظهر زرّان في شريط المشغّل.</li>
+      <li><strong class="text-cream-text">تضغط «شاهد بعد إزالة الموسيقى»</strong> — يُكتم صوت الصفحة (بإعلان واضح على الشاشة) ويُشغَّل الصوت المعالَج بدلاً منه.</li>
+    </ol>
+
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">لماذا «تخطي الصمت» مهم؟</h2>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed mb-4">عند إزالة الموسيقى تبقى في الفيديو فراغات صامتة مكان المقاطع الموسيقية — فتتحوّل المشاهدة إلى سلسلة صمت مزعج. الإضافة تتخطّى هذه الفترات تلقائياً فلا تشعر بها، ويمكنك إيقاف التخطي من قائمة الزر الأيمن إن أردت سماع الفيديو كما هو.</p>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">وزرّ الإرسال الثاني («عالج هذا الفيديو») يطلب من تطبيقك تجهيز هذا الرابط تحديداً، فيكون جاهزاً للمشاهدة أو للتحميل عندك.</p>
+
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">ما تحتاجه</h2>
+    <ul class="space-y-3 font-body-md text-body-md text-on-surface-variant leading-relaxed list-disc pr-6">
+      <li>ويندوز ١٠ أو ١١ (x64) مع تطبيق HaramLite مثبّتاً و<strong class="text-cream-text">مفتوحاً</strong>.</li>
+      <li>متصفح مبني على كروم أو إيدج — الإضافة تعمل في شريط المشغّل على يوتيوب.</li>
+      <li>لا حاجة لأي حساب ولا لرفع أي ملف.</li>
+    </ul>
+
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">حدود صادقة</h2>
+    <ul class="space-y-3 font-body-md text-body-md text-on-surface-variant leading-relaxed list-disc pr-6">
+      <li>أول تشغيل لفيديو جديد يستغرق وقتاً بحسب طوله: المعالجة تحدث على جهازك لا على خادم.</li>
+      <li>إن كان الغناء مختلطاً بالكلام فسيصعب الفصل — وهذا حدّ كل الأدوات اليوم لا هذه وحدها.</li>
+      <li>الإضافة لا تعمل بلا التطبيق: ليست خدمة مستقلة ولا تعالج شيئاً بنفسها.</li>
+    </ul>
+
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-10 mb-4">خصوصية المشاهدة</h2>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">الإضافة لا تُجري أي طلب شبكة ولا تقرأ سجل التصفح: تقرأ رابط التبويب الذي طلبت معالجته، وترسله إلى تطبيقك على جهازك عبر قناة محلية. التفاصيل في <a class="text-clay-accent hover:underline" href="../bridge-privacy.html">سياسة خصوصية الإضافة</a>.</p>
+  
+
+    <h2 class="font-headline-lg text-headline-lg text-cream-text mt-12 mb-4">أسئلة شائعة</h2>
+    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">هل تعمل على مواقع غير يوتيوب؟</h3>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">المشاهدة داخل الصفحة تعمل على يوتيوب حالياً. أما إرسال الروابط للمعالجة فيدعم كل موقع تدعمه أدوات التنزيل، عبر قائمة الزر الأيمن.</p>
+    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">هل يبقى الفيديو مسموعاً للآخرين في الغرفة؟</h3>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">لا؛ يُكتم صوت تبويبك أنت، ويُشغَّل بدلاً منه الصوت المعالَج على جهازك.</p>
+    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">هل تُحفظ نسخة من الفيديو؟</h3>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">ما يُحفظ هو ناتج المعالجة عندك على الجهاز إن اخترت ذلك. الإضافة نفسها لا تنزّل شيئاً ولا تحفظ ملفاً.</p>
+    <h3 class="font-label-md text-label-md font-bold text-cream-text mt-6 mb-2">لماذا يظهر تنبيه عند الكتم؟</h3>
+    <p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">لأن كتم صوت الصفحة يجب أن يكون معلناً وواضحاً، فلا يُخفي شيئاً عنك ولا يعمل في الخفاء.</p>
+
+    <div class="mt-12 p-6 rounded-xl bg-surface-container border border-border-muted">
+      <p class="font-body-md text-body-md text-cream-text mb-4">جرّبه بنفسك: التطبيق مجاني ومفتوح المصدر، ويعمل على ويندوز ١٠/١١.</p>
+      <a class="inline-flex items-center gap-2 px-stack-md py-stack-sm rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold hover:bg-primary transition-colors" href="../#download">تحميل HaramLite</a>
+    </div>
+
+    <nav class="mt-10 pt-6 border-t border-border-muted">
+      <p class="font-label-md text-label-md font-bold text-cream-text mb-3">أدلة أخرى</p>
+      <ul class="space-y-2">
+        <li><a class="font-body-md text-body-md text-clay-accent hover:underline" href="remove-music-from-video.html">إزالة الموسيقى من الفيديو على الكمبيوتر</a></li>
+        <li><a class="font-body-md text-body-md text-clay-accent hover:underline" href="ai-vocal-separation.html">كيف يفصل الذكاء الاصطناعي الصوت عن الموسيقى</a></li>
+        <li><a class="font-body-md text-body-md text-clay-accent hover:underline" href="remove-music-from-podcast.html">إزالة الموسيقى من البودكاست والمحاضرات</a></li>
+      </ul>
+    </nav>
+  </main>
+
+  <footer class="border-t border-border-muted py-stack-lg mt-8">
+    <div class="max-w-4xl mx-auto px-margin-mobile lg:px-margin-desktop flex flex-col sm:flex-row items-center justify-between gap-stack-md">
+      <p class="font-label-sm text-label-sm text-on-surface-variant">HaramLite — إزالة الموسيقى على جهازك، بلا رفع ولا حساب.</p>
+      <nav class="flex gap-stack-md">
+        <a class="font-label-sm text-label-sm text-clay-accent hover:underline" href="../PRIVACY.html">الخصوصية</a>
+        <a class="font-label-sm text-label-sm text-clay-accent hover:underline" href="https://github.com/SMSMy/HaramLite" rel="noreferrer" target="_blank">المستودع</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
