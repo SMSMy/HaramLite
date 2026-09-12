@@ -712,3 +712,24 @@
     if (tryInject() || tries > 120) clearInterval(timer);
   }, 1000);
 })();
+
+// ── رسالة من نافذة الإضافة: تشغيل/إيقاف المشاهدة المفلترة ────────────────────
+// النافذة لا تعرف الفيديو ولا حالة المشغّل؛ هذه الصفحة هي التي تعرفها، فتُنفّذ
+// الطلب هنا وتُبلغ النافذة بالنتيجة. لا تُقرأ أي بيانات ولا يُرسل شيء للخارج.
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (!msg || msg.type !== 'watch-toggle') return false;
+  try {
+    if (typeof WATCH !== 'undefined' && WATCH) {
+      stopWatch();
+      sendResponse({ ok: true, watching: false });
+    } else if (typeof startWatch === 'function') {
+      void startWatch();
+      sendResponse({ ok: true, watching: true });
+    } else {
+      sendResponse({ ok: false, error: 'watch unavailable on this page' });
+    }
+  } catch (e) {
+    sendResponse({ ok: false, error: String((e && e.message) || e) });
+  }
+  return true; // الرد متزامن لكن إبقاء القناة مفتوحة آمن
+});

@@ -2,54 +2,129 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8" />
+  <title>HaramLite Bridge</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
-  <header>
-    <img src="icon48.png" alt="" />
-    <div>
-      <h1>HaramLite Bridge</h1>
-      <p class="sub">الجسر بين المتصفح وتطبيق HaramLite</p>
+  <div class="popup-body" id="ext-popup">
+
+    <!-- الترويسة -->
+    <header class="popup-header">
+      <div class="brand-wrap">
+        <div class="app-icon-badge">
+          <img src="icon48.png" alt="أيقونة HaramLite" width="32" height="32" />
+        </div>
+        <div class="brand-titles">
+          <h1>HaramLite <span class="brand-accent">Bridge</span></h1>
+          <p class="sub">الجسر المحلي للمتصفح</p>
+        </div>
+      </div>
+      <span class="version-tag">v1.1.0</span>
+    </header>
+
+    <div class="popup-content">
+
+      <!-- 1) حالة الاتصال -->
+      <div class="status-card" id="card-status">
+        <div class="status-left">
+          <span class="status-dot ok" id="status-indicator"></span>
+          <span class="status-label" id="status-title">جارٍ الفحص…</span>
+        </div>
+        <span class="status-host" id="status-channel">Native Messaging</span>
+      </div>
+
+      <!-- بطاقة التشخيص عند عدم الاتصال -->
+      <div class="offline-box hidden" id="card-offline">
+        <h3>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+          تطبيق HaramLite المكتبي غير متصل
+        </h3>
+        <ol class="offline-steps">
+          <li>شغّل برنامج HaramLite على حاسوبك.</li>
+          <li>من الإعدادات: فعّل <code>التكامل مع المتصفح</code>.</li>
+          <li>أعد فتح هذه القائمة للاتصال الفوري بالجسر.</li>
+        </ol>
+      </div>
+
+      <!-- 2) التبويب النشط -->
+      <div class="target-page-card" id="card-target">
+        <div class="target-label">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          التبويب النشط حالياً:
+        </div>
+        <div class="target-title" id="target-title">—</div>
+        <div class="target-url" id="target-url"></div>
+      </div>
+
+      <!-- 3) اختيار الوضع -->
+      <div class="mode-toggle-grid" id="card-modes">
+        <div class="mode-item selected" id="mode-clip" role="button" tabindex="0" aria-pressed="true">
+          <div class="mode-title"><span>🎬</span> مقطع عادي</div>
+          <div class="mode-desc">إزالة الموسيقى فقط وحفظ صفاء الحوار</div>
+        </div>
+        <div class="mode-item" id="mode-song" role="button" tabindex="0" aria-pressed="false">
+          <div class="mode-title"><span>🎵</span> وضع أغنية</div>
+          <div class="mode-desc">فصل كامل + مؤثرات إحياء + قص الصمت</div>
+        </div>
+      </div>
+
+      <!-- 4) زر الإرسال -->
+      <div class="actions-card" id="card-action">
+        <button class="btn-primary" id="btn-send-page">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          أرسل هذه الصفحة إلى HaramLite
+        </button>
+        <p class="action-hint hidden" id="send-result"></p>
+      </div>
+
+      <!-- 5) المعالجة الجارية -->
+      <div class="progress-card hidden" id="card-progress">
+        <div class="progress-header">
+          <span class="job-title" id="job-name"></span>
+          <span class="job-pct" id="job-pct-val">0%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="job-progress-bar" style="width: 0%;"></div>
+        </div>
+        <div class="progress-details">
+          <span id="job-phase-txt">—</span>
+          <span class="hw-badge" id="job-hw-mode"></span>
+        </div>
+        <div class="progress-actions">
+          <button class="btn-danger-outline" id="btn-cancel">⏹ إلغاء المعالجة</button>
+        </div>
+      </div>
+
+      <!-- 6) الاكتمال والنتيجة -->
+      <div class="result-pill hidden" id="card-completed">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        <span id="completed-text">اكتملت المعالجة بنجاح.</span>
+      </div>
+
+      <div class="progress-actions hidden" id="card-completed-actions">
+        <button class="btn-primary" id="btn-watch" style="flex: 2; height: 34px; font-size: 12px;">▶ تشغيل المشاهدة المفلترة</button>
+        <button class="btn-secondary" id="btn-open-folder" style="flex: 1; height: 34px; font-size: 12px;">📂 النتائج</button>
+      </div>
+
+      <!-- 7) تنبيه أزرار يوتيوب -->
+      <div class="yt-notice" id="card-yt-notice">
+        <svg width="14" height="14" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+        <div>
+          <strong>ملاحظة:</strong> أزرار التحكم المباشر (حمّل وعالج / شاهد مفلتراً) مدمجة تلقائياً في شريط يوتيوب داخل الصفحة.
+        </div>
+      </div>
+
     </div>
-  </header>
 
-  <div id="status" class="row">
-    <span class="dot" id="status-dot"></span>
-    <span id="status-text">جارٍ الفحص...</span>
+    <footer class="popup-footer">
+      <div class="privacy-tag">
+        <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+        <span>معالجة محلية 100% · بلا سحابة</span>
+      </div>
+      <a href="https://haramlite.com/bridge.html#install" target="_blank" rel="noreferrer" class="footer-link">دليل التثبيت ⚙</a>
+    </footer>
+
   </div>
-
-  <div class="card">
-    <p class="hint">انقر بزر الفأرة الأيمن على أي رابط أو صفحة فيديو واختر «أرسل إلى HaramLite» — سيتولى التطبيق التنزيل والمعالجة كاملة على جهازك.</p>
-  </div>
-
-  <div class="card">
-    <button id="send-page" class="primary">أرسل هذه الصفحة إلى HaramLite</button>
-    <p id="send-result" class="hint result hidden"></p>
-  </div>
-
-  <div class="card hidden" id="popup-progress">
-    <div id="popup-name" class="hint ellipsis"></div>
-    <div class="bar-wrap"><div id="popup-bar" class="bar"></div></div>
-    <div id="popup-status" class="hint"></div>
-    <div id="popup-prov" class="hint"></div>
-    <div style="display:flex;gap:6px;margin-top:8px;">
-      <button id="popup-cancel" class="danger">⏹ إلغاء</button>
-      <button id="popup-open" class="primary" style="display:none;">📂 فتح مجلد النتائج</button>
-    </div>
-  </div>
-
-  <div class="card hidden" id="error-card">
-    <p id="error-text" class="error"></p>
-    <ol>
-      <li>ثبّت تطبيق HaramLite وشغّله مرة واحدة على الأقل.</li>
-      <li>من إعدادات التطبيق: فعّل «التكامل مع المتصفح».</li>
-      <li>أعد تحميل الإضافة من <code>chrome://extensions</code>.</li>
-    </ol>
-  </div>
-
-  <footer>
-    <span class="privacy">الخصوصية: لا تُرفع أي ملفات — كل المعالجة محلية.</span>
-  </footer>
 
   <script src="popup.js"></script>
 </body>

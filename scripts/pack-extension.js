@@ -34,7 +34,7 @@ const FILES = [
   'popup.html',
   'popup.js',
   'popup.css',
-  'icon16.png',
+  'thmanyah-sans-regular.otf', 'thmanyah-sans-medium.otf', 'thmanyah-sans-bold.otf', 'icon16.png',
   'icon48.png',
   'icon128.png',
 ];

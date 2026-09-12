@@ -229,7 +229,15 @@ fn handle_host_message(msg: &serde_json::Value) {
                 reply_err("empty url");
                 return;
             }
-            match write_request(url, job_watch_of(msg)) {
+            match write_request(
+                url,
+                job_watch_of(msg),
+                // Only a real per-request choice travels; "watch" is carried by
+                // the watch flag above and anything else is ignored.
+                msg.get("mode")
+                    .and_then(|v| v.as_str())
+                    .filter(|m| *m == "song" || *m == "clip"),
+            ) {
                 Ok(path) => {
                     spawn_main_app();
                     reply_ok(serde_json::json!({ "ok": true, "queued": path }));
@@ -263,7 +271,7 @@ fn reply_err(msg: &str) {
     reply_ok(serde_json::json!({ "ok": false, "error": msg }));
 }
 
-fn write_request(url: &str, watch: bool) -> Result<String, String> {
+fn write_request(url: &str, watch: bool, mode: Option<&str>) -> Result<String, String> {
     let dir = requests_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let nanos = std::time::SystemTime::now()
@@ -280,6 +288,9 @@ fn write_request(url: &str, watch: bool) -> Result<String, String> {
     // absent mode means full-save (backward compatible both directions).
     if watch {
         body["mode"] = serde_json::json!("watch");
+    } else if let Some(m) = mode {
+        // The popup's per-request choice (song/clip) travels the same field.
+        body["mode"] = serde_json::json!(m);
     }
     let body = serde_json::to_vec(&body).unwrap_or_default();
     // Atomic write (tmp + rename): notify fires on file CREATE — a direct
@@ -496,16 +507,31 @@ struct DispatchCtx {
 
 /// A queued browser request: full-save (default) or temp watch-listen
 /// (field #3 — audio only, temp dir, swept; never saved to the user folder).
+/// `mode` carries an explicit choice from the browser popup, so the user can
+/// pick أغنية/مقطوعة per request instead of inheriting the watch-folder
+/// setting. Absent (old clients) keeps the previous behaviour exactly.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Job {
     url: String,
     watch: bool,
+    mode: Option<Mode>,
 }
 
 /// Pure mode parse (unit-tested): only an explicit `"watch"` opts into the
 /// temp path — old clients send no mode and stay full-save.
 fn job_watch_of(msg: &serde_json::Value) -> bool {
     msg.get("mode").and_then(|v| v.as_str()) == Some("watch")
+}
+
+/// Pure per-request mode (unit-tested): the popup sends `song` or `clip`;
+/// anything else — absent, `watch`, garbage, a number — means "no opinion" and
+/// the host falls back to the watch-folder setting as before.
+fn job_mode_of(msg: &serde_json::Value) -> Option<Mode> {
+    match msg.get("mode").and_then(|v| v.as_str()) {
+        Some("song") => Some(Mode::Song),
+        Some("clip") => Some(Mode::Clip),
+        _ => None,
+    }
 }
 
 /// File one request off disk and route it. The file is removed as soon as its
@@ -562,7 +588,11 @@ fn dispatch_file(path: &Path, ctx: &DispatchCtx) {
                 return;
             }
             ctx.pending.fetch_add(1, Ordering::SeqCst);
-            let _ = ctx.job_tx.send(Job { url, watch: job_watch_of(&msg) });
+            let _ = ctx.job_tx.send(Job {
+                url,
+                watch: job_watch_of(&msg),
+                mode: job_mode_of(&msg),
+            });
         }
         _ => {}
     }
@@ -626,7 +656,7 @@ fn bridge_loop(app: tauri::AppHandle, settings: Arc<Mutex<Settings>>, dir: PathB
                     // sample tripping DSP) must not kill this thread forever
                     // and wedge every later request — survive it loudly.
                     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        handle_request(&worker_app, &worker_settings, &job.url, job.watch, &worker_pending);
+                        handle_request(&worker_app, &worker_settings, &job.url, job.watch, job.mode, &worker_pending);
                     }));
                     if r.is_err() {
                         tracing::error!(target: "bridge", "نجا العامل من عطل في مهمة — راجع سجل الانهيار؛ الطابور مستمر");
@@ -713,6 +743,7 @@ fn handle_request(
     settings: &Arc<Mutex<Settings>>,
     url: &str,
     watch: bool,
+    mode_choice: Option<Mode>,
     pending: &Arc<AtomicUsize>,
 ) {
     use tauri::Emitter;
@@ -768,7 +799,9 @@ fn handle_request(
     };
     match downloaded {
         Ok(file) => {
-            let mode = if s.watch_mode == "clip" { Mode::Clip } else { Mode::Song };
+            // The popup's explicit choice wins; without one the request keeps the old
+    // behaviour (watch-folder setting) so older clients are unaffected.
+    let mode = mode_choice.unwrap_or(if s.watch_mode == "clip" { Mode::Clip } else { Mode::Song });
             let file_label = file
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
@@ -1284,10 +1317,10 @@ mod tests {
             .unwrap_or_else(|p| p.into_inner())
             .try_recv()
             .expect("job must be queued");
-        assert_eq!(got, Job { url: url.clone(), watch: false });
+        assert_eq!(got, Job { url: url.clone(), watch: false, mode: None });
         // re-queue it so the SECOND delivery is genuinely a duplicate
         ctx.pending.fetch_add(1, Ordering::SeqCst);
-        let _ = ctx.job_tx.send(Job { url: url.clone(), watch: false });
+        let _ = ctx.job_tx.send(Job { url: url.clone(), watch: false, mode: None });
 
         // second delivery of the same URL → skipped AND removed (no 5s loop)
         let p2 = write_req("req_2.json", &format!(r#"{{"type":"link","url":"{url}"}}"#));
@@ -1313,6 +1346,21 @@ mod tests {
         assert!(!job_watch_of(&json!({})));
     }
 
+    /// The popup's per-request mode: only an explicit song/clip is honoured, and
+    /// a request carrying none (every older client) stays "no opinion".
+    #[test]
+    fn per_request_mode_parses_song_and_clip_only() {
+        use serde_json::json;
+        assert_eq!(job_mode_of(&json!({ "type": "link", "mode": "song" })), Some(Mode::Song));
+        assert_eq!(job_mode_of(&json!({ "type": "link", "mode": "clip" })), Some(Mode::Clip));
+        assert_eq!(job_mode_of(&json!({ "type": "link", "mode": "watch" })), None);
+        assert_eq!(job_mode_of(&json!({ "type": "link" })), None);
+        assert_eq!(job_mode_of(&json!({ "type": "link", "mode": "" })), None);
+        assert_eq!(job_mode_of(&json!({ "type": "link", "mode": 2 })), None);
+        assert_eq!(job_mode_of(&json!({ "type": "link", "mode": "Song" })), None);
+        assert_eq!(job_mode_of(&json!({})), None);
+    }
+
     /// Field #3: a watch-mode request file queues a temp job (flag survives
     /// dispatch); a modeless file queues full-save.
     #[test]
@@ -1329,7 +1377,7 @@ mod tests {
             .unwrap_or_else(|p| p.into_inner())
             .try_recv()
             .expect("watch job must be queued");
-        assert_eq!(got, Job { url: url.clone(), watch: true });
+        assert_eq!(got, Job { url: url.clone(), watch: true, mode: None });
         let p2 = write_req("req_full.json", &format!(r#"{{"type":"link","url":"{url}x"}}"#));
         dispatch_file(&p2, &ctx);
         let got2 = ctx

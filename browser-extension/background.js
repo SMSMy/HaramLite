@@ -129,7 +129,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true; // keep the channel open for the async reply
   }
   if (msg && msg.type === 'send') {
-    sendNative({ type: 'link', url: msg.url, ts: Date.now() })
+    // The popup may state a per-request mode (song/clip). Only those two travel:
+    // anything else — absent, garbage — lets the app keep its own setting.
+    const link = { type: 'link', url: msg.url, ts: Date.now() };
+    if (msg.mode === 'song' || msg.mode === 'clip') link.mode = msg.mode;
+    sendNative(link)
       .then((r) => sendResponse({ ok: true, reply: r }))
       .catch((e) => sendResponse({ ok: false, error: e.message }));
     return true;
