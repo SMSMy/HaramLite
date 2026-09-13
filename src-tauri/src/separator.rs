@@ -473,6 +473,14 @@ impl MdxSession {
     }
 }
 
+/// UVR5 separate.py:560 padding (pure, unit-tested):
+/// `pad = gen_size + trim - (L % gen_size)`, `padded = trim + L + pad`.
+fn demix_padding(n: usize) -> (usize, usize) {
+    let gen_size = CHUNK_SIZE - 2 * TRIM;
+    let pad = gen_size + TRIM - (n % gen_size);
+    (pad, TRIM + n + pad)
+}
+
 /// demix(): overlapping-window accumulation loop, exact port of python demix.
 fn demix(
     session: &mut MdxSession,
@@ -482,8 +490,10 @@ fn demix(
     let mixture_len = mix[0].len();
     let n = mixture_len;
 
-    // pad exactly TRIM samples on both ends (MDX-Net requirement)
-    let padded_len = mixture_len + 2 * TRIM;
+    // UVR5 separate.py:560 + audio-separator mdx_separator.py:342:
+    // pad = gen_size + trim - (L % gen_size); mixture = zeros(trim) + mix + zeros(pad).
+    // (The old 2*TRIM-only tail under-padded file tails vs the reference.)
+    let (_pad, padded_len) = demix_padding(n);
     let mut mixture = [vec![0.0f32; padded_len], vec![0.0f32; padded_len]];
     for c in 0..2 {
         mixture[c][TRIM..TRIM + n].copy_from_slice(&mix[c]);
@@ -547,7 +557,9 @@ fn demix(
 /// - `dense`: sustained-music gate (≥6 consecutive conf>0.5 windows) → the
 ///   clip deserves FULL MDX; sparser mixes go detect-then-mute.
 /// - `suspect`: kept (non-silence) spans ± [`SUSPECT_PAD_SECS`] padding,
-///   merged and clamped — the ONLY ranges MDX ever sees.
+///   merged and clamped — diagnostics only since step-1 (A); separate()
+///   infers on the whole file per UVR5 :499. The clip density gate in
+///   pipeline.rs still reads `dense`/`suspect` for its own routing.
 pub struct MixAnalysis {
     pub dense: bool,
     pub suspect: Vec<(usize, usize)>,
@@ -633,11 +645,9 @@ pub fn splice_span(out: &mut [Vec<f32>; 2], start: usize, span: &[Vec<f32>; 2], 
 
 /// Full separation: normalized stereo WAV in → vocals + instrumental WAVs out.
 ///
-/// Expert D2ب: MDX sees ONLY suspect spans (kept audio ±2s padding, merged);
-///
-/// Expert D2ب: MDX sees ONLY suspect spans (kept audio ±2s padding, merged);
-/// silence never enters the model. Spans splice back sample-exact with a
-/// 50ms crossfade straddling each edge. Empty suspect ⇒ MDX skipped entirely.
+/// UVR5 separate.py:499 (`source = self.demix(mix)`): inference runs on the
+/// WHOLE file — no content gate. `analyze_mix` stays as diagnostics only
+/// (logged above, never branching). Padding follows UVR5 :560.
 pub fn separate(
     input_wav: &Path,
     out_dir: &Path,
@@ -670,36 +680,15 @@ pub fn separate(
     let mut session = MdxSession::load(use_cuda)?;
     let build_ms = t_build.elapsed().as_secs_f32() * 1000.0;
 
-    // Normalized-scale vocals; zeros outside suspect spans (silence needs no
-    // model — the instrumental-by-subtraction below then stays ~0 there too).
-    let mut vocals_src = [vec![0.0f32; n], vec![0.0f32; n]];
+    // UVR5 :499 — whole-file inference; the analysis above is diagnostics only.
     let t_inf = std::time::Instant::now();
-    if analysis.suspect.is_empty() {
-        tracing::warn!(target: "sep", "no suspect audio — MDX skipped, stems pass through");
-        vocals_src = mix.clone();
-        if !progress(1.0) {
-            return Err(SepError::Inference("تم إلغاء المعالجة من قبل المستخدم.".into()));
-        }
-    } else {
-        let fade = (sample_rate as usize / 20).max(64); // 50ms
-        let total = suspect_len.max(1) as f32;
-        let mut done = 0usize;
-        for (a, b) in &analysis.suspect {
-            let (a, b) = (*a, *b);
-            let span_mix = [mix[0][a..b].to_vec(), mix[1][a..b].to_vec()];
-            let base = done as f32 / total;
-            let w = (b - a) as f32 / total;
-            let span_voc = demix(&mut session, &span_mix, &|p| progress(base + p * w))?;
-            splice_span(&mut vocals_src, a, &span_voc, fade);
-            done += b - a;
-        }
-    }
+    let vocals_src = demix(&mut session, &mix, &|p| progress(p))?;
     let inference_ms = t_inf.elapsed().as_secs_f32() * 1000.0;
     tracing::info!(
         target: "sep",
         "SEPARATE-AB-REPORT session_build_ms={build_ms:.0} inference_ms={inference_ms:.0} spans={} coverage={:.2}",
-        analysis.suspect.len(),
-        suspect_len as f64 / n.max(1) as f64
+        1,
+        1.00
     );
 
     // restore original scale, build secondary stem by subtraction
@@ -774,6 +763,39 @@ mod tests {
         }
 
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// Step-1 (A): UVR5 :560 tail padding — the old 2*TRIM tail under-padded
+    /// every file whose length was not an exact multiple of gen_size.
+    #[test]
+    fn demix_padding_matches_uvr5_reference() {
+        let gen = CHUNK_SIZE - 2 * TRIM; // 253440
+        for n in [1usize, 44100, 268288, 441000, gen, gen + 1, 2 * gen] {
+            let (pad, padded) = demix_padding(n);
+            assert_eq!(pad, gen + TRIM - (n % gen), "pad formula for n={n}");
+            assert_eq!(padded, TRIM + n + pad, "padded length for n={n}");
+            assert!(pad >= TRIM + 1 && pad <= gen + TRIM, "pad range for n={n}: {pad}");
+        }
+        // 10s @44.1kHz: the concrete tail the old code got wrong.
+        let (pad10, padded10) = demix_padding(441000);
+        assert_eq!(pad10, 69720);
+        assert_eq!(padded10, 514560);
+        assert_ne!(padded10, 441000 + 2 * TRIM, "must differ from the old 2*TRIM tail");
+    }
+
+    /// Step-1 (A): documents the exact trigger the removed gate used —
+    /// continuous loud audio yields ZERO suspect spans (old code then skipped
+    /// MDX entirely and passed the mix through). separate() now ignores this.
+    #[test]
+    fn continuous_loud_audio_yields_empty_suspect_gate_trigger() {
+        let sr = 44100u32;
+        let n = sr as usize * 10;
+        let l: Vec<f32> = (0..n)
+            .map(|i| 0.5 * (2.0 * std::f32::consts::PI * 440.0 * i as f32 / sr as f32).sin())
+            .collect();
+        let r = l.clone();
+        let a = analyze_mix(&l, &r, sr);
+        assert!(a.suspect.is_empty(), "continuous audio must trip the old gate: {:?}", a.suspect);
     }
 
     /// Breathing room for the UI thread: 20→18, 8→6, tiny boxes untouched.
