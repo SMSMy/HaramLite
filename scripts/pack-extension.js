@@ -129,6 +129,20 @@ function main() {
   const manifestPath = path.join(EXT_DIR, 'manifest.json');
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
+  // The popup shows its own version string (#49: it once showed v1.1.0 while
+  // the manifest said 1.1.1). Refuse to pack a build that displays a
+  // different number than the one the store will publish.
+  const popupHtml = fs.readFileSync(path.join(EXT_DIR, 'popup.html'), 'utf8');
+  const vm = popupHtml.match(/class="version-tag">v?([^<\s]+)</);
+  if (!vm) {
+    console.error('pack: no .version-tag found in popup.html');
+    process.exit(1);
+  }
+  if (vm[1] !== manifest.version) {
+    console.error(`pack: version mismatch — manifest ${manifest.version} vs popup ${vm[1]}`);
+    process.exit(1);
+  }
+
   // Store-compliant manifest: no `key` (the store owns the id) and no
   // Firefox-only block on a Chrome upload.
   delete manifest.key;
