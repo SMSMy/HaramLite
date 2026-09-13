@@ -81,6 +81,9 @@ if (!fs.existsSync(iconList)) {
   for (const rel of contentFiles) {
     const t = fs.readFileSync(path.join(root, rel), 'utf8');
     for (const m of t.matchAll(/material-symbols-outlined[^>]*>\s*([a-z_0-9]+)\s*</g)) usedIcons.add(m[1]);
+    // صنف ثانٍ يعرض خط الأيقونات نفسه (بطاقات المداخل): مسحه واجب وإلا نكّر
+    // عطل widgets — أيقونة مستخدمة غائبة عن الخط المضغوط لا يراها الفحص.
+    for (const m of t.matchAll(/entry-card__icon[^>]*>\s*([a-z_0-9]+)\s*</g)) usedIcons.add(m[1]);
   }
   const missing = [...usedIcons].filter(i => !available.has(i));
   if (missing.length) fails.push('أيقونات مستخدمة وغير موجودة في الخط المضغوط: ' + missing.join(' · ') + ' ⇒ ستظهر كنصّ أو مربّع فارغ');
