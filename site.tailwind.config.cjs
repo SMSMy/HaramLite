@@ -70,9 +70,18 @@ module.exports = {
     extend: Object.assign({}, design.theme.extend, bridge.theme.extend, {
       colors: (() => {
         const base = merge(design.theme.extend.colors, bridge.theme.extend.colors);
+        /* توكن العلامة clay-accent يجب أن يبقى #DA7756 كما في ثيم التطبيق
+           وكما ينصّ docs/SITE.md. لوحة الجسر تعرّف clay.accent = #ffb59d
+           (خوخي فاتح)، والدمج السطحي كان يجعل accent يطغى على التوكن المولَّد
+           من ثيم التطبيق ⇒ 670 استعمالاً في الموقع بأكمله بلون خوخي، وزر
+           التحميل بلونين مختلفين (bg-clay-accent خوخي · bg-primary-container
+           طيني) — بينما زر الفصل في واجهة التطبيق نفسه bg-clay-accent
+           و#DA7756. نُعيد accent إلى قيمة التطبيق بعد الدمج. */
+        const appAccent = (design.theme.extend.colors || {})['clay-accent'] || '#DA7756';
+        const clayMerged = Object.assign({}, guidePalette.clay, base.clay || {}, { accent: appAccent });
         return Object.assign({}, base, {
           coal: Object.assign({}, guidePalette.coal, base.coal || {}),
-          clay: Object.assign({}, guidePalette.clay, base.clay || {}),
+          clay: clayMerged,
           cream: guidePalette.cream,
         });
       })(), fontFamily: Object.assign({}, (design.theme.extend && design.theme.extend.fontFamily) || {}, (bridge.theme.extend && bridge.theme.extend.fontFamily) || {}, { serif: ['"Thmanyah Serif Display"', 'Georgia', 'serif'], sans: ['"Thmanyah Sans"', '"Segoe UI"', 'system-ui', 'sans-serif'] }),

@@ -100,10 +100,36 @@ for (const f of htmlFiles) {
   }
 }
 
+/* ── القاعدة 4: شارة إصدار ثابتة ──
+   صفحة تعرض رقماً مكتوباً في HTML لا يواكب النشر القادم. الرقم يجب أن يحمل
+   صنف js-release-tag (يمزنه سكربت من نفس مصدر الرئيسية) أو data-version-fallback. */
+for (const f of htmlFiles) {
+  const t = fs.readFileSync(f, 'utf8');
+  const rel = path.relative(path.join(root, 'docs'), f).replace(/\\/g, '/');
+  if (rel === 'index.html') continue;   // الرئيسية تملك السكربت والوسوم أصلاً
+  for (const m of t.matchAll(/<span[^>]*>\s*v?\d+\.\d+\.\d+\s*<\/span>/g)) {
+    if (/js-release-tag|data-version-fallback/.test(m[0])) continue;
+    problems.push(rel + ': شارة إصدار ثابتة بلا js-release-tag — «' + m[0].replace(/<[^>]+>/g, '').trim() + '»');
+  }
+}
+
+/* ── القاعدة 5: الحكم على العتاد نيابة عن الزائر ──
+   ذكر «Intel Core i5» كشرط نظام مشروع. الخطأ الذي وقع فعلاً هو «GPU: RTX 4070
+   READY» — حالة تُنسب إلى جهاز الزائر، ولا سبيل لموقع وثائقي أن يعرفها.
+   فنبحث عن نمط الحالة لا عن اسم الطراز، ونتجاهل مسارات SVG (إحداثياتها تبدأ
+   بحرف M مثل أسماء شرائح آبل). */
+const HARDWARE_CLAIM = /\b(?:GPU|VRAM|RAM|CPU)\s*[:=]\s*[A-Za-z0-9][\w .-]{0,24}(?:READY|ACTIVE|DETECTED|OK|100%|GB)/i;
+for (const f of htmlFiles) {
+  const t = fs.readFileSync(f, 'utf8');
+  const rel = path.relative(path.join(root, 'docs'), f).replace(/\\/g, '/');
+  const m = t.match(HARDWARE_CLAIM);
+  if (m) problems.push(rel + ': حالة عتاد تُنسب إلى جهاز الزائر — «' + m[0].trim() + '»');
+}
+
 console.log('  حارس الروابط والادّعاءات: ' + htmlFiles.length + ' صفحة');
 if (problems.length) {
   console.error('  ✗ ' + problems.length + ' ملاحظة:');
   [...new Set(problems)].forEach(p => console.error('     - ' + p));
   process.exit(1);
 }
-console.log('  ✓ لا بطاقة محتوى تشير إلى الرئيسية، ولا وجهة مفقودة، ولا ادّعاء منفذ أو منصّة باطل');
+console.log('  ✓ لا بطاقة محتوى تشير إلى الرئيسية · لا وجهة مفقودة · لا ادّعاء منفذ أو منصّة أو عتاد · لا شارة إصدار ثابتة');
