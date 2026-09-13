@@ -22,7 +22,7 @@ const ALLOWED_LATIN = new Set([
   'syncthing', 'nextcloud', 'tailscale', 'safari', 'macos', 'linux', 'x64', 'avx2', 'dpapi',
   'localappdata', 'appdata', 'stdin', 'stdout', 'native', 'messaging', 'manifest', 'v3', 'v2',
   'popup', 'tos', 'ai', 'url', 'oss', 'http', 'https', 'localhost', 'sqlite', 'json-ld',
-  'readdirectorychangesw', 'passthrough', 'frame-accurate', 'lossless', 'gap-skip', 'samplerate',
+  'readdirectorychangesw', 'passthrough', 'lossless', 'gap-skip', 'samplerate', 'tight', 'sync',
   'screenshots', 'telegram', 'bot', 'botfather', 'markdown', 'yaml', 'xml', 'svg', 'png', 'jpg',
   'cookie', 'cookies', 'cache', 'lufs', 'bs.1770', 'itu-r', 'stft', 'bfcarena', 'graphtransformer',
   'oncecell', 'mutex', 'rayon', 'serde', 'npm', 'pnpm', 'node', 'cargo', 'webview2', 'wix', 'msi',
@@ -47,6 +47,14 @@ const BAD_WORDS = [
   'هدوء واحترافية', 'الصريحة الكاملة', 'كود مصدري نقي', 'خط إنتاج المستودع',
   'نقاء يصل إلى', 'تلف بنسبة', 'vocal-clarity', 'offline-mode', 'export-format',
   'isolate-speech', 'Volumes/Storage'
+];
+
+/* ادعاءات ممنوعة: صيغ أُزيلت لأنها باطلة أو مبالغ فيها، وتعود مع كل إعادة
+   تصميم إن لم يمنعها حارس (درس Demucs التي عادت بعد إزالتها).
+   تُفحص بلا حساسية لحالة الأحرف لأنها تظهر Frame-Accurate وFRAME-ACCURATE. */
+const FORBIDDEN_CLAIMS = [
+  'frame-accurate', 'بدقة الإطار', 'الإطاري الدقيق', 'مفعل تلقائياً',
+  'لا يغادران حاسوبك إطلاقاً', 'لا يغادر حاسوبك', '100% دون تأخير'
 ];
 
 /* ما يُشبه الخطأ وليس خطأً — مُتحقَّق من المصدر:
@@ -134,6 +142,12 @@ for (const f of files.sort()) {
   for (const ok of EXPECTED) scannable = scannable.replace(ok, ' ');
   for (const bad of BAD_WORDS) {
     if (scannable.includes(bad)) problems.push(rel + ': صياغة مرفوضة — «' + bad + '»');
+  }
+
+  // 4ب) ادعاءات ممنوعة (بلا حساسية لحالة الأحرف)
+  const lowered = scannable.toLowerCase();
+  for (const bad of FORBIDDEN_CLAIMS) {
+    if (lowered.includes(bad.toLowerCase())) problems.push(rel + ': ادعاء ممنوع — «' + bad + '»');
   }
 
   // 5) كتل متروكة بلا تعريب

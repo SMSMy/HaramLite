@@ -2,12 +2,12 @@
 
 <html dir="rtl" lang="ar"><head><meta charset="utf-8"/>
   <title>إزالة الصوت من الفيديو مع إبقاء الصورة | HaramLite</title>
-  <meta name="description" content="فصل الموسيقى مع حفظ جودة الفيديو دون إعادة ضغط، أو تفريغ الصوت نهائياً: كيف يعمل التزامن الإطاري الدقيق وتبقى الصورة كما هي.">
+  <meta name="description" content="فصل الموسيقى مع حفظ جودة الفيديو دون إعادة ضغط، أو تفريغ الصوت نهائياً: كيف يعمل التزامن الصوتي المحكم وتبقى الصورة كما هي.">
   <link rel="icon" href="../assets/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="../assets/icon-32.png">
   <link rel="apple-touch-icon" href="../assets/icon-180.png">
   <meta property="og:title" content="إزالة الصوت من الفيديو مع إبقاء الصورة | HaramLite">
-  <meta property="og:description" content="فصل الموسيقى مع حفظ جودة الفيديو 100% دون إعادة ضغط (Lossless Passthrough) ، أو تفريغ الصوت نهائياً — كيف يعمل التزامن الإطاري الدقيق Frame-Accurate بزمن ت">
+  <meta property="og:description" content="فصل الموسيقى مع حفظ جودة الفيديو 100% دون إعادة ضغط (Lossless Passthrough) ، أو تفريغ الصوت نهائياً — كيف يعمل التزامن الصوتي المحكم بزمن ت">
   <meta name="twitter:card" content="summary_large_image"><meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <style>@layer base { html, body { margin: 0; padding: 0; } body { overscroll-behavior: none; } main > :first-child { margin-top: 0 !important; } main > :last-child { margin-bottom: 0 !important; } } </style>  <link rel="stylesheet" href="../assets/site.css"/>
   <link rel="preload" href="../assets/thmanyah-serif-bold.woff2" as="font" type="font/woff2" crossorigin>
@@ -63,9 +63,9 @@
 <p class="font-body-lg text-body-lg text-on-surface-variant max-w-3xl leading-relaxed">
         فصل الموسيقى مع حفظ جودة الفيديو 100% دون إعادة ضغط 
         <span class="font-mono-code text-cream-text bg-surface-container-high px-1.5 py-0.5 rounded text-label-md">(Lossless Passthrough)</span>، 
-        أو تفريغ الصوت نهائياً — كيف يعمل التزامن الإطاري الدقيق 
-        <span class="text-clay-accent font-bold">Frame-Accurate</span> 
-        بزمن تأخير 0.00ms وبأقصى سرعة ممكنة دون استهلاك كرت الشاشة في معالجة بكسلات الفيديو؟
+        أو تفريغ الصوت نهائياً — كيف يبقى التزامن الصوتي محكماً 
+        <span class="text-clay-accent font-bold">تزامن محكم</span> 
+        وبأقصى سرعة ممكنة دون استهلاك كرت الشاشة في معالجة بكسلات الفيديو؟
       </p>
 <!-- Micro Specs Bar -->
 <div class="grid grid-cols-2 sm:grid-cols-4 gap-stack-sm pt-stack-sm">
@@ -180,7 +180,7 @@
 <div>
 <div class="flex items-center justify-between mb-stack-sm">
 <span class="text-clay-accent font-bold">03 // إعادة الدمج</span>
-<span class="text-outline text-[11px]">FRAME-ACCURATE</span>
+<span class="text-outline text-[11px]">TIGHT-SYNC</span>
 </div>
 <p class="font-body-md text-label-md text-cream-text font-bold mb-2">فيديو نقي جديد</p>
 <p class="font-label-sm text-outline leading-relaxed mb-4 font-body-md">
@@ -212,7 +212,7 @@
 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
 <div class="flex items-center gap-2">
 <span class="material-symbols-outlined text-clay-accent text-[18px]">straighten</span>
-<span class="font-mono-code text-label-md text-cream-text font-bold">مفتش التزامن الإطاري (Frame-to-Audio Alignment Preview)</span>
+<span class="font-mono-code text-label-md text-cream-text font-bold">مفتش التزامن الصوتي (Audio Alignment Preview)</span>
 </div>
 <span class="font-mono-code text-[11px] text-outline">PTS (Presentation Time Stamps) MATCHED</span>
 </div>
@@ -251,7 +251,7 @@
 <div>
 <div class="flex items-center justify-between text-[11px] font-mono-code text-secondary mb-1">
 <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-clay-accent"></span>مسار الصوت المنقى (Clean Speech Stem)</span>
-<span class="text-clay-accent font-bold">MUSIC STRIPPED • 0.00ms DELAY</span>
+<span class="text-clay-accent font-bold">MUSIC STRIPPED • VIDEO UNTOUCHED</span>
 </div>
 <!-- Waveform Inline SVG -->
 <div class="w-full h-8 bg-surface-container-high/40 rounded flex items-center px-2">
@@ -455,9 +455,9 @@
 <span class="text-tertiary font-bold">مقتصر على النواة الصوتية</span>
 </div>
 <div class="flex justify-between items-center py-1">
-<span class="text-secondary">التزامن الإطاري (Lip-sync)</span>
+<span class="text-secondary">التزامن الصوتي (Lip-sync)</span>
 <span class="text-on-surface-variant">معرّض لانزلاق الفريمات</span>
-<span class="text-cream-text font-bold">تطابق ميلي ثانية 0.00ms</span>
+<span class="text-cream-text font-bold">مصحَّح دورياً</span>
 </div>
 </div>
 </div>
@@ -567,7 +567,7 @@
 <span class="material-symbols-outlined text-outline transition-transform duration-200">expand_more</span>
 </button>
 <div class="hidden px-stack-md pb-stack-md text-on-surface-variant font-body-md text-label-md leading-relaxed border-t border-border-muted/40 pt-stack-sm">
-          أبداً. يحافظ النظام على الطوابع الزمنية الدقيقة (Presentation Time Stamps - PTS) لكل مقطع صوتي وإطار بصري. يتم تعويض أي فجوة زمنية (Silence-Gap Matching) لضمان تطابق نطق الشفاه بنسبة 100% وبدقة 0.00ms.
+          أبداً. يحافظ النظام على الطوابع الزمنية الدقيقة (Presentation Time Stamps - PTS) لكل مقطع صوتي وإطار بصري. يتم تعويض أي فجوة زمنية (Silence-Gap Matching) للحفاظ على تطابق نطق الشفاه.
         </div>
 </div>
 <!-- FAQ 3 -->
