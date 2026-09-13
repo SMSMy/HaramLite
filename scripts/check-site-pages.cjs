@@ -23,6 +23,25 @@ function check(rel, { title = true, desc = true, icon = true, canonical = true, 
   if (icon && !/rel="icon"/i.test(t)) fails.push(label + ': بلا أيقونة مفضّلة');
   if (canonical && !/rel="canonical"/i.test(t)) fails.push(label + ': بلا canonical');
   if (/href="#"/.test(t)) fails.push(label + ': رابط ميت href="#"');
+
+  // سمة مكرّرة أو ملتصقة: class="class="…"" يُهملها المتصفح فيختفي التنسيق كاملاً.
+  // (سبب الإضافة: تحويل بطاقات الفهرس من div إلى a أنتج class مزدوجاً، ومرّ من كل
+  //  الحراس لأن توازن الوسوم والروابط لا يتأثران به، ولم يظهر إلا في صورة المستخدم.)
+  for (const bad of [/class="\s*class=/g, /href="\s*href=/g, /class="[^"]*""/g, /id="\s*id=/g]) {
+    const m = t.match(bad);
+    if (m) fails.push(label + ': سمة مكرّرة أو مكسورة → ' + m[0].slice(0, 40));
+  }
+  // عنصر بمظهر بطاقة قابل للنقر بلا أي تنقّل: onclick وحده لا ينقل الزائر.
+  // يُستثنى ما له href، وما هو زر فلترة/بحث/إغلاق مقصود.
+  for (const m of t.matchAll(/<(div|span|section|article)\b[^>]*\bonclick="([^"]{0,120})"[^>]*>/g)) {
+    const tag = m[0];
+    const code = m[2];
+    const navigates = /location\.href|window\.open|\.submit\(/.test(code);
+    const isControl = /setCategory|filterGuides|clearSearch|closeGuideModal|toggle|openModal|showTab|selectTab/i.test(code);
+    if (!navigates && !isControl && !/href=/.test(tag)) {
+      fails.push(label + ': عنصر قابل للنقر بلا تنقّل → onclick="' + code.slice(0, 50) + '"');
+    }
+  }
   // روابط داخلية مكسورة
   for (const m of t.matchAll(/href="([^"#:][^"]*)"/g)) {
     const href = m[1].split('#')[0];
