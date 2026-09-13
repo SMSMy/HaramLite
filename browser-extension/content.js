@@ -491,6 +491,27 @@
       const t = mapFullToCut(video.currentTime || 0, kept);
       return Math.min(Math.max(t, 0), Math.max(audio.duration - 0.05, 0));
     };
+    // إعادة إرساء الصوت على موضع القفزة نفسها.
+    // السبب (عطل ميداني موصوف): الصورة تقفز وحدها بـcurrentTime، والصوت عنصر
+    // آخر يواصل مكانه، فلا يُصحَّح إلا بتسامح 0.35s كل ثانية ⇒ يُسمع ذيل المقطع
+    // المحذوف (كلمة مكررة) ثم يعود فجأة. الهدف يُحسب من الهدف المقصود لا من
+    // video.currentTime، لأن قراءته بعد الإسناد غير موثوقة (القفز غير متزامن).
+    const reanchorAudio = (fullT) => {
+      const want = Math.min(Math.max(mapFullToCut(fullT, kept), 0), Math.max(audio.duration - 0.05, 0));
+      if (!(Math.abs(audio.currentTime - want) > 0.05)) return;
+      let done = false;
+      const unmute = () => {
+        if (done) return;
+        done = true;
+        try { audio.muted = false; } catch { /* gone */ }
+        audio.removeEventListener('seeked', unmute);
+      };
+      // كتم لحظي يعبر القفزة: يقطع الذيل المسموع بين الإسناد ووصول seeked
+      try { audio.muted = true; } catch { /* gone */ }
+      try { audio.currentTime = want; } catch { /* gone */ }
+      audio.addEventListener('seeked', unmute);
+      setTimeout(unmute, 120);   // شبكة أمان إن لم يصل seeked
+    };
     const kickAudio = () => {
       audio.currentTime = audioPos();
       audio.play().then(() => {
@@ -583,11 +604,14 @@
       const target = skipVideoGaps(now, kept);
       if (Math.abs(target - now) > 0.15) {
         try { video.currentTime = target; } catch { /* gone */ }
+        // ✓ أعد إرساء الصوت على القفزة نفسها، لا عند وصول المصحّح الدوري.
+        // كان هذا داخل if (w.held) وحده ⇒ القفزة العادية تُسمع ذيلها ثم تُصحَّح.
+        reanchorAudio(target);
         if (w.held) {
           // A seek landed inside a removed stretch and the jump just left it:
           // release the hold here instead of waiting up to a second.
+          // (الموضع ضُبط أعلاه من target؛ لا نقرأ video.currentTime هنا.)
           w.held = false;
-          audio.currentTime = audioPos();
           audio.play().catch(() => { w.held = true; });
         }
       }
