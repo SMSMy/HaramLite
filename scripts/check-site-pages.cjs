@@ -49,10 +49,19 @@ function check(rel, { title = true, desc = true, icon = true, canonical = true, 
     const target = href.startsWith('/') ? path.join(root, 'docs', href) : path.join(path.dirname(path.join(root, rel)), href);
     if (!fs.existsSync(target)) fails.push(label + ': رابط مكسور → ' + m[1]);
   }
-  // مراسي داخلية موجودة
+  /* مراسي داخلية موجودة.
+     `href="#download"` مرساة نسبية: تُحلّ داخل الصفحة الجارية، فإن لم يكن فيها
+     عنصر بهذا المعرّف لا ينتقل الزائر إلى صفحة أخرى بل يقفز إلى أعلى الصفحة
+     نفسها. وهذا نمط الموقع كله: الرئيسية تستعمله للتنقّل داخل أقسامها، وتذييل
+     الأدلة يشير إلى أقسام الرئيسية بـ#download. فالمرساة الصحيحة هي التي
+     توجد في هذه الصفحة أو في الرئيسية (الوجهة المقصودة). */
   if (anchors) {
+    const home = fs.readFileSync(path.join(root, 'docs/index.html'), 'utf8');
     for (const m of t.matchAll(/href="#([a-zA-Z][\w-]*)"/g)) {
-      if (!t.includes('id="' + m[1] + '"')) fails.push(label + ': مرساة غير موجودة → #' + m[1]);
+      const id = m[1];
+      const here = t.includes('id="' + id + '"');
+      const onHome = home.includes('id="' + id + '"');
+      if (!here && !onHome) fails.push(label + ': مرساة غير موجودة في هذه الصفحة ولا في الرئيسية → #' + id);
     }
   }
   if (!fails.some(f => f.startsWith(label))) ok.push(label);

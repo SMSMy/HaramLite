@@ -85,8 +85,20 @@ html[lang='ar'] body { line-height: 1.75; }
     padding: 0.1rem 0.4rem;
     display: inline-block;
     direction: ltr;
+    /* مسار مثل %LOCALAPPDATA%\com.harammute.haramlite\settings.json كلمة واحدة
+       بلا فواصل، ومع inline-block كان يفرض عرضه على الصفحة فيُزيحها 79px على
+       شاشة 390px (يقطع العنوان والهيدر). نسمح بالكسر داخل الكلمة، ونمنع
+       تجاوزها الحاوية. */
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
-  .doc table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.95rem; }
+  /* الجداول تتّسع اليوم (358px على شاشة 390px)، لكن عموداً جديداً يكفي لكسر
+     العرض. display:block + overflow-x يجعل الجدول نفسه قابلاً للتمرير بدل
+     أن يزيح الصفحة كلها. */
+  .doc table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.95rem;
+               display: block; overflow-x: auto; }
+  .doc table > thead, .doc table > tbody { display: table; width: 100%; table-layout: fixed; }
   .doc th, .doc td { text-align: start; padding: 0.6rem 0.8rem; border-bottom: 1px solid #2E2C29; color: #dbc1b9; vertical-align: top; }
   .doc th { color: #F5F2ED; font-weight: 500; background: #1d1b19; }
   .doc .lead { background: rgba(218, 119, 86, 0.1); border: 1px solid rgba(218, 119, 86, 0.35);
