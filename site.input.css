@@ -8,6 +8,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── شريط التمرير: قاعدة واحدة للموقع كله ──────────────────────────────────
+   كانت في الرئيسية وحدها (كتلة <style> مضمّنة)، وأربع عشرة صفحة أدلة
+   تُخفيه بـ::-webkit-scrollbar{display:none} — وهو يخفي مؤشّر الموضع في
+   صفحات طويلة. نُقلت هنا لتسري على الجميع، وأُزيل الإخفاء من الصفحات. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #151311; }
+::-webkit-scrollbar-thumb { background: #3b3834; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #DA7756; }
+html { scrollbar-color: #3b3834 #151311; scrollbar-width: thin; }
+
 /* ── Thmanyah (same files the desktop app ships, copied from font/) ───────── */
 /* الخطوط: WOFF2 مضغوط (كل خط ~77KB بدل ~240KB) — وثلاثة أوزان فقط هي
    المستخدمة فعلاً في الموقع؛ sans-medium و serif-black أُزيلا لأنهما غير مستخدمين. */
