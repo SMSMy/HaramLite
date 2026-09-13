@@ -89,6 +89,16 @@ function stripCode(html) {
     .replace(/<[^>]+>/g, ' ');
 }
 
+/* سمات مرئية للزائر يمسحها تجريد الوسوم: قيم data-i18n-en تظهر في الواجهة
+   الإنجليزية المنشورة، ومحتوى meta يظهر في نتائج البحث والمشاركة.
+   ثغرة موثقة: ادعاء أُعيد بالإنجليزية فقط كان يمرّ من الحارس. */
+function visibleAttrText(html) {
+  const out = [];
+  for (const m of html.matchAll(/data-i18n-en="([^"]*)"/g)) out.push(m[1]);
+  for (const m of html.matchAll(/<meta[^>]*content="([^"]*)"[^>]*>/gi)) out.push(m[1]);
+  return out.join(' ');
+}
+
 /* 5) كتلة إنجليزية كاملة داخل صفحة عربية.
    لا نحكم على الصفحة كلها — PRIVACY.html فيه نسخة إنجليزية مشروعة. نحكم على
    كل قسم وحده: إن غلب اللاتيني على العربي في كتلة فيها نص كافٍ، فهي كتلة
@@ -131,8 +141,8 @@ for (const f of files.sort()) {
     if (!/[.؟!»)]$/.test(d)) problems.push(rel + ': الوصف لا ينتهي بجملة تامة — «…' + d.slice(-22) + '»');
   }
 
-  // 3) إنجليزي زينة
-  const text = stripCode(raw);
+  // 3) إنجليزي زينة (النص + السمات المرئية للزائر)
+  const text = stripCode(raw) + ' ' + visibleAttrText(raw);
   for (const phrase of DECOR) {
     if (text.includes(phrase)) problems.push(rel + ': عنوان إنجليزي زينة — «' + phrase + '»');
   }
