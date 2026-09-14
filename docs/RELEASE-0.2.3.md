@@ -44,8 +44,8 @@
 ## بصمات الملفات
 
 ```
-HaramLite_0.2.3_x64-setup.exe   قيد البناء   sha256:قيد البناء
-HaramLite_0.2.3_x64_en-US.msi   قيد البناء   sha256:قيد البناء
+HaramLite_0.2.3_x64-setup.exe   220.2 MB   sha256:284B6C5301B7FEA451F497566C42D92AD56F223A3D5EDE8966F7B9BC6380409A
+HaramLite_0.2.3_x64_en-US.msi   431.2 MB   sha256:1C4974115AAC31EDACCBCA5E21D49D6E45CB92194EB1D5035BFBF0B471E6C8A5
 ```
 
 ## الخصوصية
