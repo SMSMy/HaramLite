@@ -36,7 +36,12 @@ jobs:
           # 1) CUDA redist (cudart + cublas/cublasLt) — components keyed
           #    cuda_cudart / libcublas, each with windows-x86_64.relative_path
           $cu = Invoke-RestMethod "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_$CUDA_VER.json"
-          foreach ($part in @('cuda_cudart','libcublas')) {
+          # libcufft is REQUIRED: the ORT CUDA provider loads cufft64_11.dll directly,
+          # and the app refuses a manifest that lacks any CUDA_FILES name. It was
+          # missing from this list from the start (the audit log claimed otherwise),
+          # so running this workflow published a 15-file manifest that every install
+          # rejects — verified against the live release on 2026-09-14.
+          foreach ($part in @('cuda_cudart','libcublas','libcufft')) {
             $meta = $cu.$part
             if (-not $meta) { throw "redistrib_$CUDA_VER.json missing $part" }
             $win = $meta.'windows-x86_64'
@@ -46,7 +51,8 @@ jobs:
             $ex = Join-Path $work $part
             Expand-Archive $zip -DestinationPath $ex -Force
             $wanted = if ($part -eq 'cuda_cudart') { @('cudart64_12.dll') }
-                      else { @('cublas64_12.dll','cublasLt64_12.dll') }
+                      elseif ($part -eq 'libcublas') { @('cublas64_12.dll','cublasLt64_12.dll') }
+                      else { @('cufft64_11.dll') }
             foreach ($dll in $wanted) {
               $src = Get-ChildItem $ex -Recurse -Filter $dll | Select-Object -First 1
               if (-not $src) { throw "$part zip missing $dll — wrong version or layout" }
@@ -89,6 +95,25 @@ jobs:
             $hash = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             $manifest.files += [ordered]@{ name = $f.Name; sha256 = $hash }
           }
+          # 4ب) Drift guard: the app requires EXACTLY these names (CUDA_FILES in
+          #     src-tauri/src/cuda_runtime.rs). This job has no checkout, so the list
+          #     is duplicated here ON PURPOSE: fail the run loudly rather than publish
+          #     a manifest that every installed app rejects ("ينقص المنفست: …").
+          $EXPECTED = @(
+            'cudart64_12.dll','cublas64_12.dll','cublasLt64_12.dll','cufft64_11.dll',
+            'cudnn64_9.dll','cudnn_ops64_9.dll','cudnn_cnn64_9.dll','cudnn_adv64_9.dll',
+            'cudnn_graph64_9.dll','cudnn_heuristic64_9.dll','cudnn_engines_precompiled64_9.dll',
+            'cudnn_engines_runtime_compiled64_9.dll','cudnn_engines_tensor_ir64_9.dll',
+            'cudnn_ext64_9.dll','onnxruntime_providers_shared.dll','onnxruntime_providers_cuda.dll'
+          )
+          $have = @($manifest.files | ForEach-Object { $_.name })
+          $missing = @($EXPECTED | Where-Object { $have -notcontains $_ })
+          $extra = @($have | Where-Object { $EXPECTED -notcontains $_ })
+          if ($missing.Count -or $extra.Count) {
+            throw "manifest drift — missing: [$($missing -join ', ')] · extra: [$($extra -join ', ')] — update this list AND CUDA_FILES together"
+          }
+          Write-Host "manifest guard passed: $($have.Count) files == CUDA_FILES"
+
           $manifestPath = Join-Path $work 'cuda-runtime-manifest.json'
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -Path $manifestPath -Encoding utf8NoBOM
 
