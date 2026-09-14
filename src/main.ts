@@ -2857,7 +2857,13 @@ function wireAutostart(): void {
   const closeAsk = async (enable: boolean | null): Promise<void> => {
     overlay?.classList.add('hidden');
     if (enable !== null) await applyAutostart(enable);
-    try { await invoke('set_settings', { patch: { autostart_asked: true } }); } catch { /* ignore */ }
+    try {
+      // set_settings reads `value` (lib.rs), not `patch` — and Settings is
+      // #[serde(default)], so a partial object would reset every other field:
+      // read-modify-write the full object instead (same pattern as pushSettings).
+      const cur: any = await invoke('get_settings');
+      await invoke('set_settings', { value: { ...cur, autostart_asked: true } });
+    } catch { /* ignore */ }
   };
   document.getElementById('autostart-yes')?.addEventListener('click', () => { void closeAsk(true); });
   document.getElementById('autostart-no')?.addEventListener('click', () => { void closeAsk(false); });
