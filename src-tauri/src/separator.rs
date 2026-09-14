@@ -659,6 +659,12 @@ pub fn separate(
 
     let mut mix = [left, right];
     let peak = normalize(&mut mix);
+    tracing::info!(
+        target: "sep",
+        "level: peak={peak:.4} ({:.2} dBFS) attenuated={}",
+        if peak > 0.0 { 20.0 * peak.log10() } else { -120.0 },
+        peak > 0.9
+    );
     let n = mix[0].len();
 
     // Expert scan: seconds against MDX minutes — always logged, never silent.
