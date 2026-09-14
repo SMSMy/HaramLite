@@ -46,11 +46,27 @@ browser-extension/    إضافة MV3 (روابط فقط — بلا تتبع)
 .github/workflows/release.yml   الإصدارات (tauri-action + أصول الإصلاح)
 ```
 
-## إصدار جديد (Release)
+## إصدار جديد (Release) — المسار الحقيقي (كما نُفِّذ في 0.2.3)
 
-1. ارفع الإصدار في: `package.json` + `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml` + شارة `index.html`.
-2. ادفع وسم `vX.Y.Z` — سير العمل يبني المثبت ويوقعه ويرفع `latest.json`.
-3. **أسرار المستودع المطلوبة:**
+> تنبيه: دفع وسم `vX.Y.Z` **لا يبني شيئاً**. المشغّل على الوسوم **معطَّل عمداً**
+> (`release.yml:19-26` — حصة Actions متضايقة)، والتوقيع **مؤجَّل** (`:70-71` معلَّق
+> بانتظار السرّ) و`includeUpdaterJson: false` (`:83` — فلا `latest.json` ولا `.sig`).
+> الخطوات أدناه هي ما يحدث فعلاً، لا ما كان مخططاً له.
+
+1. ارفع الإصدار في **المواضع الخمسة**: `package.json` · `src-tauri/tauri.conf.json` ·
+   `src-tauri/Cargo.toml` · `src-tauri/Cargo.lock` (يتحدّث تلقائياً عند البناء —
+   تأكّد أن المحدَّث هو الملتزَم) · `browser-extension/manifest.json` (للإضافة مسار
+   إصدارات مستقل عن التطبيق).
+2. ابنِ محلياً: `pnpm tauri build` (يُنتج المثبّتَين: NSIS + MSI).
+3. اكتب `docs/RELEASE-X.Y.Z.md` بالبصمات **المقيسة من مخرجات بنائك المحلي**
+   (`Get-FileHash -Algorithm SHA256`).
+4. انشر من جهازك:
+   `gh release create vX.Y.Z --target <sha> --notes-file docs/RELEASE-X.Y.Z.md <المثبّت_NSIS> <المثبّت_MSI>`.
+5. **بعد النشر**: حدِّث البصمات في `docs/RELEASE-X.Y.Z.md` من **الأصول المنشورة
+   فعلاً** — البناء الآلي لا يطابق المحلي بايتاً ببايت (مُثبَت على 0.2.2 و0.2.3).
+6. بديل: تشغيل `release.yml` **يدوياً** من تبويب Actions (يبني وينشر بلا توقيع
+   ولا `latest.json` حتى تُضاف أسرار التوقيع أدناه).
+7. **أسرار المستودع المطلوبة (عند تفعيل التحديث الذاتي فقط):**
    - `TAURI_SIGNING_PRIVATE_KEY` ← محتوى `updater.key` (المولّد محلياً، **ممنوع رفعه**).
    - توليد مفتاح جديد: `pnpm tauri signer generate -w updater.key --ci` وضع المفتاح العام في `plugins.updater.pubkey`.
 4. **أصول الإصلاح (`assets-v1`):** أول تشغيل للسير ينشئ إصداراً ثابتاً باسم
