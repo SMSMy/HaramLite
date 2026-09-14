@@ -29,7 +29,6 @@ mod v1proto;
 mod watch_service;
 mod yt_dlp;
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
@@ -816,19 +815,29 @@ fn open_file(path: String) -> Result<(), String> {
 
 /// Demonstrates the panic hook safely: the panic is captured, logged with its
 /// exact source location, and converted into a normal error for the UI.
+/// Dev builds only: `generate_handler!` takes bare paths (no `#[cfg]` on
+/// entries), so the registration stays and the release body refuses instead —
+/// no panic path ships in release builds.
 #[tauri::command]
 fn cause_test_panic() -> Result<String, String> {
-    match catch_unwind(AssertUnwindSafe(|| {
-        panic!("رسالة اختبار: هذا panic مقصود لاختبار نافذة السجل");
-    })) {
-        Ok(_) => Ok("لم يقع panic؟".into()),
-        Err(payload) => {
-            let msg = payload
-                .downcast_ref::<String>()
-                .cloned()
-                .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
-                .unwrap_or_else(|| "unknown".into());
-            Err(format!("تم التقاط panic وإثباته في السجل: {msg}"))
+    #[cfg(not(debug_assertions))]
+    {
+        return Err("متاح في بناء التطوير فقط".into());
+    }
+    #[cfg(debug_assertions)]
+    {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            panic!("رسالة اختبار: هذا panic مقصود لاختبار نافذة السجل");
+        })) {
+            Ok(_) => Ok("لم يقع panic؟".into()),
+            Err(payload) => {
+                let msg = payload
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_else(|| "unknown".into());
+                Err(format!("تم التقاط panic وإثباته في السجل: {msg}"))
+            }
         }
     }
 }
