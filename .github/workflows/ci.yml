@@ -1,0 +1,60 @@
+name: Quality gate
+
+# Wave 1 (1.5) — one workflow that runs the four checks from the release gate
+# (ROADMAP §6.1): cargo test, cargo clippy (errors only), tsc, and the five
+# site guards. No `-D warnings`: 57 pre-existing clippy warnings are scheduled
+# for Wave 3, so denying warnings now would keep this red by design.
+#
+# Cost note: windows-latest runners bill at 2× minutes. This workflow does NOT
+# build the installer (~650MB uploads) — it compiles the test/profile targets
+# only, with the Rust cache warm after the first run.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  gate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend deps
+        run: pnpm install
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test --quiet
+
+      - name: Clippy (errors only)
+        working-directory: src-tauri
+        run: cargo clippy --all-targets
+
+      - name: TypeScript check
+        run: pnpm exec tsc --noEmit
+
+      - name: Site guards
+        run: pnpm site:check

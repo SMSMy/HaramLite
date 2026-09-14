@@ -148,7 +148,7 @@ fn normalize(mix: &mut [Vec<f32>; 2]) -> f32 {
         .iter()
         .flat_map(|c| c.iter())
         .fold(0.0f32, |m, v| m.max(v.abs()));
-    if peak > NORMALIZATION_THRESHOLD && peak > 0.0 {
+    if peak > NORMALIZATION_THRESHOLD {
         let g = NORMALIZATION_THRESHOLD / peak;
         for c in mix.iter_mut() {
             for v in c.iter_mut() {

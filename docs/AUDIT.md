@@ -1435,3 +1435,14 @@
 - **الإصلاح** (`autostart.rs:24-46`): بعد تجريد الاقتباسات تُقبل المطابقة **الكاملة** للمسار (غير حسّاسة لحالة الأحرف) أو أن يليها `"` أو مسافة/تاب أو نهاية السلسلة، وغير ذلك ⇒ `false`.
 - **التحقّق (اختبار سلبي وحدة `renamed_exe_old_is_not_treated_as_enabled`، نُفّذ فعلاً)**: `"…\HaramLite.exe.old" --hidden-start` ⇒ `false` · `"…\HaramLite.exe" --hidden-start` ⇒ `true` · `"…\HaramLite.exe"` ⇒ `true` · مسار آخر ⇒ `false` · حالة أحرف مختلفة ⇒ `true` — `cargo test autostart` ⇒ 4 ناجحة / 0 فاشلة (ومنها اختبارا الوحدة القديمان واختبار الـregistry roundtrip، بلا انكسار).
 - **ما لم يُفعل ولماذا**: لا شيء معلّق — الدالة نقية واختُبرت بلا لمس الريجستري (اختبار الـroundtrip الموجود لم يُمس).
+
+---
+
+## 2026-09-14 — الموجة ١ / البند ١.٥: خطأ clippy + بوابة جودة آلية
+
+- **العطل**: `src-tauri/src/separator.rs:151` — `peak > NORMALIZATION_THRESHOLD && peak > 0.0` (الشرط الثاني ميت لأن العتبة 0.9) ⇒ `clippy::overly_complex_bool_expr` يُفشل البناء. و`.github/` بلا أي تشغيل لـ`cargo test` ولا `clippy` ولا `tsc` ولا `site:check`.
+- **الإصلاح**: حذف `&& peak > 0.0` فقط (`separator.rs:151`) — الثابت ومنطق `normalize` لم يُمسّا. وسير جديد `.github/workflows/ci.yml`: `windows-latest` · checkout · pnpm 10 · node 20 · rust stable (+clippy) · `pnpm install` · ثم `cargo test --quiet` (من `src-tauri`) · `cargo clippy --all-targets` (بلا `-D warnings`) · `pnpm exec tsc --noEmit` · `pnpm site:check` — على `workflow_dispatch` + `push` على `main` فقط.
+- **التحقّق (نُفّذ فعلاً)**: `cargo test --quiet` ⇒ **135 ناجحاً / 2 متجاهَلين / 0 فاشل** (132 الأساس + 3 من بندَي ١.٢ و١.٤ — لا ينقص اختبار) · `cargo clippy --all-targets` ⇒ **صفر أسطر `error:`** (التحذيرات تبقى للموجة ٣) · صياغة `ci.yml` سليمة (PyYAML: jobs=[gate]، 10 خطوات، المشغّل كما هو مطلوب).
+- **الاختبار السلبي للبوابة (نُفّذ فعلاً)**: عكستُ توقع `.old` في اختبار `autostart` مؤقتاً ⇒ `cargo test` فشل (`1 failed` مع `panicked`) كما يجب للبوابة أن تفعل؛ ثم استعدتُ التوقع (الشجرة مطابقة للملتزَم — `git diff` يُظهر `separator.rs` فقط + ملف `ci.yml` الجديد).
+- **ما لم يُفعل ولماذا**: لم يُشغَّل السير على GitHub (يتطلب دفعاً — والدفع ممنوع في هذه المهمة)؛ كل خطواته الأربع شُغّلت محلياً.
+- **تقدير التكلفة (مُبلَّغ كما طُلب)**: عدّاء `windows-latest` يُحتسب **بضعف الدقائق**؛ التشغيل هنا ~24 ثانية اختبارات + ~8 ثوانٍ clippy بعد بناء دافئ، لكن أول تشغيل بلا كاش يبني كل الاعتماديات (عدة دقائق مدفوعة ×2). الحصة كانت متضايقة — يُفضَّل إبقاء المشغّل على `main` فقط (كما نُفّذ) وعدم توسيعه لفروع العمل.
