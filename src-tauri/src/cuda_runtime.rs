@@ -42,6 +42,34 @@ pub const CUDA_FILES: &[&str] = &[
 const MANIFEST_ASSET: &str = "cuda-runtime-manifest.json";
 const USER_AGENT: &str = "HaramLite-Repair/0.2";
 
+/// Manifest asset names must be bare filenames (`^[A-Za-z0-9_.-]+$`), never
+/// paths: the manifest is fetched from a remote release, and each name is
+/// joined onto `bin/` then renamed — so `..`, separators, or absolute paths
+/// would write outside the install dir. Pure function, unit-tested.
+pub(crate) fn asset_name_ok(name: &str) -> bool {
+    if name.is_empty() || name == "." {
+        return false;
+    }
+    if name.contains('/') || name.contains('\\') || name.contains(':') {
+        return false;
+    }
+    if name.contains("..") {
+        return false;
+    }
+    if Path::new(name).is_absolute() {
+        return false;
+    }
+    name.bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.' || b == b'-')
+}
+
+/// The manifest hash must be a 64-char hex SHA-256 (compared case-insensitively
+/// after trimming in `file_matches`). Pure function, unit-tested.
+pub(crate) fn asset_sha_ok(sha: &str) -> bool {
+    let s = sha.trim();
+    s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 /// مجلد التثبيت: `<مجلد التنفيذي>\bin` (بجوار ffmpeg/ffprobe).
 fn bin_dir() -> PathBuf {
     let exe = std::env::current_exe().unwrap_or_default();
@@ -110,6 +138,32 @@ mod tests {
             b"user-bytes"
         );
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Manifest names: bare filenames only — no traversal, no separators,
+    /// no absolute paths, no spaces.
+    #[test]
+    fn manifest_asset_names_are_sanitized() {
+        assert!(!asset_name_ok(r"..\..\hl_probe.txt"));
+        assert!(!asset_name_ok(r"C:\Windows\x.dll"));
+        assert!(!asset_name_ok("a/b.dll"));
+        assert!(!asset_name_ok("a\\b.dll"));
+        assert!(!asset_name_ok("my dll.dll"));
+        assert!(!asset_name_ok(".."));
+        assert!(!asset_name_ok(""));
+        assert!(asset_name_ok("cufft64_11.dll"));
+        assert!(asset_name_ok("cudnn_ops64_9.dll"));
+    }
+
+    /// Manifest hashes: 64 hex chars (case-insensitive, surrounding
+    /// whitespace tolerated).
+    #[test]
+    fn manifest_asset_shas_are_validated() {
+        assert!(asset_sha_ok(
+            "fb04eb6c6592db00df19e5554e889117874b77afb485eb0326276200ce7c2c33"
+        ));
+        assert!(!asset_sha_ok("xyz"));
+        assert!(!asset_sha_ok(""));
     }
 }
 
@@ -214,6 +268,16 @@ pub fn install(progress: &dyn Fn(&str, f32)) -> Result<(), String> {
     // Forward-compatible: the manifest may carry MORE files than this build
     // knows (newer runtime revision) — require only our own set, ignore extras.
     // (A strict count check once bricked every top-up during the 7→16 migration.)
+    // Security first: validate EVERY entry name/hash BEFORE touching the disk —
+    // a hostile manifest must not get a single join/rename/hash-compare.
+    for entry in &manifest.files {
+        if !asset_name_ok(&entry.name) {
+            return Err(format!("اسم ملف مرفوض في المنفست: {}", entry.name));
+        }
+        if !asset_sha_ok(&entry.sha256) {
+            return Err(format!("بصمة مرفوضة في المنفست: {}", entry.name));
+        }
+    }
     for expected in CUDA_FILES {
         if !manifest.files.iter().any(|e| e.name == *expected) {
             return Err(format!("ينقص المنفست: {expected}"));
