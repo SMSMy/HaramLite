@@ -23,8 +23,25 @@ fn command_line(exe: &Path) -> String {
 
 /// Does the stored line still point at this executable? Upgrading or moving the
 /// install must not leave a stale path behind that fails silently at boot.
+/// A PREFIX match is not enough: the build renames the exe to `.old`, so
+/// `…\HaramLite.exe.old" --hidden-start` must NOT count as enabled. After
+/// stripping quotes, the stored line must equal the exe path (case-insensitive)
+/// or continue with `"`, whitespace, or end-of-string. Pure, unit-tested.
 fn points_at(existing: &str, exe: &Path) -> bool {
-    existing.trim().trim_matches('"').starts_with(&exe.display().to_string())
+    let line = existing.trim().trim_matches('"');
+    let exe_s = exe.display().to_string();
+    // Byte-prefix compare ignoring ASCII case (safe to slice at len on match:
+    // ASCII case-folding never changes byte length, so the boundary holds).
+    let Some(prefix) = line.get(..exe_s.len()) else {
+        return false;
+    };
+    if !prefix.eq_ignore_ascii_case(&exe_s) {
+        return false;
+    }
+    matches!(
+        line[exe_s.len()..].chars().next(),
+        None | Some('"') | Some(' ') | Some('\t')
+    )
 }
 
 #[cfg(target_os = "windows")]
@@ -111,6 +128,31 @@ mod tests {
         assert!(points_at(r"C:\Apps\HaramLite\HaramLite.exe", exe));
         assert!(!points_at(r#""C:\Old\HaramLite.exe" --hidden-start"#, exe));
         assert!(!points_at("", exe));
+    }
+
+    /// The build renames the exe to `.old`: a prefix match would report a
+    /// stale renamed binary as still enabled. Only a full-path match (or one
+    /// followed by `"`, whitespace, or end-of-string) counts.
+    #[test]
+    fn renamed_exe_old_is_not_treated_as_enabled() {
+        let exe = Path::new(r"C:\Apps\HaramLite\HaramLite.exe");
+        assert!(!points_at(
+            r#""C:\Apps\HaramLite\HaramLite.exe.old" --hidden-start"#,
+            exe
+        ));
+        assert!(points_at(
+            r#""C:\Apps\HaramLite\HaramLite.exe" --hidden-start"#,
+            exe
+        ));
+        assert!(points_at(r#""C:\Apps\HaramLite\HaramLite.exe""#, exe));
+        assert!(!points_at(
+            r#""C:\Other\HaramLite.exe" --hidden-start"#,
+            exe
+        ));
+        assert!(points_at(
+            r#""c:\apps\haramlite\haramlite.exe" --hidden-start"#,
+            exe
+        ));
     }
 
     /// يعمل على الريجستري الحقيقي لكن باسم قيمة اختبارية ثم ينظّف نفسه —

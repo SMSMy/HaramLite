@@ -1425,3 +1425,13 @@
 - **الإصلاح** (`src/main.ts:2860-2866`): قراءة `get_settings` (موجود في `lib.rs:598`) ثم `set_settings` بـ`{ value: { ...cur, autostart_asked: true } }` — النمط نفسه المستعمل في `collectSettings`.
 - **التحقّق (نُفّذ فعلاً)**: `pnpm exec tsc --noEmit` ⇒ نظيف (exit 0) · `Select-String` لكل نداءات `set_settings` ⇒ نداءان فقط وكلاهما بـ`value` (`main.ts:653` و`:2865`) · **اختبار سلبي**: البحث عن أي `invoke(…patch…)` في `src/*.ts` و`index.html` ⇒ صفر نتائج (الشكل المكسور زال تماماً).
 - **ما لم يُفعل ولماذا**: لم يُشغَّل GUI (تعذّر التشغيل التفاعلي هنا) — التحقق الميداني (زر «لا، لاحقاً» + إعادة التشغيل + `settings.json`) مطلوب من المالك. **وملاحظة خارج النطاق لم ألمسها**: `collectSettings()` لا يتضمن `autostart_asked`، فأي دفع لاحق للإعدادات قد يعيده إلى `false` — يُترك لقرار المالك.
+
+---
+
+## 2026-09-14 — الموجة ١ / البند ١.٤: «مفعّل مع النظام» يُعلن خطأً
+
+- **العطل**: `src-tauri/src/autostart.rs:26-28` كان يطابق **بادئةً** (`.starts_with`) ⇒ `"…\HaramLite.exe.old" --hidden-start` تُعدّ مفعّلة، وإعادة التسمية إلى `.old` هي إجراء البناء المعتمد.
+- **الدليل**: `points_at` القديمة: `existing.trim().trim_matches('"').starts_with(&exe.display().to_string())` — أي لاحقة بعد المسار (`.old` …) تُقبل.
+- **الإصلاح** (`autostart.rs:24-46`): بعد تجريد الاقتباسات تُقبل المطابقة **الكاملة** للمسار (غير حسّاسة لحالة الأحرف) أو أن يليها `"` أو مسافة/تاب أو نهاية السلسلة، وغير ذلك ⇒ `false`.
+- **التحقّق (اختبار سلبي وحدة `renamed_exe_old_is_not_treated_as_enabled`، نُفّذ فعلاً)**: `"…\HaramLite.exe.old" --hidden-start` ⇒ `false` · `"…\HaramLite.exe" --hidden-start` ⇒ `true` · `"…\HaramLite.exe"` ⇒ `true` · مسار آخر ⇒ `false` · حالة أحرف مختلفة ⇒ `true` — `cargo test autostart` ⇒ 4 ناجحة / 0 فاشلة (ومنها اختبارا الوحدة القديمان واختبار الـregistry roundtrip، بلا انكسار).
+- **ما لم يُفعل ولماذا**: لا شيء معلّق — الدالة نقية واختُبرت بلا لمس الريجستري (اختبار الـroundtrip الموجود لم يُمس).
