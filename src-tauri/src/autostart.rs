@@ -30,9 +30,8 @@ fn points_at(existing: &str, exe: &Path) -> bool {
 #[cfg(target_os = "windows")]
 mod win {
     use super::{command_line, points_at, RUN_KEY};
-    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
     use winreg::RegKey;
-    use std::path::Path;
 
     pub fn read_raw(name: &str) -> Option<String> {
         let key = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(RUN_KEY, KEY_READ).ok()?;

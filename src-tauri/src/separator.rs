@@ -615,34 +615,6 @@ pub fn analyze_mix(l: &[f32], r: &[f32], sr: u32) -> MixAnalysis {
     out
 }
 
-/// Paste one span's vocals into full-length output at a sample-exact offset,
-/// with a linear crossfade straddling each edge (the D2ب "eye-aligned
-/// merge"): head blends base→span over `[start, start+fade)`, tail blends
-/// span→base over `[end-fade, end)`. `fade` clamps to half the span so the
-/// two ramps never overlap. Out-of-range spans are ignored (never panic).
-pub fn splice_span(out: &mut [Vec<f32>; 2], start: usize, span: &[Vec<f32>; 2], fade: usize) {
-    let span_len = span[0].len().min(span[1].len());
-    if span_len == 0 || start >= out[0].len() || start >= out[1].len() {
-        return;
-    }
-    let span_len = span_len.min(out[0].len() - start).min(out[1].len() - start);
-    if span_len == 0 {
-        return;
-    }
-    let f = fade.min(span_len / 2).max(1);
-    for c in 0..2 {
-        for k in 0..f {
-            let t = (k + 1) as f32 / (f + 1) as f32;
-            let p = start + k;
-            out[c][p] = out[c][p] * (1.0 - t) + span[c][k] * t;
-            let q = start + span_len - 1 - k;
-            let u = (k + 1) as f32 / (f + 1) as f32;
-            out[c][q] = span[c][span_len - 1 - k] * u + out[c][q] * (1.0 - u);
-        }
-        out[c][start + f..start + span_len - f].copy_from_slice(&span[c][f..span_len - f]);
-    }
-}
-
 /// Full separation: normalized stereo WAV in → vocals + instrumental WAVs out.
 ///
 /// UVR5 separate.py:499 (`source = self.demix(mix)`): inference runs on the
@@ -986,45 +958,6 @@ mod tests {
         // Empty input is safe.
         let ae = analyze_mix(&[], &[], sr);
         assert!(ae.suspect.is_empty() && !ae.dense && ae.scored_windows == 0);
-    }
-
-    /// Expert D2ب acceptance 1/2 (alignment): the splice is sample-exact —
-    /// identical material passes through bit-identical, edges land exactly.
-    #[test]
-    fn splice_is_sample_exact() {
-        let sr = 44100u32;
-        let n = sr as usize * 4;
-        let base: Vec<f32> = (0..n).map(|i| (i as f32 * 0.001).sin()).collect();
-        let mut out = [base.clone(), base.clone()];
-        let span = [base[sr as usize..sr as usize * 3].to_vec(), base[sr as usize..sr as usize * 3].to_vec()];
-        splice_span(&mut out, sr as usize, &span, sr as usize / 20);
-        for c in 0..2 {
-            for (i, (o, b)) in out[c].iter().zip(base.iter()).enumerate() {
-                assert!((o - b).abs() < 1e-5, "sample {i} drifted: {o} vs {b}");
-            }
-        }
-    }
-
-    /// Expert D2ب acceptance 2/2 (seams): a step span splices with no click —
-    /// bounded sample-to-sample delta across both edges, interior exact.
-    #[test]
-    fn splice_seams_have_no_clicks() {
-        let sr = 44100u32;
-        let n = sr as usize * 4;
-        let mut out = [vec![0.0f32; n], vec![0.0f32; n]];
-        let span = [vec![0.5f32; sr as usize * 2], vec![0.5f32; sr as usize * 2]];
-        let start = sr as usize;
-        splice_span(&mut out, start, &span, sr as usize / 20);
-        for c in 0..2 {
-            // Interior is exactly the span material.
-            assert!((out[c][start + sr as usize / 10] - 0.5).abs() < 1e-6);
-            // Seams never jump: 50ms ramps bound every step.
-            let max_step = out[c].windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
-            assert!(max_step < 0.01, "seam click: step={max_step}");
-            // Far field untouched.
-            assert_eq!(out[c][100], 0.0);
-            assert_eq!(out[c][n - 100], 0.0);
-        }
     }
 
     /// Expert D2ب acceptance vehicle: A/B report splitting inference-only
