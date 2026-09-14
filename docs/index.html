@@ -51,7 +51,7 @@
       "applicationCategory": "MultimediaApplication",
       "applicationSubCategory": "Audio separation",
       "operatingSystem": "Windows 10, Windows 11",
-      "softwareVersion": "0.2.2",
+      "softwareVersion": "0.2.3",
       "inLanguage": [
         "ar",
         "en"
@@ -109,8 +109,8 @@
     lang: 'ar',
     /* رقم الإصدار يُقرأ من نشرة GitHub، والنسخة الاحتياطية هنا للعمل بلا شبكة.
        {v} في data-i18n-ar/en و data-i18n-alt-v يُستبدلان بهذا الرقم. */
-    version: '0.2.2',
-    releases: { tag: 'v0.2.2', exeUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.2/HaramLite_0.2.2_x64-setup.exe', msiUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.2/HaramLite_0.2.2_x64_en-US.msi' },
+    version: '0.2.3',
+    releases: { tag: 'v0.2.3', exeUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.3/HaramLite_0.2.3_x64-setup.exe', msiUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.3/HaramLite_0.2.3_x64_en-US.msi' },
     /* في وضع en نضع English في data و data-i18n-ar في alt ليصير زرّ اللغة
        بالعربية. والعكس صحيح. */
     applyLang(lang) {
@@ -160,7 +160,7 @@
         var exeAsset = (data.assets || []).find(function (a) { return a.name.endsWith('-setup.exe'); });
         var msiAsset = (data.assets || []).find(function (a) { return a.name.endsWith('.msi'); });
         /* الرقم من النشرة نفسها: شارة الهيرو وأسماء الملفات ونصوص الأزرار كلها
-           تُبنى منه، فلا يبقى «0.2.2» مكتوباً في مكان يخالف النشرة. */
+           تُبنى منه، فلا يبقى «0.2.3» مكتوباً في مكان يخالف النشرة. */
         var tag = data.tag_name;
         var raw = String(tag).replace(/^v/i, '');
         /* لا نستعمل المتغيّر S هنا: فهو محلي داخل DOMContentLoaded وليس في نطاق
@@ -247,7 +247,7 @@
 <div class="inline-flex flex-wrap items-center justify-center gap-stack-sm px-stack-md py-unit rounded-full bg-surface-container-high text-on-surface-variant mb-6 shadow-sm">
 <span class="w-2 h-2 rounded-full bg-clay-accent animate-pulse"></span>
 <span class="font-mono-code text-mono-code tracking-wide">
-<span class="text-clay-accent font-bold js-release-tag">v0.2.2</span> • 
+<span class="text-clay-accent font-bold js-release-tag">v0.2.3</span> • 
             <span data-i18n-ar="ويندوز 10/11 (x64)" data-i18n-en="Windows 10/11 (x64)">ويندوز 10/11 (x64)</span> • 
             <span data-i18n-ar="معالجة محلية 100%" data-i18n-en="100% On-Device AI">معالجة محلية 100%</span>
 </span>
@@ -270,7 +270,7 @@
 <div class="flex flex-wrap items-center justify-center gap-stack-md w-full mb-8">
 <a class="js-exe-link inline-flex items-center gap-stack-sm px-stack-lg py-stack-md rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold shadow-md hover:bg-primary transition-all duration-150 transform hover:-translate-y-0.5" href="https://github.com/SMSMy/HaramLite/releases/latest" rel="noreferrer">
 <span class="material-symbols-outlined text-[20px]">download</span>
-<span class="js-exe-text" data-i18n-ar="تحميل المثبّت الذكي ({v})" data-i18n-en="Download Setup ({v})">تحميل المثبّت الذكي (0.2.2)</span>
+<span class="js-exe-text" data-i18n-ar="تحميل المثبّت الذكي ({v})" data-i18n-en="Download Setup ({v})">تحميل المثبّت الذكي (0.2.3)</span>
 <span class="inline-block font-mono-code text-mono-code opacity-75 js-exe-size" dir="ltr">~120 MB</span>
 </a>
 <a class="inline-flex items-center gap-stack-sm px-stack-lg py-stack-md rounded bg-surface-container text-cream-text font-label-md text-label-md hover:bg-surface-container-high transition-colors shadow-sm" href="bridge.html" rel="noreferrer" target="_blank">
@@ -362,7 +362,7 @@
 <span class="w-3 h-3 rounded-full bg-warn-yellow inline-block"></span>
 <span class="w-3 h-3 rounded-full bg-tertiary inline-block"></span>
 </div>
-<span class="font-mono-code text-mono-code text-on-surface-variant mx-stack-sm">HaramLite Desktop v<span class="js-version-text">0.2.2</span> • [Tauri v2 + ONNX DirectML/CUDA]</span>
+<span class="font-mono-code text-mono-code text-on-surface-variant mx-stack-sm">HaramLite Desktop v<span class="js-version-text">0.2.3</span> • [Tauri v2 + ONNX DirectML/CUDA]</span>
 </div>
 <div class="flex items-center gap-stack-sm text-on-surface-variant font-mono-code text-mono-code">
 <span class="material-symbols-outlined text-[16px] text-clay-accent">memory</span>
@@ -503,7 +503,7 @@
 <span class="material-symbols-outlined text-[24px]">info</span>
 </div>
 <div class="flex-1">
-<span class="font-label-md text-label-md text-warn-yellow font-bold block mb-0.5" data-i18n-ar="تنبيه شفاف بخصوص التحديث في الإصدار 0.2.2" data-i18n-en="Transparent Notice Regarding v0.2.2 Auto-Updates">تنبيه شفاف بخصوص التحديث في الإصدار 0.2.2</span>
+<span class="font-label-md text-label-md text-warn-yellow font-bold block mb-0.5" data-i18n-ar="تنبيه شفاف بخصوص التحديث في الإصدار 0.2.3" data-i18n-en="Transparent Notice Regarding v0.2.3 Auto-Updates">تنبيه شفاف بخصوص التحديث في الإصدار 0.2.3</span>
 <p class="font-body-md text-body-md text-cream-text/90" data-i18n-ar="التحديث الذاتي التلقائي موقوف حالياً في هذا الإصدار لأن مفتاح توقيع الإصدارات الرقمي غير مضبوط في مسار البناء الآلي بعد. يتم الترقية مستقبلاً بتنزيل المثبّت الجديد مباشرة من صفحة الإصدارات." data-i18n-en="Automatic in-app updates are currently disabled in this build as release signing keys are not yet configured in CI. Future upgrades are performed by running the new installer directly from GitHub Releases.">التحديث الذاتي التلقائي موقوف حالياً في هذا الإصدار لأن مفتاح توقيع الإصدارات الرقمي غير مضبوط في مسار البناء الآلي بعد. يتم الترقية مستقبلاً بتنزيل المثبّت الجديد مباشرة من صفحة الإصدارات.</p>
 </div>
 </div>
@@ -521,11 +521,11 @@
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="مثبّت متكامل يجهّز بيئة العمل تلقائياً: يثبت VC++ Redistributable، ومسارات FFmpeg، ونموذج الذكاء الاصطناعي مع اختصارات سطح المكتب." data-i18n-en="All-in-one setup wizard: installs required VC++ redistributable, FFmpeg binaries, and AI models with desktop shortcuts.">مثبّت متكامل يجهّز بيئة العمل تلقائياً: يثبت VC++ Redistributable، ومسارات FFmpeg، ونموذج الذكاء الاصطناعي مع اختصارات سطح المكتب.</p>
 <div class="font-mono-code text-mono-code text-on-surface-variant/80 bg-surface-container-lowest p-stack-sm rounded mb-6" dir="ltr">
-              HaramLite_<span class="js-version-text">0.2.2</span>_x64-setup.exe
+              HaramLite_<span class="js-version-text">0.2.3</span>_x64-setup.exe
               <span class="js-exe-size block text-clay-accent">~120 MB</span>
             </div>
 </div>
-<a class="js-exe-link w-full py-stack-md rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold text-center hover:bg-primary transition-colors flex items-center justify-center gap-stack-sm shadow" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.2/HaramLite_0.2.2_x64-setup.exe">
+<a class="js-exe-link w-full py-stack-md rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold text-center hover:bg-primary transition-colors flex items-center justify-center gap-stack-sm shadow" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.3/HaramLite_0.2.3_x64-setup.exe">
 <span class="material-symbols-outlined text-[20px]">download</span>
 <span data-i18n-ar="تحميل المثبّت (.exe)" data-i18n-en="Download Setup (.exe)">تحميل المثبّت (.exe)</span>
 </a>
@@ -539,11 +539,11 @@
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="حزمة MSI القياسية المخصصة لمسؤولي الأنظمة وبيئات النطاقات (Domain Admins)، تدعم التثبيت الصامت عبر سياسات المجموعات (GPO / Intune)." data-i18n-en="Standard MSI package tailored for system admins, supporting silent deployment, GPO automation, and MDM policies.">حزمة MSI القياسية المخصصة لمسؤولي الأنظمة وبيئات النطاقات (Domain Admins)، تدعم التثبيت الصامت عبر سياسات المجموعات (GPO / Intune).</p>
 <div class="font-mono-code text-mono-code text-on-surface-variant/80 bg-surface-container-lowest p-stack-sm rounded mb-6" dir="ltr">
-              HaramLite_<span class="js-version-text">0.2.2</span>_x64_en-US.msi
+              HaramLite_<span class="js-version-text">0.2.3</span>_x64_en-US.msi
               <span class="js-msi-size block text-clay-accent">~431 MB</span>
             </div>
 </div>
-<a class="js-msi-link w-full py-stack-md rounded bg-surface-container-high text-cream-text font-label-md text-label-md font-bold text-center hover:bg-surface-bright transition-colors flex items-center justify-center gap-stack-sm" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.2/HaramLite_0.2.2_x64_en-US.msi">
+<a class="js-msi-link w-full py-stack-md rounded bg-surface-container-high text-cream-text font-label-md text-label-md font-bold text-center hover:bg-surface-bright transition-colors flex items-center justify-center gap-stack-sm" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.3/HaramLite_0.2.3_x64_en-US.msi">
 <span class="material-symbols-outlined text-[20px]">folder_zip</span>
 <span data-i18n-ar="تحميل حزمة MSI" data-i18n-en="Download MSI Package">تحميل حزمة MSI</span>
 </a>
@@ -555,7 +555,7 @@
 <span class="material-symbols-outlined text-on-surface-variant text-[28px]">package_2</span>
 <h3 class="font-headline-lg text-headline-lg text-on-surface-variant">النسخة المحمولة</h3>
 </div>
-<p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="تنويه: النسخة المحمولة (Portable) لم تتوفر في الإصدار 0.2.2 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في إصدار لاحق بعد ضغط النماذج." data-i18n-en="Notice: Standalone portable archive is paused in 0.2.2 due to required bin/ and models/ payload constraints (~515MB). Will return in upcoming pruned model updates.">تنويه: النسخة المحمولة (Portable) لم تتوفر في الإصدار 0.2.2 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في إصدار لاحق بعد ضغط النماذج.</p>
+<p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="تنويه: النسخة المحمولة (Portable) لم تتوفر في الإصدار 0.2.3 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في إصدار لاحق بعد ضغط النماذج." data-i18n-en="Notice: Standalone portable archive is paused in 0.2.3 due to required bin/ and models/ payload constraints (~515MB). Will return in upcoming pruned model updates.">تنويه: النسخة المحمولة (Portable) لم تتوفر في الإصدار 0.2.3 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في إصدار لاحق بعد ضغط النماذج.</p>
 </div>
 <div class="p-stack-sm bg-surface-container-lowest rounded text-center font-mono-code text-mono-code text-on-surface-variant">
             الحالة: مؤجّلة إلى 0.3
