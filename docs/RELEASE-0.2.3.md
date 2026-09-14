@@ -44,9 +44,13 @@
 ## بصمات الملفات
 
 ```
-HaramLite_0.2.3_x64-setup.exe   220.2 MB   sha256:284B6C5301B7FEA451F497566C42D92AD56F223A3D5EDE8966F7B9BC6380409A
-HaramLite_0.2.3_x64_en-US.msi   431.2 MB   sha256:1C4974115AAC31EDACCBCA5E21D49D6E45CB92194EB1D5035BFBF0B471E6C8A5
+HaramLite_0.2.3_x64-setup.exe   219.8 MB   sha256:fb04eb6c6592db00df19e5554e889117874b77afb485eb0326276200ce7c2c33
+HaramLite_0.2.3_x64_en-US.msi   424.5 MB   sha256:1a9b312bbc9875ab5532f7bde796a7966f3632a79fd3f55085beae3d7e7aed64
 ```
+
+> هذه بصمات **الأصول المنشورة فعلاً** في [نشرة GitHub](https://github.com/SMSMy/HaramLite/releases/tag/v0.2.3)
+> (مقروءة من واجهة GitHub). والبناء الآلي لا يطابق البناء المحلي بايتاً ببايت، فبصمة
+> نسخة بنيتها على جهازك ستختلف — وهذا متوقّع لا خلل.
 
 ## الخصوصية
 
