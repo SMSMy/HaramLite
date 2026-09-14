@@ -85,3 +85,10 @@ cookies.txt
 /browser-extension/*.mp4
 # نسخ لقطات مرقّمة (الاسم القانوني هو IMG/Screenshot.png)
 /IMG/Screenshot v*.png
+
+# ملاحظات جلسة وخطط عمل وتعاريف أدوات محلية — لا تُنشر (أُضيفت 2026-09-14)
+/fixplan.md
+/HANDOFF.md
+/0.2.3.md
+/0.2.3-EXEC.md
+/local_code_auditor.md
