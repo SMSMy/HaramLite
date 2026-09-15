@@ -33,7 +33,7 @@
 
     <!-- ⚙️ الأداء والمعالجة -->
     <div class="flex flex-col gap-stack-sm">
-        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_perf">⚙️ الأداء والمعالجة</h4>
+        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_perf">الأداء والمعالجة</h4>
         <label class="flex items-center gap-stack-sm cursor-pointer group">
             <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-cuda" type="checkbox"/>
             <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="set_cuda">استخدام تسريع CUDA (NVIDIA)</span>
@@ -45,7 +45,7 @@
 
     <!-- 📁 المراقبة التلقائية -->
     <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
-        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_watch">📁 المراقبة التلقائية</h4>
+        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_watch">المراقبة التلقائية</h4>
         <label class="flex items-center gap-stack-sm cursor-pointer group">
             <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-watch" type="checkbox"/>
             <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="watch_enable">تفعيل مجلد المراقبة</span>
@@ -64,13 +64,13 @@
                 </select>
             </div>
             <span id="watch-status" class="font-label-sm text-label-sm text-on-surface-variant"></span>
-            <button id="btn-watch-cancel" class="hidden text-error hover:text-red-400 font-label-sm text-label-sm p-unit rounded hover:bg-surface-variant/30 cursor-pointer transition-colors" data-i18n="watch_cancel">⏹ إلغاء الملف الجاري</button>
+            <button id="btn-watch-cancel" class="hidden text-error hover:text-red-400 font-label-sm text-label-sm p-unit rounded hover:bg-surface-variant/30 cursor-pointer transition-colors" data-i18n="watch_cancel"><span class="material-symbols-outlined text-sm" data-icon="close">close</span> إلغاء الملف الجاري</button>
         </div>
     </div>
 
     <!-- 🔗 التكامل -->
     <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
-        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_integration">🔗 التكامل</h4>
+        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_integration">التكامل</h4>
         <label class="flex items-center gap-stack-sm cursor-pointer group">
             <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-bridge" type="checkbox"/>
             <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="btn_bridge">تفعيل التكامل مع المتصفح</span>
@@ -84,14 +84,14 @@
         </button>
         <button id="btn-telegram" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer w-full">
             <span class="material-symbols-outlined text-sm" data-icon="smart_toy">smart_toy</span>
-            <span class="font-body-sm" data-i18n="tg_title">📨 بوت تيليجرام</span>
+            <span class="font-body-sm" data-i18n="tg_title">بوت تيليجرام</span>
             <span id="tg-badge" class="ms-auto font-label-sm text-label-sm"></span>
         </button>
     </div>
 
     <!-- 🖥️ النظام -->
     <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
-        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_system">🖥️ النظام</h4>
+        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_system">النظام</h4>
         <label class="flex items-center gap-stack-sm cursor-pointer group">
             <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-autostart" type="checkbox"/>
             <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="autostart_label">التشغيل مع بدء تشغيل ويندوز</span>
@@ -105,7 +105,7 @@
 
     <!-- 🧰 الأدوات والمساعدة -->
     <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
-        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_tools">🧰 الأدوات والمساعدة</h4>
+        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_tools">الأدوات والمساعدة</h4>
         <button id="btn-repair-open" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
             <span class="material-symbols-outlined text-sm" data-icon="build">build</span>
             <span class="font-body-sm" data-i18n="btn_repair">فحص وإصلاح المكونات</span>
@@ -375,7 +375,7 @@
   <div id="tg-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="tg-panel-title">
 <div class="glass-effect border border-border-muted rounded-xl p-stack-lg w-[30rem] max-w-[92vw] max-h-[85vh] overflow-y-auto flex flex-col gap-stack-md fade-in-up" style="animation-duration: 0.25s;">
 <div class="flex justify-between items-center">
-<h3 id="tg-panel-title" class="font-label-md text-label-md text-clay-accent" data-i18n="tg_title">📨 بوت تيليجرام</h3>
+<h3 id="tg-panel-title" class="font-label-md text-label-md text-clay-accent" data-i18n="tg_title">بوت تيليجرام</h3>
 <button id="tg-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit rounded cursor-pointer" title="إغلاق" data-i18n-title="dlg_close" data-i18n-aria="dlg_close">
 <span class="material-symbols-outlined text-sm" data-icon="close">close</span>
 </button>
