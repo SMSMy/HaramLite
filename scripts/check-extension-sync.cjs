@@ -108,7 +108,7 @@ console.log('\n=== ٨) نبضة الانحراف غير متماثلة: تلحق
 const drift = extractBlock(src, 'w.drift = setInterval(');
 ok('تتجاهل صوتاً متوقفاً', /if \(audio\.paused\) return;/.test(drift.body));
 ok('تتجاهل ما بعد قفزتنا (نافذة selfSeek)', /Date\.now\(\) - \(w\.selfSeek \|\| 0\) < SELF_SEEK_MS\) return;/.test(drift.body));
-ok('تتجاهل أثناء وجود الصورة في فجوة مع التخطي', /if \(skipping && isGap\(video\.currentTime \|\| 0, kept\)\) return;/.test(drift.body));
+ok('تتجاهل أثناء وجود الصورة في فجوة (التخطي إجباريّ: بلا شرط خيار)', /if \(isGap\(video\.currentTime \|\| 0, kept\)\) return;/.test(drift.body) && !/skipping/.test(drift.body));
 ok('شرط الإلحاق أمامي فقط (lead < -0.35)', /const lead = audio\.currentTime - expect;/.test(drift.body) && /lead < -0\.35/.test(drift.body));
 ok('لا يوجد شرط متماثل يكتب للخلف', !/Math\.abs\(audio\.currentTime - expect\)/.test(drift.body));
 
@@ -178,6 +178,16 @@ ok('  والحارس يسقط عليه', /if \(w\.stalled\) return;/.test(extrac
 const m3 = src.replace(/w\.pendingLead && Math\.abs\(lead - w\.pendingLead\) < 0\.35/, 'true');
 ok('مُفسَد ك: تصحيح خلفي بلا تأكيد', m3 !== src);
 ok('  والحارس يسقط عليه', /w\.pendingLead && Math\.abs\(lead - w\.pendingLead\) < 0\.35/.test(m3) === false);
+
+console.log('\n=== ١٥) السلوك إجباريّ: صفر إشارة إلى خيار المستخدم المحذوف ===');
+// قرار المالك «اجباري لكل مستخدم لا خيار لتعديلها»: لا صندوق `hl-ext-skipgaps`،
+// ولا مفتاح تخزين `hl.skipgaps`، ولا ثابت `SKIP_GAPS` ولا بوابة `skipChecked`
+// في الملف المشحون — وعودة أيٍّ منها تُسقط هذا الفحص.
+const NO_OPTION = /hl-ext-skipgaps|hl\.skipgaps|SKIP_GAPS|skipChecked/;
+ok('صفر إشارة إلى خيار تخطي الفجوات (صندوق · مفتاح · ثابت · بوابة)', !NO_OPTION.test(src));
+const m4 = src.replace(/(const T = \{)/, "$1\n  const LEGACY_SKIP_KEY = 'hl.skipgaps';\n");
+ok('مُفسَد ل: إعادة إشارة إلى خيار المستخدم', m4 !== src);
+ok('  والحارس يسقط عليه', m4 !== src && NO_OPTION.test(m4) === true);
 
 console.log('');
 if (failures.length) {

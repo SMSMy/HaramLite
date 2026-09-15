@@ -10,14 +10,14 @@
 // rate pinned at 1x on both sides (+ player API guard). The removed stretches
 // — the silence left by muting the music — are SKIPPED: the page video jumps
 // over each one while the filtered audio (which contains no such stretch)
-// plays on untouched, so both stay in step. Unticking the option holds the
-// audio at the seam instead and lets the picture play the silent stretch
-// through. Drift backstop without forced sync while stopped, clean restore.
+// plays on untouched, so both stay in step. Skipping is MANDATORY: there is
+// no user option to turn it off. Drift backstop without forced sync while
+// stopped, clean restore.
 // 1.1.4: never rewind freely-playing audio (kickAudio was ungated on every
 // play — YouTube fires play around our gap jumps; mapFullToCut is flat at the
 // seam, so that write repeats the next words). Asymmetric drift. 1200ms selfSeek.
 // Optional HL-SYNC tracer: localStorage['hl.synclog']='1'.
-// Right-click Watch for options (gap-skip default on + full reprocess).
+// Right-click Watch for options (gap-skip is mandatory + full reprocess).
 // 2s fading toast.
 // No chunk streaming, no time-stretching, no telemetry — local only.
 // No trackers. All communication goes through Native Messaging.
@@ -130,7 +130,7 @@
       if (WATCH) stopWatch();
       else void startWatch();
     });
-    // Options live on right-click: visible gap-skip + full reprocess.
+    // Options live on right-click: full reprocess (gap-skip is mandatory).
     btn.addEventListener('contextmenu', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
@@ -226,19 +226,16 @@
       `min-width:210px;background:${T.panel};border:1px solid ${T.border};border-radius:10px;` +
       `box-shadow:0 10px 28px rgba(0,0,0,.55);padding:8px;z-index:2147483003;` +
       `font-family:Roboto,Arial,sans-serif;font-size:12px;direction:rtl;color:${T.text};`;
+    // لا خيار للمستخدم: قفز الفجوات إجباريّ (قرار المالك «اجباري لكل مستخدم لا خيار
+    // لتعديلها») — حُذف الصندوق، والقائمة فيها «معالجة كاملة» وحدها.
     menu.innerHTML =
-      `<label style="display:flex;align-items:center;gap:8px;padding:8px 6px;cursor:pointer;">` +
-      `<input type="checkbox" id="hl-ext-skipgaps" style="accent-color:${T.accent};" />` +
-      `<span>تخطي الصمت (قفز الفيديو فوقه)</span></label>` +
       `<button id="hl-ext-reprocess" style="width:100%;padding:8px 6px;background:transparent;border:none;` +
-      `border-top:1px solid ${T.border};color:${T.sub};font-size:12px;text-align:right;cursor:pointer;">` +
+      `color:${T.sub};font-size:12px;text-align:right;cursor:pointer;">` +
       `↻ معالجة كاملة</button>`;
     document.body.appendChild(menu);
-    const skipBox = menu.querySelector('#hl-ext-skipgaps');
-    skipBox.checked = SKIP_GAPS;
-    skipBox.addEventListener('change', () => setSkipGaps(skipBox.checked));
     menu.querySelector('#hl-ext-reprocess').addEventListener('click', () => {
       closeWatchMenu();
+      // نُبقي الإنهاء الصريح هنا: startFull() ينصرف فوراً إن كان BUSY، فلا تبقى مشاهدة قائمة.
       stopWatch(true);
       resetBar();
       void startFull();
@@ -248,16 +245,6 @@
       menuCloser = (e) => { if (!menu.contains(e.target)) closeWatchMenu(); };
       document.addEventListener('click', menuCloser);
     }, 0);
-  }
-  // Gap-skip is a real, PERSISTED option. Reading the menu checkbox alone was
-  // silently wrong: the menu is removed when it closes, so an untick survived
-  // only until the next click outside.
-  let SKIP_GAPS = true;
-  try { SKIP_GAPS = localStorage.getItem('hl.skipgaps') !== '0'; } catch { /* storage blocked */ }
-  function skipChecked() { return SKIP_GAPS; }
-  function setSkipGaps(v) {
-    SKIP_GAPS = !!v;
-    try { localStorage.setItem('hl.skipgaps', SKIP_GAPS ? '1' : '0'); } catch { /* storage blocked */ }
   }
 
   /* ── request + poll (buttons only, no panels) ──────────────────── */
@@ -736,14 +723,10 @@ function gapStats(kept, jumpThreshold) {
       if (!WATCH) return;
       // The page player fights mute — pin it every tick.
       if (video.muted === false) { try { video.muted = true; } catch { /* gone */ } }
-      const gap = isGap(video.currentTime || 0, kept);
-      const skipping = skipChecked();
-      if (gap && !skipping && !audio.paused) {
-        // Skip is off: hold the filtered audio at the seam while the picture
-        // plays the silent stretch through, so the sound cannot run ahead.
-        audio.pause();
-        w.held = true;
-      } else if (w.held && !video.paused) {
+      // التخطي إجباريّ (لا خيار للمستخدم): لا فرع «احتجاز عند الدرزة» — كان مخصّصاً
+      // لحالة إطفاء الخيار. وw.held يبقى حيّاً: قفزة المستخدم داخل فجوة تُحتجزه
+      // (معالج seeking)، فيُرسى هنا عند الاستئناف.
+      if (w.held && !video.paused) {
         w.held = false;
         setAudioTime('held-release', audioPos(), true);
         audio.play().catch(() => { w.held = true; });
@@ -754,7 +737,7 @@ function gapStats(kept, jumpThreshold) {
       // a 0.35s skip is inaudible, a 0.35s rewind is a repeated word.
       if (audio.paused) return;
       if (Date.now() - (w.selfSeek || 0) < SELF_SEEK_MS) return;
-      if (skipping && isGap(video.currentTime || 0, kept)) return;
+      if (isGap(video.currentTime || 0, kept)) return;
       if (w.stalled) return;   // الصورة متجمّدة: الاحتجاز يعالجها لا النبضة
       const expect = audioPos();
       // أمامي افتراضاً: السحب للخلف يُسمع كلمة مكررة. لكن تقدّماً **يستمر** هو
@@ -779,15 +762,14 @@ function gapStats(kept, jumpThreshold) {
         w.pendingLead = null;
       }
     }, 1000);
-    // The skip itself (option, default on): the page video jumps over every
-    // removed stretch while the filtered audio — which has those stretches cut
-    // out of it — keeps playing untouched, so picture and sound stay in step.
+    // The skip itself (mandatory — no user option): the page video jumps over
+    // every removed stretch while the filtered audio — which has those stretches
+    // cut out of it — keeps playing untouched, so picture and sound stay in step.
     // 250ms cadence and >0.15s jumps, so a play/pause toggle or a pause mid
     // gap never triggers a stray seek, and the map has already dropped every
     // sliver under 100ms.
     const gapTick = (boundary, landing) => {
       if (!WATCH || video.paused) return;
-      if (!skipChecked()) return;
       const now = video.currentTime || 0;
       let target = null;
       if (typeof boundary === 'number' && typeof landing === 'number' && now >= boundary - 0.12) {
@@ -833,7 +815,7 @@ function gapStats(kept, jumpThreshold) {
     // a gap jumps immediately.
     const armGapJump = () => {
       if (w.gapTimer) { clearTimeout(w.gapTimer); w.gapTimer = 0; }
-      if (!WATCH || video.paused || !skipChecked()) return;
+      if (!WATCH || video.paused) return;
       const now = video.currentTime || 0;
       if (isGap(now, kept)) { gapTick(); return; }
       const boundary = nextGapStart(now, kept);
