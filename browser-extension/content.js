@@ -594,6 +594,7 @@ function planGap(input, cfg) {
       held: false,
       stalled: false,   // المشغّل يتجمّد (إعادة تخزين بعد قفزتنا) والصوت يجب أن يُحتجَز
       pendingLead: null, // تقدّم ظهر مرة؛ لا يُصحَّح للخلف إلّا إن تكرّر
+      loadLogged: false, // بوابة لمرّة واحدة: سطر قياس load لا يُصدَر إلّا مرة لكل جلسة مشاهدة
     };
     const SELF_SEEK_MS = 1200; // كان 600؛ مشغّل ثقيل قد يتأخّر play أكثر من ذلك
     const on = (el, ev, fn) => { el.addEventListener(ev, fn); w.handlers.push([el, ev, fn]); };
@@ -614,16 +615,27 @@ function planGap(input, cfg) {
         selfMs: Date.now() - (w.selfSeek || 0),
         drift: extra || '',
       };
-    if (slog) {
-      // سطر قياس واحد: يحسم «هل الخريطة تطابق الملف المُسلَّم» و«هل توجد فجوة أصغر
-      // من عتبة القفز» (وهو ما أسقط الفرضية الخامسة: الحدّ الفعلي 500ms).
-      const st = gapStats(kept, 0.5);
-      const ad = isFinite(audio.duration) ? audio.duration : 0;
-      const vd = isFinite(video.duration) ? video.duration : 0;
-      // والحقول المضافة: hist مدرّج الفجوات (خمسة نطاقات) و keptBefore أدنى/وسيط
-      // طول المقطع المحفوظ السابق للفجوة — لضبط عتبات قرار التسريع/القطع بالتجربة.
-      trace('load', `keptSum=${st.keptSum.toFixed(3)} audioDur=${ad.toFixed(3)} vDur=${vd.toFixed(3)} diff=${(st.keptSum - ad).toFixed(3)} gaps=${st.gaps} smallestGap=${st.smallestGap.toFixed(3)} belowHalf=${st.smallGaps} belowHalfSeconds=${st.smallSeconds.toFixed(3)} largestGap=${st.largestGap.toFixed(3)} hist=[${st.hist.join(',')}] keptBefore={min:${st.before.min.toFixed(3)},med:${st.before.median.toFixed(3)}}`);
-    }
+      // بوابة لمرّة واحدة (إصلاح عود لا نهائي دخل في 89c78e1): نصّ هذا السطر كان
+      // موضوعاً في جسم trace بلا بوابة، فكان trace ينادي نفسه أبداً حتى
+      // RangeError ولا يصل صفّ إلى window.__hlSync. العلم في كائن الحالة w فهو
+      // يُصفَّر مع كل جلسة مشاهدة جديدة، **ويُضبط قبل النداء** ليكون النداء واحداً
+      // بالضبط حتى لو أطلق مسارٌ ما نداءً متداخلاً.
+      // وشرط الصلاحية audio.duration > 0: بلا قفل العلم على قياس **صالِح** كان
+      // أول نداء (وقد يسبق جهوزية المدة) يُصدِر audioDur=0 وdiff=keptSum، فيُقفل
+      // العلم على رقم مضلِّل ويضيع القياس الميداني أبداً. الشرط هنا على مدة الصوت
+      // وحدها لأن diff = keptSum − audioDur هو الرقم الذي يحسم مطابقة الخريطة؛
+      // vDur قد يبقى 0 ولا يضرّ (يُقاس 0 في السطر نفسه أدناه).
+      if (slog && !w.loadLogged && isFinite(audio.duration) && audio.duration > 0) {
+        w.loadLogged = true;
+        // سطر قياس واحد: يحسم «هل الخريطة تطابق الملف المُسلَّم» و«هل توجد فجوة أصغر
+        // من عتبة القفز» (وهو ما أسقط الفرضية الخامسة: الحدّ الفعلي 500ms).
+        const st = gapStats(kept, 0.5);
+        const ad = isFinite(audio.duration) ? audio.duration : 0;
+        const vd = isFinite(video.duration) ? video.duration : 0;
+        // والحقول المضافة: hist مدرّج الفجوات (خمسة نطاقات) و keptBefore أدنى/وسيط
+        // طول المقطع المحفوظ السابق للفجوة — لضبط عتبات قرار التسريع/القطع بالتجربة.
+        trace('load', `keptSum=${st.keptSum.toFixed(3)} audioDur=${ad.toFixed(3)} vDur=${vd.toFixed(3)} diff=${(st.keptSum - ad).toFixed(3)} gaps=${st.gaps} smallestGap=${st.smallestGap.toFixed(3)} belowHalf=${st.smallGaps} belowHalfSeconds=${st.smallSeconds.toFixed(3)} largestGap=${st.largestGap.toFixed(3)} hist=[${st.hist.join(',')}] keptBefore={min:${st.before.min.toFixed(3)},med:${st.before.median.toFixed(3)}}`);
+      }
       (window.__hlSync = window.__hlSync || []).push(row);
       if (window.__hlSync.length > 4000) window.__hlSync.shift();
       try { console.log('HL-SYNC', JSON.stringify(row)); } catch { /* gone */ }

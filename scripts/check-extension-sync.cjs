@@ -127,6 +127,156 @@ ok('أثر الإيقاف داخل معالج pause', /on\(video, 'pause', \(\) 
 ok('المُسجّل معطّل افتراضياً', /localStorage\.getItem\('hl\.synclog'\) === '1'/.test(src));
 ok('حلقة الأثر محدودة السعة', /window\.__hlSync\.length > 4000\) window\.__hlSync\.shift\(\)/.test(src));
 
+console.log('\n=== ١٠-أ) عود trace: لا نداء ذاتي إلّا ببوابة علم تُضبط قبل النداء ===');
+// العطل المُقاس (دخل في 89c78e1): نصّ سطر القياس load كان موضوعاً في جسم trace
+// **بلا بوابة**، فكان trace ينادي نفسه أبداً حتى RangeError: Maximum call stack
+// size exceeded، ولا يصل صفّ واحد إلى window.__hlSync. الحارس يجعل العود
+// مستحيلاً بالبناء لا مجرّد «غير موجود الآن»، على ثلاث طبقات:
+//   (١) بنيوية: كل نداء trace داخل جسم trace مقترن بصيغة البوابة الواحدة،
+//       والعلم يُضبط **قبل** النداء (وإلا فالبوابة بعده ⇒ عود في أي مسار متداخل).
+//   (٢) مجال: loadLogged معرَّف في كائن الحالة w داخل startWatch ⇒ يُصفَّر مع كل
+//       جلسة مشاهدة جديدة، فلا يمنع الإصلاحُ سطرَ load في الجلسة التالية.
+//   (٣) سلوكية: نُنفّذ نصّ trace المستخرج فعلياً في Node بـ slog=true، ونعدّ
+//       تنفيذات جسم القياس والصفوف. طبقة تسقط مُفسَداً بنيوياً معقّداً لا يراه
+//       التعبير النمطي وحده (مثل بوابة تُقرأ بعد النداء أو علم لا يُقفل أبداً).
+const trBlock = extractBlock(src, 'const trace = (site, extra) =>');
+ok('استُخرج جسم trace', !!trBlock);
+const trBody = trBlock ? trBlock.body : '';
+// النداء الذاتي الوحيد المسموح هو سطر القياس load، ويجب أن يكون **داخل** مدى بوابة
+// العلم (لا قبله ولا بعد إغلاقها): البوابة تغلّف جسم السطر كاملاً، وهو أعمق من أن
+// يكفي فيه الجوار المباشر. المدى يُحسب بموازنة الأقواس من `{` البوابة.
+function braceEnd(text, openIdx) {
+  let depth = 0;
+  for (let j = openIdx; j < text.length; j++) {
+    if (text[j] === '{') depth++;
+    else if (text[j] === '}') { depth--; if (depth === 0) return j; }
+  }
+  return -1;
+}
+const GATE_RE = /if \(slog && !w\.loadLogged && isFinite\(audio\.duration\) && audio\.duration > 0\) \{/g;
+const gateHits = [];
+let gm;
+while ((gm = GATE_RE.exec(trBody)) !== null) {
+  gateHits.push({ start: gm.index, end: braceEnd(trBody, gm.index + gm[0].length - 1) });
+}
+const selfCallCount = (trBody.match(/trace\(/g) || []).length;
+// نداء داخل مدى البوابة: بدايته بعد `{` البوابة وقبل `}` الخاص بها.
+const enclosed = (at) => gateHits.some((h) => at > h.start && h.end > at);
+const allEnclosed = (() => {
+  let at = -1;
+  while ((at = trBody.indexOf('trace(', at + 1)) >= 0) if (!enclosed(at)) return false;
+  return true;
+})();
+ok('كل نداء ذاتي داخل trace يقع **داخل** بوابة العلم', allEnclosed,
+  `نداءات ذاتية=${selfCallCount} بوابات=${gateHits.length} محاطة=${gateHits.filter((h) => h.end > 0).length}`);
+ok('البوابة تشترط !w.loadLogged (لا تُقرأ بعد النداء)', /if \(slog && !w\.loadLogged/.test(trBody));
+// شرط الصلاحية: `!w.loadLogged` وحده يُقفل العلم على أول نداء — وقد يسبق جهوزية
+// المدة فيُصدَر audioDur=0 وdiff=keptSum (رقم مضلِّل) ولا يُعاد السطر أبداً في
+// الجلسة. فالفحص يطلب مقارنة موجبة صريحة على audio.duration، ويرفض القلب (< 0).
+const gateCond = (trBody.match(/if \(slog[^{]*\) \{/) || [''])[0];
+ok('البوابة تشترط صلاحية مدة الصوت audio.duration > 0', /audio\.duration\s*>\s*0/.test(gateCond) || /audio\.duration\s*>=\s*1/.test(gateCond),
+  `الشرط=${gateCond.trim()}`);
+ok('ولا تقبل قلب الشرط (audio.duration < 0 ونحوه)', !/audio\.duration\s*(<|<=)/.test(gateCond));
+ok('صيغة بوابة واحدة بلا تكرار أو تبديل ترتيب', gateHits.length === 1 && gateHits[0].end > 0);
+ok('العلم يُضبط **قبل** النداء الذاتي', (() => {
+  const set = trBody.indexOf('w.loadLogged = true;');
+  const call = trBody.indexOf("trace('load'");
+  return set >= 0 && call > set;
+})());
+ok('loadLogged معرَّف في كائن الحالة', /loadLogged:\s*false,/.test(src));
+ok('وتعريفه داخل startWatch (يُصفَّر كل جلسة، لا حالة عامة)', /async function startWatch\(\)[\s\S]*loadLogged: false,/.test(src));
+
+// دليل تشغيلي: نُنفّذ نصّ trace نفسه مع بدائل بسيطة، والمعطّل مفعَّل (slog=true).
+// ملاحظة: extractBlock.body هو ما **بين** القوسين، فالتوقيع `(site, extra) => {`
+// يعاد بناؤه هنا صراحةً — وبدونه لا تُعرَّف site فيسقط الدليل بخطأ لا علاقة له بالعطل.
+const buildTrace = new Function('guard', [
+  'const kept = guard.kept;',
+  'const audio = guard.audio;',
+  'const video = guard.video;',
+  'const w = guard.w;',
+  'const slog = guard.slog;',
+  'const window = guard.window;',
+  'const console = guard.console;',
+  'const gapStats = guard.gapStats;',
+  'const isGap = guard.isGap;',
+  'const audioPos = () => { const t = (video.currentTime || 0) - 20; return Math.min(Math.max(t, 0), Math.max(audio.duration - 0.05, 0)); };',
+  'const trace = (site, extra) => {',
+  trBody.replace('const st = gapStats(kept, 0.5);', 'const st = guard.statsCount();'),
+  '};',
+  'return { trace, w };',
+].join('\n'));
+let rtErr = null, rtBodies = 0, rtRows = 0, rtLoads = 0, rtFirst = '';
+const ring = [];
+const stats = { keptSum: 30, gaps: 1, smallestGap: 0.4, smallGaps: 1, smallSeconds: 0.4, largestGap: 0.4, hist: [1, 0, 0, 0, 0], before: { min: 3, median: 3 } };
+const mkGuard = (dur) => ({
+  kept: [[0, 10]],
+  audio: { currentTime: 3, duration: dur },
+  video: { currentTime: 23, duration: 30 },
+  w: { held: false, selfSeek: 0, loadLogged: false },
+  slog: true,
+  window: { __hlSync: ring },
+  console: { log() {} },
+  gapStats: () => stats,
+  isGap: () => false,
+  statsCount: () => { rtBodies++; return stats; },
+});
+try {
+  const made = buildTrace(mkGuard(30));
+  made.trace('startup', 'boot');                       // أول نداء في الجلسة
+  for (let i = 0; i < 25; i++) made.trace('tick');      // نبضات دورية بعده
+  rtRows = ring.length;
+  rtLoads = ring.filter((r) => r.site === 'load').length;
+  rtFirst = ring.length ? ring[0].site : '';
+} catch (e) { rtErr = e; }
+ok('لا RangeError: أثر trace المفعَّل لا ينادي نفسه أبداً', rtErr === null, rtErr ? String(rtErr.message) : '');
+ok('جسم القياس يُنفَّذ **مرّة واحدة** في الجلسة', rtBodies === 1, `تنفيذات=${rtBodies}`);
+ok('صفّ load واحد بالضبط في window.__hlSync', rtLoads === 1, `load=${rtLoads}`);
+ok('بلا صفوف مكرّرة من العود (27 نداءً ⇒ 27 صفّاً)', rtRows === 27, `صفوف=${rtRows}`);
+ok('وسطر load هو أول صفّ يُصدَر', rtFirst === 'load', `أول صفّ=${rtFirst}`);
+
+// حالة عدم الجهوزية: المدة صفر في أول نداء ثم تصير 30 في نداء لاحق. البوابة يجب أن
+// **تنتظر** ولا تُقفل العلم على قياس صفري (audioDur=0 وdiff=keptSum رقم مضلِّل).
+const ring2 = [];
+let rtBodies2 = 0;
+let waitErr = null, waitLoads = 0, waitDur = null, waitBodies = 0, waitRows = 0, waitFirstAt = -1;
+try {
+  const g2 = mkGuard(0);
+  g2.window = { __hlSync: ring2 };
+  g2.statsCount = () => { rtBodies2++; return stats; };
+  const made2 = buildTrace(g2);
+  for (let i = 0; i < 5; i++) made2.trace('tick-zero');   // مدة = 0 ⇒ لا سطر قياس
+  waitRows = ring2.length;
+  made2.trace('still-zero');                              // ما زالت صفراً
+  waitRows = ring2.length;
+  g2.audio.duration = 30;                                 // صارت المدة صالحة
+  made2.trace('now-ready');
+  made2.trace('after');
+  waitRows = ring2.length;
+  const waitLoadsRows = ring2.filter((r) => r.site === 'load');
+  waitLoads = waitLoadsRows.length;
+  waitDur = waitLoadsRows.length ? /audioDur=([\d.]+)/.exec(waitLoadsRows[0].drift || '') : null;
+  waitDur = waitDur ? waitDur[1] : null;
+  waitBodies = rtBodies2;
+  waitFirstAt = ring2.findIndex((r) => r.site === 'load');
+} catch (e) { waitErr = e; }
+ok('مدة صفرية: لا يُصدَر سطر load ولا يُقفل العلم', waitErr === null && waitRows > 0 && ring2.filter((r) => r.site === 'load').length <= 1,
+  waitErr ? String(waitErr.message) : `صفوف=${waitRows} load=${ring2.filter((r) => r.site === 'load').length}`);
+ok('مدة صفرية: جسم القياس لا يُنفَّذ ولو مرّة قبل الجهوزية', (() => {
+  // نعيد المشهد ونفحص قبل إتاحة المدة
+  const ring3 = [];
+  const g3 = mkGuard(0);
+  g3.window = { __hlSync: ring3 };
+  let bodies3 = 0;
+  g3.statsCount = () => { bodies3++; return stats; };
+  const made3 = buildTrace(g3);
+  for (let i = 0; i < 5; i++) made3.trace('zero');
+  return bodies3 === 0 && ring3.filter((r) => r.site === 'load').length === 0;
+})());
+ok('ثم مدة صالحة: صفّ load واحد فقط (لم يُهدر)', waitLoads === 1, `load=${waitLoads}`);
+ok('والصفّ يحمل audioDur غير صفري (30.000)', waitDur === '30.000', `audioDur=${waitDur}`);
+ok('ووقعت عند أول نداء بعد الجهوزية', waitFirstAt > 0, `index=${waitFirstAt}`);
+ok('ولا تكرار للقياس بعد الجهوزية (تنفيذ واحد)', waitBodies === 1, `تنفيذات=${waitBodies}`);
+
 console.log('\n=== ١١) الاختبارات السلبية: كل مُفسَد يجب أن يُسقط حارسه ===');
 const muts = [
   ['أ: حذف الحارس البنيوي (سحب للخلف مسموح)', src.replace(/if \(!allowBack && !audio\.paused && delta > 0\.05\) \{/, 'if (false) {'),
@@ -139,12 +289,37 @@ const muts = [
     (s) => !/on\(video, 'pause', \(\) => \{ trace\('pause'\)/.test(s)],
   ['هـ: إزالة تحرير العيّنة من stopWatch', src.replace(/\n    if \(w\.tracePulse\) clearInterval\(w\.tracePulse\);/, ''),
     (s) => !/clearInterval\(w\.tracePulse\)/.test(s)],
+  ['م: عود غير مقيَّد — إزالة بوابة العلم كلها عن النداء الذاتي', src.replace(/if \(slog && !w\.loadLogged && isFinite\(audio\.duration\) && audio\.duration > 0\) \{\n\s*w\.loadLogged = true;\n/, 'if (slog) {\n'),
+    // الحارس يسقط: انعدام بوابة ⇒ لا مدى يُحاط به النداء الذاتي (قياس ١٠-أ نفسه).
+    (s, body) => {
+      const hits = [...body.matchAll(/if \(slog && !w\.loadLogged[^{]*\) \{/g)];
+      const at = body.indexOf("trace('load'");
+      return at >= 0 && !hits.some((h) => at > h.index && braceEnd(body, h.index + h[0].length - 1) > at);
+    }],
+  ['ص: إزالة شرط صلاحية المدة — العلم يُقفل على قياس صفري مضلِّل', src.replace(/ && isFinite\(audio\.duration\) && audio\.duration > 0/, ''),
+    (s, body) => {
+      // الحارس يسقط: الشرط بلا مقارنة موجبة على مدة الصوت ⇒ يقبل audioDur=0.
+      const cond = (body.match(/if \(slog[^{]*\) \{/) || [''])[0];
+      return !/audio\.duration\s*>\s*0/.test(cond) && !/audio\.duration\s*>=\s*1/.test(cond);
+    }],
+  ['ق: قلب شرط الصلاحية (audio.duration < 0 يقبل الصفر)', src.replace(/audio\.duration > 0\) \{/, 'audio.duration < 0) {'),
+    (s, body) => /audio\.duration\s*(<|<=)/.test((body.match(/if \(slog[^{]*\) \{/) || [''])[0])],
+  ['ن: تعطيل الإصلاح — العلم يُضبط false أبداً فلا تُقفل البوابة', src.replace(/w\.loadLogged = true;/, 'w.loadLogged = false;'),
+    (s) => (s.match(/w\.loadLogged = true;/g) || []).length !== 1],
+  ['س: ترتيب مقلوب — إسناد العلم هبط تحت النداء (أو غاب)', src.replace(/\n\s*w\.loadLogged = true;/, ''),
+    // الحارس يسقط: الإسناد إمّا غائب (indexOf = −1) أو يقع بعد النداء ⇒ البوابة
+    // لا تُقفل قبل النداء في أي مسار متداخل، وهو عين العود المُقاس.
+    (s, body) => { const set = body.indexOf('w.loadLogged = true;'); return set < 0 || set > body.indexOf("trace('load'"); }],
+  ['ع: حذف حقل loadLogged من كائن الحالة', src.replace(/\n\s*loadLogged: false, \/\/[^\n]*/, ''),
+    (s) => /loadLogged:\s*false,/.test(s) === false],
   ['و: إضافة كتابة ثالثة لموضع الصوت', src.replace(/(const gapTick = \(boundary, landing\) => \{\n)/, '$1      audio.currentTime = 0;\n'),
     (s) => (s.match(/audio\.currentTime\s*=/g) || []).length !== 2],
 ];
 for (const [label, mutant, trips] of muts) {
   ok(`مُفسَد ${label}`, mutant !== src);
-  ok('  والحارس يسقط عليه', mutant !== src && trips(mutant) === true);
+  const mt = mutant !== src ? extractBlock(mutant, 'const trace = (site, extra) =>') : null;
+  const mb = mt ? mt.body : '';
+  ok('  والحارس يسقط عليه', mutant !== src && trips(mutant, mb) === true);
 }
 
 console.log('\n=== ١٢) تجمّد المشغّل: احتجاز الصوت ثم إرساؤه (بلاغ «الفيديو يقف قليلاً بعد التخطي») ===');
