@@ -974,7 +974,7 @@ const SYNC_PATH_OPENERS = [
   'const paceReject = () =>', 'const stallRelease = () =>', 'const stallHold = () =>', 'const kickAudio = () =>',
   'const setAudioTime = (site, want, allowBack) =>',
 ];
-const SYNC_BLOCK_OPENER = { gapTick: 'const gapTick = (boundary, landing) =>', armGapJump: 'const armGapJump = () =>', drift: 'w.drift = setInterval(' };
+const SYNC_BLOCK_OPENER = { gapTick: 'const gapTick = (boundary, landing) =>', armGapJump: 'const armGapJump = () =>', drift: 'w.drift = setInterval(', paceExit: 'const paceExit = (why) =>' };
 /** كتل مسار المزامنة من نصّ (يُجرَّد داخلها؛ الإزاحات محفوظة فيبقى extractBlock صالحاً). */
 const syncBlocks = (text) => {
   const txt = stripLiterals(text);
@@ -1419,6 +1419,68 @@ const stmtMuts = [
 ];
 for (const [label, mutant] of stmtMuts) {
   const fell = mutant !== src ? stmtFell(mutant) : [];
+  ok(`مُفسَد ${label}`, mutant !== src);
+  ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
+}
+
+console.log('\n=== ٣٣) عقد المسار بأمر المشرف: تصفير paceExit · عدّ resets النبضة · صفوف الأثر ===');
+// (١) paceExit: `w.pace = null;` و`w.selfRate = null;` — احتواء داخل الكتلة **وقبل** إعادة
+//     المعدّل `video.playbackRate = w.prevRate || 1`. وحذف الأولى عطل حقيقي: تبقى w.pace غير
+//     null بعد الخروج ⇒ `if (w.pace) return;` في نبضة الانحراف يعود مبكراً إلى الأبد ⇒
+//     المُصحّح الدوري يُعطَّل نهائياً بعد أول تسريع (وهو عطل المالك الأصلي). وتصحيحٌ لتصريحي
+//     السابق: العبارتان في **paceExit** لا في paceEnter (خطأ تسمية في تقريري، والقياس نفسه صحيح).
+// (٢) `w.pendingLead = null;` **ثلاث مرات بالضبط** داخل النبضة، والعدّ الكلي في الملف لا يزيد:
+//     قيمة عالقة تُؤكّد سحباً خلفياً بلا أساس = كلمة مكررة.
+// (٣) عقد الأثر — قناة القياس الوحيدة للمالك: **وجود** صفوف الأثر المسمّاة (وجود فقط، بلا
+//     تثبيت نصّ الصفّ كاملاً، بأمر المشرف): طبقة أثر ميتة صامتة عُولجت في هذا المستودع ولا تُعاد.
+// (٤) بأمر المشرف: `w.selfRate = null;` في stopWatch **لا يُفحص** — الإيقاف يهدم كائن الحالة
+//     (WATCH = null) ويُبنى كائن جديد في كل جلسة مشاهدة، فالعبارة غير ضارّة بالبناء وتثبيتها ضجيج.
+const PENDING_RESET = 'w.pendingLead = null;';
+const RATE_RESTORE = 'video.playbackRate = w.prevRate || 1';
+const peS = stmtBody(src, 'paceExit');
+const peNorm = peS == null ? null : normStmt(peS);
+const atNorm = (t, n) => (t == null ? -1 : t.indexOf(n));
+ok('عبارة لازمة في paceExit: `w.pace = null;` قبل إعادة المعدّل (حذفها يُبقي w.pace غير null ⇒ النبضة تُعطّل المُصحّح الدوري بعد أول تسريع)',
+  atNorm(peNorm, 'w.pace = null;') >= 0 && atNorm(peNorm, RATE_RESTORE) > atNorm(peNorm, 'w.pace = null;'),
+  `الموضع=${atNorm(peNorm, 'w.pace = null;')} · إعادة المعدّل=${atNorm(peNorm, RATE_RESTORE)}`);
+ok('عبارة لازمة في paceExit: `w.selfRate = null;` قبل إعادة المعدّل (وإلا بقي المعدّل الموسوم عالقاً على معدّل التسريع)',
+  atNorm(peNorm, 'w.selfRate = null;') >= 0 && atNorm(peNorm, RATE_RESTORE) > atNorm(peNorm, 'w.selfRate = null;'),
+  `الموضع=${atNorm(peNorm, 'w.selfRate = null;')} · إعادة المعدّل=${atNorm(peNorm, RATE_RESTORE)}`);
+const pulseResets = (driftS || '').split(PENDING_RESET).length - 1;
+const fileResets = src.split(PENDING_RESET).length - 1;
+ok(`عبارة لازمة في نبضة الانحراف: \`w.pendingLead = null;\` ثلاث مرات بالضبط (وجد ${pulseResets}) — قيمة عالقة تُؤكّد سحباً خلفياً بلا أساس`,
+  pulseResets === 3, `العدد=${pulseResets}`);
+ok(`والعدّ الكلي في الملف المشحون لا يزيد على 3 (وجد ${fileResets})`, fileResets === 3, `العدد=${fileResets}`);
+const TRACE_ROWS = ["trace('gapTick'", "trace('pace-plan'", "trace('pace-enter'", "trace('pace-exit'", "trace('pace-reject'", "trace('stall'", "trace('rate'"];
+for (const row of TRACE_ROWS) {
+  ok(`عقد الأثر: صفّ \`${row}…\` قائم في الملف المشحون (وجود فقط)`, src.includes(row));
+}
+const traceFell = (text) => TRACE_ROWS.filter((row) => !text.includes(row)).map((row) => row.replace('trace(', ''));
+const contractFell = (text) => {
+  const pe = stmtBody(text, 'paceExit');
+  const peN = pe == null ? null : normStmt(pe);
+  const bad = [];
+  if (!(atNorm(peN, 'w.pace = null;') >= 0 && atNorm(peN, RATE_RESTORE) > atNorm(peN, 'w.pace = null;'))) bad.push('تصفير w.pace في paceExit');
+  if (!(atNorm(peN, 'w.selfRate = null;') >= 0 && atNorm(peN, RATE_RESTORE) > atNorm(peN, 'w.selfRate = null;'))) bad.push('تصفير w.selfRate في paceExit');
+  const pulse = (stmtBody(text, 'drift') || '').split(PENDING_RESET).length - 1;
+  if (pulse !== 3) bad.push(`resets النبضة=${pulse}`);
+  const whole = text.split(PENDING_RESET).length - 1;
+  if (whole !== 3) bad.push(`العدّ الكلي=${whole}`);
+  return bad.concat(traceFell(text).map((r) => 'صفّ الأثر ' + r));
+};
+const contractMuts = [
+  ['ق١: حذف `w.pace = null;` من paceExit (تبقى w.pace غير null ⇒ النبضة تُعطّل المُصحّح)',
+    src.replace(/w\.pace = null;\s*\n\s*w\.selfRate = null;/, 'w.selfRate = null;')],
+  ['ق٢: حذف `w.selfRate = null;` من paceExit',
+    src.replace(/(w\.pace = null;\s*\n\s*)w\.selfRate = null;\s*\n/, '$1')],
+  ['ق٣: حذف واحد من resets النبضة (`w.pendingLead = null;` الأول)',
+    src.replace(PENDING_RESET, '')],
+  ['ق٤: حذف resets النبضة كلها', src.split(PENDING_RESET).join('')],
+  ['ق٥: إضافة reset رابع **خارج** النبضة (في gapTick) ⇒ العدّ الكلي يزيد',
+    src.replace('const gapTick = (boundary, landing) => {\n', 'const gapTick = (boundary, landing) => {\n      w.pendingLead = null;\n')],
+].concat(TRACE_ROWS.map((row) => [`حذف صفّ الأثر \`${row}…\``, src.split(row).join("trace('__محذوف__'")]));
+for (const [label, mutant] of contractMuts) {
+  const fell = mutant !== src ? contractFell(mutant) : [];
   ok(`مُفسَد ${label}`, mutant !== src);
   ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
 }
