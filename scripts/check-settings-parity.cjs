@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /* حارس تكافؤ الإعدادات (البند ١.١٠).
-   العلّة التي يمنع عودتها: collectSettings() في src/main.ts كان يرسل 21 حقلاً
+   العلّة التي يمنع عودتها: collectSettings() (كان في src/main.ts، وهو الآن في
+   وحدة مستقلة بعد البند ١٢) كان يرسل 21 حقلاً
    من أصل 22 في settings::Settings، والغائب (autostart_asked) كانت
    #[serde(default)] تعيده false مع كل دفع غير متعلّق ⇒ سؤال «التشغيل مع
    ويندوز» يعود في كل إقلاع. أي فرق جديد بين الجهتين يُفشل هذا الحارس.
@@ -41,17 +42,34 @@ if (structIdx !== -1) {
   }
 }
 
-/* 2) مفاتيح collectSettings(): كائن الـreturn في src/main.ts. */
-const ts = fs.readFileSync(path.join(root, 'src/main.ts'), 'utf8');
+/* 2) مفاتيح collectSettings(): كائن الـreturn.
+   البند ١٢ (تقسيم src/main.ts) نقل الدالة إلى وحدة أخرى، فأصبح الحارس يتبعها
+   في src/*.ts بدل تثبيت مسار واحد — وهذا أقوى لا أضعف: صفر تعريفات يُفشل
+   الحارس، وأكثر من تعريف واحد يُفشله أيضاً (لا نسخة مكرّرة تفلت من المقارنة). */
+const tsFiles = [];
+(function walk(dir) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) walk(full);
+    else if (e.isFile() && e.name.endsWith('.ts')) tsFiles.push(full);
+  }
+})(path.join(root, 'src'));
+tsFiles.sort();
+const owners = tsFiles.filter((f) => fs.readFileSync(f, 'utf8').includes('function collectSettings()'));
+if (owners.length === 0) {
+  problems.push('src/*.ts: لم يُعثر على `function collectSettings()` في أي ملف');
+} else if (owners.length > 1) {
+  problems.push('src/*.ts: `function collectSettings()` معرَّفة في أكثر من ملف: ' + owners.map((f) => path.relative(root, f)).join(' · '));
+}
+const ts = owners.length ? fs.readFileSync(owners[0], 'utf8') : '';
 const fnIdx = ts.indexOf('function collectSettings()');
-if (fnIdx === -1) problems.push('main.ts: لم يُعثر على `function collectSettings()`');
 let tsKeys = new Set();
 if (fnIdx !== -1) {
   const retIdx = ts.indexOf('return', fnIdx);
   const objIdx = retIdx === -1 ? -1 : ts.indexOf('{', retIdx);
   const body = objIdx === -1 ? null : balanced(ts, objIdx);
   if (body === null) {
-    problems.push('main.ts: تعذّر موازنة أقواس كائن الـreturn في collectSettings()');
+    problems.push('تعذّر موازنة أقواس كائن الـreturn في collectSettings()');
   } else {
     for (let line of body.split('\n')) {
       line = line.replace(/\/\/.*$/, ''); // تعليقات // (لا روابط داخل هذا الكائن)

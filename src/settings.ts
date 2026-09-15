@@ -1,0 +1,146 @@
+/* ── مزامنة الإعدادات الموحّدة (Sprint D1) ────────────────────────────────
+ * نُقل من src/main.ts كما هو حرفياً: `type RustSettings`، وحالة الأسرار
+ * (tgToken/tgApiHash — في الذاكرة فقط، ولا نسخة في localStorage)، ومرآة
+ * `autostart_asked`، ومؤقّت المزامنة، وcollectSettings() وpushSettings()
+ * وseedSettings().
+ * لا تغيير في أي مفتاح أو صيغة localStorage: 'hl.cuda'، 'hl.notify'،
+ * 'hl.preview'، 'hl.preview_seconds'، 'hl.keep_inst'، 'hl.bridge'، 'hl.tg'،
+ * 'hl.tg_owner'، 'hl.tg_audio'، 'hl.tg_local'، 'hl.tg_api_id'، 'hl.watch'،
+ * 'hl.watch_path'، 'hl.watch_mode'، 'hl.watch_max_mb'، 'hl.watch_rescan' —
+ * ولا في مهلة pushSettings (300ms)، ولا في الأمرين (`get_settings`،
+ * `set_settings`)، ولا في أسماء حقول RustSettings العشرين.
+ * الوحيد المضاف: `export` ومُعيِّنات/مُوصِّلات صريحة لحالة كانت متغيّرات في
+ * main.ts — لا منطق جديد ولا تغيير سلوك.
+ */
+import { invoke } from '@tauri-apps/api/core';
+import { currentLang } from './i18n';
+import { logOpenState } from './log';
+
+/* ── unified settings sync (Sprint D1) ──────────────────────────────── */
+export type RustSettings = Record<string, unknown>;
+/** Telegram secrets live in memory only — never in localStorage (a second
+ *  plaintext copy at rest, which also defeated sealing them in settings.json).
+ *  `null` = "unknown" and tells the backend to keep what it already has. */
+let tgToken: string | null = null;
+let tgApiHash: string | null = null;
+
+/** أسرار تيليجرام: بقيت في الذاكرة هنا، ويكتبها main.ts عبر هذه المُعيِّنات. */
+export function setTelegramCredentials(token: string | null, apiHash: string | null): void {
+  tgToken = token;
+  tgApiHash = apiHash;
+}
+
+export function setTelegramToken(token: string | null): void {
+  tgToken = token;
+}
+
+export function setTelegramApiHash(apiHash: string | null): void {
+  tgApiHash = apiHash;
+}
+/** Mirror of the backend's `autostart_asked` (1.10): it lives in Rust only
+ *  (no localStorage copy, like the autostart truth itself), so every
+ *  unrelated pushSettings() keeps resending the known value instead of
+ *  letting #[serde(default)] silently reset it to false. */
+let autostartAsked = false;
+
+/** مرآة autostart_asked: كان main.ts يكتب المتغيّر مباشرة. */
+export function setAutostartAsked(next: boolean): void {
+  autostartAsked = next;
+}
+let settingsSyncTimer: number | undefined;
+/** Hook filled by wireWatchSettings so external settings changes can repaint. */
+let refreshWatchUi: (() => void) | null = null;
+
+/** يسجّل wireWatchSettings خطّافه هنا (كما كان يكتب المتغيّر نفسه). */
+export function setRefreshWatchUi(fn: () => void): void {
+  refreshWatchUi = fn;
+}
+
+/** ينادي الخطّاف إن كان مسجّلاً — نفس `refreshWatchUi?.()` السابق بالحرف. */
+export function notifyWatchUiChanged(): void {
+  refreshWatchUi?.();
+}
+export function collectSettings(): RustSettings {
+  return {
+    lang: currentLang(),
+    cuda: localStorage.getItem('hl.cuda') === '1',
+    notify: localStorage.getItem('hl.notify') === '1',
+    preview: localStorage.getItem('hl.preview') === '1',
+    preview_seconds: Number(localStorage.getItem('hl.preview_seconds')) || 15,
+    keep_instrumental: localStorage.getItem('hl.keep_inst') === '1',
+    bridge_enabled: localStorage.getItem('hl.bridge') === '1',
+    // Sprint T1: Telegram bot (token + pairing live in Rust settings too).
+    telegram_enabled: localStorage.getItem('hl.tg') === '1',
+    // Secrets are NOT kept in localStorage (a second plaintext copy at rest,
+    // which also defeated sealing them in settings.json). `null` ⇒ the backend
+    // keeps its stored value; the panel loads them from Rust into memory.
+    telegram_token: tgToken,
+    telegram_user_id: localStorage.getItem('hl.tg_owner') || '',
+    telegram_audio_only: localStorage.getItem('hl.tg_audio') === '1',
+    telegram_local_url: localStorage.getItem('hl.tg_local') || '',
+    telegram_api_id: localStorage.getItem('hl.tg_api_id') || '',
+    telegram_api_hash: tgApiHash,
+    log_open: logOpenState(),
+    // 1.10: the only field with no localStorage copy — the module mirror above
+    // keeps unrelated pushes from resetting it to false via #[serde(default)].
+    autostart_asked: autostartAsked,
+    watch_enabled: localStorage.getItem('hl.watch') === '1',
+    watch_path: localStorage.getItem('hl.watch_path') || null,
+    watch_mode: localStorage.getItem('hl.watch_mode') || 'song',
+    watch_out_kind: 'auto',
+    watch_max_size_mb: Number(localStorage.getItem('hl.watch_max_mb')) || 2048,
+    watch_rescan_secs: Number(localStorage.getItem('hl.watch_rescan')) || 60,
+  };
+}
+export function pushSettings(): void {
+  if (settingsSyncTimer) window.clearTimeout(settingsSyncTimer);
+  settingsSyncTimer = window.setTimeout(() => {
+    invoke('set_settings', { value: collectSettings() }).catch((e) =>
+      console.error('set_settings failed', e));
+  }, 300);
+}
+
+/** One-time seed: Rust settings → localStorage (fresh installs / migration). */
+export async function seedSettings(): Promise<void> {
+  try {
+    const s = await invoke<RustSettings>('get_settings');
+    if (!s || typeof s !== 'object') return;
+    // 1.10: seed the autostart_asked mirror from backend truth (Rust-only field).
+    if (typeof s.autostart_asked === 'boolean') autostartAsked = s.autostart_asked;
+    const bools: [keyof RustSettings, string][] = [
+      ['cuda', 'hl.cuda'], ['notify', 'hl.notify'], ['preview', 'hl.preview'],
+      ['keep_instrumental', 'hl.keep_inst'], ['watch_enabled', 'hl.watch'],
+      ['bridge_enabled', 'hl.bridge'],
+      ['telegram_enabled', 'hl.tg'], ['telegram_audio_only', 'hl.tg_audio'],
+    ];
+    for (const [k, ls] of bools) {
+      if (localStorage.getItem(ls) === null && s[k] !== undefined) {
+        localStorage.setItem(ls, s[k] ? '1' : '0');
+      }
+    }
+    const strs: [keyof RustSettings, string][] = [
+      ['watch_mode', 'hl.watch_mode'], ['lang', 'hl.lang'],
+      ['telegram_user_id', 'hl.tg_owner'],
+      ['telegram_local_url', 'hl.tg_local'], ['telegram_api_id', 'hl.tg_api_id'],
+    ];
+    for (const [k, ls] of strs) {
+      if (localStorage.getItem(ls) === null && typeof s[k] === 'string') {
+        localStorage.setItem(ls, s[k] as string);
+      }
+    }
+    const nums: [keyof RustSettings, string][] = [
+      ['preview_seconds', 'hl.preview_seconds'], ['watch_max_size_mb', 'hl.watch_max_mb'],
+      ['watch_rescan_secs', 'hl.watch_rescan'],
+    ];
+    for (const [k, ls] of nums) {
+      if (localStorage.getItem(ls) === null && typeof s[k] === 'number') {
+        localStorage.setItem(ls, String(s[k]));
+      }
+    }
+    if (localStorage.getItem('hl.watch_path') === null && typeof s.watch_path === 'string') {
+      localStorage.setItem('hl.watch_path', s.watch_path as string);
+    }
+  } catch {
+    /* browser dev / backend unavailable */
+  }
+}
