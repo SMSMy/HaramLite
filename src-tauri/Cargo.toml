@@ -27,7 +27,7 @@ rayon = "1"
 ureq = { version = "2", features = ["json"] }
 sha2 = "0.10"
 dirs = "5.0"
-notify = "6"
+notify = "8"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-updater = "2"
