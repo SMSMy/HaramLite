@@ -615,16 +615,44 @@ pub fn analyze_mix(l: &[f32], r: &[f32], sr: u32) -> MixAnalysis {
     out
 }
 
+/// The analysis `separate` logs, plus what obtaining it cost.
+///
+/// Audit 2026-09-15 (٤.ب.٧): pipeline.rs scans the whole mix anyway for the
+/// clip density gate, so a scan handed in is reused as-is instead of scanning
+/// the entire file a second time; `0.0s` in the log line means exactly that.
+/// `fallback` is the caller's local the returned reference points into
+/// whenever the analysis had to be scanned here.
+fn mix_analysis<'a>(
+    given: Option<&'a MixAnalysis>,
+    fallback: &'a mut Option<MixAnalysis>,
+    l: &[f32],
+    r: &[f32],
+    sr: u32,
+) -> (&'a MixAnalysis, f32) {
+    match given {
+        Some(a) => (a, 0.0),
+        None => {
+            let t_scan = std::time::Instant::now();
+            let scanned: &MixAnalysis = fallback.insert(analyze_mix(l, r, sr));
+            (scanned, t_scan.elapsed().as_secs_f32())
+        }
+    }
+}
+
 /// Full separation: normalized stereo WAV in → vocals + instrumental WAVs out.
 ///
 /// UVR5 separate.py:499 (`source = self.demix(mix)`): inference runs on the
 /// WHOLE file — no content gate. `analyze_mix` stays as diagnostics only
 /// (logged above, never branching). Padding follows UVR5 :560.
+///
+/// `analysis` is the caller's own scan when it already has one (٤.ب.٧);
+/// `None` ⇒ this call scans once, only to fill the log line.
 pub fn separate(
     input_wav: &Path,
     out_dir: &Path,
     use_cuda: bool,
     progress: &dyn Fn(f32) -> bool,
+    analysis: Option<&MixAnalysis>,
 ) -> Result<StemPaths, SepError> {
     let (left, right, sample_rate) = read_wav_stereo(input_wav)?;
     tracing::info!(target: "sep", "mix loaded: {} samples @{}", left.len(), sample_rate);
@@ -640,17 +668,16 @@ pub fn separate(
     let n = mix[0].len();
 
     // Expert scan: seconds against MDX minutes — always logged, never silent.
-    let t_scan = std::time::Instant::now();
-    let analysis = analyze_mix(&mix[0], &mix[1], sample_rate);
+    let mut scanned = None;
+    let (analysis, scan_secs) = mix_analysis(analysis, &mut scanned, &mix[0], &mix[1], sample_rate);
     let suspect_len: usize = analysis.suspect.iter().map(|(a, b)| b - a).sum();
     tracing::info!(
         target: "sep",
-        "mix analysis: suspect_spans={} coverage={:.2} dense={} scored_windows={} ({:.1}s scan)",
+        "mix analysis: suspect_spans={} coverage={:.2} dense={} scored_windows={} ({scan_secs:.1}s scan)",
         analysis.suspect.len(),
         suspect_len as f64 / n.max(1) as f64,
         analysis.dense,
-        analysis.scored_windows,
-        t_scan.elapsed().as_secs_f32()
+        analysis.scored_windows
     );
 
     // Expert D2ب A/B split: session build timed APART from inference.
@@ -726,10 +753,16 @@ mod tests {
         write_wav_stereo_f32(&wav_path, &l, &r, 44100).unwrap();
 
         let out_dir = tmp.join("out");
-        let stems = separate(&wav_path, &out_dir, false, &|p| {
-            tracing::debug!(target: "sep_test", "progress {:.0}%", p * 100.0);
-            true
-        })
+        let stems = separate(
+            &wav_path,
+            &out_dir,
+            false,
+            &|p| {
+                tracing::debug!(target: "sep_test", "progress {:.0}%", p * 100.0);
+                true
+            },
+            None,
+        )
         .expect("separation failed");
 
         for stem in [&stems.vocals, &stems.instrumental] {
@@ -774,6 +807,34 @@ mod tests {
         let r = l.clone();
         let a = analyze_mix(&l, &r, sr);
         assert!(a.suspect.is_empty(), "continuous audio must trip the old gate: {:?}", a.suspect);
+    }
+
+    /// Negative test for ٤.ب.٧: a caller that already scanned the mix must not
+    /// pay for a second whole-file scan — the analysis it hands in is the one
+    /// `separate` logs, and obtaining it costs no scan time.
+    #[test]
+    fn a_given_analysis_is_logged_instead_of_rescanned() {
+        let sr = 44100u32;
+        let n = sr as usize;
+        let l = vec![0.25f32; n];
+        let r = vec![0.25f32; n];
+        let given = MixAnalysis { dense: true, suspect: vec![(0, 11)], scored_windows: 4242 };
+
+        let mut slot = None;
+        let (a, scan_secs) = mix_analysis(Some(&given), &mut slot, &l, &r, sr);
+        assert_eq!(a.scored_windows, 4242, "the caller's scan must be the one logged");
+        assert!(a.dense, "…including its verdict");
+        assert_eq!(a.suspect, vec![(0, 11)]);
+        assert_eq!(scan_secs, 0.0, "a reused analysis costs no scan");
+        assert!(slot.is_none(), "nothing may be scanned when an analysis was given");
+
+        // …and with nothing given it scans exactly once, into the caller's slot.
+        let mut slot = None;
+        let (b, _) = mix_analysis(None, &mut slot, &l, &r, sr);
+        assert_ne!(b.scored_windows, 4242, "a real scan must replace the fixture's numbers");
+        let scanned_windows = b.scored_windows;
+        let stored = slot.as_ref().expect("no analysis given ⇒ one scan, kept for the log");
+        assert_eq!(stored.scored_windows, scanned_windows);
     }
 
     /// Breathing room for the UI thread: 20→18, 8→6, tiny boxes untouched.
@@ -891,7 +952,7 @@ mod tests {
         let wav = tmp.join("mix.wav");
         write_wav_stereo_f32(&wav, &l, &r, sr).unwrap();
         let t0 = std::time::Instant::now();
-        let stems = separate(&wav, &tmp.join("out"), true, &|_| true).expect("CUDA separation");
+        let stems = separate(&wav, &tmp.join("out"), true, &|_| true, None).expect("CUDA separation");
         eprintln!("SMOKE: 12s audio separated on CUDA in {:.1}s", t0.elapsed().as_secs_f32());
         for stem in [&stems.vocals, &stems.instrumental] {
             let (cl, _, _) = read_wav_stereo(stem).unwrap();
@@ -1001,7 +1062,7 @@ mod tests {
             analysis.suspect.len(), analysis.scored_windows);
 
         // Full path keeps the merge sample-exact (silence passes through).
-        let stems = separate(&wav, &tmp.join("out"), false, &|_| true).expect("separation failed");
+        let stems = separate(&wav, &tmp.join("out"), false, &|_| true, None).expect("separation failed");
         let (vl, _, _) = read_wav_stereo(&stems.vocals).unwrap();
         let (il, _, _) = read_wav_stereo(&stems.instrumental).unwrap();
         assert_eq!(vl.len(), len, "vocals length must equal input (sample-exact merge)");

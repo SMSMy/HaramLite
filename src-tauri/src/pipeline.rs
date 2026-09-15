@@ -251,6 +251,10 @@ pub fn process_file(
     // the normalized audio. Song mode always takes full MDX (explicit user
     // choice — songs are dense by construction).
     let mut clip_direct_vocals: Option<PathBuf> = None;
+    // Audit 2026-09-15 (٤.ب.٧): the clip gate already scans the whole file, so
+    // hand that same analysis to `separate` (a dense clip takes full MDX there)
+    // instead of letting it scan the entire mix a second time for the log.
+    let mut clip_analysis: Option<separator::MixAnalysis> = None;
     if matches!(mode, Mode::Clip) {
         let (dl, dr, dsr) = separator::read_wav_stereo(&normalized).map_err(|e| {
             let _ = std::fs::remove_dir_all(&work_dir);
@@ -291,6 +295,10 @@ pub fn process_file(
             }
             clip_direct_vocals = Some(direct_path);
         }
+        // Audit 2026-09-15 (٤.ب.٧): keep the scan for the MDX call below. Only
+        // a DENSE clip reaches it (a sparse one is detect-then-mute, no MDX at
+        // all), and re-scanning the whole mix there bought nothing but the log.
+        clip_analysis = Some(analysis);
     }
     let sep_progress = |p: f32| {
         stage("separate", p);
@@ -303,7 +311,7 @@ pub fn process_file(
             }
             (v, None)
         } else {
-            let stems = separator::separate(&normalized, out_dir, use_cuda, &sep_progress).map_err(|e| {
+            let stems = separator::separate(&normalized, out_dir, use_cuda, &sep_progress, clip_analysis.as_ref()).map_err(|e| {
                 let _ = std::fs::remove_dir_all(&work_dir);
                 err(e)
             })?;
