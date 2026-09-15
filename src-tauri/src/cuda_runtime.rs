@@ -9,16 +9,17 @@
 
 use std::path::{Path, PathBuf};
 
-/// ملفات تشغيل CUDA العشرة (الشرط 1 — كاملة فعلاً هذه المرة):
+/// ملفات تشغيل CUDA الست عشرة (الشرط 1 — كاملة فعلاً هذه المرة):
 /// NVIDIA (CUDA 12.x / cuDNN 9.x) + جسر مزود ORT 1.22.
 /// الدرس المؤلم: مزود CUDA في ORT يُحمّل ديناميكياً عبر الجسر ويحتاج
 /// `cufft64_11.dll` (كان ناقصاً — أول تبعية مفقودة أبلغ عنها المحمل) ثم
 /// مكتبتي الجسر نفسيهما `onnxruntime_providers_{shared,cuda}.dll` بالنسخة
 /// المطابقة تماماً لبناء ORT المضمّن (1.22.0) — بدونهما يسقط التسجيل بصمت.
 pub const CUDA_FILES: &[&str] = &[
-    // NVIDIA: cudart + cublas(+Lt) + cuFFT + cuDNN كاملة (كل الأجزاء العشرة:
-    // أي نقص — كما حدث مع cudnn_graph — قد يسقط التهيئة بانهيار أصلي لا
-    // بـpanic، فالاكتمال هنا مسألة استقرار لا ترف).
+    // NVIDIA: cudart + cublas(+Lt) + cuFFT + cuDNN كاملة (أربعة عشر ملفاً
+    // في القائمة أدناه، عدا مكتبتَي جسر ORT: أي نقص — كما حدث مع
+    // cudnn_graph — قد يسقط التهيئة بانهيار أصلي لا بـpanic، فالاكتمال هنا
+    // مسألة استقرار لا ترف).
     "cudart64_12.dll",
     "cublas64_12.dll",
     "cublasLt64_12.dll",
@@ -107,7 +108,7 @@ pub(crate) fn heal_provider_dlls_in(exe_dir: &Path, bin_dir: &Path) -> usize {
     healed
 }
 
-/// الملفات العشرة موجودة → جلسة CUDA تستطيع تحميلها.
+/// الملفات الست عشرة موجودة → جلسة CUDA تستطيع تحميلها.
 pub fn is_available() -> bool {
     dir_has_runtime(&bin_dir())
 }

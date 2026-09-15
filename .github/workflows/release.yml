@@ -91,7 +91,11 @@ jobs:
           if (-not (gh release view assets-v1 --json tagName -q .tagName 2>$null)) {
             gh release create assets-v1 $files --title "Repair assets (stable)" --notes "مصادر معالج الإصلاح الذاتي — لا تحذف هذا الإصدار."
           } else {
-            Write-Host "assets-v1 already exists — skipping (repair manifest is pinned by SHA-256)"
+            # Audit 2026-09-15 (٧.أ): «create-or-skip» كان يعني أن إعادة تشغيل
+            # السير لا ترفع شيئاً أبداً — أي أصل ناقص أو تالف يبقى ناقصاً/تالفاً
+            # إلى الأبد. الرفع الآن بـ --clobber: يستبدل الموجود ويضيف الناقص،
+            # والسير يبقى قابلاً لإعادة التشغيل (المعرّف نفسه، لا إصدار جديد).
+            gh release upload assets-v1 $files --clobber
           }
       # NOTE: CUDA runtime assets are published by the standalone workflow
       # `.github/workflows/cuda-assets.yml` (workflow_dispatch, GITHUB_TOKEN

@@ -1,0 +1,40 @@
+# Audit 2026-09-15 (٧.ب): تحديثات تبعيات أسبوعية، بحدّ صغير للطلبات المفتوحة
+# (المستودع يُصدر يدوياً — الحصة والمراجعة أهم من كثرة الـPRs).
+#
+# ملاحظة مهمة: لا يوجد `Cargo.toml` في جذر المستودع — حزمة Rust في `src-tauri/`،
+# فـ`directory` لها يجب أن يكون `/src-tauri` (وإلا لن يجد dependabot شيئاً).
+version: 2
+
+updates:
+  # Rust — يعالج أيضاً تبعيات tauri/ort/notify في src-tauri/Cargo.toml
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - dependencies
+
+  # الواجهة والموقع — pnpm-lock.yaml في الجذر
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - dependencies
+
+  # سير العمل نفسه (actions/checkout، tauri-action، rust-cache…)
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(ci)"
+    labels:
+      - dependencies
