@@ -101,6 +101,14 @@
             <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-notify" type="checkbox"/>
             <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="set_notify">إشعارات الانتهاء + صوت خفيف</span>
         </label>
+        <!-- هـ.٢: صفّ التحقق من التحديثات. الزرّ لا يفشل بصمت: كل مسار (بلا شبكة ·
+             بلا إصدارات منشورة · استجابة غير متوقعة) يكتب نصّه في #update-status. -->
+        <button id="btn-update-check" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer disabled:opacity-50 disabled:cursor-wait">
+            <span class="material-symbols-outlined text-sm" data-icon="download">download</span>
+            <span class="font-body-sm" data-i18n="upd_check">التحقق من التحديثات</span>
+        </button>
+        <p id="update-status" class="hidden font-label-sm text-label-sm leading-relaxed px-unit" role="status" aria-live="polite"></p>
+        <button id="btn-update-download" class="hidden items-center gap-unit text-left text-clay-accent hover:underline font-label-sm text-label-sm px-unit cursor-pointer" data-i18n="upd_download"></button>
     </div>
 
     <!-- 🧰 الأدوات والمساعدة -->

@@ -3,7 +3,6 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import * as dialog from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { check as checkUpdate } from '@tauri-apps/plugin-updater';
 import dingUrl from './assets/ding.wav';
 
 type LogLine = { ts: string; level: string; target: string; message: string };
@@ -93,6 +92,16 @@ const i18n = {
     // gone — no latest.json is published (createUpdaterArtifacts:false), so the
     // button could only ever fail. silentUpdateCheck still uses this one.
     upd_avail: 'يتوفر تحديث جديد:',
+    // هـ) نظام التحديث (الخيار ١) — صفّ الإعدادات. الفحص من `releases/latest`
+    // عبر أمر Rust واحد، وكل مسار فشل ينتهي بنصّ ظاهر في #update-status
+    // (وسلسلة الخطأ العربية تأتي من الرست) فلا زرّ يفشل بصمت.
+    upd_check: 'التحقق من التحديثات',
+    upd_checking: 'جارٍ التحقق من التحديثات…',
+    upd_uptodate: 'أنت على الأحدث (v{v})',
+    upd_found: 'يتوفّر v{v}',
+    upd_download: '<span class="material-symbols-outlined text-sm" data-icon="download">download</span> فتح صفحة التنزيل',
+    upd_failed: 'تعذّر التحقق من التحديثات',
+    upd_open_failed: 'تعذّر فتح صفحة التنزيل في المتصفح',
     watch_enable: 'تفعيل مجلد المراقبة',
     watch_pick: 'اختيار المجلد',
     watch_mode_label: 'وضع المعالجة:',
@@ -290,6 +299,13 @@ const i18n = {
     repair_done: 'Repaired successfully',
     repair_all_ok: 'All components present ✓',
     upd_avail: 'Update available:',
+    upd_check: 'Check for updates',
+    upd_checking: 'Checking for updates…',
+    upd_uptodate: 'You are up to date (v{v})',
+    upd_found: 'v{v} is available',
+    upd_download: '<span class="material-symbols-outlined text-sm" data-icon="download">download</span> Open the download page',
+    upd_failed: 'Could not check for updates',
+    upd_open_failed: 'Could not open the download page in the browser',
     watch_enable: 'Enable watch folder',
     watch_pick: 'Choose folder',
     watch_mode_label: 'Processing mode:',
@@ -2303,22 +2319,121 @@ async function autoHealthCheck(): Promise<void> {
   }
 }
 
-/* ── update check (Sprint C2) ───────────────────────────────────────── */
-// Audit 2026-09-15 (٤.ب.٣): the manual check (button + confirm + install
-// prompts) was removed together with its button — it could only ever fail,
-// because no latest.json is published while createUpdaterArtifacts is false.
-// What remains is the boot check below, which is silent by design.
-async function silentUpdateCheck(): Promise<void> {
-  try {
-    const update = await checkUpdate();
-    if (update) {
-      showToast(`${t('upd_avail')} v${update.version}`);
-      invoke('push_log', { level: 'info', message: `update available: v${update.version}` });
-    }
-  } catch (e) {
-    // dev / portable builds — expected, never fatal
-    invoke('push_log', { level: 'debug', message: `update check unavailable: ${String(e).slice(0, 120)}` });
+/* ── update check (هـ) ───────────────────────────────────────────────
+ * 0.2.4 أزالت زرّ «التحقق من التحديثات» لأن نداء `tauri-plugin-updater` كان
+ * يفشل دائماً: لا `latest.json` يُنشر ما دام `createUpdaterArtifacts:false`.
+ * القناة الجديدة (الخيار ١) تسأل واجهة GitHub العامة عن `releases/latest`
+ * عبر أمر Rust واحد (‏`check_update`) وتقارن دلالياً بإصدار الحزمة نفسه.
+ * قاعدة هذا الصفّ: **لا زرّ يفشل بصمت** — كل خروج إما نصّ نتيجة أو نصّ خطأ
+ * عربي في `#update-status`، ومعها سطر في السجل. */
+type UpdateStatus = {
+  current: string;
+  latest: string | null;
+  update_available: boolean;
+  download_url: string;
+  error: string | null;
+  from_cache: boolean;
+};
+
+const UPDATE_PAGE_FALLBACK = 'https://github.com/SMSMy/HaramLite/releases/latest';
+
+/** نصّ الصفّ: نجاحاً أو فشلاً. `isError` يلوّنه ويعلن سبب الخطأ للقارئ. */
+function setUpdRow(text: string, isError: boolean): void {
+  const el = document.getElementById('update-status');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('text-error', isError);
+  el.classList.toggle('text-on-surface-variant', !isError);
+  el.classList.remove('hidden');
+}
+
+/** زرّ صفحة التنزيل يظهر عند وجود أحدث فقط، ويحمل رابطه في `data-url`. */
+function setUpdDownload(url: string | null): void {
+  const btn = document.getElementById('btn-update-download');
+  if (!btn) return;
+  btn.classList.toggle('hidden', !url);
+  btn.classList.toggle('flex', !!url);
+  if (url) btn.dataset.url = url;
+  else delete btn.dataset.url;
+}
+
+/**
+ * الفحص. `force=true` هو الزرّ: نداء حقيقي دائماً ونتيجته **ظاهرة دائماً**
+ * (نصّ في الصفّ، وإشعار، وسطر في السجل) — نجاحاً أو فشلاً، فلا زرّ يفشل بصمت.
+ * و`force=false` هو الفحص الصامت عند الإقلاع (كاش ٢٤ ساعة في الرست — هـ.٤):
+ * لا يكتب في الواجهة إلا حين يوجد أحدث فعلاً، وإلا فسطر في السجل وحده — فلا
+ * يصير «خطأ إطلاق صامت» يزعج المستخدم في كل إقلاع بلا شبكة.
+ */
+async function runUpdateCheck(force: boolean): Promise<UpdateStatus | null> {
+  const btn = document.getElementById('btn-update-check') as HTMLButtonElement | null;
+  if (force) {
+    if (btn) btn.disabled = true;
+    setUpdRow(t('upd_checking'), false);
   }
+  try {
+    const st = await invoke<UpdateStatus>('check_update', { force });
+
+    if (st.error) {
+      // مسار الفشل: بلا شبكة · بلا إصدارات منشورة · استجابة غير متوقعة · JSON مشوّه
+      if (force) {
+        setUpdRow(`${t('upd_failed')} — ${st.error}`, true);
+        setUpdDownload(null);
+        showToast(`${t('upd_failed')} — ${st.error}`);
+      }
+      invoke('push_log', { level: force ? 'warn' : 'debug', message: `update check failed: ${st.error}` });
+      return st;
+    }
+
+    if (st.update_available && st.latest) {
+      setUpdRow(t('upd_found', { v: st.latest }), false);
+      setUpdDownload(st.download_url || UPDATE_PAGE_FALLBACK);
+      invoke('push_log', {
+        level: 'info',
+        message: `update available: v${st.latest} (current v${st.current}${st.from_cache ? ', cached' : ''})`,
+      });
+      if (force) showToast(`${t('upd_avail')} v${st.latest}`);
+      return st;
+    }
+
+    if (force) {
+      setUpdRow(t('upd_uptodate', { v: st.current }), false);
+      setUpdDownload(null);
+      showToast(t('upd_uptodate', { v: st.current }));
+    }
+    invoke('push_log', { level: 'debug', message: `update check: v${st.current} is the latest` });
+    return st;
+  } catch (e) {
+    // حتى فشل الأمر نفسه (ثنائي قديم بلا الأمر، أو خطأ داخلي) له نصّ ظاهر.
+    const msg = String(e);
+    if (force) {
+      setUpdRow(`${t('upd_failed')} — ${msg}`, true);
+      setUpdDownload(null);
+      showToast(`${t('upd_failed')} — ${msg}`);
+    }
+    invoke('push_log', { level: force ? 'warn' : 'debug', message: `update check command failed: ${msg}` });
+    return null;
+  } finally {
+    if (force && btn) btn.disabled = false;
+  }
+}
+
+/** الفحص الصامت عند الإقلاع (كان نداء `tauri-plugin-updater` يفشل دائماً). */
+async function silentUpdateCheck(): Promise<void> {
+  await runUpdateCheck(false);
+}
+
+function wireUpdateCheck(): void {
+  document.getElementById('btn-update-check')?.addEventListener('click', () => void runUpdateCheck(true));
+  document.getElementById('btn-update-download')?.addEventListener('click', () => {
+    const btn = document.getElementById('btn-update-download');
+    const url = btn?.dataset.url || UPDATE_PAGE_FALLBACK;
+    // فشل الفتح أيضاً لا يمرّ بصمت: نصّ في الصفّ + إشعار + سطر في السجل.
+    void openUrl(url).catch((e) => {
+      setUpdRow(`${t('upd_open_failed')} — ${String(e)}`, true);
+      showToast(t('upd_open_failed'));
+      invoke('push_log', { level: 'warn', message: `open download page failed: ${String(e)}` });
+    });
+  });
 }
 
 /* ── live player surface (v1 songs scope) ─────────────────────────── */
@@ -3166,6 +3281,7 @@ function wire(): void {
   wireAbout();
   wireReport();
   wireRepair();
+  wireUpdateCheck();
   wireWatchSettings();
   wireBridge();
   wireAutostart();

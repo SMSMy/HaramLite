@@ -26,6 +26,7 @@ mod stft;
 mod telegram;
 mod throttle;
 mod tray;
+mod update_check;
 mod v1proto;
 mod watch_service;
 mod yt_dlp;
@@ -236,6 +237,21 @@ async fn update_ytdlp(app: tauri::AppHandle) -> Result<serde_json::Value, String
     })
     .await
     .map_err(|e| format!("update worker failed: {e}"))?
+}
+
+/// هـ.١/هـ.٤: فحص الإصدار من `releases/latest` على GitHub (بلا توقيع وبلا
+/// `latest.json`). إصدار التطبيق الحالي يُقرأ من الحزمة نفسها —
+/// `package_info().version`، أي `tauri.conf.json` — لا من سلسلة مكتوبة بيد،
+/// فإصدار مُزوَّر في الإعداد يكفي لاختبار «إصدار أقدم يكتشف الأحدث» (هـ.٣).
+/// `force=true` (زرّ الإعدادات) ينادي GitHub دائماً، و`force=false` (الإقلاع)
+/// يقرأ كاش ٢٤ ساعة أولاً فلا نداء لكل إقلاع. Async + spawn_blocking كبقية
+/// أوامر الشبكة (P1: نداء الشبكة لا يجلس على خيط الحلقة الرئيسية).
+#[tauri::command]
+async fn check_update(app: tauri::AppHandle, force: bool) -> Result<update_check::UpdateStatus, String> {
+    let current = app.package_info().version.to_string();
+    tauri::async_runtime::spawn_blocking(move || update_check::check(&current, force))
+        .await
+        .map_err(|e| format!("update worker failed: {e}"))
 }
 
 /// Sprint B2: system notification for completion events. On Windows this
@@ -1104,6 +1120,7 @@ pub fn run() {
             separate_file,
             download_media_cmd,
             update_ytdlp,
+            check_update,
             notify_done,
             health_check_cmd,
             repair_component,
