@@ -189,10 +189,130 @@ const m4 = src.replace(/(const T = \{)/, "$1\n  const LEGACY_SKIP_KEY = 'hl.skip
 ok('مُفسَد ل: إعادة إشارة إلى خيار المستخدم', m4 !== src);
 ok('  والحارس يسقط عليه', m4 !== src && NO_OPTION.test(m4) === true);
 
+console.log('\n=== ١٦) planGap: دالة قرار نقية لكل فجوة (الخطوة ٣ — غير موصولة بعد) ===');
+// الاستخراج بآلية extractBlock القائمة نفسها، بلا تغيير فيها: توقيع planGap يجعل أول
+// قوس في نصّها قوسَ متنها (والتفكيك داخل الجسم) فتُستخرج استدعاءً واحداً كما تُستخرج
+// بقية الدوال النقية. (وسائط مفكَّكة تجعل أول قوس قوسَ الوسائط، فيعود الاستخراج نصّاً
+// غير صالح ويُسقط الحارس كله بـSyntaxError — قيس ذلك فعلاً.)
+function buildPlanGap(text) {
+  const block = extractBlock(text, 'function planGap(');
+  if (!block) return null;
+  try { return new Function(`return ${block.full};`)(); } catch { return null; }
+}
+// القواعد الأربع بنصّها المشحون — لفحص ترتيبها (١٦) وللمُفسَدات (١٧).
+const RULE1 = "if (gap < cfg.cutBelow) return { mode: 'cut', reason: 'tiny' };";
+const RULE2 = "if (keptBefore >= cfg.isolated && keptAfter >= cfg.isolated) return { mode: 'cut', reason: 'isolated' };";
+const RULE3 = "if (gap > cfg.maxSpeedGap) return { mode: 'cut', reason: 'long' };";
+const RULE4 = "if (gap / rate > cfg.maxDwell) return { mode: 'cut', reason: 'dwell' };\n";
+const planSig = extractBlock(src, 'function planGap(');
+const sigHead = planSig ? planSig.full.slice(0, 60).replace(/\s+/g, ' ') : 'لا شيء';
+ok(`التوقيع المستخرج **جسم الدالة** لا قوس الوسائط — أوله: ${sigHead}`,
+  !!planSig && /^function planGap\(input, cfg\) \{/.test(planSig.full) && planSig.full.length > 60);
+ok('التفكيك داخل الجسم (عقد النداء كما في §٣: كائن الفجوة { gap, keptBefore, keptAfter } ثم cfg)',
+  !!planSig && planSig.body.includes('const { gap, keptBefore, keptAfter } = input;'));
+ok('القواعد الأربع بترتيبها في المتن (١ < ٢ < ٣ < ٤)', (() => {
+  const at = [RULE1, RULE2, RULE3, RULE4].map((r) => planSig.body.indexOf(r));
+  return at.every((v) => v >= 0) && at.every((v, i) => i === 0 || at[i - 1] < v);
+})());
+const planGap = buildPlanGap(src);
+ok('planGap تُبنى دالةً من نصّ الملف المشحون', typeof planGap === 'function');
+if (typeof planGap !== 'function') { console.error('✗ تعذّر بناء planGap من الملف المشحون'); process.exit(1); }
+ok('وعد الخطوة ٣: planGap معرَّفة ولا تُنادى · PACE_CFG معرَّف ولا يُقرأ (يُراجَع عند الوصل في ٤)',
+  (src.match(/planGap\(/g) || []).length === 1 && (src.match(/PACE_CFG/g) || []).length === 1);
+
+// العتبات: تُستخرج من الملف المشحون، وتُطابَق بالقيم الابتدائية المعتمدة حرفياً.
+// (‏extractBlock تُرجع المتن في `body` و`full` يحمل بادئة `const PACE_CFG = ` ⇒ يُقرأ المتن.)
+const cfgOf = (text) => {
+  const block = extractBlock(text, 'const PACE_CFG =');
+  if (!block) return null;
+  try { return new Function(`return ({${block.body}});`)(); } catch { return null; }
+};
+const shippedCfg = cfgOf(src);
+const CFG = { cutBelow: 0.6, isolated: 20, maxSpeedGap: 6, targetDwell: 1.0, rate: 3.0, maxDwell: 1.5 };
+ok('PACE_CFG يُستخرج كائناً من الملف المشحون', !!shippedCfg && typeof shippedCfg === 'object');
+if (!shippedCfg) { console.error('✗ تعذّر استخراج PACE_CFG'); process.exit(1); }
+ok('cutBelow: 0.6 حرفياً', /cutBelow: 0\.6,/.test(src));
+ok('isolated: 20 حرفياً', /isolated: 20,/.test(src));
+ok('maxSpeedGap: 6 حرفياً', /maxSpeedGap: 6,/.test(src));
+ok('targetDwell: 1.0 حرفياً', /targetDwell: 1\.0,/.test(src));
+ok('rate: 3.0 حرفياً (قرار المالك ٣×)', /rate: 3\.0,/.test(src));
+ok('maxDwell: 1.5 حرفياً', /maxDwell: 1\.5,/.test(src));
+ok('المستخرج = المعتمد (تطابق تام، ولا مفتاح زائد)', Object.keys(shippedCfg).length === Object.keys(CFG).length
+  && Object.keys(CFG).every((k) => shippedCfg[k] === CFG[k]));
+
+// حالات القرار: المدخل ⇒ المخرج (بالعتبات المستخرجة من الملف المشحون نفسه).
+const fmt = (r) => (!r ? 'undefined' : r.mode === 'speed' ? `speed ${r.rate}` : `${r.mode}/${r.reason}`);
+const eq = (got, want) => !!got && got.mode === want.mode
+  && (want.mode === 'speed' ? got.rate === want.rate && got.reason === undefined : got.reason === want.reason);
+const CASES = [
+  ['١) صغيرة 0.4s محفوظ 5/5 ⇒ cut/tiny', 0.4, 5, 5, { mode: 'cut', reason: 'tiny' }],
+  ['٢) القاعدة ١ تسبق ٢: صغيرة ومعزولة 0.4s محفوظ 60/60 ⇒ cut/tiny', 0.4, 60, 60, { mode: 'cut', reason: 'tiny' }],
+  ['٣) معزولة 2s محفوظ 20/20 ⇒ cut/isolated', 2, 20, 20, { mode: 'cut', reason: 'isolated' }],
+  ['٤) طويلة 7s محفوظ 3/3 ⇒ cut/long', 7, 3, 3, { mode: 'cut', reason: 'long' }],
+  ['٥) طويلة ومعزولة 7s محفوظ 25/25 ⇒ cut/isolated (‏٢ تسبق ٣ نصّاً — والوسم cut في الحالتين)', 7, 25, 25, { mode: 'cut', reason: 'isolated' }],
+  ['٦) متوسطة متقاربة 2.4s محفوظ 2/2 ⇒ speed 2.4 (‏2.4 ÷ targetDwell 1.0)', 2.4, 2, 2, { mode: 'speed', rate: 2.4 }],
+  ['٧) على الحدّ تماماً: gap === cutBelow (0.6s) ⇒ لا tiny بل speed 1.2', 0.6, 0, 0, { mode: 'speed', rate: 1.2 }],
+  ['٨) على الحدّ تماماً: keptBefore === isolated و keptAfter أقل (20/19) ⇒ لا isolated بل speed 2', 2, 20, 19, { mode: 'speed', rate: 2 }],
+  ['٩) أرضية التسريع: 1s ⇒ rate 1.2 لا 1.0', 1, 0, 0, { mode: 'speed', rate: 1.2 }],
+  ['١٠) سقف التسريع: 3s ⇒ rate 3.0 لا أكثر', 3, 0, 0, { mode: 'speed', rate: 3 }],
+  ['١١) قاعدة ٤ dwell: 5s محفوظ 1/1 ⇒ cut/dwell (‏5÷3 = 1.667 > 1.5)', 5, 1, 1, { mode: 'cut', reason: 'dwell' }],
+];
+for (const [label, gap, keptBefore, keptAfter, want] of CASES) {
+  const got = planGap({ gap, keptBefore, keptAfter }, shippedCfg);
+  ok(label, eq(got, want), `أعاد ${fmt(got)} والمتوقَّع ${fmt(want)}`);
+}
+
+// شبكة قيم: الثابتان المطلوبان + الصيغة المعلنة + شكل القرار (وشبكة غير فارغة).
+const GRID_GAPS = [];
+for (let g = 0.6; g <= 6.0001; g += 0.1) GRID_GAPS.push(+g.toFixed(2));
+const GRID_KEPT = [[0, 0], [1, 1], [19, 19], [20, 19], [20, 20], [60, 60]];
+const GRID = [];
+for (const g of GRID_GAPS) for (const [b, a] of GRID_KEPT) GRID.push([g, planGap({ gap: g, keptBefore: b, keptAfter: a }, shippedCfg)]);
+const speeds = GRID.filter(([, r]) => r && r.mode === 'speed');
+const nG = GRID.length;
+ok(`الشبكة ${nG} حالة غير فارغة: speed ${speeds.length} و cut ${nG - speeds.length}`, speeds.length > 0 && speeds.length < nG);
+ok(`الشبكة ${nG} حالة: rate <= cfg.rate (3.0) دائماً`, speeds.every(([, r]) => r.rate <= shippedCfg.rate));
+ok(`الشبكة ${nG} حالة: rate >= 1.2 دائماً`, speeds.every(([, r]) => r.rate >= 1.2));
+ok(`الشبكة ${nG} حالة: rate = +min(rate, max(1.2, gap/targetDwell)).toFixed(2) دائماً`,
+  speeds.every(([g, r]) => r.rate === +Math.min(shippedCfg.rate, Math.max(1.2, g / shippedCfg.targetDwell)).toFixed(2)));
+ok(`الشبكة ${nG} حالة: شكل القرار — مفتاحان فقط، و cut بأحد الأسباب الأربعة، و speed بلا reason`,
+  GRID.every(([, r]) => !!r && Object.keys(r).length === 2
+    && (r.mode === 'cut' ? ['tiny', 'isolated', 'long', 'dwell'].includes(r.reason)
+      : r.mode === 'speed' && typeof r.rate === 'number' && r.reason === undefined)));
+
+console.log('\n=== ١٧) اختبارات سلبية لقرار الفجوة: كل مُفسَد يجب أن يُسقط الحارس ===');
+// «سقوط الحارس» = أن يفشل فحص واحد على الأقل من فحوص القسم ١٦ على نصّ المُفسَد نفسه:
+// فحوص العتبات (النصّية والمستخرجة) وفحوص القرار — لا مطابقة نصّية وحدها.
+const fellChecks = (text) => {
+  const out = [];
+  if (!/cutBelow: 0\.6,/.test(text)) out.push('فحص cutBelow النصّي');
+  if (!/rate: 3\.0,/.test(text)) out.push('فحص rate النصّي');
+  const cfg = cfgOf(text);
+  if (!cfg || !Object.keys(CFG).every((k) => cfg[k] === CFG[k])) out.push('مطابقة العتبات المستخرجة بالمعتمدة');
+  const f = buildPlanGap(text);
+  if (!f || !cfg) return out.concat('تعذّر بناء planGap من نصّ المُفسَد');
+  return out.concat(CASES.filter(([, gap, keptBefore, keptAfter, want]) => !eq(f({ gap, keptBefore, keptAfter }, cfg), want)).map(([label]) => label));
+};
+const planMuts = [
+  ['ل: تبديل ترتيب القاعدة ١ والقاعدة ٣', src.replace(
+    /if \(gap < cfg\.cutBelow\) return \{ mode: 'cut', reason: 'tiny' \};([\s\S]*?)if \(gap > cfg\.maxSpeedGap\) return \{ mode: 'cut', reason: 'long' \};/,
+    (_m, between) => RULE3 + between + RULE1), (s) => fellChecks(s).length > 0],
+  ['م: حذف قاعدة maxSpeedGap وحدها', src.replace(RULE3 + '\n', ''), (s) => fellChecks(s).length > 0],
+  ['ع: حذف قاعدة maxSpeedGap وشبكة maxDwell معاً ⇒ فجوة 7s تُسرَّع 3× بدل أن تُقطع',
+    src.replace(RULE3 + '\n', '').replace(RULE4, ''), (s) => fellChecks(s).length > 0],
+  ['ن: حذف شبكة maxDwell وحدها ⇒ فجوة 5s تُسرَّع 3× بدل أن تُقطع', src.replace(RULE4, ''), (s) => fellChecks(s).length > 0],
+  ['س: إبطال عتبة الصغر (cutBelow = 0.0)', src.replace('cutBelow: 0.6,', 'cutBelow: 0.0,'), (s) => fellChecks(s).length > 0],
+];
+for (const [label, mutant, trips] of planMuts) {
+  const fell = fellChecks(mutant);
+  ok(`مُفسَد ${label}`, mutant !== src);
+  ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && trips(mutant) === true);
+}
+
 console.log('');
 if (failures.length) {
   console.error(`✗ فشل ${failures.length} من ${checks} فحصاً:`);
   failures.forEach((f) => console.error(`   - ${f}`));
   process.exit(1);
 }
-console.log(`✓ ${checks} فحصاً ناجحاً / 0 فاشل — بوابة واحدة، ولا سحب للخلف، وإلحاق أمامي فقط.`);
+console.log(`✓ ${checks} فحصاً ناجحاً / 0 فاشل — بوابة واحدة: لا سحب للخلف على صوت يعمل إلا بتأكيد، وإلحاق أمامي فقط.`);
