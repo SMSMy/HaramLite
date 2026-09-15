@@ -115,6 +115,8 @@ docs/                دليل المساهمة
 
 [MIT](LICENSE) © 2026 HaramLite Contributors
 
+إشعارات الطرف الثالث — رخص كل ما يُوزَّع مع البرنامج ومصادره وإسناداته (FFmpeg · نموذج الفصل · yt-dlp · ONNX Runtime · الخطوط · مكتبات Rust): [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
+
 المشروع مستقل وغير مرتبط بجوجل أو يوتيوب. المستخدم مسؤول عن احترام حقوق المحتوى الذي يعالجه.
 
 ---
