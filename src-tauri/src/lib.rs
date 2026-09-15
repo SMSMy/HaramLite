@@ -599,6 +599,21 @@ fn get_settings(state: tauri::State<'_, AppState>) -> Result<serde_json::Value, 
     serde_json::to_value(&*s).map_err(|e| e.to_string())
 }
 
+/// Audit 2026-09-15 (٤.ب.١): the file is the source of truth, so publish to
+/// memory only **after** the write succeeded. Publishing first left a failed
+/// write with the running app ahead of the disk (new values in memory, old
+/// file on disk) and the error only reached `console.error` in the UI.
+fn persist_then_publish(
+    mem: &Mutex<settings::Settings>,
+    new: &settings::Settings,
+    save: impl FnOnce(&settings::Settings) -> Result<(), String>,
+) -> Result<(), String> {
+    save(new)?;
+    let mut cur = mem.lock().map_err(|e| e.to_string())?;
+    *cur = new.clone();
+    Ok(())
+}
+
 /// Sprint D1/D2: persist settings, notify the UI, and apply watch-folder
 /// changes immediately (start/stop/restart the watcher thread).
 #[tauri::command]
@@ -631,11 +646,9 @@ fn set_settings(
     }
     let new: settings::Settings = serde_json::from_value(value).map_err(|e| e.to_string())?;
     let app_data = paths::data_dir();
-    {
-        let mut cur = state.settings.lock().map_err(|e| e.to_string())?;
-        *cur = new.clone();
-    }
-    settings::save(&app_data, &new).map_err(|e| e.to_string())?;
+    persist_then_publish(&state.settings, &new, |s| {
+        settings::save(&app_data, s).map_err(|e| e.to_string())
+    })?;
     watch_service::apply_settings(&new);
     telegram::apply_settings(&new);
     // Tray labels follow the app language (no-op when nothing moved).
@@ -1147,5 +1160,29 @@ mod p2_tests {
         std::fs::write(&user, b"z").unwrap();
         assert!(!take_tracked_download(&set, &user));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Negative test for ٤.ب.١: a write that fails must leave memory exactly
+    /// as it was (before the fix, memory was published first, so a failed
+    /// write silently desynced the running app from the file on disk).
+    #[test]
+    fn a_failed_settings_write_never_reaches_memory() {
+        let mem = Mutex::new(settings::Settings::default());
+        assert_eq!(mem.lock().unwrap().lang, "ar", "fixture starts on the default");
+
+        let next = settings::Settings { lang: "en".into(), ..Default::default() };
+
+        let failed = persist_then_publish(&mem, &next, |_| Err("disk full".into()));
+        assert!(failed.is_err(), "the write error must surface, not be swallowed");
+        assert_eq!(
+            mem.lock().unwrap().lang,
+            "ar",
+            "memory must still hold the old value after a failed write"
+        );
+
+        // and the happy path still publishes (the guard must not block writes)
+        let ok = persist_then_publish(&mem, &next, |_| Ok(()));
+        assert!(ok.is_ok());
+        assert_eq!(mem.lock().unwrap().lang, "en");
     }
 }
