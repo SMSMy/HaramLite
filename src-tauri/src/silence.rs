@@ -281,7 +281,7 @@ mod tests {
         let sr = 44100u32;
         let n = sr as usize * 2;
         let mut l = vec![0.5f32; n]; // loud and constant: nothing may be cut
-        let mut r = l.clone();
+        let r = l.clone();
         for v in l.iter_mut().take(n / 5) {
             *v = f32::NAN; // 20% of the samples ⇒ ~20% of the 50 ms windows
         }
