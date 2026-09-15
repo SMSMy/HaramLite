@@ -14,11 +14,11 @@ import {
   pushSettings,
   seedSettings,
   setAutostartAsked,
-  setRefreshWatchUi,
   setTelegramApiHash,
   setTelegramToken,
   type RustSettings,
 } from './settings';
+import { wireWatchSettings } from './watch';
 
 /* ── global state ───────────────────────────────────────────────────── */
 let currentMediaPath = '';
@@ -33,95 +33,6 @@ let previewEnabled = false;
 let previewSeconds = 15;
 let appVersion = '';
 
-
-/* ── watch folder wiring (Sprint D2) ────────────────────────────────── */
-function wireWatchSettings(): void {
-  const cb = document.getElementById('setting-watch') as HTMLInputElement | null;
-  if (!cb) return;
-  const opts = document.getElementById('watch-options');
-  const pathEl = document.getElementById('watch-path');
-  const statusEl = document.getElementById('watch-status');
-  const modeSel = document.getElementById('watch-mode') as HTMLSelectElement | null;
-  const maxInput = document.getElementById('watch-max-size') as HTMLInputElement | null;
-  const rescanInput = document.getElementById('watch-rescan') as HTMLInputElement | null;
-
-  const sync = () => {
-    const on = cb.checked;
-    const path = localStorage.getItem('hl.watch_path') || '';
-    opts?.classList.toggle('hidden', !on);
-    document.getElementById('btn-watch-cancel')?.classList.toggle('hidden', !on);
-    if (pathEl) pathEl.textContent = path || (on ? t('watch_no_folder') : '');
-    if (statusEl) {
-      const hasPath = !!path;
-      statusEl.textContent = on
-        ? (hasPath ? `${t('watch_status_on')} ✓` : t('watch_no_folder'))
-        : t('watch_status_off');
-      statusEl.className = on && hasPath
-        ? 'font-label-sm text-label-sm text-tertiary'
-        : 'font-label-sm text-label-sm text-warn-yellow';
-    }
-  };
-
-  cb.checked = localStorage.getItem('hl.watch') === '1';
-  cb.addEventListener('change', () => {
-    localStorage.setItem('hl.watch', cb.checked ? '1' : '0');
-    pushSettings();
-    sync();
-  });
-
-  document.getElementById('btn-watch-folder')?.addEventListener('click', async () => {
-    const picked = await dialog.open({ directory: true });
-    if (typeof picked === 'string' && picked) {
-      localStorage.setItem('hl.watch_path', picked);
-      pushSettings();
-      sync();
-    }
-  });
-
-  if (modeSel) {
-    modeSel.value = localStorage.getItem('hl.watch_mode') || 'song';
-    modeSel.addEventListener('change', () => {
-      localStorage.setItem('hl.watch_mode', modeSel.value);
-      pushSettings();
-    });
-  }
-  if (maxInput) {
-    maxInput.value = localStorage.getItem('hl.watch_max_mb') || '2048';
-    maxInput.addEventListener('change', () => {
-      localStorage.setItem('hl.watch_max_mb', maxInput.value || '2048');
-      pushSettings();
-    });
-  }
-  if (rescanInput) {
-    rescanInput.value = localStorage.getItem('hl.watch_rescan') || '60';
-    rescanInput.addEventListener('change', () => {
-      localStorage.setItem('hl.watch_rescan', rescanInput.value || '60');
-      pushSettings();
-    });
-  }
-
-  document.getElementById('btn-watch-cancel')?.addEventListener('click', () => {
-    invoke('cancel_watch_file').catch((e) => console.error('cancel_watch_file failed', e));
-  });
-
-  // live events from the Rust watch service
-  void listen<{ path: string; reason: string }>('watch-skip', (ev) => {
-    showToast(`⏭ ${ev.payload.path} — ${ev.payload.reason}`);
-    invoke('push_log', { level: 'warn', message: `watch skip: ${ev.payload.path}: ${ev.payload.reason}` });
-  });
-  void listen<{ path: string; ok: boolean; seconds?: number; error?: string }>('watch-done', (ev) => {
-    const p = ev.payload;
-    showToast(p.ok ? `✓ ${t('watch_toast_done')}: ${p.path}` : `✗ ${t('watch_toast_fail')}: ${p.path}`);
-    if (localStorage.getItem('hl.notify') === '1') playDing();
-    invoke('push_log', {
-      level: p.ok ? 'info' : 'error',
-      message: p.ok ? `watch done: ${p.path} (${p.seconds?.toFixed(1)}s)` : `watch failed: ${p.path}: ${p.error}`,
-    });
-  });
-
-  setRefreshWatchUi(sync);
-  sync();
-}
 
 /** Render a verdict line as PLAIN TEXT. Never accepts markup: error messages
  *  embed backend text / file paths (e.g. failed probe_media), so innerHTML
