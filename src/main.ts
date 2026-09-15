@@ -71,7 +71,6 @@ const i18n = {
     notify_fail: 'فشلت المعالجة',
     notify_batch_done: 'اكتملت الدفعة',
     btn_repair: 'فحص وإصلاح المكونات',
-    btn_upd: 'التحقق من التحديثات',
     repair_title: 'مكوّنات ناقصة',
     repair_desc: 'بعض مكوّنات التشغيل مفقودة (حذف يدوي أو نسخة محمولة). سيتم تنزيلها تلقائياً من GitHub والتحقق من بصمتها قبل التثبيت.',
     repair_all: 'إصلاح الكل',
@@ -79,13 +78,10 @@ const i18n = {
     repair_one: 'إصلاح',
     repair_done: 'تم الإصلاح بنجاح',
     repair_all_ok: 'كل المكونات موجودة ✓',
-    upd_checking: 'جارٍ التحقق من التحديثات...',
-    upd_none: 'أنت على أحدث إصدار ✓',
+    // Audit 2026-09-15 (٤.ب.٣): the manual updater button and its strings are
+    // gone — no latest.json is published (createUpdaterArtifacts:false), so the
+    // button could only ever fail. silentUpdateCheck still uses this one.
     upd_avail: 'يتوفر تحديث جديد:',
-    upd_ask: 'تنزيله وتثبيته الآن؟',
-    upd_downloaded: 'تم تثبيت التحديث — أعد تشغيل التطبيق',
-    upd_error: 'تعذر التحقق من التحديث',
-    upd_portable_note: 'ملاحظة: التحديث الذاتي والإشعارات النظامية يتطلبان التثبيت عبر المثبت — النسخة المحمولة تستخدم صفحة الإصدارات.',
     watch_enable: 'تفعيل مجلد المراقبة',
     watch_pick: 'اختيار المجلد',
     watch_mode_label: 'وضع المعالجة:',
@@ -198,7 +194,6 @@ const i18n = {
     notify_fail: 'Processing failed',
     notify_batch_done: 'Batch complete',
     btn_repair: 'Check & repair components',
-    btn_upd: 'Check for updates',
     repair_title: 'Missing components',
     repair_desc: 'Some runtime components are missing (manual deletion or a portable copy). They will be downloaded from GitHub and hash-verified before installation.',
     repair_all: 'Repair all',
@@ -206,13 +201,7 @@ const i18n = {
     repair_one: 'Repair',
     repair_done: 'Repaired successfully',
     repair_all_ok: 'All components present ✓',
-    upd_checking: 'Checking for updates…',
-    upd_none: 'You are up to date ✓',
     upd_avail: 'Update available:',
-    upd_ask: 'Download and install now?',
-    upd_downloaded: 'Update installed — restart the app',
-    upd_error: 'Update check failed',
-    upd_portable_note: 'Note: self-update and system notifications require the installer build — portable copies use the releases page.',
     watch_enable: 'Enable watch folder',
     watch_pick: 'Choose folder',
     watch_mode_label: 'Processing mode:',
@@ -2034,41 +2023,11 @@ async function autoHealthCheck(): Promise<void> {
   }
 }
 
-/* ── auto-updater (Sprint C2) ───────────────────────────────────────── */
-let updateCheckRunning = false;
-async function manualUpdateCheck(): Promise<void> {
-  if (updateCheckRunning) return;
-  updateCheckRunning = true;
-  showToast(t('upd_checking'));
-  try {
-    const update = await checkUpdate();
-    if (!update) {
-      showToast(t('upd_none'));
-      return;
-    }
-    const ok = window.confirm(`${t('upd_avail')} v${update.version}\n\n${t('upd_ask')}`);
-    if (!ok) return;
-    showToast(t('upd_checking'));
-    let received = 0;
-    let total = 0;
-    await update.downloadAndInstall((ev) => {
-      if (ev.event === 'Started') {
-        total = (ev.data as { contentLength?: number }).contentLength ?? 0;
-      } else if (ev.event === 'Progress') {
-        received += (ev.data as { chunkLength: number }).chunkLength;
-        const pct = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 0;
-        showToast(`${t('upd_checking')} ${pct}%`);
-      }
-    });
-    showToast(t('upd_downloaded'));
-  } catch (e) {
-    const msg = String(e);
-    invoke('push_log', { level: 'warn', message: `update check failed: ${msg}` });
-    showToast(`${t('upd_error')}: ${msg.slice(0, 100)}`);
-  } finally {
-    updateCheckRunning = false;
-  }
-}
+/* ── update check (Sprint C2) ───────────────────────────────────────── */
+// Audit 2026-09-15 (٤.ب.٣): the manual check (button + confirm + install
+// prompts) was removed together with its button — it could only ever fail,
+// because no latest.json is published while createUpdaterArtifacts is false.
+// What remains is the boot check below, which is silent by design.
 async function silentUpdateCheck(): Promise<void> {
   try {
     const update = await checkUpdate();
@@ -2080,9 +2039,6 @@ async function silentUpdateCheck(): Promise<void> {
     // dev / portable builds — expected, never fatal
     invoke('push_log', { level: 'debug', message: `update check unavailable: ${String(e).slice(0, 120)}` });
   }
-}
-function wireUpdater(): void {
-  document.getElementById('btn-check-update')?.addEventListener('click', () => void manualUpdateCheck());
 }
 
 /* ── live player surface (v1 songs scope) ─────────────────────────── */
@@ -2913,7 +2869,6 @@ function wire(): void {
   wireAbout();
   wireReport();
   wireRepair();
-  wireUpdater();
   wireWatchSettings();
   wireBridge();
   wireAutostart();
