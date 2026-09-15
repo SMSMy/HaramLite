@@ -1867,7 +1867,7 @@ function fillAbout(): void {
   const body = document.getElementById('about-body');
   if (!body) return;
   const credits: Credit[] = [
-    { name: 'UVR-MDX-NET-Voc_FT', ar: 'نموذج الفصل (63MB، تشغيل محلي كامل)', en: 'separation model (63MB, fully local)' },
+    { name: 'UVR-MDX-NET-Voc_FT — Ultimate Vocal Remover', url: 'https://github.com/Anjok07/ultimatevocalremovergui', ar: 'نموذج الفصل (63MB، تشغيل محلي كامل) من Ultimate Vocal Remover — Anjok07 و aufr33، بترخيص MIT', en: 'separation model (63MB, fully local) by Ultimate Vocal Remover — Anjok07 & aufr33, MIT-licensed' },
     { name: 'ONNX Runtime', ar: 'محرك الاستدلال (CPU / DirectML / CUDA)', en: 'inference engine (CPU / DirectML / CUDA)' },
     { name: 'FFmpeg / ffprobe', ar: 'الفحص والمعالجة والترميز', en: 'probing, processing and encoding' },
     { name: 'yt-dlp', ar: 'تنزيل الوسائط', en: 'media downloads' },

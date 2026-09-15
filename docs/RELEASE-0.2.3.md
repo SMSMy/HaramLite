@@ -71,4 +71,9 @@ yt-dlp (قابل للتعطيل)، فحص التحديثات، وبوت تيلي
 [`THIRD-PARTY-NOTICES.md`](https://github.com/SMSMy/HaramLite/blob/main/THIRD-PARTY-NOTICES.md) —
 ومنها: **FFmpeg** (‏GPLv3 — والمصدر المقابل متاح عند الطلب) · **نموذج الفصل** من
 Ultimate Vocal Remover (‏MIT — Anjok07 & aufr33) · **yt-dlp** (‏Unlicense) ·
-**ONNX Runtime** (‏MIT).
+**ONNX Runtime** (‏MIT). ونصّ رخصة GPLv3 يُشحن مع البرنامج في مجلد `licenses`.
+
+ورخصة **NVIDIA CUDA** — البند **1.1.2 «Distribution Requirements»** — تنطبق على أصول
+التسريع التي ينزّلها معالج الإصلاح من إصدار
+[`assets-v1`](https://github.com/SMSMy/HaramLite/releases/tag/assets-v1) (‏CUDA 12.8.2 ·
+cuDNN 9.12.0 · ONNX Runtime CUDA provider 1.22.0)؛ وتفاصيلها في ملف الإشعارات أعلاه.
