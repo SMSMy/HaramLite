@@ -746,11 +746,22 @@ fn download_media_inner(
     }
 
     use std::io::BufRead;
-    let stdout = child
-        .lock()
-        .ok()
-        .and_then(|mut c| c.stdout.take())
-        .expect("stdout piped");
+    // Audit 2026-09-15 (٢.أ): كان `.expect("stdout piped")` في مسار الإنتاج —
+    // أي تغيير لاحق في `spawn` (إسقاط `.stdout(Stdio::piped())` مثلاً) يحوّل
+    // خطأً معالَجاً إلى panic في واجهة المستخدم. صار خطأً نظيفاً، ومع قتل
+    // الشجرة أولاً بنفس قاعدة مسار خطأ القراءة أدناه: لا نُيتّم yt-dlp أبداً.
+    let stdout = match child.lock().ok().and_then(|mut c| c.stdout.take()) {
+        Some(s) => s,
+        None => {
+            if let Ok(mut c) = child.lock() {
+                kill_tree(c.id());
+                let _ = c.wait();
+            }
+            return Err(YtError::Io(
+                "stdout غير موصول — راجع stdio في spawn".into(),
+            ));
+        }
+    };
     let mut reader = std::io::BufReader::new(stdout);
 
     // Raw byte lines + lossy decode: YouTube titles / console codepages break

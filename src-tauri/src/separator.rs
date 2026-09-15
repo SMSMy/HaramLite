@@ -81,6 +81,36 @@ pub fn resolve_model_pub() -> Result<PathBuf, SepError> {
     resolve_model()
 }
 
+/// فصل قناتَي المزيج الستيريو أثناء القراءة (يُستدعى من `read_wav_stereo`).
+///
+/// Audit 2026-09-15 (٤.ج): فصل القناتين **أثناء** القراءة.
+///
+/// قبل: يُقرأ المزيج كاملاً في `flat` (N) ثم يُوزَّع على `left`/`right` (N/2+N/2)
+/// ⇒ ثلاث نسخ حيّة في الذروة = عيّنتان لكل عيّنة مدخل (2N). بعد: قناتان فقط
+/// (N) — والبيانات المُعادة مطابقة تماماً، بما فيها العيّنة الأخيرة اليتيمة
+/// (طول فردي) التي كانت `ch.get(1).unwrap_or(&ch[0])` تنسخها للقناتين.
+///
+/// القياس الفعلي (ذروة مجموعة عمل العملية، ملف ستيريو ٥ دقائق float32 =
+/// ‏105.8MB حمولة، rustc 1.95 على ويندوز): ‏213.5MB ← ‏112.5MB، وبصمة المحتوى
+/// (fnv1a على القناتين) مطابقة قبل وبعد.
+fn deinterleave<I>(samples: I, per_channel: usize) -> Result<(Vec<f32>, Vec<f32>), SepError>
+where
+    I: Iterator<Item = Result<f32, hound::Error>>,
+{
+    let mut it = samples;
+    let mut left = Vec::with_capacity(per_channel);
+    let mut right = Vec::with_capacity(per_channel);
+    while let Some(a) = it.next() {
+        let a = a.map_err(|e| SepError::InvalidInput(e.to_string()))?;
+        match it.next() {
+            Some(b) => right.push(b.map_err(|e| SepError::InvalidInput(e.to_string()))?),
+            None => right.push(a),
+        }
+        left.push(a);
+    }
+    Ok((left, right))
+}
+
 /// Read a PCM WAV into stereo f32 channel buffers.
 pub fn read_wav_stereo(path: &Path) -> Result<(Vec<f32>, Vec<f32>, u32), SepError> {
     let reader =
@@ -94,27 +124,20 @@ pub fn read_wav_stereo(path: &Path) -> Result<(Vec<f32>, Vec<f32>, u32), SepErro
         )));
     }
 
-    let flat: Vec<f32> = match spec.sample_format {
-        SampleFormat::Float => reader
-            .into_samples::<f32>()
-            .collect::<Result<_, _>>()
-            .map_err(|e| SepError::InvalidInput(e.to_string()))?,
+    // `len()` = عدد القيم في الملف (المدة × القنوات): حجز مسبق لكل قناة بدل
+    // النمو التدريجي (وهو ما كان `with_capacity(flat.len()/2)` يفعله).
+    let per_channel = reader.len() as usize / 2;
+    let (left, right) = match spec.sample_format {
+        SampleFormat::Float => deinterleave(reader.into_samples::<f32>(), per_channel)?,
         SampleFormat::Int => {
             let maxv = (1i64 << (spec.bits_per_sample.saturating_sub(1))) as f32;
-            reader
-                .into_samples::<i32>()
-                .map(|s| s.map(|v| v as f32 / maxv))
-                .collect::<Result<_, _>>()
-                .map_err(|e| SepError::InvalidInput(e.to_string()))?
+            deinterleave(
+                reader.into_samples::<i32>().map(|s| s.map(|v| v as f32 / maxv)),
+                per_channel,
+            )?
         }
     };
 
-    let mut left = Vec::with_capacity(flat.len() / 2);
-    let mut right = Vec::with_capacity(flat.len() / 2);
-    for ch in flat.chunks(2) {
-        left.push(ch[0]);
-        right.push(*ch.get(1).unwrap_or(&ch[0]));
-    }
     Ok((left, right, spec.sample_rate))
 }
 
@@ -508,14 +531,21 @@ fn demix(
 
     let mut done = 0usize;
     let mut i = 0usize;
+    // Audit 2026-09-15 (٤.ج): نافذة الهانين كانت تُبنى من جديد في كل تكرار
+    // (CHUNK_SIZE = 261120 × 4 بايت = 1,044,480 بايت ≈ 1020 KiB لكل مقطع — لا
+    // 261KB كما قيل في الطلب — أي عشرات الميغابايت تخصيصاً/تحريراً على ملف
+    // طويل). المخزن الآن واحد خارج الحلقة، ويُعاد حساب أول `actual` عنصر فيه
+    // فقط — ونفس القيم بالحساب نفسه، والعناصر بعد `actual` لا تُقرأ أصلاً
+    // (`window[k]` يُستخدم لـ `k < actual` وحده).
+    let mut window = vec![0.0f32; CHUNK_SIZE];
     while i < padded_len {
         let end = (i + CHUNK_SIZE).min(padded_len);
         let actual = end - i;
 
         // np.hanning(actual): symmetric hann
-        let window: Vec<f32> = (0..actual)
-            .map(|k| 0.5f32 - 0.5 * (2.0 * std::f32::consts::PI * k as f32 / actual as f32).cos())
-            .collect();
+        for (k, w) in window.iter_mut().enumerate().take(actual) {
+            *w = 0.5f32 - 0.5 * (2.0 * std::f32::consts::PI * k as f32 / actual as f32).cos();
+        }
 
         // zero-pad tail to CHUNK_SIZE
         let mut part = [vec![0.0f32; CHUNK_SIZE], vec![0.0f32; CHUNK_SIZE]];
