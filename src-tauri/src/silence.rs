@@ -63,7 +63,16 @@ pub fn compute_kept_ranges(l: &[f32], r: &[f32], sr: u32, cfg: &SilenceConfig) -
     // adaptive threshold: 90th percentile × factor, clamped by absolute floor.
     // Audit 2026-09-03: total_cmp can never panic (the old partial_cmp unwrap
     // died on one NaN and took the whole bridge/watch thread with it).
-    let mut sorted = rms.clone();
+    // Audit 2026-09-15 (٤.ب.٨): non-finite windows are deliberately LOUD (see
+    // window_rms) and must not vote in the percentile. They used to: ~10% of
+    // them pushed p90 to +inf, the threshold became +inf, and every *finite*
+    // window then counted as silence — the real audio was cut to slivers while
+    // the rogue region was kept. With no finite window there is nothing to
+    // measure, so nothing is cut (empty ⇒ "no cuts", see cut_silence_with_ranges).
+    let mut sorted: Vec<f32> = rms.iter().copied().filter(|v| v.is_finite()).collect();
+    if sorted.is_empty() {
+        return Vec::new();
+    }
     sorted.sort_by(|a, b| a.total_cmp(b));
     let p90 = sorted.get((sorted.len() as f32 * 0.9) as usize).copied().unwrap_or(1.0);
     let floor = 10f32.powf(cfg.absolute_floor_db / 20.0);
@@ -261,6 +270,33 @@ mod tests {
         assert!((removed - 1.0 / 3.0).abs() < 0.08, "removed={removed}");
         assert!(l.iter().all(|v| v.is_finite()));
         assert!(l.len() < sr as usize * 5, "must shrink");
+    }
+
+    /// Negative test for ٤.ب.٨: rogue non-finite windows must not poison the
+    /// adaptive threshold. Before the fix ~10% of them pushed the 90th
+    /// percentile to +inf, so every finite window counted as silence: the real
+    /// audio was cut away and the rogue region was kept.
+    #[test]
+    fn non_finite_windows_never_poison_the_threshold() {
+        let sr = 44100u32;
+        let n = sr as usize * 2;
+        let mut l = vec![0.5f32; n]; // loud and constant: nothing may be cut
+        let mut r = l.clone();
+        for v in l.iter_mut().take(n / 5) {
+            *v = f32::NAN; // 20% of the samples ⇒ ~20% of the 50 ms windows
+        }
+
+        let kept = compute_kept_ranges(&l, &r, sr, &SilenceConfig::default());
+
+        assert!(
+            kept.is_empty(),
+            "a loud file must not be cut at all (empty ⇒ no cuts); got {} ranges",
+            kept.len()
+        );
+
+        // All-non-finite input is "nothing to measure", not "everything silent".
+        let bad = vec![f32::INFINITY; n];
+        assert!(compute_kept_ranges(&bad, &bad, sr, &SilenceConfig::default()).is_empty());
     }
 
     #[test]
