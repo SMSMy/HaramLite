@@ -19,19 +19,7 @@ import {
   type RustSettings,
 } from './settings';
 import { wireWatchSettings } from './watch';
-
-/* ── global state ───────────────────────────────────────────────────── */
-let currentMediaPath = '';
-let lastProbeOk = false;
-let currentMode: 'song' | 'clip' = 'song';
-let batchQueue: string[] = [];
-let batchRunning = false;
-let singleRunning = false; // F-4: the separate button doubles as cancel
-
-/* ── quick preview (Sprint B1) ──────────────────────────────────────── */
-let previewEnabled = false;
-let previewSeconds = 15;
-let appVersion = '';
+import * as session from './session';
 
 
 /** Render a verdict line as PLAIN TEXT. Never accepts markup: error messages
@@ -104,14 +92,14 @@ async function runProbe(rawPath?: string): Promise<MediaInfo | null> {
   const target = rawPath ?? pathInputEl().value;
   const validated = await validatePath(target);
   const v = probeEl();
-  lastProbeOk = false;
+  session.setLastProbeOk(false);
   sepBtnEl().disabled = true;
 
   if (!validated.ok) return null;
-  currentMediaPath = validated.path;
+  session.setCurrentMediaPath(validated.path);
 
   try {
-    const info = await invoke<MediaInfo>('probe_media', { path: currentMediaPath });
+    const info = await invoke<MediaInfo>('probe_media', { path: session.getCurrentMediaPath() });
     if (!info.has_audio) {
       setVerdict(v!, t('err_no_audio'), true);
       return null;
@@ -131,10 +119,10 @@ async function runProbe(rawPath?: string): Promise<MediaInfo | null> {
     const outKind = (kindSel?.dataset.kind as 'audio' | 'video') ?? 'video';
     setVerdictHtml(v!, verdictHtml(outKind), false);
 
-    lastProbeOk = true;
+    session.setLastProbeOk(true);
     sepBtnEl().disabled = false;
 
-    invoke('push_log', { level: 'info', message: `probe ok: ${currentMediaPath}` });
+    invoke('push_log', { level: 'info', message: `probe ok: ${session.getCurrentMediaPath()}` });
     return info;
   } catch (e) {
     setVerdict(v!, String(e), true);
@@ -211,14 +199,14 @@ function wireModes(): void {
   const sepLabel = document.getElementById('sep-label');
   cards.forEach((card) => {
     card.addEventListener('click', () => {
-      currentMode = (card.dataset.mode as 'song' | 'clip') ?? 'song';
+      session.setCurrentMode((card.dataset.mode as 'song' | 'clip') ?? 'song');
       cards.forEach((c) => c.classList.toggle('selected', c === card));
       if (sepLabel) {
-        const key = currentMode === 'song' ? 'btn_sep_song' : 'btn_sep_clip';
+        const key = session.getCurrentMode() === 'song' ? 'btn_sep_song' : 'btn_sep_clip';
         sepLabel.dataset.i18n = key;
         sepLabel.innerHTML = t(key);
       }
-      invoke('push_log', { level: 'info', message: `mode → ${currentMode}` });
+      invoke('push_log', { level: 'info', message: `mode → ${session.getCurrentMode()}` });
       refreshPreviewHint();
     });
   });
@@ -232,7 +220,7 @@ function refreshPreviewHint(): void {
   if (!toggle || !sel || !hint) return;
   sel.classList.toggle('hidden', !toggle.checked);
   hint.textContent = toggle.checked
-    ? (currentMode === 'song' ? t('preview_hint_song') : t('preview_hint_clip'))
+    ? (session.getCurrentMode() === 'song' ? t('preview_hint_song') : t('preview_hint_clip'))
     : '';
 }
 function wirePreview(): void {
@@ -240,23 +228,23 @@ function wirePreview(): void {
   const sel = document.getElementById('preview-duration') as HTMLSelectElement | null;
   if (!toggle || !sel) return;
   toggle.addEventListener('change', () => {
-    previewEnabled = toggle.checked;
-    localStorage.setItem('hl.preview', previewEnabled ? '1' : '0');
+    session.setPreviewEnabled(toggle.checked);
+    localStorage.setItem('hl.preview', session.getPreviewEnabled() ? '1' : '0');
     pushSettings();
     refreshPreviewHint();
   });
   sel.addEventListener('change', () => {
-    previewSeconds = Number(sel.value) || 15;
-    localStorage.setItem('hl.preview_seconds', String(previewSeconds));
+    session.setPreviewSeconds(Number(sel.value) || 15);
+    localStorage.setItem('hl.preview_seconds', String(session.getPreviewSeconds()));
     pushSettings();
   });
   // restore persisted state
   toggle.checked = localStorage.getItem('hl.preview') === '1';
-  previewEnabled = toggle.checked;
+  session.setPreviewEnabled(toggle.checked);
   const saved = Number(localStorage.getItem('hl.preview_seconds'));
   if (saved === 10 || saved === 15 || saved === 30) {
     sel.value = String(saved);
-    previewSeconds = saved;
+    session.setPreviewSeconds(saved);
   }
   refreshPreviewHint();
 }
@@ -323,18 +311,18 @@ async function ingestFiles(files: string[]): Promise<void> {
     const info = await runProbe(files[0]);
     if (info) updateQualityOptions(info.has_video ? info.height ?? null : null);
     // Add to batch queue to show history visually
-    batchQueue = [files[0]];
+    session.setBatchQueue([files[0]]);
     renderBatchList();
     return;
   }
   
-  batchQueue = [...files];
+  session.setBatchQueue([...files]);
   renderBatchList();
-  setBatchCounter(0, batchQueue.length);
+  setBatchCounter(0, session.getBatchQueue().length);
   const kindSel = document.querySelector<HTMLElement>('.kind-card.selected');
   const outKind = (kindSel?.dataset.kind as 'audio' | 'video') ?? 'video';
   setVerdictHtml(probeEl(), verdictHtml(outKind), false);
-  invoke('push_log', { level: 'info', message: `batch queued: ${batchQueue.length} files` });
+  invoke('push_log', { level: 'info', message: `batch queued: ${session.getBatchQueue().length} files` });
 }
 
 function updateQualityOptions(srcHeight: number | null): void {
@@ -379,7 +367,7 @@ let batchAbort = false;
  *  starting. */
 async function stopBatch(): Promise<void> {
   batchAbort = true;
-  batchQueue = [];
+  session.setBatchQueue([]);
   batchStatus.clear();
   localStorage.removeItem('hl.batch');
   document.getElementById('batch-list')?.classList.add('hidden');
@@ -387,7 +375,7 @@ async function stopBatch(): Promise<void> {
   // Phantom-cancel fix: stopBatch runs on EVERY single-file ingest, and it
   // used to fire cancel_process (and its scary backend WARN line) even with
   // nothing running. Only signal when a job actually exists to abort.
-  if (!batchRunning && !singleRunning) return;
+  if (!session.getBatchRunning() && !session.getSingleRunning()) return;
   try {
     await invoke('cancel_process');
   } catch (e) {
@@ -412,7 +400,7 @@ function renderBatchList(): void {
   if (!ul) return;
   ul.classList.remove('hidden');
   ul.replaceChildren(
-    ...batchQueue.map((f) => {
+    ...session.getBatchQueue().map((f) => {
       const div = document.createElement('div');
       div.dataset.file = f;
       div.className = 'batch-item bg-coal-surface/40 border border-border-muted rounded p-stack-sm flex flex-col gap-unit opacity-60 transition-all duration-300 apple-ease cursor-default relative overflow-hidden';
@@ -454,7 +442,7 @@ function renderBatchList(): void {
     }),
   );
   batchStatus.clear();
-  for (const f of batchQueue) batchStatus.set(f, 'pending');
+  for (const f of session.getBatchQueue()) batchStatus.set(f, 'pending');
   saveBatchState();
 }
 
@@ -466,9 +454,9 @@ type BatchItemState = 'pending' | 'run' | 'ok' | 'fail';
 const batchStatus = new Map<string, BatchItemState>();
 function saveBatchState(): void {
   try {
-    if (batchQueue.length) {
+    if (session.getBatchQueue().length) {
       localStorage.setItem('hl.batch', JSON.stringify(
-        batchQueue.map((f) => ({ f, s: batchStatus.get(f) ?? 'pending' })),
+        session.getBatchQueue().map((f) => ({ f, s: batchStatus.get(f) ?? 'pending' })),
       ));
     } else localStorage.removeItem('hl.batch');
   } catch { /* storage full/blocked — queue simply stays volatile */ }
@@ -494,9 +482,9 @@ function restoreBatchState(): void {
     if (items.length) localStorage.removeItem('hl.batch');
     return;
   }
-  batchQueue = files;
+  session.setBatchQueue(files);
   renderBatchList();
-  setBatchCounter(0, batchQueue.length);
+  setBatchCounter(0, session.getBatchQueue().length);
   showToast(t('batch_restored', {
     count: files.length,
     skipped: skipped ? t('batch_restored_skipped', { skipped }) : '',
@@ -536,7 +524,7 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?:
       item.querySelector('.batch-pct')?.classList.add('hidden');
       item.querySelector('.batch-prog-wrap')?.classList.add('hidden');
       if (statusSpan) {
-          statusSpan.textContent = previewEnabled ? t('sep_done_preview') : t('sep_done_short');
+          statusSpan.textContent = session.getPreviewEnabled() ? t('sep_done_preview') : t('sep_done_short');
           statusSpan.className = 'status-text font-label-sm text-label-sm text-tertiary relative z-10 flex-1';
       }
       if (actionsDiv && resultPath) {
@@ -591,16 +579,6 @@ async function retryBatchItem(file: string): Promise<void> {
 }
 
 /* ── separation (single + batch) ────────────────────────────────────── */
-// Coalesce high-frequency backend events to one DOM paint per frame.
-const rafPending = new Set<string>();
-function coalesceRaf(key: string, fn: () => void): void {
-  if (rafPending.has(key)) return;
-  rafPending.add(key);
-  requestAnimationFrame(() => {
-    rafPending.delete(key);
-    fn();
-  });
-}
 type SepOpts = { outKind: 'audio' | 'video'; quality?: number; advFmt?: string };
 
 async function runSeparationFor(path: string, keepInst: boolean, o: SepOpts): Promise<SepResult> {
@@ -608,13 +586,13 @@ async function runSeparationFor(path: string, keepInst: boolean, o: SepOpts): Pr
   const res = await invoke<SepResult>('separate_file', {
     path,
     outDir: outDirOf(path),
-    mode: currentMode,
+    mode: session.getCurrentMode(),
     kind: o.outKind,
     quality: o.quality ?? null,
     format: o.advFmt ?? null,
     keepInstrumental: keepInst,
     useCuda: useCuda,
-    previewSeconds: previewEnabled ? previewSeconds : null,
+    previewSeconds: session.getPreviewEnabled() ? session.getPreviewSeconds() : null,
   });
   return res;
 }
@@ -652,7 +630,7 @@ function wireSeparate(): void {
   };
   void listen<number>('sep-progress', (ev) => {
     lastSepPct = ev.payload;
-    coalesceRaf('sep-progress', paintSepProgress);
+    session.coalesceRaf('sep-progress', paintSepProgress);
   });
 
   // Sprint C2: visible pipeline stages (توحيد ← فصل ← مؤثرات ← ترميز)
@@ -671,17 +649,17 @@ function wireSeparate(): void {
   };
   void listen<{ stage: string; pct: number }>('sep-stage', (ev) => {
     lastStage = ev.payload;
-    coalesceRaf('sep-stage', paintSepStage);
+    session.coalesceRaf('sep-stage', paintSepStage);
   });
 
   sepBtnEl()?.addEventListener('click', async () => {
-    if (batchRunning) {
+    if (session.getBatchRunning()) {
       // F-3: abort the file being processed NOW, not just the ones after it
       batchAbort = true;
       void invoke('cancel_process');
       return;
     }
-    if (singleRunning) {
+    if (session.getSingleRunning()) {
       // F-4: the separate button doubles as a cancel button for single runs
       void invoke('cancel_process');
       return;
@@ -694,25 +672,25 @@ function wireSeparate(): void {
     const quality = outKind === 'video' && qSel?.value ? Number(qSel.value) : undefined;
 
     // single-file fast path
-    if (batchQueue.length <= 1) {
-      if (!lastProbeOk || !currentMediaPath) {
+    if (session.getBatchQueue().length <= 1) {
+      if (!session.getLastProbeOk() || !session.getCurrentMediaPath()) {
         setVerdict(probeEl(), t('sep_need_file'), true);
         return;
       }
       lastSepOpts = { outKind, quality, advFmt };
-      await runOne(currentMediaPath, keepInst, { outKind, quality, advFmt }, result!);
+      await runOne(session.getCurrentMediaPath(), keepInst, { outKind, quality, advFmt }, result!);
       return;
     }
 
     // batch path
     lastSepOpts = { outKind, quality, advFmt };
-    batchRunning = true;
+    session.setBatchRunning(true);
     batchAbort = false;
     sepBtnEl().textContent = t('toggle_pause');
     const failures: string[] = [];
-    const total = batchQueue.length;
+    const total = session.getBatchQueue().length;
     let done = 0;
-    for (const f of batchQueue) {
+    for (const f of session.getBatchQueue()) {
       if (batchAbort) break;
       markBatchItem(f, 'run');
       setBatchCounter(done, total);
@@ -730,9 +708,9 @@ function wireSeparate(): void {
       done += 1;
       setBatchCounter(done, total);
     }
-    batchRunning = false;
+    session.setBatchRunning(false);
     sepBtnEl().disabled = false;
-    const key = currentMode === 'song' ? 'btn_sep_song' : 'btn_sep_clip';
+    const key = session.getCurrentMode() === 'song' ? 'btn_sep_song' : 'btn_sep_clip';
     sepBtnEl().innerHTML =
       `<span class="material-symbols-outlined transition-transform duration-300 apple-ease group-hover:rotate-12 group-hover:scale-110" data-icon="content_cut">content_cut</span>
        <span id="sep-label" data-i18n="${key}">${t(key)}</span>`;
@@ -762,7 +740,7 @@ async function runOne(
   result: HTMLElement,
 ): Promise<void> {
   const btn = sepBtnEl();
-  singleRunning = true;
+  session.setSingleRunning(true);
   const prevHtml = btn.innerHTML;
   btn.disabled = false; // F-4: stays clickable — it is now the cancel button
   btn.textContent = t('toggle_cancel');
@@ -787,7 +765,7 @@ async function runOne(
     invoke('push_log', { level: 'error', message: `separate failed: ${e}` });
     void notify(t('notify_fail'), fileBaseName(path));
   } finally {
-    singleRunning = false;
+    session.setSingleRunning(false);
     btn.disabled = false;
     btn.innerHTML = prevHtml;
   }
@@ -805,7 +783,7 @@ function wireUrlDownload(): void {
   let lastDlPct = 0;
   void listen<number>('dl-progress', (ev) => {
     lastDlPct = ev.payload;
-    coalesceRaf('dl-progress', () => {
+    session.coalesceRaf('dl-progress', () => {
       if (bar) bar.style.inlineSize = `${Math.round(lastDlPct * 100)}%`;
     });
   });
@@ -854,7 +832,7 @@ function wireOpenFolder(): void {
   const btn = document.getElementById('btn-open-folder');
   btn?.addEventListener('click', async () => {
     try {
-      let outDir = currentMediaPath ? outDirOf(currentMediaPath) : '';
+      let outDir = session.getCurrentMediaPath() ? outDirOf(session.getCurrentMediaPath()) : '';
       await invoke('open_folder', { path: outDir });
       invoke('push_log', { level: 'info', message: `Opened folder: ${outDir}` });
     } catch (e) {
@@ -1101,14 +1079,14 @@ function wireExtJobs(): void {
   // Global progress bars also move during bridge jobs — mirror them unless a
   // GUI job owns the bar right now (avoids cross-talk on overlap).
   void listen<number>('dl-progress', (ev) => {
-    if (singleRunning || batchRunning) return;
+    if (session.getSingleRunning() || session.getBatchRunning()) return;
     for (const job of extJobs.values()) {
       if (job.kind === 'bridge' && job.pct === null) job.pct = ev.payload * 0.2;
     }
     renderExtJobs();
   });
   void listen<number>('sep-progress', (ev) => {
-    if (singleRunning || batchRunning) return;
+    if (session.getSingleRunning() || session.getBatchRunning()) return;
     for (const job of extJobs.values()) {
       if (job.kind === 'bridge') job.pct = 0.2 + ev.payload * 0.8;
     }
@@ -1155,7 +1133,7 @@ function fillAbout(): void {
   body.innerHTML = `
     <div class="flex items-center gap-unit">
       <span class="font-bold text-clay-accent">HaramLite</span>
-      <span id="about-version" class="bg-clay-accent/20 text-clay-accent px-1.5 py-0.5 rounded font-bold">v${appVersion || '—'}</span>
+      <span id="about-version" class="bg-clay-accent/20 text-clay-accent px-1.5 py-0.5 rounded font-bold">v${session.getAppVersion() || '—'}</span>
     </div>
     <p>${t('about_dev')} ${link('smsmy', 'https://github.com/SMSMy/HaramLite')} — ${t('about_dev_rest')}</p>
     <div class="mt-2">
@@ -2321,7 +2299,7 @@ async function init(): Promise<void> {
   restoreBatchState();
   try {
     const info = await invoke<{ app: string; version: string }>('ping');
-    appVersion = info.version;
+    session.setAppVersion(info.version);
     const badge = document.getElementById('version-badge');
     if (badge) badge.title = `HaramLite ${info.version}`;
     if (badge) badge.textContent = `v${info.version}`;
