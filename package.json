@@ -15,6 +15,7 @@
     "tauri": "tauri",
     "settings:parity": "node scripts/check-settings-parity.cjs",
     "versions:check": "node scripts/verify-versions.cjs",
+    "ext:guard": "node scripts/check-extension-sync.cjs",
     "site:check": "node scripts/check-site-css.cjs && node scripts/check-site-pages.cjs && node scripts/check-site-tags.cjs && node scripts/check-site-arabic.cjs && node scripts/check-site-links.cjs"
   },
   "dependencies": {
