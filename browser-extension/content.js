@@ -8,10 +8,13 @@
 //      restores the original. Manual only — nothing auto-applies.
 // Filtered watching: page video muted + filtered audio element, playback
 // rate pinned at 1x on both sides (+ player API guard). The removed stretches
-// — the silence left by muting the music — are SKIPPED: the page video jumps
-// over each one while the filtered audio (which contains no such stretch)
-// plays on untouched, so both stay in step. Skipping is MANDATORY: there is
-// no user option to turn it off. Drift backstop without forced sync while
+// — the silence left by muting the music — are handled per gap, MANDATORILY
+// (no user option to turn it off): a NEARBY gap is SPEED UP (the audio, which
+// contains no such stretch, is held while the picture's rate is raised — no
+// seek at all, so no re-buffer and no frozen frame) and an isolated or long
+// one is still JUMPED over, with the audio playing on untouched. Both keep
+// picture and sound in step; a player that refuses the raised rate falls back
+// to the jump for that gap. Drift backstop without forced sync while
 // stopped, clean restore.
 // 1.1.4: never rewind freely-playing audio (kickAudio was ungated on every
 // play — YouTube fires play around our gap jumps; mapFullToCut is flat at the
@@ -461,10 +464,11 @@ function gapStats(kept, jumpThreshold) {
   return out;
 }
 
-// ── خطة «المشاهدة الأسلس» §٣ (docs/EXT-SMOOTH-PLAN.md): دالة قرار نقية لكل فجوة ──
-// الخطوة ٣: تُضاف الدالة وحدها، **غير موصولة بعد — الخطوة ٤ هي التي ستستدعيها** من
-// ماسح الفجوات/gapTick. لا نداء لها في هذا الملف، ولا حالة، ولا مؤقّت، ولا مستمع،
-// ولا تغيير في أي مسار تنفيذ قائم: **صفر سلوك** حتى تُوصَل.
+// ── خطة «المشاهدة الأسلس» §٣-٤ (docs/EXT-SMOOTH-PLAN.md): دالة قرار نقية لكل فجوة ──
+// الخطوة ٤: **موصولة الآن**. تُنادى من pacePlan — النداء الوحيد في هذا الملف — وpacePlan
+// يناديه ماسح الفجوات `armGapJump` عند التسليح و`gapTick` عند الدخول داخل فجوة أصلاً،
+// والقرار يُخزَّن في w.pace (`{ boundary, landing, rate }` للتسريع أو null للقطع) ويُنفَّذ
+// في وضع التسريع أدناه. العتبات **لا تُقرأ** إلا من pacePlan.
 // العتبات: `rate` = ٣× **قرار المالك رقم ٣** («*3 وقد تزيد لاحقا او تنقص حسب التجربه»)،
 // والبقية **ابتدائية تُضبط بالتجربة** («نجرب الى ان نصل المناسب») — ولا يُقال عن رقم
 // إنه «مقيس» قبل قياسه فعلاً على مقاطع حقيقية (§٣ سياسة الضبط).
@@ -479,7 +483,7 @@ const PACE_CFG = {
 
 // قرار فجوة واحدة من الخريطة وحدها: نقية، بلا حالة وبلا `video`/`audio`، وكل عتباتها
 // من `cfg` وحدها (لا مرجع إلى ثوابت الجدول داخلها) ⇒ يستخرجها الحارس ويختبرها معزولة
-// بلا متصفّح. لا تُنادى من أي مكان هنا — الوصل في الخطوة ٤.
+// بلا متصفّح. تُنادى من pacePlan وحدها (الخطوة ٤)، والقرار يُخزَّن في w.pace.
 // **عقد النداء كما في §٣**: يُمرَّر كائن الفجوة `{ gap, keptBefore, keptAfter }` ثم `cfg`.
 // والتفكيك **داخل الجسم** لا في الوسائط، ليبقى أول قوس في نصّ الدالة قوسَ متنها
 // فتستخرجها آلية الحارس القائمة (extractBlock) كما تُستخرج بقية الدوال النقية — بلا
@@ -499,6 +503,29 @@ function planGap(input, cfg) {
   const rate = Math.min(cfg.rate, Math.max(1.2, gap / cfg.targetDwell));
   if (gap / rate > cfg.maxDwell) return { mode: 'cut', reason: 'dwell' };
   return { mode: 'speed', rate: +rate.toFixed(2) };
+}
+
+// طول المقطع المحفوظ الذي يحيط فجوة: الذي يسبقها (ينتهي عند بدايتها) والذي يليها
+// (يبدأ عند نهايتها) — من الخريطة وحدها، نقية تماماً: بلا حالة وبلا `video`/`audio`
+// وبلا أي مرجع خارجي ⇒ يستخرجها الحارس ويشغّلها في رمل معزول بلا متصفّح.
+// والعقد **موضعيّ لا مفكَّك** (`(kept, gapStart, gapEnd)`) ليبقى أول قوس في نصّها قوسَ
+// متنها فتستخرجها آلية extractBlock القائمة كما تُستخرج بقية الدوال النقية — وتفكيك
+// الوسائط يجعل أول قوس قوسَ الوسائط فيسقط بناء الحارس كله بـSyntaxError (قيس ذلك).
+//   kept     : الخريطة (أزواج [بداية, نهاية] بالثواني على الخط الزمني الكامل)
+//   gapStart : بداية الفجوة (نهاية المقطع المحفوظ السابق لها)
+//   gapEnd   : نهاية الفجوة (بداية المقطع المحفوظ التالي لها)
+// تُرجع { before, after } بالثواني، وصفراً عن الجانب الذي لا مقطع له.
+function keptStretchAround(kept, gapStart, gapEnd) {
+  const out = { before: 0, after: 0 };
+  if (!kept || !kept.length) return out;
+  for (const pair of kept) {
+    const a = Number(pair[0]);
+    const b = Number(pair[1]);
+    if (!(b > a)) continue;
+    if (b <= gapStart) { out.before = b - a; continue; }
+    if (a >= gapEnd) { out.after = b - a; break; }
+  }
+  return out;
 }
 
   function pageVideo() {
@@ -595,6 +622,15 @@ function planGap(input, cfg) {
       stalled: false,   // المشغّل يتجمّد (إعادة تخزين بعد قفزتنا) والصوت يجب أن يُحتجَز
       pendingLead: null, // تقدّم ظهر مرة؛ لا يُصحَّح للخلف إلّا إن تكرّر
       loadLogged: false, // بوابة لمرّة واحدة: سطر قياس load لا يُصدَر إلّا مرة لكل جلسة مشاهدة
+      // ── وضع التسريع (الخطوة ٤، §٤) ──────────────────────────────────────────
+      // pace: قرار الفجوة — `{ boundary, landing, rate }` للتسريع أو null للقطع
+      // (سلوك اليوم). paceTimer: مؤقّت الخروج من التسريع، في **حقل منفصل** عن gapTimer
+      // لأن الماسح armGapJump يمسح gapTimer كل 250ms ⇒ مؤقّت خروج فيه كان يُمحى خلال
+      // ربع ثانية فيبقى الفيديو مسرَّعاً بلا نهاية. selfRate: المعدّل الذي كتبناه نحن،
+      // لتمييز حدث ratechange الذي ولّدته كتابتنا عن إعادة الموقع للمعدّل (سقوط إلى
+      // القطع). وprevRate **لا يُكتب فيه معدّل التسريع أبداً**: يُلتقط عند بدء المراقبة
+      // وتستعيده stopWatch.
+      pace: null, paceTimer: 0, selfRate: null,
     };
     const SELF_SEEK_MS = 1200; // كان 600؛ مشغّل ثقيل قد يتأخّر play أكثر من ذلك
     const on = (el, ev, fn) => { el.addEventListener(ev, fn); w.handlers.push([el, ev, fn]); };
@@ -679,6 +715,11 @@ function planGap(input, cfg) {
       // play حول قفزتنا: يوتيوب يطلق play/playing بعد الإسناد. الخريطة مسطّحة
       // عند الحدّ ⇒ audioPos() = الدرزة، والصوت قد تقدّم ⇒ سحب للخلف = تكرار.
       // لا نُرسي إلا صوتاً متوقفاً وخارج نافذة selfSeek (بدء المشاهدة / قفزة مستخدم).
+      // و**التسريع يملك الصوت**: محتجَز بقصد حتى نهاية الفجوة، فإرساؤه أو استئنافه هنا
+      // (و`play` في آخر هذه الدالة غير مشروط) يُسمعه مقدَّماً على صورة مسرَّعة ثم يعيده
+      // خروج التسريع إلى الدرزة ⇒ كلمة مكررة. والشرط **فعّال** (w.paceTimer) لا مجرّد
+      // قرار مُسلَّح: القرار يُسلَّح حتى 1.5s قبل الحدّ والصوت فيها يعمل طبيعياً.
+      if (w.pace && w.paceTimer) { trace('kick-skip', 'pace'); return; }
       if (Date.now() - (w.selfSeek || 0) < SELF_SEEK_MS) {
         trace('kick-skip', 'selfSeek');
       } else if (audio.paused) {
@@ -694,6 +735,80 @@ function planGap(input, cfg) {
         if (WATCH) toast('▶ اضغط تشغيل لبدء الصوت المفلتر', 4000);
       });
     };
+    /* ── وضع التسريع — الخطوة ٤ (docs/EXT-SMOOTH-PLAN.md §٤) ─────────────────────
+     * صوت المخرَج **لا يحتوي الفجوة** (مقطوع في التطبيق) وmapFullToCut **مسطّحة داخل
+     * الفجوة** ⇒ «التسريع» = احتضار الصوت (audio.pause + w.held) + رفع معدّل الصورة
+     * إلى معدّل القرار، ثم إعادتهما عند نهاية الفجوة. **لا seek إطلاقاً** ⇒ لا إعادة
+     * تخزين ولا وقفة صورة (وهو عطل القطع الذي نُعالجه). ولا يُغيَّر audio.playbackRate
+     * عن 1، ولا يُكتب audio.currentTime إلا من البوابتين القائمتين (setAudioTime ·
+     * reanchorAudio). وهذه الدوال معرَّفة **قبل** المستمعين الذين ينادونها.
+     */
+    // الخروج: إعادة المعدّل (**من w.prevRate — ولا يُكتب فيه معدّل التسريع أبداً**) ·
+    // رفع الاحتجاز · إعادة إرساء الصوت على الموضع المخطَّط بـallowBack=true (الصوت قد
+    // يكون متقدّماً بجزء من الثانية ويلزم تصحيحه للخلف) · استئناف التشغيل · تصفير الحالة.
+    const paceExit = (why) => {
+      if (!w.pace) return;
+      if (w.paceTimer) { clearTimeout(w.paceTimer); w.paceTimer = 0; }
+      w.pace = null;
+      w.selfRate = null;
+      try { video.playbackRate = w.prevRate || 1; } catch { /* gone */ }
+      w.held = false;
+      setAudioTime('pace-release', audioPos(), true);
+      // الصورة متوقّفة أو متجمّدة (مسار pause أو تجمّد مشغّل): **لا استئناف**. في
+      // الوقفة: `play` ثم `pause` فوراً يُرفض وعده (AbortError) فيُضبط w.held احتجازاً
+      // كاذباً بلا وقفة حقيقية. وفي التجمّد `video.paused` كاذب والعدّاد مجمّد، فالاستئناف
+      // يُسمع الصوت على صورة واقفة ⇒ تقدّم يتراكم ثم يُسحبه stallRelease للخلف ⇒ كلمة
+      // مكررة (وهو ما وُجد احتجاز التجمّد لمنعه). والإرساء أعلاه غير مسموع (الصوت
+      // متوقّف)، والاستئناف يتولّاه stallRelease عند `playing` أو kickAudio عند `play`.
+      if (video.paused || w.stalled) {
+        trace('pace-exit', `${why || 'end'} ${video.paused ? 'paused' : 'stalled'}`);
+        return;
+      }
+      audio.play().catch(() => { w.held = true; });
+      trace('pace-exit', why || 'end');
+    };
+    // الدخول (عند الحدّ أو داخل فجوة أصلاً): احتضار الصوت + رفع المعدّل + مؤقّت خروج
+    // عند نهاية الفجوة. المؤقّت في **w.paceTimer** لا في w.gapTimer: الماسح armGapJump
+    // يمسح w.gapTimer كل 250ms ⇒ مؤقّت خروج فيه كان يُمحى خلال ربع ثانية ويبقى الفيديو
+    // مسرَّعاً بلا نهاية. وw.selfRate يُكتب **قبل** كتابة المعدّل ليكون حدث ratechange
+    // الذي ولّدته كتابتنا معروفاً لنا.
+    const paceEnter = (boundary, landing, rate) => {
+      w.pace = { boundary, landing, rate };
+      w.held = true;
+      try { audio.pause(); } catch { /* gone */ }
+      w.selfRate = rate;
+      try { video.playbackRate = rate; } catch { /* gone */ }
+      const left = Math.max(landing - (video.currentTime || 0), 0);
+      w.paceTimer = setTimeout(() => paceExit('timer'), (left / rate) * 1000);
+      trace('pace-enter', `rate=${rate} left=${left.toFixed(3)}`);
+    };
+    // سقوط آمن: المشغّل رفض معدّلنا (ratechange من الموقع) ⇒ نُسقط قرار التسريع لهذه
+    // الفجوة ونعود إلى القطع. لا إرساء ولا استئناف هنا: القفزة في gapTick هي التي
+    // تُرسي الصوت (فرع w.held داخلها) وتستأنفه ⇒ لا تسريع معلَّق ولا صوت محتجَز بلا خروج.
+    const paceReject = () => {
+      const r = w.pace ? w.pace.rate : 0;
+      if (w.paceTimer) { clearTimeout(w.paceTimer); w.paceTimer = 0; }
+      w.pace = null;
+      w.selfRate = null;
+      trace('pace-reject', `rate=${r} site=${(video.playbackRate || 0).toFixed(2)}`);
+    };
+    // قرار الفجوة: يُحسب **مرة واحدة** نقياً (planGap + keptStretchAround) ويُخزَّن في
+    // w.pace للتسريع أو null للقطع، ويُطبع في الأثر بـreason فيُعرف أيّ قاعدة قرّرت.
+    // والصفّ يُصدَر **عند تغيّر القرار فقط**: الماسح يعيد التسليح كل 250ms في آخر 1500ms
+    // قبل الحدّ، فبلا هذا الشرط يتكرّر الصفّ نفسه ~٦ مرات لكل فجوة ويزحم حلقة الأثر
+    // (سعتها 4000). والمفتاح محليّ لا حقل حالة: لا يمسّ w.
+    let pacePlanKey = '';
+    const pacePlan = (gapStart, gapEnd) => {
+      const st = keptStretchAround(kept, gapStart, gapEnd);
+      const plan = planGap({ gap: gapEnd - gapStart, keptBefore: st.before, keptAfter: st.after }, PACE_CFG);
+      w.pace = plan.mode === 'speed' ? { boundary: gapStart, landing: gapEnd, rate: plan.rate } : null;
+      const key = `${plan.mode}|${plan.rate || 0}|${plan.reason || '-'}|${gapStart.toFixed(3)}`;
+      if (key !== pacePlanKey) {
+        pacePlanKey = key;
+        trace('pace-plan', `mode=${plan.mode} rate=${plan.rate || 0} gap=${(gapEnd - gapStart).toFixed(3)} keptBefore=${st.before.toFixed(3)} reason=${plan.reason || '-'}`);
+      }
+      return w.pace;
+    };
     on(video, 'play', () => {
       // The page player fights mute — pin it on every play.
       if (video.muted === false) { try { video.muted = true; } catch { /* gone */ } }
@@ -701,7 +816,13 @@ function planGap(input, cfg) {
       kickAudio();
       gapTick();   // فجوة أمامية (فيديو يبدأ بموسيقى): اقلبها فوراً لا بعد 250ms
     });
-    on(video, 'pause', () => { trace('pause'); audio.pause(); });
+    // الوقفة تُخرج من التسريع أيضاً: لا تسريع بلا تشغيل. والخروج يعيد المعدّل ويرفع
+    // الاحتجاز، ثم يُوقف الصوت كالمعتاد.
+    on(video, 'pause', () => {
+      trace('pause');
+      paceExit('pause');
+      audio.pause();
+    });
     // وقفة المشغّل ليست إيقافاً: بعد قفزتنا يُعيد يوتيوب التخزين فيتجمّد عدّاد
     // الصورة بينما الصوت يواصل ⇒ ينشأ **تقدّم** لا يُصحّحه الانحراف الأمامي أبداً
     // (بلاغ المالك 2026-09-15: «الفيديو قد يقف قليلاً بعد التخطي» + تقدّم قوي).
@@ -716,6 +837,10 @@ function planGap(input, cfg) {
     const stallRelease = () => {
       if (!WATCH || !w.stalled) return;
       w.stalled = false;
+      // تسريع قائم: الصوت محتجَز **بقصد** حتى نهاية الفجوة، فإطلاقه هنا يُسمعه مقدَّماً
+      // على صورة مسرَّعة ثم يعيده خروج التسريع إلى الدرزة ⇒ كلمة مكررة. الخروج هو الذي
+      // يستأنفه (وشبكة الأمان في الماسح تكفل ألّا يبقى محتجَزاً).
+      if (w.pace && w.paceTimer) return;
       setAudioTime('stall-release', audioPos(), true);
       audio.play().catch(() => { w.stalled = true; });
       trace('stall', 'release');
@@ -729,6 +854,9 @@ function planGap(input, cfg) {
       // w.held ويوقف الصوت، ثم يُرسيه المؤقّت فيُعاد سماع ما سُمِع (تكرار حتى
       // ثلاث مرات مع الفجوات المتقاربة — بلاغ المالك 2026-09-15). فتُتجاهل هنا.
       if (Date.now() - (w.selfSeek || 0) < SELF_SEEK_MS) return;
+      // قفزة المستخدم: طلب موضعاً بنفسه ⇒ لا تسريع بعده (والخروج يعيد المعدّل ويرفع
+      // الاحتجاز ويرسي الصوت على الموضع المطلوب، ثم يكمل المعالج القائم عمله).
+      paceExit('seeking');
       const now = video.currentTime || 0;
       if (isGap(now, kept)) {
         w.held = true;
@@ -748,6 +876,18 @@ function planGap(input, cfg) {
       }
     });
     on(video, 'ratechange', () => {
+      // معدّلنا نحن (وضع التسريع): هذا حدث ratechange ولّدته كتابتنا ⇒ يُتجاهل، وإلا
+      // فرضنا 1× في منتصف الفجوة فأبطلنا التسريع الذي قرّرناه (بتسامح 0.05 كما في §٤).
+      if (w.selfRate && Math.abs(video.playbackRate - w.selfRate) < 0.05) { trace('rate', 'ours'); return; }
+      // الموقع أعاد المعدّل ⇒ التسريع غير مدعوم هنا: **اسقط إلى القطع لهذه الفجوة**
+      // (سقوط آمن: لا تسريع معلَّق ولا صوت محتجَز — القفزة في gapTick تُرسي الصوت).
+      if (w.pace) {
+        const b = w.pace.boundary;
+        const l = w.pace.landing;
+        trace('rate', 'rejected→cut');
+        paceReject();
+        gapTick(b, l);
+      }
       // Guard both sides at 1.0 for the whole watch (anti-2x).
       if (video.playbackRate !== 1) { try { video.playbackRate = 1; } catch { /* gone */ } }
       pinPlayerRate();
@@ -779,6 +919,10 @@ function planGap(input, cfg) {
       // التخطي إجباريّ (لا خيار للمستخدم): لا فرع «احتجاز عند الدرزة» — كان مخصّصاً
       // لحالة إطفاء الخيار. وw.held يبقى حيّاً: قفزة المستخدم داخل فجوة تُحتجزه
       // (معالج seeking)، فيُرسى هنا عند الاستئناف.
+      // **وفي وضع التسريع لا تصحيح ولا إطلاق احتجاز إطلاقاً**: الصوت محتجَز بقصد
+      // وصورة تسرَّع؛ ففرع held-release أدناه كان يُعيد تشغيل الصوت بعد ثانية ⇒ صوت
+      // يعمل مع صورة مسرَّعة = تقدّم صوت — وهو العطل الذي نُعالجه لا نُعيده.
+      if (w.pace) return;
       if (w.held && !video.paused) {
         w.held = false;
         setAudioTime('held-release', audioPos(), true);
@@ -821,10 +965,14 @@ function planGap(input, cfg) {
     // 250ms cadence and >0.15s jumps, so a play/pause toggle or a pause mid
     // gap never triggers a stray seek, and the map has already dropped every
     // sliver under 100ms.
+    // وفي وضع التسريع لا قفز هنا إطلاقاً: القفز داخل الفجوة يُبطل التسريع (وهو الذي
+    // اختاره القرار بدل القطع)، والخروج يتولّاه paceTimer وشبكة الأمان في الماسح.
     const gapTick = (boundary, landing) => {
       if (!WATCH || video.paused) return;
+      if (w.pace && w.paceTimer) return;      // تسريع فعّال: لا قفز (الماسح ينادي كل 250ms)
       const now = video.currentTime || 0;
       let target = null;
+      let pace = null;                        // قرار هذه الفجوة: تسريع أو null (قطع)
       if (typeof boundary === 'number' && typeof landing === 'number' && now >= boundary - 0.12) {
         if (now < boundary) {
           // أطلقت بضعة أجزاء من الثانية قبل الحدّ (تقريب المؤقّت). نُعيد التسليح
@@ -835,8 +983,20 @@ function planGap(input, cfg) {
           w.gapTimer = setTimeout(() => { w.gapTimer = 0; gapTick(boundary, landing); }, (boundary - now) * 1000);
           return;
         }
-        target = landing;         // وصلنا الحدّ: نقطة الهبوط محسوبة مسبقاً
+        // وصلنا الحدّ: نقطة الهبوط محسوبة مسبقاً. والقرار مُتّخذ عند التسليح لهذه
+        // الفجوة نفسها (تطابق الحدّ يمنع قراراً عالقاً من فجوة سابقة)، وما بعد نقطة
+        // الهبوط لا يُلمس (تأخّر المؤقّت كثيراً ⇒ لا قفزة إلى الخلف على فجوة انتهت).
+        if (now < landing) {
+          target = landing;
+          pace = (w.pace && Math.abs(w.pace.boundary - boundary) < 0.001) ? w.pace : null;
+        }
+      } else if (isGap(now, kept)) {
+        // دخلنا فجوة بلا تسليح (تشغيل أو قفزة مستخدم داخل فجوة): القرار يُحسب الآن
+        // للفجوة الحالية — بدايتها الموضع الحالي فالمقيس هو ما تبقّى منها إلى نهايتها.
+        const land = skipVideoGaps(now + 1e-6, kept);
+        if (land > now) { target = land; pace = pacePlan(now, land); }
       }
+      if (pace) { paceEnter(pace.boundary, pace.landing, pace.rate); return; }
       if (target === null) target = skipVideoGaps(now, kept);
       if (!(Math.abs(target - now) > 0.15)) return;
       w.selfSeek = Date.now();    // قفزتنا: تُعلَن كي لا يعدّها معالج seeking قفزة مستخدم
@@ -867,6 +1027,15 @@ function planGap(input, cfg) {
     // the safety net and re-arms it on every tick, and a play that starts inside
     // a gap jumps immediately.
     const armGapJump = () => {
+      // تسريع فعّال: شبكة الأمان وحدها — إن لم يبقَ الموضع داخل فجوة (فجوة بلا نهاية
+      // أو خريطة شاذّة) أو بلغنا نقطة الهبوط ⇒ اخرج فوراً، وإلا فلا قفز ولا إعادة
+      // تسليح. والفحص **قبل** مسح w.gapTimer: لو مسحناه هنا لمحونا مؤقّت الحدّ الذي
+      // سيُدخل التسريع قبل أن يُطلَق فيبقى الفيديو بلا تسريع أبداً.
+      if (w.pace && w.paceTimer) {
+        const at = video.currentTime || 0;
+        if (!isGap(at, kept) || at >= w.pace.landing) paceExit('net');
+        return;
+      }
       if (w.gapTimer) { clearTimeout(w.gapTimer); w.gapTimer = 0; }
       if (!WATCH || video.paused) return;
       const now = video.currentTime || 0;
@@ -876,6 +1045,9 @@ function planGap(input, cfg) {
       const dt = (boundary - now) * 1000;
       if (!(dt >= 0) || dt > 1500) return;   // only the imminent boundary
       const landing = skipVideoGaps(boundary + 1e-6, kept);
+      // قرار الفجوة يُحسب **مرة واحدة عند التسليح** ويُخزَّن في w.pace (null ⇒ قطع
+      // كاليوم)، ثم ينفّذه gapTick عند بلوغ الحدّ.
+      pacePlan(boundary, landing);
       w.gapTimer = setTimeout(() => { w.gapTimer = 0; gapTick(boundary, landing); }, dt);
     };
     w.gap = setInterval(armGapJump, 250);
@@ -895,6 +1067,13 @@ function planGap(input, cfg) {
     if (w.gap) clearInterval(w.gap);
     if (w.tracePulse) clearInterval(w.tracePulse);
     if (w.gapTimer) clearTimeout(w.gapTimer);
+    // مؤقّت الخروج من التسريع في حقل منفصل، ويُصفَّر هنا أيضاً مع مسح قراره: الإيقاف
+    // لا يترك مؤقّتاً حيّاً يُعيد معدّلاً بعد أن عاد الصوت الأصلي. وإعادة المعدّل إلى
+    // w.prevRate قائمة أصلاً في سطر إعادة معدّل الصورة أدناه فلا تُكرَّر.
+    if (w.paceTimer) clearTimeout(w.paceTimer);
+    w.paceTimer = 0;
+    w.pace = null;
+    w.selfRate = null;
     for (const [el, ev, fn] of w.handlers) {
       try { el.removeEventListener(ev, fn); } catch { /* gone */ }
     }
