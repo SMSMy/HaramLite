@@ -339,7 +339,11 @@ mod tests {
     #[test]
     fn probe_detects_weird_mp4_audio_only() {
         if !tools_available() {
-            panic!("ffmpeg/ffprobe not found in bin/");
+            // A checkout without the gitignored bin/ (CI, or a fresh clone) has
+            // no bundled tools: skip explicitly instead of failing the suite —
+            // the same pattern separator.rs uses for its live CUDA smoke test.
+            eprintln!("skipping: ffmpeg/ffprobe not found in bin/");
+            return;
         }
         let tmp = std::env::temp_dir().join(format!("hl_m1_{}", std::process::id()));
         let (_wav, mp4) = make_samples(&tmp);
@@ -356,7 +360,11 @@ mod tests {
     #[test]
     fn extract_and_normalize_produce_valid_files() {
         if !tools_available() {
-            panic!("ffmpeg/ffprobe not found in bin/");
+            // A checkout without the gitignored bin/ (CI, or a fresh clone) has
+            // no bundled tools: skip explicitly instead of failing the suite —
+            // the same pattern separator.rs uses for its live CUDA smoke test.
+            eprintln!("skipping: ffmpeg/ffprobe not found in bin/");
+            return;
         }
         let tmp = std::env::temp_dir().join(format!("hl_m1x_{}", std::process::id()));
         let (wav, _mp4) = make_samples(&tmp);
@@ -395,7 +403,11 @@ mod tests {
 
     fn p3_probe_cached() {
         if !tools_available() {
-            panic!("ffmpeg/ffprobe not found in bin/");
+            // A checkout without the gitignored bin/ (CI, or a fresh clone) has
+            // no bundled tools: skip explicitly instead of failing the suite —
+            // the same pattern separator.rs uses for its live CUDA smoke test.
+            eprintln!("skipping: ffmpeg/ffprobe not found in bin/");
+            return;
         }
         // No assert on the VALUE (CPU runners legitimately report false) —
         // only that probing is total, cached, and deterministic.
@@ -412,7 +424,11 @@ mod tests {
         p3_selection();
         p3_probe_cached();
         if !tools_available() {
-            panic!("ffmpeg/ffprobe not found in bin/");
+            // A checkout without the gitignored bin/ (CI, or a fresh clone) has
+            // no bundled tools: skip explicitly instead of failing the suite —
+            // the same pattern separator.rs uses for its live CUDA smoke test.
+            eprintln!("skipping: ffmpeg/ffprobe not found in bin/");
+            return;
         }
         let ffmpeg = resolve_tool("ffmpeg").unwrap();
         let tmp = std::env::temp_dir().join(format!("hl_nvenc_{}", std::process::id()));
