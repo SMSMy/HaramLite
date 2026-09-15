@@ -1557,7 +1557,7 @@ dependencies = [
 
 [[package]]
 name = "haramlite-rs"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "dirs 5.0.1",
  "hound",
