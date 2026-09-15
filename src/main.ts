@@ -8,6 +8,7 @@ import { fileBaseName, notify, playDing, sanitizePath, showToast, trapFocus } fr
 import { pushLogLine, refresh, wireLogToggle } from './log';
 import type { LogLine, MediaInfo, SepResult } from './types';
 import { startLongtaskWatch, startStallDetector } from './diagnostics';
+import { STAGE_NAMES, hideStageLine, showCudaHint, updateCudaBanner } from './cuda';
 import {
   notifyWatchUiChanged,
   pushSettings,
@@ -31,52 +32,6 @@ let singleRunning = false; // F-4: the separate button doubles as cancel
 let previewEnabled = false;
 let previewSeconds = 15;
 let appVersion = '';
-
-
-/* ── smart CUDA hint (Sprint C2-style UX) ───────────────────────────── */
-function showCudaHint(text: string): void {
-  const hint = document.getElementById('cuda-hint');
-  if (!hint) return;
-  if (text) {
-    const span = document.getElementById('cuda-hint-text');
-    if (span) span.textContent = text;
-    hint.classList.remove('hidden');
-  } else {
-    hint.classList.add('hidden');
-  }
-}
-
-/** Permanent green banner above the mode cards: shown as long as an NVIDIA
- *  GPU is supported and the CUDA toggle is OFF. The libraries self-download
- *  on first enable, so the message is the same whether they're ready or not. */
-async function updateCudaBanner(): Promise<void> {
-  const banner = document.getElementById('cuda-banner');
-  const text = document.getElementById('cuda-banner-text');
-  if (!banner || !text) return;
-  const cudaOn = localStorage.getItem('hl.cuda') === '1';
-  if (cudaOn) {
-    banner.classList.add('hidden');
-    return;
-  }
-  const st = await invoke<{ nvidia: boolean; cuda: boolean }>('cuda_status').catch(() => null);
-  if (st && st.nvidia) {
-    text.textContent = t('cuda_banner_enable');
-    banner.classList.remove('hidden');
-  } else {
-    banner.classList.add('hidden');
-  }
-}
-
-/* ── visible pipeline stages (Sprint C2) ────────────────────────────── */
-const STAGE_NAMES: Record<string, { ar: string; en: string }> = {
-  normalize: { ar: 'توحيد الصوت', en: 'Normalizing' },
-  separate: { ar: 'فصل الصوت', en: 'Separating' },
-  effects: { ar: 'المؤثرات', en: 'Effects' },
-  encode: { ar: 'الترميز', en: 'Encoding' },
-};
-function hideStageLine(): void {
-  document.getElementById('stage-line')?.classList.add('hidden');
-}
 
 
 /* ── watch folder wiring (Sprint D2) ────────────────────────────────── */
