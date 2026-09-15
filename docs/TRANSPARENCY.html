@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-i18n-edition="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>الشفافية — ما يعمل على جهازك وما يتصل بالإنترنت | HaramLite</title>
+<meta name="description" content="ما يعمل محلياً (الفصل بالذكاء الاصطناعي · ffmpeg · القصّ)، وما يتصل بالإنترنت فعلاً، وما لا يغادر جهازك — مع تقرير صلاحيات إضافة المتصفح.">
+<link rel="canonical" href="https://haramlite.com/TRANSPARENCY.html">
+<meta name="theme-color" content="#151311">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="HaramLite">
+<meta property="og:title" content="الشفافية — ما يعمل على جهازك وما يتصل بالإنترنت">
+<meta property="og:description" content="قائمة مغلقة بما يخرج من جهازك، وتقرير صلاحيات الإضافة، وكل ادّعاء بسنده في الشيفرة.">
+<meta property="og:url" content="https://haramlite.com/TRANSPARENCY.html">
+<meta property="og:image" content="https://haramlite.com/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="ar_AR">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="الشفافية — ما يعمل على جهازك وما يتصل بالإنترنت">
+<meta name="twitter:description" content="ما يعمل محلياً، وما يتصل بالإنترنت، وما لا يغادر جهازك — بسند من الشيفرة.">
+<meta name="twitter:image" content="https://haramlite.com/assets/og.png">
+<link rel="icon" href="assets/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icon-32.png">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
+<link rel="stylesheet" href="assets/site.css">
+<style>
+  body {
+    background-color: #151311;
+    color: #f5f2ed;
+    font-family: 'Thmanyah Sans', 'Segoe UI', Tahoma, Arial, sans-serif;
+    overflow-x: hidden;
+  }
+  .glass-card {
+    background: rgba(33, 31, 29, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid #2e2c29;
+  }
+  .glass-card:hover {
+    border-color: rgba(218, 119, 86, 0.4);
+  }
+</style>
+</head>
+<body class="selection:bg-clay/30 selection:text-cream-text min-h-screen flex flex-col">
+
+<header class="fixed top-0 w-full z-50 bg-coal-surface/90 backdrop-blur-xl border-b border-border-muted"><div class="h-16 max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop flex items-center justify-between gap-gutter"><div class="flex items-center gap-stack-lg"><a class="flex items-center gap-stack-sm focus:outline-none" data-path="home" href="./"><img src="assets/icon-32.png" alt="أيقونة HaramLite" width="32" height="32" class="w-8 h-8 rounded shadow-sm"><span class="font-serif font-bold text-base tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span></a><nav class="hidden lg:flex items-center gap-stack-lg" data-active-classes="text-cream-text border-b-2 border-clay-accent font-bold"><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="download" href="/#download" data-i18n-ar="التحميل" data-i18n-en="Download">التحميل</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="features" href="/#features" data-i18n-ar="المميزات" data-i18n-en="Features">المميزات</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" href="guides/" data-i18n-ar="الأدلة" data-i18n-en="Guides">الأدلة</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" href="bridge.html" data-i18n-ar="إضافة المتصفح" data-i18n-en="Browser extension">إضافة المتصفح</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="whats-new" href="/#whatsnew" data-i18n-ar="الجديد" data-i18n-en="What&#39;s new">الجديد</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="privacy" href="/#privacy" data-i18n-ar="الخصوصية" data-i18n-en="Privacy">الخصوصية</a><a class="font-label-md text-label-md text-on-surface-variant hover:text-cream-text transition-colors py-unit" data-path="developers" href="/#dev" data-i18n-ar="للمطورين" data-i18n-en="Developers">للمطورين</a></nav></div><div class="flex items-center gap-stack-sm">
+        <details class="lg:hidden relative">
+          <summary class="list-none cursor-pointer p-2 rounded border border-border-muted text-on-surface-variant hover:text-cream-text transition-colors" aria-label="القائمة">
+            <span class="material-symbols-outlined text-[20px] block">menu</span>
+          </summary>
+          <div class="absolute end-0 top-full mt-2 w-56 p-2 rounded-lg bg-coal-surface border border-border-muted shadow-lg z-50 flex flex-col">
+            <a class="px-3 py-2 rounded hover:bg-surface-container text-on-surface-variant hover:text-cream-text text-label-md font-label-md transition-colors" href="/#download" data-i18n-ar="التحميل" data-i18n-en="Download">التحميل</a>
+            <a class="px-3 py-2 rounded hover:bg-surface-container text-on-surface-variant hover:text-cream-text text-label-md font-label-md transition-colors" href="/#features" data-i18n-ar="المميزات" data-i18n-en="Features">المميزات</a>
+            <a class="px-3 py-2 rounded hover:bg-surface-container text-on-surface-variant hover:text-cream-text text-label-md font-label-md transition-colors" href="guides/" data-i18n-ar="الأدلة" data-i18n-en="Guides">الأدلة</a>
+            <a class="px-3 py-2 rounded hover:bg-surface-container text-on-surface-variant hover:text-cream-text text-label-md font-label-md transition-colors" href="bridge.html" data-i18n-ar="إضافة المتصفح" data-i18n-en="Browser extension">إضافة المتصفح</a>
+            <a class="px-3 py-2 rounded hover:bg-surface-container text-on-surface-variant hover:text-cream-text text-label-md font-label-md transition-colors" href="/#whatsnew" data-i18n-ar="الجديد" data-i18n-en="What&#39;s new">الجديد</a>
+            <a class="px-3 py-2 rounded hover:bg-surface-container text-on-surface-variant hover:text-cream-text text-label-md font-label-md transition-colors" href="/#privacy" data-i18n-ar="الخصوصية" data-i18n-en="Privacy">الخصوصية</a>
+            <a class="px-3 py-2 rounded hover:bg-surface-container text-on-surface-variant hover:text-cream-text text-label-md font-label-md transition-colors" href="/#dev" data-i18n-ar="للمطورين" data-i18n-en="Developers">للمطورين</a>
+          </div>
+        </details>
+        <button id="lang-btn" class="flex items-center gap-unit px-stack-sm py-unit rounded border border-border-muted font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text hover:border-outline transition-colors cursor-pointer" type="button" aria-label="تغيير اللغة / Change language"><span class="material-symbols-outlined text-[16px]">language</span><span id="lang-btn-label">English</span></button><a class="inline-flex items-center gap-1 px-3 py-unit rounded border border-border-muted font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text hover:border-outline transition-colors" href="https://github.com/SMSMy/HaramLite" target="_blank" rel="noopener" aria-label="الكود المصدري على GitHub" title="github.com/SMSMy/HaramLite"><svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a><a class="inline-flex items-center justify-center p-unit rounded bg-clay-accent text-coal-surface font-label-md text-label-md hover:bg-primary transition-colors font-bold" data-path="download" href="/#download" data-i18n-ar="تحميل التطبيق" data-i18n-en="Download the app">تحميل التطبيق</a></div></div></header>
+
+<main class="w-full pt-16">
+
+<!-- ── البطل ─────────────────────────────────────────────── -->
+<section class="relative pb-14 md:pb-20 overflow-hidden">
+  <div class="max-w-4xl mx-auto px-6 pt-12 md:pt-16">
+    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-clay/15 text-clay text-xs font-semibold border border-clay/30 mb-5">
+      <span class="material-symbols-outlined text-[14px]">policy</span>
+      <span data-i18n-ar="تدقيق من الشيفرة · 0.2.5" data-i18n-en="Audited from the source · 0.2.5">تدقيق من الشيفرة · <span class="js-release-tag">0.2.5</span></span>
+    </div>
+    <h1 class="text-3xl sm:text-4xl md:text-5xl font-extrabold text-cream-text tracking-tight leading-[1.3] mb-6" data-i18n-ar="الشفافية: ما يعمل على جهازك، وما يتصل بالإنترنت، وما لا يغادر جهازك" data-i18n-en="Transparency: what runs on your machine, what reaches the network, what never leaves">الشفافية: ما يعمل على جهازك، وما يتصل بالإنترنت، وما لا يغادر جهازك</h1>
+    <p class="text-sand-400 text-sm sm:text-base leading-relaxed mb-4" data-i18n-ar="هذه الصفحة لا تشرح نوايا، بل تصف سلوك الشيفرة كما هي في هذا الإصدار. كل سطر فيها يعود إلى ملف وسطر في المستودع العام، والقائمة أدناه <b>مغلقة</b>: ما ليس فيها لا يحدث." data-i18n-en="This page does not describe intentions, it describes what the code actually does in this release. Every line points back to a file and a line in the public repository, and the list below is <b>closed</b>: what is not in it does not happen.">هذه الصفحة لا تشرح نوايا، بل تصف سلوك الشيفرة كما هي في هذا الإصدار. كل سطر فيها يعود إلى ملف وسطر في المستودع العام، والقائمة أدناه <b>مغلقة</b>: ما ليس فيها لا يحدث.</p>
+    <p class="text-sand-500 text-xs leading-relaxed" data-i18n-ar="المرجع: المستودع <code>github.com/SMSMy/HaramLite</code> · أرقام الأسطر المذكورة مطابقة لهذا الإصدار، وتُقرأ بالضغط على اسم الملف في الجدول الأخير." data-i18n-en="Reference: the repository <code>github.com/SMSMy/HaramLite</code> · the line numbers below match this release, and you can read them by opening the file names in the last table.">المرجع: المستودع <code>github.com/SMSMy/HaramLite</code> · أرقام الأسطر المذكورة مطابقة لهذا الإصدار، وتُقرأ بالضغط على اسم الملف في الجدول الأخير.</p>
+  </div>
+</section>
+
+<!-- ── ١) ما يعمل محلياً ─────────────────────────────────── -->
+<section id="local" class="py-14 bg-coal-900/70 border-t border-b border-coal-700/80">
+  <div class="max-w-4xl mx-auto px-6">
+    <div class="inline-flex items-center gap-1.5 text-xs text-status-ok font-semibold mb-2">
+      <span class="w-2 h-2 rounded-full bg-status-ok"></span>
+      <span data-i18n-ar="السؤال ١ — يعمل بلا إنترنت" data-i18n-en="Question 1 — works with no internet">السؤال ١ — يعمل بلا إنترنت</span>
+    </div>
+    <h2 class="text-2xl sm:text-3xl font-bold text-cream-text mb-3" data-i18n-ar="ما يعمل محلياً على جهازك؟" data-i18n-en="What runs locally on your machine?">ما يعمل محلياً على جهازك؟</h2>
+    <p class="text-sand-400 text-sm mb-8" data-i18n-ar="المعالجة كلها داخل التطبيق على ويندوز: لا خادم، ولا وسيط، ولا خدمة سحابية في أي خطوة." data-i18n-en="All processing happens inside the app on Windows: no server, no middleman and no cloud service at any step.">المعالجة كلها داخل التطبيق على ويندوز: لا خادم، ولا وسيط، ولا خدمة سحابية في أي خطوة.</p>
+
+    <div class="grid grid-cols-1 gap-4">
+      <div class="glass-card p-5 rounded-2xl">
+        <div class="flex items-start gap-3">
+          <span class="material-symbols-outlined text-clay text-[22px]">graphic_eq</span>
+          <div>
+            <h3 class="text-base font-bold text-cream-text mb-1.5" data-i18n-ar="الفصل بالذكاء الاصطناعي (البشري عن الموسيقى)" data-i18n-en="AI separation (voice from music)">الفصل بالذكاء الاصطناعي (البشري عن الموسيقى)</h3>
+            <p class="text-sand-400 text-xs leading-relaxed" data-i18n-ar="يُبنى نموذج ONNX محلياً من ملف موجود على جهازك (<code>UVR-MDX-NET-Voc_FT.onnx</code>) ويعمل داخل العملية نفسها عبر onnxruntime. لا يُرسَل أي صوت إلى أي خدمة استدلال." data-i18n-en="An ONNX model is built locally from a file on your machine (<code>UVR-MDX-NET-Voc_FT.onnx</code>) and runs in-process through onnxruntime. No audio is sent to any inference service.">يُبنى نموذج ONNX محلياً من ملف موجود على جهازك (<code>UVR-MDX-NET-Voc_FT.onnx</code>) ويعمل داخل العملية نفسها عبر onnxruntime. لا يُرسَل أي صوت إلى أي خدمة استدلال.</p>
+            <p class="text-sand-500 text-[11px] mt-1.5 font-mono-code">src-tauri/src/separator.rs:20 · :357 · :377</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card p-5 rounded-2xl">
+        <div class="flex items-start gap-3">
+          <span class="material-symbols-outlined text-clay text-[22px]">movie_edit</span>
+          <div>
+            <h3 class="text-base font-bold text-cream-text mb-1.5" data-i18n-ar="ffmpeg للوسائط — نسخة محلية داخل مجلد التطبيق" data-i18n-en="ffmpeg for media — a local copy inside the app folder">ffmpeg للوسائط — نسخة محلية داخل مجلد التطبيق</h3>
+            <p class="text-sand-400 text-xs leading-relaxed" data-i18n-ar="فحص الملفات واستخراج الصوت والتصدير النهائي كلها عبر <code>ffmpeg</code> و<code>ffprobe</code> المحليين؛ لا خدمة ترميز خارجية في أي خطوة." data-i18n-en="Probing, audio extraction and the final export all run through the local <code>ffmpeg</code> and <code>ffprobe</code> binaries; there is no external encoding service at any step.">فحص الملفات واستخراج الصوت والتصدير النهائي كلها عبر <code>ffmpeg</code> و<code>ffprobe</code> المحليين؛ لا خدمة ترميز خارجية في أي خطوة.</p>
+            <p class="text-sand-500 text-[11px] mt-1.5 font-mono-code">src-tauri/src/media.rs:177 · :817 · src-tauri/src/repair.rs:48</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card p-5 rounded-2xl">
+        <div class="flex items-start gap-3">
+          <span class="material-symbols-outlined text-clay text-[22px]">music_off</span>
+          <div>
+            <h3 class="text-base font-bold text-cream-text mb-1.5" data-i18n-ar="القصّ وكشف الصمت" data-i18n-en="Trimming and silence detection">القصّ وكشف الصمت</h3>
+            <p class="text-sand-400 text-xs leading-relaxed" data-i18n-ar="قياس الطاقة وكشف الصمت وقصّه دوالّ في التطبيق نفسه بلا أي استدعاء شبكي، ثم يُبنى الفيديو الناتج مع القطع." data-i18n-en="Energy measurement, silence detection and cutting are functions inside the app itself with no network call at all, then the resulting video is built with those cuts.">قياس الطاقة وكشف الصمت وقصّه دوالّ في التطبيق نفسه بلا أي استدعاء شبكي، ثم يُبنى الفيديو الناتج مع القطع.</p>
+            <p class="text-sand-500 text-[11px] mt-1.5 font-mono-code">src-tauri/src/silence.rs:133 · src-tauri/src/media.rs:817</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card p-5 rounded-2xl">
+        <div class="flex items-start gap-3">
+          <span class="material-symbols-outlined text-clay text-[22px]">folder_open</span>
+          <div>
+            <h3 class="text-base font-bold text-cream-text mb-1.5" data-i18n-ar="الناتج يبقى بجانب ملفك الأصلي" data-i18n-en="The output stays beside your original file">الناتج يبقى بجانب ملفك الأصلي</h3>
+            <p class="text-sand-400 text-xs leading-relaxed" data-i18n-ar="عند اختيارك ملفاً من جهازك يُقرأ من مساره ويُكتب الناتج في مجلدك نفسه — بلا رفع إلى أي مكان." data-i18n-en="When you pick a file from your machine it is read from your path and the result is written to your own folder — nothing is uploaded anywhere.">عند اختيارك ملفاً من جهازك يُقرأ من مساره ويُكتب الناتج في مجلدك نفسه — بلا رفع إلى أي مكان.</p>
+            <p class="text-sand-500 text-[11px] mt-1.5 font-mono-code">docs/PRIVACY.html:62</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── ٢) ما الذي يتصل بالإنترنت ─────────────────────────── -->
+<section id="network" class="py-14">
+  <div class="max-w-4xl mx-auto px-6">
+    <div class="inline-flex items-center gap-1.5 text-xs text-status-warn font-semibold mb-2">
+      <span class="w-2 h-2 rounded-full bg-status-warn"></span>
+      <span data-i18n-ar="السؤال ٢ — قائمة مغلقة" data-i18n-en="Question 2 — a closed list">السؤال ٢ — قائمة مغلقة</span>
+    </div>
+    <h2 class="text-2xl sm:text-3xl font-bold text-cream-text mb-3" data-i18n-ar="ما الذي يتصل بالإنترنت؟" data-i18n-en="What reaches the internet?">ما الذي يتصل بالإنترنت؟</h2>
+    <p class="text-sand-400 text-sm mb-6" data-i18n-ar="جهة واحدة فقط: <b>GitHub</b> — والرابط الذي تلصقه أنت. كل ما يلي هو كل ما يمكن للشيفرة أن تناديه، ولكل سطر شرطه ومَن يطلبه." data-i18n-en="One destination only: <b>GitHub</b> — plus the link you paste yourself. Everything below is everything the code can call, with its condition and who triggers it.">جهة واحدة فقط: <b>GitHub</b> — والرابط الذي تلصقه أنت. كل ما يلي هو كل ما يمكن للشيفرة أن تناديه، ولكل سطر شرطه ومَن يطلبه.</p>
+
+    <div class="glass-card rounded-2xl overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="bg-coal-850/80 text-sand-200">
+              <th class="text-start p-3 font-bold" data-i18n-ar="ما يتصل" data-i18n-en="What connects">ما يتصل</th>
+              <th class="text-start p-3 font-bold" data-i18n-ar="الوجهة" data-i18n-en="Destination">الوجهة</th>
+              <th class="text-start p-3 font-bold" data-i18n-ar="متى · مَن يطلبه" data-i18n-en="When · who triggers it">متى · مَن يطلبه</th>
+            </tr>
+          </thead>
+          <tbody class="text-sand-400">
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="تنزيل الفيديو من رابطك" data-i18n-en="Downloading the video from your link">تنزيل الفيديو من رابطك</td>
+              <td class="p-3 align-top" data-i18n-ar="المصدر الذي تلصقه أنت (يوتيوب مثلاً) عبر yt-dlp" data-i18n-en="The source you paste (YouTube, for example) via yt-dlp">المصدر الذي تلصقه أنت (يوتيوب مثلاً) عبر yt-dlp</td>
+              <td class="p-3 align-top" data-i18n-ar="فقط عندما تطلب أنت تنزيل رابط — لا يبدأ من نفسه أبداً." data-i18n-en="Only when you ask for a link to be downloaded — it never starts on its own.">فقط عندما تطلب أنت تنزيل رابط — لا يبدأ من نفسه أبداً.</td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="فحص تحديث التطبيق" data-i18n-en="Checking the app update">فحص تحديث التطبيق</td>
+              <td class="p-3 align-top" data-i18n-ar="واجهة GitHub العامة — قراءة آخر إصدار فقط" data-i18n-en="The public GitHub API — reading the latest release only">واجهة GitHub العامة — قراءة آخر إصدار فقط</td>
+              <td class="p-3 align-top" data-i18n-ar="عند الإقلاع بفحص صامت يقرأ كاش ٢٤ ساعة أولاً فلا يتكرّر النداء، أو عند ضغطك زرّ الفحص (ينادي دائماً)." data-i18n-en="At startup as a silent check that reads a 24-hour cache first so the call does not repeat, or when you press the check button (which always calls).">عند الإقلاع بفحص صامت يقرأ كاش ٢٤ ساعة أولاً فلا يتكرّر النداء، أو عند ضغطك زرّ الفحص (ينادي دائماً).</td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="فحص وتنزيل yt-dlp" data-i18n-en="Checking and downloading yt-dlp">فحص وتنزيل yt-dlp</td>
+              <td class="p-3 align-top" data-i18n-ar="إصدارات yt-dlp على GitHub" data-i18n-en="yt-dlp releases on GitHub">إصدارات yt-dlp على GitHub</td>
+              <td class="p-3 align-top" data-i18n-ar="فحص دوري بوتيرة ٢٤ ساعة عند الإقلاع، وينزّل الملف من GitHub عند وجود أحدث — وليس من يوتيوب." data-i18n-en="A 24-hour periodic check at startup, downloading the file from GitHub when a newer one exists — not from YouTube.">فحص دوري بوتيرة ٢٤ ساعة عند الإقلاع، وينزّل الملف من GitHub عند وجود أحدث — وليس من يوتيوب.</td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="إصلاح المكوّنات الناقصة" data-i18n-en="Repairing missing components">إصلاح المكوّنات الناقصة</td>
+              <td class="p-3 align-top" data-i18n-ar="ملفات الإصدار المرفقة على GitHub" data-i18n-en="The release assets on GitHub">ملفات الإصدار المرفقة على GitHub</td>
+              <td class="p-3 align-top" data-i18n-ar="عند طلبك الإصلاح ولمكوّن مفقود فقط — ويُتحقَّق من بصمة SHA-256 قبل التثبيت." data-i18n-en="When you ask for a repair and only for a missing component — the SHA-256 is verified before it is put in place.">عند طلبك الإصلاح ولمكوّن مفقود فقط — ويُتحقَّق من بصمة SHA-256 قبل التثبيت.</td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="تثبيت مكتبات تسريع CUDA" data-i18n-en="Installing CUDA acceleration libraries">تثبيت مكتبات تسريع CUDA</td>
+              <td class="p-3 align-top" data-i18n-ar="ملفات الإصدار المرفقة على GitHub" data-i18n-en="The release assets on GitHub">ملفات الإصدار المرفقة على GitHub</td>
+              <td class="p-3 align-top" data-i18n-ar="ميزة اختيارية تماماً: لا تُنزَّل إلا إذا اخترت تسريع CUDA بنفسك عند وجود كرت مدعوم." data-i18n-en="A fully optional feature: nothing is downloaded unless you choose CUDA acceleration yourself on a supported card.">ميزة اختيارية تماماً: لا تُنزَّل إلا إذا اخترت تسريع CUDA بنفسك عند وجود كرت مدعوم.</td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="روابط تفتحها أنت في متصفحك" data-i18n-en="Links you open in your own browser">روابط تفتحها أنت في متصفحك</td>
+              <td class="p-3 align-top" data-i18n-ar="صفحة التنزيل أو المستودع مثلاً" data-i18n-en="The download page or the repository, for example">صفحة التنزيل أو المستودع مثلاً</td>
+              <td class="p-3 align-top" data-i18n-ar="تنزيل من جهة أخرى عند نقرك زرّ التنزيل — فلا يجري التطبيق طلباً بنفسه." data-i18n-en="A download elsewhere when you click a download button — the app makes no request of its own.">تنزيل من جهة أخرى عند نقرك زرّ التنزيل — فلا يجري التطبيق طلباً بنفسه.</td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="روبوت تيليجرام (مطفأ افتراضياً)" data-i18n-en="The Telegram bot (off by default)">روبوت تيليجرام (مطفأ افتراضياً)</td>
+              <td class="p-3 align-top" data-i18n-ar="خوادم تيليجرام — طرف ثالث" data-i18n-en="Telegram servers — a third party">خوادم تيليجرام — طرف ثالث</td>
+              <td class="p-3 align-top" data-i18n-ar="لا يعمل إطلاقاً بلا رمز تضعه أنت وتفعّل الميزة؛ ورسائلك هناك تمرّ بخوادم تيليجرام كأي محادثة عادية." data-i18n-en="It does nothing at all without a token you supply and the feature switched on; your messages there pass through Telegram like any ordinary chat.">لا يعمل إطلاقاً بلا رمز تضعه أنت وتفعّل الميزة؛ ورسائلك هناك تمرّ بخوادم تيليجرام كأي محادثة عادية.</td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="الإضافة نفسها" data-i18n-en="The extension itself">الإضافة نفسها</td>
+              <td class="p-3 align-top text-status-ok font-bold" data-i18n-ar="لا شيء — صفر طلبات شبكة" data-i18n-en="Nothing — zero network requests">لا شيء — صفر طلبات شبكة</td>
+              <td class="p-3 align-top" data-i18n-ar="ما تقرأه هو رابط التبويب الذي تطلبه، ويمرّ إلى تطبيقك على جهازك عبر Native Messaging." data-i18n-en="What it reads is the tab URL you asked for, and it travels to your own app over Native Messaging.">ما تقرأه هو رابط التبويب الذي تطلبه، ويمرّ إلى تطبيقك على جهازك عبر Native Messaging.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="mt-6 p-4 rounded-xl bg-coal-850/80 border border-coal-700/60">
+      <div class="text-status-ok font-bold text-xs mb-1.5 flex items-center gap-1.5">
+        <span class="material-symbols-outlined text-[15px]">cloud_off</span>
+        <span data-i18n-ar="التحديث الذاتي للتطبيق: معطّل" data-i18n-en="The app's self-updater: switched off">التحديث الذاتي للتطبيق: معطّل</span>
+      </div>
+      <p class="text-sand-400 text-xs leading-relaxed" data-i18n-ar="مفتاح المحدّث في إعدادات البناء موضوع على <code>active: false</code> ولا تُنشأ ملفات تحديث موقّعة — فالتطبيق لا ينزّل نفسه ولن يستبدل ملفاته من تلقاء نفسه. وهذا سبب إزالة زرّ التحديث القديم في 0.2.4: كان ينادي قناة لا وجود لها." data-i18n-en="The updater flag in the build configuration is set to <code>active: false</code> and no signed update artifacts are produced — the app does not download itself and will not replace its own files. That is also why the old update button was removed in 0.2.4: it called a channel that does not exist.">مفتاح المحدّث في إعدادات البناء موضوع على <code>active: false</code> ولا تُنشأ ملفات تحديث موقّعة — فالتطبيق لا ينزّل نفسه ولن يستبدل ملفاته من تلقاء نفسه. وهذا سبب إزالة زرّ التحديث القديم في 0.2.4: كان ينادي قناة لا وجود لها.</p>
+      <p class="text-sand-500 text-[11px] mt-1.5 font-mono-code">src-tauri/tauri.conf.json (updater.active) · src-tauri/src/update_check.rs:3</p>
+    </div>
+
+    <div class="mt-4 p-4 rounded-xl bg-coal-850/80 border border-coal-700/60">
+      <div class="text-status-warn font-bold text-xs mb-1.5 flex items-center gap-1.5">
+        <span class="material-symbols-outlined text-[15px]">warning</span>
+        <span data-i18n-ar="ثلاثة أمور لم يطلبها منك أحد" data-i18n-en="Three things nobody asked you for">ثلاثة أمور لم يطلبها منك أحد</span>
+      </div>
+      <p class="text-sand-400 text-xs leading-relaxed" data-i18n-ar="نذكرها صراحةً لأنها لا تنتظر نقرك: <b>(١)</b> فحص إصدار التطبيق عند كل إقلاع، لكنه يقرأ كاش ٢٤ ساعة أولاً فلا يتكرّر النداء. <b>(٢)</b> فحص yt-dlp وتنزيله عند وجود أحدث، بوتيرة ٢٤ ساعة — ولا يوجد في هذا الإصدار مفتاح في الواجهة لإيقافه. <b>(٣)</b> استدعاء ffmpeg محلياً عند تنزيل فيديو لدمج الصوت مع الصورة، وهو محلي لا شبكي." data-i18n-en="We state them plainly because they do not wait for a click: <b>(1)</b> an app-version check at every startup, which reads a 24-hour cache first so the call does not repeat. <b>(2)</b> a yt-dlp check-and-download at a 24-hour cadence — and this release has no switch in the interface to turn it off. <b>(3)</b> a local ffmpeg call when a video is downloaded, to merge audio with video: local, not network.">نذكرها صراحةً لأنها لا تنتظر نقرك: <b>(١)</b> فحص إصدار التطبيق عند كل إقلاع، لكنه يقرأ كاش ٢٤ ساعة أولاً فلا يتكرّر النداء. <b>(٢)</b> فحص yt-dlp وتنزيله عند وجود أحدث، بوتيرة ٢٤ ساعة — ولا يوجد في هذا الإصدار مفتاح في الواجهة لإيقافه. <b>(٣)</b> استدعاء ffmpeg محلياً عند تنزيل فيديو لدمج الصوت مع الصورة، وهو محلي لا شبكي.</p>
+      <p class="text-sand-500 text-[11px] mt-1.5 font-mono-code">src-tauri/src/lib.rs:1089 · src/main.ts:3320 · src-tauri/src/yt_dlp.rs:140 · docs/PRIVACY.html:71</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── ٣) ما لا يغادر الجهاز ─────────────────────────────── -->
+<section id="stays" class="py-14 bg-coal-900/70 border-t border-b border-coal-700/80">
+  <div class="max-w-4xl mx-auto px-6">
+    <div class="inline-flex items-center gap-1.5 text-xs text-status-ok font-semibold mb-2">
+      <span class="w-2 h-2 rounded-full bg-status-ok"></span>
+      <span data-i18n-ar="السؤال ٣ — لا مغادرة" data-i18n-en="Question 3 — nothing leaves">السؤال ٣ — لا مغادرة</span>
+    </div>
+    <h2 class="text-2xl sm:text-3xl font-bold text-cream-text mb-3" data-i18n-ar="ما البيانات التي لا تغادر جهازك؟" data-i18n-en="What data never leaves your machine?">ما البيانات التي لا تغادر جهازك؟</h2>
+    <p class="text-sand-400 text-sm mb-8" data-i18n-ar="لا رفع للملفات، ولا قياس عن بعد، ولا حساب، ولا تخزين سحابي — وهذه ليست وعوداً بل ما تفعله الشيفرة." data-i18n-en="No file uploads, no telemetry, no account, no cloud storage — and these are not promises, they are what the code does.">لا رفع للملفات، ولا قياس عن بعد، ولا حساب، ولا تخزين سحابي — وهذه ليست وعوداً بل ما تفعله الشيفرة.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="glass-card p-5 rounded-2xl">
+        <div class="flex items-center gap-2 text-status-ok font-bold text-xs mb-2">
+          <span>✓</span><span data-i18n-ar="وسائطك ونصوصك" data-i18n-en="Your media and text">وسائطك ونصوصك</span>
+        </div>
+        <p class="text-sand-400 text-xs leading-relaxed" data-i18n-ar="ملفاتك لا تُرفع إلى أي خادم: تُقرأ من مسارك وتُعالَج محلياً ويُكتب الناتج في مجلدك." data-i18n-en="Your files are not uploaded to any server: they are read from your path, processed locally, and the result is written to your own folder.">ملفاتك لا تُرفع إلى أي خادم: تُقرأ من مسارك وتُعالَج محلياً ويُكتب الناتج في مجلدك.</p>
+      </div>
+      <div class="glass-card p-5 rounded-2xl">
+        <div class="flex items-center gap-2 text-status-ok font-bold text-xs mb-2">
+          <span>✓</span><span data-i18n-ar="لا قياس عن بعد" data-i18n-en="No telemetry">لا قياس عن بعد</span>
+        </div>
+        <p class="text-sand-400 text-xs leading-relaxed" data-i18n-ar="لا يوجد في الشيفرة أي إرسال لإحصاءات استخدام، ولا أدوات تحليل، ولا تتبّع أخطاء إلى خدمة خارجية." data-i18n-en="There is no usage-statistics reporter in the code, no analytics tooling, and no error tracking to an external service.">لا يوجد في الشيفرة أي إرسال لإحصاءات استخدام، ولا أدوات تحليل، ولا تتبّع أخطاء إلى خدمة خارجية.</p>
+      </div>
+      <div class="glass-card p-5 rounded-2xl">
+        <div class="flex items-center gap-2 text-status-ok font-bold text-xs mb-2">
+          <span>✓</span><span data-i18n-ar="لا حساب ولا سحابة" data-i18n-en="No account, no cloud">لا حساب ولا سحابة</span>
+        </div>
+        <p class="text-sand-400 text-xs leading-relaxed" data-i18n-ar="لا تسجيل ولا دخول ولا مزامنة سحابية. ما يُحفظ على جهازك: الإعدادات في <code>%LOCALAPPDATA%</code> وسجلات تشخيص محلية تُقرأ من داخل التطبيق." data-i18n-en="No sign-up, no login, no cloud sync. What is stored on your machine: settings under <code>%LOCALAPPDATA%</code> and local diagnostic logs read from inside the app.">لا تسجيل ولا دخول ولا مزامنة سحابية. ما يُحفظ على جهازك: الإعدادات في <code>%LOCALAPPDATA%</code> وسجلات تشخيص محلية تُقرأ من داخل التطبيق.</p>
+      </div>
+      <div class="glass-card p-5 rounded-2xl">
+        <div class="flex items-center gap-2 text-status-ok font-bold text-xs mb-2">
+          <span>✓</span><span data-i18n-ar="الرموز السرية مشفّرة" data-i18n-en="Secret tokens are encrypted">الرموز السرية مشفّرة</span>
+        </div>
+        <p class="text-sand-400 text-xs leading-relaxed" data-i18n-ar="رمز بوت تيليجرام و<code>api_hash</code> محفوظان بحماية Windows DPAPI ومرتبطان بجهازك — ولا يُخزَّنان كنصّ صريح على القرص." data-i18n-en="The Telegram bot token and <code>api_hash</code> are kept under Windows DPAPI protection and bound to your machine — they are not stored as plain text on disk.">رمز بوت تيليجرام و<code>api_hash</code> محفوظان بحماية Windows DPAPI ومرتبطان بجهازك — ولا يُخزَّنان كنصّ صريح على القرص.</p>
+      </div>
+    </div>
+
+    <div class="mt-6 p-4 rounded-xl bg-coal-850/80 border border-coal-700/60">
+      <div class="text-sand-200 font-bold text-xs mb-1.5 flex items-center gap-1.5">
+        <span class="material-symbols-outlined text-[15px] text-status-warn">upload_file</span>
+        <span data-i18n-ar="ما يخرج فعلاً من جهازك — ثلاثة أشياء فقط" data-i18n-en="What actually leaves your machine — only three things">ما يخرج فعلاً من جهازك — ثلاثة أشياء فقط</span>
+      </div>
+      <ul class="text-sand-400 text-xs leading-relaxed list-disc ps-5 space-y-1">
+        <li data-i18n-ar="الرابط الذي تلصقه أنت (عند طلب التنزيل) — وهو ما يجعله yt-dlp يصل إلى الفيديو." data-i18n-en="The link you paste yourself (when you ask for a download) — it is what lets yt-dlp reach the video.">الرابط الذي تلصقه أنت (عند طلب التنزيل) — وهو ما يجعله yt-dlp يصل إلى الفيديو.</li>
+        <li data-i18n-ar="طلب قراءة آخر إصدار من واجهة GitHub العامة — بلا أي بيانات عنك، ومعرّف البرنامج فقط في ترويسة الطلب." data-i18n-en="A request to read the latest release from the public GitHub API — no data about you, only the app identifier in the request header.">طلب قراءة آخر إصدار من واجهة GitHub العامة — بلا أي بيانات عنك، ومعرّف البرنامج فقط في ترويسة الطلب.</li>
+        <li data-i18n-ar="رسائل بوت تيليجرام إن فعّلته أنت بنفسك — عبر خوادم تيليجرام." data-i18n-en="Telegram bot messages if you enabled it yourself — through Telegram servers.">رسائل بوت تيليجرام إن فعّلته أنت بنفسك — عبر خوادم تيليجرام.</li>
+      </ul>
+      <p class="text-sand-500 text-[11px] mt-2" data-i18n-ar="ولا شيء غيرها: لا اسم، ولا بريد، ولا سجل تصفح، ولا محتوى ملفاتك." data-i18n-en="And nothing else: no name, no email, no browsing history, no content of your files.">ولا شيء غيرها: لا اسم، ولا بريد، ولا سجل تصفح، ولا محتوى ملفاتك.</p>
+      <p class="text-sand-500 text-[11px] mt-1.5 font-mono-code">src-tauri/src/update_check.rs:23 · :28 · src-tauri/src/settings.rs:64 · docs/PRIVACY.html:87</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── ٤) صلاحيات الإضافة ────────────────────────────────── -->
+<section id="permissions" class="py-14">
+  <div class="max-w-4xl mx-auto px-6">
+    <div class="inline-flex items-center gap-1.5 text-xs text-clay font-semibold mb-2">
+      <span class="w-2 h-2 rounded-full bg-clay"></span>
+      <span data-i18n-ar="تقرير الصلاحيات" data-i18n-en="The permissions report">تقرير الصلاحيات</span>
+    </div>
+    <h2 class="text-2xl sm:text-3xl font-bold text-cream-text mb-3" data-i18n-ar="صلاحيات إضافة المتصفح — ولماذا كل واحدة" data-i18n-en="The browser extension's permissions — and why each one">صلاحيات إضافة المتصفح — ولماذا كل واحدة</h2>
+    <p class="text-sand-400 text-sm mb-6" data-i18n-ar="هذه هي الصلاحيات الأربع كاملة كما تُعلَن في ملف الإضافة، ومكتوبة هنا كما قُدِّمت إلى متجر كروم. لا صلاحية خامسة." data-i18n-en="These are all four permissions exactly as declared in the extension manifest, written here as they were submitted to the Chrome Web Store. There is no fifth.">هذه هي الصلاحيات الأربع كاملة كما تُعلَن في ملف الإضافة، ومكتوبة هنا كما قُدِّمت إلى متجر كروم. لا صلاحية خامسة.</p>
+
+    <div class="glass-card rounded-2xl overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="bg-coal-850/80 text-sand-200">
+              <th class="text-start p-3 font-bold" data-i18n-ar="الصلاحية" data-i18n-en="Permission">الصلاحية</th>
+              <th class="text-start p-3 font-bold" data-i18n-ar="لماذا — والحدّ" data-i18n-en="Why — and its limit">لماذا — والحدّ</th>
+            </tr>
+          </thead>
+          <tbody class="text-sand-400">
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top"><code class="text-clay">contextMenus</code></td>
+              <td class="p-3 align-top" data-i18n-ar="«إضافة عنصر واحد «أرسل إلى HaramLite» في قائمة الزر الأيمن، ليرسل المستخدم الرابط أو الصفحة أو الفيديو إلى تطبيقه المكتبي. لا يضيف غيره ولا يقرأ بيانات الصفحة.»" data-i18n-en="&quot;Adds one item, 'Send to HaramLite', to the browser's right-click menu so the user can send the link, page or video they are looking at to their own HaramLite desktop application. It adds nothing else and reads no page data.&quot;">«إضافة عنصر واحد «أرسل إلى HaramLite» في قائمة الزر الأيمن، ليرسل المستخدم الرابط أو الصفحة أو الفيديو إلى تطبيقه المكتبي. لا يضيف غيره ولا يقرأ بيانات الصفحة.»</td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top"><code class="text-clay">nativeMessaging</code></td>
+              <td class="p-3 align-top" data-i18n-ar="«للتخاطب مع تطبيق HaramLite المكتبي الذي ثبّته المستخدم على جهازه. تُمرَّر إليه الرابط الذي اختار معالجته ورسائل حالة قصيرة عبر قناة Native Messaging المحلية. لا شيء يُرسَل إلى المطوّر أو إلى أي خادم، والإضافة نفسها لا تُجري أي طلب شبكة. المضيف يُسجّله التطبيق، وعلى المستخدم تفعيل التكامل من إعداداته، وبدونه لا تفعل الإضافة شيئاً.»" data-i18n-en="&quot;Used only to talk to the HaramLite desktop app that the user installs and runs on their own computer. The extension passes the URL the user chose to process, plus short status messages, over the local Native Messaging channel. Nothing is sent to the developer or to any server — the extension itself makes no network request. The messaging host is registered by the desktop app, and the user must switch the integration on in that app's settings; without it the extension does nothing.&quot;">«للتخاطب مع تطبيق HaramLite المكتبي الذي ثبّته المستخدم على جهازه. تُمرَّر إليه الرابط الذي اختار معالجته ورسائل حالة قصيرة عبر قناة Native Messaging المحلية. لا شيء يُرسَل إلى المطوّر أو إلى أي خادم، والإضافة نفسها لا تُجري أي طلب شبكة. المضيف يُسجّله التطبيق، وعلى المستخدم تفعيل التكامل من إعداداته، وبدونه لا تفعل الإضافة شيئاً.»</td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top"><code class="text-clay">activeTab</code></td>
+              <td class="p-3 align-top" data-i18n-ar="«قراءة رابط التبويب النشط لحظة نقر المستخدم على الإضافة فقط، لتسليمه إلى تطبيقه المكتبي. لا وصول في الخلفية، ولا سجل تصفح، ولا وصول إلى أي تبويب أو موقع آخر.»" data-i18n-en="&quot;Reads the URL of the active tab only at the moment the user clicks the extension, so that URL can be handed to their desktop app for processing. There is no background access, no browsing-history access and no access to any other tab or site.&quot;">«قراءة رابط التبويب النشط لحظة نقر المستخدم على الإضافة فقط، لتسليمه إلى تطبيقه المكتبي. لا وصول في الخلفية، ولا سجل تصفح، ولا وصول إلى أي تبويب أو موقع آخر.»</td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top"><code class="text-clay">*://*.youtube.com/*</code></td>
+              <td class="p-3 align-top" data-i18n-ar="«سكربت محتوى يعمل على صفحات يوتيوب فقط لإضافة زرّين إلى المشغّل («عالج هذا الفيديو» و«شاهد بعد إزالة الموسيقى») وتشغيل الصوت المعالَج محلياً بتزامن مع الفيديو. لا يقرأ محتوى آخر، ولا يُرسل شيئاً خارج الجهاز.»" data-i18n-en="&quot;A content script runs on YouTube pages only, to add two buttons to the video player ('process this video' and 'watch without music') and to play the audio that was processed locally on the user's machine in sync with the page video. It reads no other content on the page, stores nothing, downloads nothing itself, and never sends anything off the device.&quot;">«سكربت محتوى يعمل على صفحات يوتيوب فقط لإضافة زرّين إلى المشغّل («عالج هذا الفيديو» و«شاهد بعد إزالة الموسيقى») وتشغيل الصوت المعالَج محلياً بتزامن مع الفيديو. لا يقرأ محتوى آخر، ولا يُرسل شيئاً خارج الجهاز.»</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="p-4 rounded-xl bg-coal-850/80 border border-coal-700/60">
+        <div class="text-status-ok font-bold text-xs mb-1.5 flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-[15px]">block</span>
+          <span data-i18n-ar="ما لا تفعله الإضافة" data-i18n-en="What the extension does not do">ما لا تفعله الإضافة</span>
+        </div>
+        <p class="text-sand-400 text-xs leading-relaxed" data-i18n-ar="لا تُنزّل شيئاً بنفسها، ولا تحفظ ملفاً، ولا تجري أي طلب شبكة؛ ولا تتجاوز حماية تقنية ولا جدار دفع ولا قيد تسجيل دخول، ولا تفكّ تشفيراً، ولا تقرأ كوكيز جلستك. وحزمة الإضافة لا تحتوي أي ملف تنفيذي: لا yt-dlp ولا ffmpeg." data-i18n-en="It downloads nothing itself, stores no file and makes no network request; it bypasses no technical protection measure, no paywall and no login restriction, breaks no encryption, and does not read your session cookies. The extension package contains no executable file: neither yt-dlp nor ffmpeg.">لا تُنزّل شيئاً بنفسها، ولا تحفظ ملفاً، ولا تجري أي طلب شبكة؛ ولا تتجاوز حماية تقنية ولا جدار دفع ولا قيد تسجيل دخول، ولا تفكّ تشفيراً، ولا تقرأ كوكيز جلستك. وحزمة الإضافة لا تحتوي أي ملف تنفيذي: لا yt-dlp ولا ffmpeg.</p>
+      </div>
+      <div class="p-4 rounded-xl bg-coal-850/80 border border-coal-700/60">
+        <div class="text-status-ok font-bold text-xs mb-1.5 flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-[15px]">code</span>
+          <span data-i18n-ar="لا كود بعيد" data-i18n-en="No remote code">لا كود بعيد</span>
+        </div>
+        <p class="text-sand-400 text-xs leading-relaxed" data-i18n-ar="كل الشيفرة داخل الحزمة، وسياسة أمان المحتوى في ملف الإضافة تقصر السكربتات والكائنات على الحزمة نفسها (<code>script-src 'self'; object-src 'self'</code>) — فلا يُحمَّل سكربت من أي نطاق خارجي." data-i18n-en="All the code is inside the package, and the manifest's content security policy restricts scripts and objects to the package itself (<code>script-src 'self'; object-src 'self'</code>) — so no script is loaded from any external domain.">كل الشيفرة داخل الحزمة، وسياسة أمان المحتوى في ملف الإضافة تقصر السكربتات والكائنات على الحزمة نفسها (<code>script-src 'self'; object-src 'self'</code>) — فلا يُحمَّل سكربت من أي نطاق خارجي.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── ٥) جدول السند ─────────────────────────────────────── -->
+<section id="evidence" class="py-14 bg-coal-900/70 border-t border-coal-700/80">
+  <div class="max-w-4xl mx-auto px-6">
+    <div class="inline-flex items-center gap-1.5 text-xs text-clay font-semibold mb-2">
+      <span class="w-2 h-2 rounded-full bg-clay"></span>
+      <span data-i18n-ar="الأسانيد" data-i18n-en="The evidence">الأسانيد</span>
+    </div>
+    <h2 class="text-2xl sm:text-3xl font-bold text-cream-text mb-3" data-i18n-ar="كل ادّعاء في هذه الصفحة وسنده" data-i18n-en="Every claim on this page and its source">كل ادّعاء في هذه الصفحة وسنده</h2>
+    <p class="text-sand-400 text-sm mb-6" data-i18n-ar="الروابط تفتح الملف في المستودع العام على فرعه الرئيسي — فراجعها بنفسك بدل أن تأخذ كلامنا." data-i18n-en="The links open the file in the public repository on its main branch — check them yourself instead of taking our word for it.">الروابط تفتح الملف في المستودع العام على فرعه الرئيسي — فراجعها بنفسك بدل أن تأخذ كلامنا.</p>
+
+    <div class="glass-card rounded-2xl overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="bg-coal-850/80 text-sand-200">
+              <th class="text-start p-3 font-bold" data-i18n-ar="الادّعاء" data-i18n-en="The claim">الادّعاء</th>
+              <th class="text-start p-3 font-bold" data-i18n-ar="السند في الشيفرة" data-i18n-en="Source in the code">السند في الشيفرة</th>
+            </tr>
+          </thead>
+          <tbody class="text-sand-400">
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="الفصل يعمل محلياً بنموذج ONNX من ملف على جهازك" data-i18n-en="Separation runs locally with an ONNX model from a file on your machine">الفصل يعمل محلياً بنموذج ONNX من ملف على جهازك</td>
+              <td class="p-3 align-top font-mono-code"><a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/separator.rs#L20" target="_blank" rel="noopener">separator.rs:20</a> · <a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/separator.rs#L357" target="_blank" rel="noopener">:357</a> · <a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/separator.rs#L377" target="_blank" rel="noopener">:377</a></td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="فحص الملفات والتصدير عبر ffmpeg وffprobe المحليين" data-i18n-en="Probing and export run through the local ffmpeg and ffprobe">فحص الملفات والتصدير عبر ffmpeg وffprobe المحليين</td>
+              <td class="p-3 align-top font-mono-code"><a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/media.rs#L177" target="_blank" rel="noopener">media.rs:177</a> · <a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/media.rs#L817" target="_blank" rel="noopener">:817</a></td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="القصّ وكشف الصمت دوالّ محلية" data-i18n-en="Trimming and silence detection are local functions">القصّ وكشف الصمت دوالّ محلية</td>
+              <td class="p-3 align-top font-mono-code"><a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/silence.rs#L133" target="_blank" rel="noopener">silence.rs:133</a></td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="وجهة الشبكة الوحيدة في الشيفرة هي GitHub" data-i18n-en="The only network destination in the code is GitHub">وجهة الشبكة الوحيدة في الشيفرة هي GitHub</td>
+              <td class="p-3 align-top font-mono-code"><a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/update_check.rs#L23" target="_blank" rel="noopener">update_check.rs:23</a> · <a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/yt_dlp.rs#L28" target="_blank" rel="noopener">yt_dlp.rs:28</a> · <a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/repair.rs#L13" target="_blank" rel="noopener">repair.rs:13</a></td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="فحص التحديث عند الإقلاع بلا تكرار بفضل كاش ٢٤ ساعة" data-i18n-en="The startup update check does not repeat thanks to a 24-hour cache">فحص التحديث عند الإقلاع بلا تكرار بفضل كاش ٢٤ ساعة</td>
+              <td class="p-3 align-top font-mono-code"><a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/update_check.rs#L237" target="_blank" rel="noopener">update_check.rs:237</a></td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="فحص yt-dlp وتنزيله بوتيرة ٢٤ ساعة عند الإقلاع" data-i18n-en="The yt-dlp check and download run on a 24-hour cadence at startup">فحص yt-dlp وتنزيله بوتيرة ٢٤ ساعة عند الإقلاع</td>
+              <td class="p-3 align-top font-mono-code"><a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/lib.rs#L1089" target="_blank" rel="noopener">lib.rs:1089</a> · <a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/yt_dlp.rs#L140" target="_blank" rel="noopener">yt_dlp.rs:140</a> · <a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/yt_dlp.rs#L269" target="_blank" rel="noopener">:269</a></td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="إصلاح المكوّنات ينزّل من GitHub ويتحقّق من SHA-256" data-i18n-en="Component repair downloads from GitHub and verifies SHA-256">إصلاح المكوّنات ينزّل من GitHub ويتحقّق من SHA-256</td>
+              <td class="p-3 align-top font-mono-code"><a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/repair.rs#L119" target="_blank" rel="noopener">repair.rs:119</a></td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="تحديث التطبيق الذاتي معطّل في إعدادات البناء" data-i18n-en="The app self-updater is switched off in the build configuration">تحديث التطبيق الذاتي معطّل في إعدادات البناء</td>
+              <td class="p-3 align-top font-mono-code"><a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/tauri.conf.json" target="_blank" rel="noopener">tauri.conf.json</a> · <a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/update_check.rs#L3" target="_blank" rel="noopener">update_check.rs:3</a></td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="الإعدادات والسجلات محلية في %LOCALAPPDATA%" data-i18n-en="Settings and logs are local, under %LOCALAPPDATA%">الإعدادات والسجلات محلية في %LOCALAPPDATA%</td>
+              <td class="p-3 align-top font-mono-code"><a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/paths.rs#L20" target="_blank" rel="noopener">paths.rs:20</a> · <a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/docs/PRIVACY.html#L87" target="_blank" rel="noopener">PRIVACY.html:87</a></td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="بوت تيليجرام مطفأ افتراضياً" data-i18n-en="The Telegram bot is off by default">بوت تيليجرام مطفأ افتراضياً</td>
+              <td class="p-3 align-top font-mono-code"><a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/src-tauri/src/settings.rs#L64" target="_blank" rel="noopener">settings.rs:64</a></td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="الصلاحيات الأربع بحرفها ولماذا كل واحدة" data-i18n-en="The four permissions verbatim and why each one">الصلاحيات الأربع بحرفها ولماذا كل واحدة</td>
+              <td class="p-3 align-top font-mono-code"><a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/browser-extension/manifest.json#L7" target="_blank" rel="noopener">manifest.json:7</a></td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="سياسة أمان المحتوى تقصر السكربتات على الحزمة" data-i18n-en="The content security policy restricts scripts to the package">سياسة أمان المحتوى تقصر السكربتات على الحزمة</td>
+              <td class="p-3 align-top font-mono-code"><a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/browser-extension/manifest.json#L32" target="_blank" rel="noopener">manifest.json:32</a></td>
+            </tr>
+            <tr class="border-t border-coal-700/60">
+              <td class="p-3 align-top" data-i18n-ar="الإضافة لا تُجري أي طلب شبكة" data-i18n-en="The extension makes no network request">الإضافة لا تُجري أي طلب شبكة</td>
+              <td class="p-3 align-top font-mono-code"><a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/browser-extension/background.js#L3" target="_blank" rel="noopener">background.js:3</a> · <a class="text-clay hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/browser-extension/content.js#L25" target="_blank" rel="noopener">content.js:25</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── خاتمة ─────────────────────────────────────────────── -->
+<section class="py-14">
+  <div class="max-w-4xl mx-auto px-6">
+    <div class="glass-card p-6 rounded-2xl">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-lg font-bold text-cream-text mb-1.5" data-i18n-ar="تريد التفصيل الكامل؟" data-i18n-en="Want the full detail?">تريد التفصيل الكامل؟</h2>
+          <p class="text-sand-400 text-xs leading-relaxed" data-i18n-ar="سياسة الخصوصية تشرح ما يُقرأ ويُخزَّن سطراً بسطر، وسياسة الإضافة تخصّها وحدها." data-i18n-en="The privacy policy explains what is read and stored line by line, and the extension policy covers the extension alone.">سياسة الخصوصية تشرح ما يُقرأ ويُخزَّن سطراً بسطر، وسياسة الإضافة تخصّها وحدها.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <a href="PRIVACY.html" class="px-3.5 py-2 rounded-xl bg-coal-800 hover:bg-coal-700 text-sand-200 text-xs font-medium border border-coal-700 flex items-center gap-1.5">
+            <span data-i18n-ar="سياسة الخصوصية" data-i18n-en="Privacy policy">سياسة الخصوصية</span>
+            <span>↗</span>
+          </a>
+          <a href="bridge-privacy.html" class="px-3.5 py-2 rounded-xl bg-coal-800 hover:bg-coal-700 text-sand-200 text-xs font-medium border border-coal-700 flex items-center gap-1.5">
+            <span data-i18n-ar="خصوصية الإضافة" data-i18n-en="Extension privacy">خصوصية الإضافة</span>
+            <span>↗</span>
+          </a>
+          <a href="https://github.com/SMSMy/HaramLite" target="_blank" rel="noopener" class="px-3.5 py-2 rounded-xl bg-coal-800 hover:bg-coal-700 text-sand-200 text-xs font-medium border border-coal-700 flex items-center gap-1.5">
+            <span data-i18n-ar="الشيفرة على GitHub" data-i18n-en="The code on GitHub">الشيفرة على GitHub</span>
+            <span>↗</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="w-full bg-surface-container-lowest border-t border-border-muted py-stack-lg">
+<div class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop grid gap-stack-lg sm:grid-cols-3 items-start text-center sm:text-start">
+<div class="flex flex-col items-center sm:items-start gap-stack-sm">
+<div class="flex items-center gap-stack-sm"><img src="assets/icon-32.png" alt="" width="20" height="20" class="w-5 h-5 rounded-sm"><span class="font-serif font-bold text-sm tracking-wide text-cream-text">Haram<span class="text-clay italic">Lite</span></span></div>
+<p class="font-mono-code text-mono-code text-on-surface-variant"><span data-i18n-ar="الملهِم الأول:" data-i18n-en="First inspiration:">الملهِم الأول:</span> <a class="text-clay-accent hover:underline" href="https://github.com/alganzory" rel="noreferrer noopener" target="_blank" title="HaramMute — المشروع الأصلي (بايثون)" data-i18n-ar="مشروع HaramMute" data-i18n-en="the HaramMute project">مشروع HaramMute</a></p>
+</div>
+<nav class="flex flex-col items-center sm:items-start gap-unit">
+<span class="font-label-sm text-label-sm uppercase tracking-widest text-clay-accent font-bold mb-1" data-i18n-ar="الموقع" data-i18n-en="Site">الموقع</span>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" data-path="download" href="#download" data-i18n-ar="التحميل" data-i18n-en="Download">التحميل</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" data-path="features" href="#features" data-i18n-ar="المميزات" data-i18n-en="Features">المميزات</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" data-path="whats-new" href="#whatsnew" data-i18n-ar="الجديد" data-i18n-en="What&#39;s new">الجديد</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" data-path="privacy" href="#privacy" data-i18n-ar="الخصوصية" data-i18n-en="Privacy">الخصوصية</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" data-path="developers" href="#dev" data-i18n-ar="للمطورين" data-i18n-en="Developers">للمطورين</a>
+</nav>
+<nav class="flex flex-col items-center sm:items-start gap-unit">
+<span class="font-label-sm text-label-sm uppercase tracking-widest text-clay-accent font-bold mb-1" data-i18n-ar="مساعدة وقانوني" data-i18n-en="Help &amp; legal">مساعدة وقانوني</span>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="bridge.html" data-i18n-ar="إضافة المتصفح" data-i18n-en="Browser extension">إضافة المتصفح</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="PRIVACY.html" data-i18n-ar="سياسة الخصوصية" data-i18n-en="Privacy policy">سياسة الخصوصية</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="TRANSPARENCY.html" data-i18n-ar="الشفافية" data-i18n-en="Transparency">الشفافية</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="LICENSE.txt" data-i18n-ar="الرخصة" data-i18n-en="License">الرخصة</a>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-cream-text transition-colors" href="https://github.com/SMSMy/HaramLite/issues/new" data-i18n-ar="هل واجهت مشكلة أو لديك اقتراح؟" data-i18n-en="Found a problem or have a suggestion?">هل واجهت مشكلة أو لديك اقتراح؟</a>
+</nav>
+</div>
+<div class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop mt-stack-md pt-stack-md border-t border-border-muted text-center font-label-sm text-label-sm text-on-surface-variant" data-i18n-ar="صُنع بحبٍّ ليخدم كل من أراد محتواه خاليًا من الموسيقى — وكل شيء هنا مفتوح المصدر، ويمكنك استخدامه وتطويره بحرية." data-i18n-en="Made with care for anyone who wants their content clean — and everything here is open source, free to use and build on.">صُنع بحبٍّ ليخدم كل من أراد محتواه خاليًا من الموسيقى — وكل شيء هنا مفتوح المصدر، ويمكنك استخدامه وتطويره بحرية.</div>
+</footer>
+
+<script src="assets/lang.js"></script>
+</body>
+
+</html>

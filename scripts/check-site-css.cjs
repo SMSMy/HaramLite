@@ -23,7 +23,7 @@ function hasClass(name) {
 }
 
 // ── ١) أصناف الخطوط المستخدمة فعلاً في صفحات الموقع ─────────────────────────
-const contentFiles = ['docs/index.html', 'docs/bridge.html', 'docs/PRIVACY.html', 'docs/404.html']
+const contentFiles = ['docs/index.html', 'docs/bridge.html', 'docs/PRIVACY.html', 'docs/bridge-privacy.html', 'docs/TRANSPARENCY.html', 'docs/404.html']
   .concat(fs.readdirSync(path.join(root, 'docs/guides')).filter(f => f.endsWith('.html')).map(f => 'docs/guides/' + f));
 
 const used = new Set();

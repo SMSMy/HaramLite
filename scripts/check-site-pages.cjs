@@ -9,7 +9,7 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const guidesDir = path.join(root, 'docs/guides');
 const guides = fs.readdirSync(guidesDir).filter(f => f.endsWith('.html'));
-const rootPages = ['docs/index.html', 'docs/bridge.html', 'docs/PRIVACY.html', 'docs/bridge-privacy.html', 'docs/404.html'];
+const rootPages = ['docs/index.html', 'docs/bridge.html', 'docs/PRIVACY.html', 'docs/bridge-privacy.html', 'docs/TRANSPARENCY.html', 'docs/404.html'];
 const fails = [];
 const ok = [];
 
