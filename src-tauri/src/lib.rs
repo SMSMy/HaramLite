@@ -16,6 +16,7 @@ mod pipeline;
 mod player;
 mod repair;
 mod reverb_delay;
+mod scratch;
 mod seal;
 mod separator;
 mod session;
@@ -429,6 +430,19 @@ fn player_close(state: tauri::State<'_, AppState>, id: u64) -> bool {
     state.player_sessions.lock().map(|mut s| s.close(id)).unwrap_or(false)
 }
 
+/// Decode `input` into the per-process scratch dir and read the stereo mix.
+///
+/// Audit 2026-09-15 (٤.ب.٦): the scratch dir is now owned by a drop guard, so
+/// BOTH `?` below (normalize, read) can no longer skip the cleanup and leave
+/// `%TEMP%\hl_player_<pid>` behind for the next run to inherit.
+fn read_normalized_mix(input: &Path) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
+    let work = std::env::temp_dir().join(format!("hl_player_{}", std::process::id()));
+    let _scratch = crate::scratch::ScratchGuard::new(&work);
+    let normalized =
+        media::normalize_for_engine_limited(input, &work, None).map_err(|e| e.to_string())?;
+    separator::read_wav_stereo(&normalized).map_err(|e| e.to_string())
+}
+
 /// Precompute the real position map of a file (decode + silence map +
 /// decision over every chunk). Async + worker (ffmpeg + full scan); returns
 /// absolute mute/duck ranges plus the per-minute cost evidence.
@@ -452,13 +466,8 @@ async fn player_prepare(
     }
     let rep = tauri::async_runtime::spawn_blocking(move || {
         let input = PathBuf::from(&path);
-        let work = std::env::temp_dir().join(format!("hl_player_{}", std::process::id()));
-        let normalized =
-            media::normalize_for_engine_limited(&input, &work, None).map_err(|e| e.to_string())?;
-        let (l, r, sr) =
-            separator::read_wav_stereo(&normalized).map_err(|e| e.to_string())?;
+        let (l, r, sr) = read_normalized_mix(&input)?;
         let rep = v1proto::build_position_map(&l, &r, sr, chunk_secs, &decide::DecideConfig::default());
-        let _ = std::fs::remove_dir_all(&work);
         Ok::<_, String>(serde_json::json!({
             "total_secs": rep.total_audio_secs,
             "chunks": rep.chunks,
@@ -1184,5 +1193,23 @@ mod p2_tests {
         let ok = persist_then_publish(&mem, &next, |_| Ok(()));
         assert!(ok.is_ok());
         assert_eq!(mem.lock().unwrap().lang, "en");
+    }
+
+    /// Negative test for ٤.ب.٦: the player scratch dir must be gone when the
+    /// decode returns early. It used to be removed by a single call at the END
+    /// of the worker, so the two `?` before it (normalize, read) leaked
+    /// `%TEMP%\hl_player_<pid>` on every failure.
+    #[test]
+    fn the_player_scratch_dir_survives_no_failure() {
+        let work = std::env::temp_dir().join(format!("hl_player_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&work);
+        // Whatever a failed decode had already written inside it.
+        std::fs::create_dir_all(&work).unwrap();
+        std::fs::write(work.join("_haramlite_normalized_x.wav"), b"partial").unwrap();
+
+        let missing = work.join("does_not_exist.mp4");
+        let failed = read_normalized_mix(&missing);
+        assert!(failed.is_err(), "an undecodable input must fail the decode");
+        assert!(!work.exists(), "the scratch dir must be removed on the early return");
     }
 }

@@ -6,7 +6,7 @@
 //! repaired from the `assets-v1` GitHub release with SHA-256 verification —
 //! the same download-then-verify-then-rename pattern used by yt_dlp.rs.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
@@ -111,9 +111,6 @@ pub fn repair(
     key: &str,
     progress: &dyn Fn(f32),
 ) -> Result<PathBuf, String> {
-    use sha2::{Digest, Sha256};
-    use std::io::Write;
-
     let c = COMPONENTS
         .iter()
         .find(|c| c.key == key)
@@ -137,10 +134,32 @@ pub fn repair(
         .and_then(|h| h.parse::<u64>().ok())
         .unwrap_or(0);
 
+    download_and_verify(resp.into_reader(), &dest, total, c.sha256, progress)?;
+    tracing::info!(target: "repair", "{} repaired ✓", c.key);
+    progress(1.0);
+    Ok(dest)
+}
+
+/// Stream the response body into `<dest>.download` (hashing as it goes), verify
+/// it, then promote it with one rename.
+///
+/// Audit 2026-09-15 (٤.ب.٦): the partial file is owned by a drop guard, so a
+/// dropped connection or a write error removes it too — only the hash mismatch
+/// used to clean up, and every other exit left `<name>.download` on the disk.
+fn download_and_verify(
+    mut reader: impl std::io::Read,
+    dest: &Path,
+    total: u64,
+    expect_sha256: &str,
+    progress: &dyn Fn(f32),
+) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Write;
+
     let tmp = dest.with_extension("download");
+    let _scratch = crate::scratch::ScratchGuard::new(&tmp);
     let mut file = std::fs::File::create(&tmp).map_err(|e| format!("{}: {e}", tmp.display()))?;
     let mut hasher = Sha256::new();
-    let mut reader = resp.into_reader();
     let mut gotten: u64 = 0;
     let mut chunk = [0u8; 256 * 1024];
     loop {
@@ -157,16 +176,74 @@ pub fn repair(
     drop(file);
 
     let actual = format!("{:x}", hasher.finalize());
-    if actual != c.sha256 {
-        let _ = std::fs::remove_file(&tmp);
+    if actual != expect_sha256 {
         return Err(format!(
             "بصمة التنزيل لا تطابق المتوقع لـ {} — أُلغي التثبيت حمايةً لك",
-            c.asset
+            dest.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
         ));
     }
 
-    std::fs::rename(&tmp, &dest).map_err(|e| format!("تعذر التثبيت في {}: {e}", dest.display()))?;
-    tracing::info!(target: "repair", "{} repaired ✓", c.key);
-    progress(1.0);
-    Ok(dest)
+    std::fs::rename(&tmp, dest).map_err(|e| format!("تعذر التثبيت في {}: {e}", dest.display()))?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A transfer that yields a little data and then fails — the shape of a
+    /// dropped connection, i.e. the exit path that used to leave the partial
+    /// `<name>.download` behind (٤.ب.٦).
+    struct BrokenReader(u8);
+
+    impl std::io::Read for BrokenReader {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            if self.0 == 0 {
+                return Err(std::io::Error::new(std::io::ErrorKind::ConnectionReset, "انقطع"));
+            }
+            self.0 -= 1;
+            let n = buf.len().min(8);
+            buf[..n].fill(b'x');
+            Ok(n)
+        }
+    }
+
+    /// Negative test for ٤.ب.٦: a failed transfer must leave NO `.download`
+    /// file. Before the guard, only the hash-mismatch branch removed it.
+    #[test]
+    fn a_broken_download_leaves_no_partial_file_behind() {
+        let dir = std::env::temp_dir().join(format!("hl_repair_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("ffmpeg.exe");
+        let tmp = dest.with_extension("download");
+        let progress = |_p: f32| {};
+
+        let broken = download_and_verify(BrokenReader(2), &dest, 0, "deadbeef", &progress);
+        let err = broken.expect_err("a broken transfer must fail");
+        assert!(err.contains("انقطع التنزيل"), "the transfer error must surface: {err}");
+        assert!(!tmp.exists(), "the partial download must be gone (٤.ب.٦)");
+        assert!(!dest.exists(), "and nothing may be promoted");
+
+        // Short-but-complete transfer ⇒ hash mismatch ⇒ same cleanup.
+        let body = std::io::Cursor::new(b"wrong bytes".to_vec());
+        assert!(download_and_verify(body, &dest, 0, "deadbeef", &progress).is_err());
+        assert!(!tmp.exists(), "a hash mismatch must not leave the file either");
+
+        // …and the verified path still promotes the file with one rename.
+        use sha2::{Digest, Sha256};
+        let payload = b"a component".to_vec();
+        let sha = format!("{:x}", Sha256::digest(&payload));
+        let promoted = download_and_verify(
+            std::io::Cursor::new(payload.clone()),
+            &dest,
+            0,
+            &sha,
+            &progress,
+        );
+        assert!(promoted.is_ok(), "a verified transfer must install: {promoted:?}");
+        assert_eq!(std::fs::read(&dest).unwrap(), payload);
+        assert!(!tmp.exists(), "the temporary name must not survive the rename");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
