@@ -11,7 +11,18 @@ updates:
     directory: /src-tauri
     schedule:
       interval: weekly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
+    # 2026-09-15 (بعد أول تشغيل فتح تسعة طلبات دفعةً واحدة):
+    # الترقيات الكبرى تُتجاهل لأنها تحتاج تعديل كود ومراجعة يدوية (notify 6→8 ·
+    # sha2 0.10→0.11)، والدنيا والرقعة تُجمَّع في طلب واحد لكل نظام بدل طلب لكل
+    # مكتبة. المشروع يُصدر يدوياً فالحصّة والمراجعة أهم من كثرة الطلبات.
+    groups:
+      rust-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "chore(deps)"
     labels:
@@ -22,7 +33,16 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
+    # نفس السياسة: لا طلبات لترقية كبرى (vite 6→8 · typescript 5.6→7 تحتاج
+    # تعديل مسار البناء ومراجعة)، والدنيا والرقعة في طلب واحد.
+    groups:
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "chore(deps)"
     labels:
@@ -34,6 +54,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 2
+    # ترقيات الـactions تُدمج كمجموعة واحدة: تغييرها لا يمسّ التطبيق المبنّي،
+    # فلا يستحق طلباً لكل action.
+    groups:
+      actions:
+        patterns: ["*"]
     commit-message:
       prefix: "chore(ci)"
     labels:

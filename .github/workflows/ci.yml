@@ -12,6 +12,9 @@ name: Quality gate
 on:
   workflow_dispatch:
   push:
+  # 2026-09-15: بلا هذا المشغّل لا يفحص شيءٌ طلبات Dependabot (فُتحت تسعة مرة
+  # واحدة) — كان الفحص يقع بعد الدمج لا قبله. معه تصير كل طلبات السحب مُبوَّبة.
+  pull_request:
     branches:
       - main
 
