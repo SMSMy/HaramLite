@@ -79,7 +79,7 @@ fn bin_dir() -> PathBuf {
 
 /// كل الملفات موجودة في مجلد معين → جلسة CUDA تستطيع تحميلها.
 pub(crate) fn dir_has_runtime(dir: &Path) -> bool {
-    CUDA_FILES.iter().all(|f| dir.join(f).is_file())
+    runtime_gap_in(dir) == RuntimeGap::Usable
 }
 
 /// مثبت بالقياس: جسر مزود ORT لا يبحث في `bin/` (لا SetDllDirectory ولا
@@ -111,6 +111,212 @@ pub(crate) fn heal_provider_dlls_in(exe_dir: &Path, bin_dir: &Path) -> usize {
 /// الملفات الست عشرة موجودة → جلسة CUDA تستطيع تحميلها.
 pub fn is_available() -> bool {
     dir_has_runtime(&bin_dir())
+}
+
+// ─────────────────── حالات CUDA صريحة: كشف نقي + قرار + رسالة ───────────────
+//
+// ROADMAP §٧.ب بند ٩: «لكل حالة رسالة واضحة + سقوط إلى CPU (لا فشل صامت ولا خطأ
+// عام)، واختبارات وحدة لما يمكن محاكته بلا عتاد».
+//
+// كل ما في هذا القسم **دوال نقية** تستقبل ما تقرأه من القرص أو من البيئة بدل
+// أن تقرأه بنفسها — لأن قراءة `current_exe()` و`SystemRoot` تجعل الفحص غير
+// قابل للاختبار. لا يتغيّر سلوك المعالجة هنا إطلاقاً: هذه طبقة تشخيص وقرار،
+// وسلسلة المحاولات الفعلية تبقى كما هي في `separator::MdxSession::load`.
+
+/// اسم مكتبة التعريف (`nvcuda.dll` يأتي مع تعريف NVIDIA نفسه).
+pub(crate) const DRIVER_DLL: &str = "nvcuda.dll";
+
+/// هل يوجد كرت NVIDIA أصلاً؟ النسخة القابلة للاختبار: تقبل جذر النظام.
+pub(crate) fn nvidia_gpu_present_in(system_root: &Path) -> bool {
+    system_root.join("System32").join(DRIVER_DLL).exists()
+}
+
+/// نتيجة فحص مجلد التشغيل. الفصل بين «لم يُنزَّل شيء» و«نُزِّل بعضه» مقصود:
+/// الأولى حالة مستخدم جديد، والثانية عطل حقيقي (تنزيل انقطع أو ملف حُذف يدوياً)
+/// — ونصيحة كل منهما مختلفة.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum RuntimeGap {
+    Usable,
+    /// لا يوجد أي ملف من الستة عشر — لم يُفعَّل التنزيل الذاتي بعد.
+    Absent,
+    /// بعض الملفات موجود وبعضها ناقص — إما لم تكتمل بعد أو حُذف بعضها يدوياً.
+    Incomplete(Vec<String>),
+}
+
+/// فحص نقي لمجلد التشغيل — يفصل «غائب» عن «ناقص» بدل `bool` واحد كان يخلط
+/// حالات مختلفة تماماً في سببها وفي ما على المستخدم فعله.
+pub(crate) fn runtime_gap_in(dir: &Path) -> RuntimeGap {
+    let missing: Vec<String> = CUDA_FILES
+        .iter()
+        .filter(|f| !dir.join(f).is_file())
+        .map(|f| (*f).to_string())
+        .collect();
+    if missing.is_empty() {
+        RuntimeGap::Usable
+    } else if missing.len() == CUDA_FILES.len() {
+        RuntimeGap::Absent
+    } else {
+        RuntimeGap::Incomplete(missing)
+    }
+}
+
+/// حالة CUDA كما تُشخَّص قبل بناء الجلسة. **لا تُغيّر أي قرار معالجة** — تصف
+/// الواقع كي تُبنى الرسالة عليه.
+///
+/// ملاحظة صدق: «جهاز موجود وتهيئته تفشل» (تعريف أقدم، أو cuDNN غير مطابق، أو
+/// فشل تحميل فعلي) **لا يُكتشف من الملفات**: الستة عشر تكتمل أسماؤها ولا شيء
+/// في أسمائها يكشف إصدارها. لذلك لا ندّعي حالة خامسة هنا — تُجرَّب CUDA فعلاً
+/// في تلك الحالة، وإن سقطت فهي رسالة `ort` الأصلية (تُلتقط في
+/// `separator::ep_first_error`) مع السقوط الصريح إلى DirectML ثم CPU.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CudaState {
+    /// المستخدم لم يطلب CUDA — لا رسالة تحذير إطلاقاً.
+    NotRequested,
+    /// طُلبت CUDA ولا كرت NVIDIA على الجهاز (لا `nvcuda.dll` = لا تعريف).
+    NoNvidiaGpu,
+    /// الكرت والتعريف موجودان، ومكتبات التشغيل غير مكتملة في `bin/`.
+    RuntimeIncomplete,
+    /// الأسماء الستة عشر كاملة والشاشة عليها كرت — تُجرَّب CUDA فعلاً.
+    Ready,
+}
+
+/// تشخيص كامل قابل للاختبار بلا عتاد (تُمرَّر له كل المدخلات).
+pub(crate) struct CudaDiagnosis {
+    pub state: CudaState,
+    /// عدد ملفات التشغيل الموجودة فعلاً من الستة عشر.
+    pub present: usize,
+    /// الملفات الناقصة (فارغة في حالة الاكتمال).
+    pub missing: Vec<String>,
+    /// هل يرى النظام كرت NVIDIA (وجود `nvcuda.dll` = تعريف مثبت)؟ يحدّد نصّ
+    /// الحالة: «لا كرت» ليست «كرت بلا مكتبات».
+    pub gpu_present: bool,
+}
+
+impl CudaDiagnosis {
+    /// الرسالة الظاهرة في السجل. **لكل حالة نصّها الخاص** — لا نصّ عام واحد
+    /// يخفي السبب، ولا سقوط صامت.
+    pub fn message(&self) -> String {
+        match self.state {
+            CudaState::NotRequested => "CUDA غير مطلوبة — DirectML أولاً".to_string(),
+            CudaState::Ready => format!(
+                "CUDA مكتملة ({}/{} ملفاً) — ستُجرَّب أولاً",
+                self.present,
+                CUDA_FILES.len()
+            ),
+            // `nvcuda.dll` comes with the driver, so its absence covers both
+            // "no card" and "card without a driver" — same fact, same fix. The
+            // wording still separates the two so the log is actionable.
+            CudaState::NoNvidiaGpu if self.gpu_present => format!(
+                "كرت NVIDIA موجود لكن مكتبات تشغيل CUDA غير مكتملة في مجلد bin ({}) — \
+                 هذا طلب CUDA بلا مكتبات، وسيُستخدم DirectML ثم CPU الآن",
+                self.gap_detail()
+            ),
+            CudaState::NoNvidiaGpu => format!(
+                "لا يوجد كرت NVIDIA بتعريفه على هذا الجهاز ({DRIVER_DLL} غير موجود في System32) — \
+                 لا يمكن تشغيل CUDA، وسيُستخدم DirectML ثم CPU"
+            ),
+            CudaState::RuntimeIncomplete => format!(
+                "تعريف NVIDIA موجود لكن مكتبات تشغيل CUDA غير مكتملة في مجلد bin: {} — \
+                 فعّل خيار CUDA في الإعدادات لتنزيلها تلقائياً، وسيُستخدم DirectML ثم CPU الآن",
+                self.gap_detail()
+            ),
+        }
+    }
+
+    /// وصف النقص بصيغة واحدة («لم تُنزَّل أي…» أو «ينقص n من 16 (أسماء)»).
+    fn gap_detail(&self) -> String {
+        if self.missing.len() == CUDA_FILES.len() {
+            format!("لم تُنزَّل أي من {} ملفاتها بعد", CUDA_FILES.len())
+        } else {
+            format!(
+                "ينقص {} من {} ملفاً ({})",
+                self.missing.len(),
+                CUDA_FILES.len(),
+                summarize_missing(&self.missing)
+            )
+        }
+    }
+
+    /// هل تُجرَّب CUDA فعلاً في هذه الجلسة؟ (البوابة الوحيدة لسلسلة المحاولات)
+    pub fn attempt_cuda(&self) -> bool {
+        self.state == CudaState::Ready
+    }
+}
+
+/// أول أسماء قليلة من الناقص + عدّاد الباقي (رسالة واحدة لا قائمة طويلة).
+fn summarize_missing(missing: &[String]) -> String {
+    const SHOWN: usize = 3;
+    let head: Vec<&str> = missing.iter().take(SHOWN).map(|s| s.as_str()).collect();
+    if missing.len() > SHOWN {
+        format!("{}، و{} غيرها", head.join("، "), missing.len() - SHOWN)
+    } else {
+        head.join("، ")
+    }
+}
+
+/// التشخيص النقي: كل مدخل يُمرَّر صراحةً فيصير الاختبار ممكناً بلا عتاد.
+pub(crate) fn diagnose(use_cuda: bool, gpu_present: bool, gap: RuntimeGap) -> CudaDiagnosis {
+    let missing = match &gap {
+        RuntimeGap::Usable => Vec::new(),
+        RuntimeGap::Absent => CUDA_FILES.iter().map(|f| (*f).to_string()).collect(),
+        RuntimeGap::Incomplete(m) => m.clone(),
+    };
+    let present = CUDA_FILES.len() - missing.len();
+    // Not asking = no warning, whatever the machine looks like.
+    if !use_cuda {
+        return CudaDiagnosis { state: CudaState::NotRequested, present, missing, gpu_present };
+    }
+    let state = match &gap {
+        // Complete set AND a device: the only state where CUDA is attempted.
+        RuntimeGap::Usable if gpu_present => CudaState::Ready,
+        // Complete set, no device: attempting would only burn a provider build
+        // that cannot register — the provider cannot load without `nvcuda.dll`.
+        RuntimeGap::Usable => CudaState::NoNvidiaGpu,
+        // Libraries incomplete: with a device this is the actionable
+        // "download them" case; without one there is nothing to download for.
+        RuntimeGap::Absent | RuntimeGap::Incomplete(_) if gpu_present => {
+            CudaState::RuntimeIncomplete
+        }
+        RuntimeGap::Absent | RuntimeGap::Incomplete(_) => CudaState::NoNvidiaGpu,
+    };
+    CudaDiagnosis { state, present, missing, gpu_present }
+}
+
+/// القرارات التي تتخذها طبقة التشخيص (فقط) — تُختبر وتُقرأ في السجل.
+pub(crate) struct CudaPlan {
+    pub attempt_cuda: bool,
+    /// ترتيب المزودين الذي ستسلكه السلسلة فعلاً (للسجل: لا ادّعاء ولا إخفاء).
+    pub provider_chain: &'static str,
+}
+
+/// الخطوة التالية: سلسلة المحاولات كما هي في `MdxSession::load` بلا تغيير،
+/// لكن مع تصريح حالة الجهاز التي أُسقطت سابقاً من التقرير.
+pub(crate) fn plan(d: &CudaDiagnosis) -> CudaPlan {
+    if d.attempt_cuda() {
+        CudaPlan { attempt_cuda: true, provider_chain: "CUDA -> DirectML -> CPU" }
+    } else {
+        CudaPlan { attempt_cuda: false, provider_chain: "DirectML -> CPU" }
+    }
+}
+
+/// التشخيص الفعلي على هذا الجهاز (يقرأ القرص والبيئة مرة واحدة).
+pub(crate) fn current_diagnosis(use_cuda: bool) -> CudaDiagnosis {
+    let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
+    let driver = nvidia_gpu_present_in(Path::new(&sysroot));
+    diagnose(use_cuda, driver, runtime_gap_in(&bin_dir()))
+}
+
+/// هل يوجد كرت NVIDIA أصلاً؟ (`nvcuda.dll` يأتي مع تعريف الكرت)
+pub fn nvidia_gpu_present() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
+        nvidia_gpu_present_in(Path::new(&sysroot))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
 }
 
 #[cfg(test)]
@@ -165,19 +371,6 @@ mod tests {
         ));
         assert!(!asset_sha_ok("xyz"));
         assert!(!asset_sha_ok(""));
-    }
-}
-
-/// هل يوجد كرت NVIDIA أصلاً؟ (`nvcuda.dll` يأتي مع تعريف الكرت)
-pub fn nvidia_gpu_present() -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
-        Path::new(&format!("{sysroot}\\System32\\nvcuda.dll")).exists()
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        false
     }
 }
 
@@ -378,3 +571,193 @@ fn download_verified(
     std::fs::rename(&tmp, dest).map_err(|e| format!("تعذر التثبيت: {e}"))?;
     Ok(())
 }
+
+/// ROADMAP §٧.ب بند ٩ — حالات الفشل صريحةً. كل ما هنا **محاكى بلا عتاد**: مجلد
+/// مؤقت يمثّل `bin/`، ومجلد مؤقت يمثّل `System32`. لا يُدَّعى اختبار عتاد حقيقي:
+/// ما يحتاج كرتاً فعلياً هو `separator::tests::cuda_full_separation_smoke`
+/// (مُهمَل، ويُشغَّل يدوياً على جهاز فيه RTX).
+#[cfg(test)]
+mod failure_states {
+    use super::*;
+
+    /// مجلد `bin/` كامل مصطنع (16 ملفاً وهمياً) — لا يلزمه عتاد ولا تنزيل.
+    fn fake_bin(base: &Path) -> PathBuf {
+        let dir = base.join("bin");
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in CUDA_FILES {
+            std::fs::write(dir.join(f), b"stub").unwrap();
+        }
+        dir
+    }
+
+    fn sysroot(with_driver: bool) -> PathBuf {
+        let base = std::env::temp_dir().join(format!(
+            "hl_sysroot_{}_{}",
+            std::process::id(),
+            with_driver
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("System32")).unwrap();
+        if with_driver {
+            std::fs::write(base.join("System32").join(DRIVER_DLL), b"driver").unwrap();
+        }
+        base
+    }
+
+    /// الحالة 1+2 — لا NVIDIA (أو كرت بلا تعريفه): الرسالة تسمّي السبب ولا تدعو
+    /// لتنزيل مكتبات لا فائدة منها.
+    #[test]
+    fn no_nvidia_gpu_is_named_and_does_not_attempt_cuda() {
+        // A machine with no NVIDIA card never downloaded the runtime, so the
+        // realistic case is an ABSENT one — covered by `RuntimeGap::Absent`.
+        let d = diagnose(true, false, RuntimeGap::Absent);
+        assert_eq!(d.state, CudaState::NoNvidiaGpu);
+        assert_eq!(d.present, 0);
+        assert!(!d.attempt_cuda(), "no device means no CUDA attempt");
+        let m = d.message();
+        assert!(m.contains("NVIDIA"), "message must name the vendor: {m}");
+        assert!(m.contains(DRIVER_DLL), "the missing driver DLL is named: {m}");
+        assert!(
+            !m.contains("في مجلد bin"),
+            "must not ask for a library download when there is no card: {m}"
+        );
+        assert_eq!(plan(&d).provider_chain, "DirectML -> CPU");
+        // Half-downloaded libraries with no driver: the device still decides.
+        let d2 = diagnose(true, false, RuntimeGap::Incomplete(vec!["cudart64_12.dll".into()]));
+        assert_eq!(d2.state, CudaState::NoNvidiaGpu, "no card wins over a partial download");
+        assert!(!d2.attempt_cuda());
+    }
+
+    /// الحالة 3 — مكتبة ناقصة: الرسالة تسمّي الناقص بالاسم (وهو ما كان يُفقد
+    /// حين كان الفحص `bool` واحداً).
+    #[test]
+    fn missing_runtime_dlls_are_named_in_the_message() {
+        let base = std::env::temp_dir().join(format!("hl_gap_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let dir = fake_bin(&base);
+        // A missing cuDNN file is exactly the historical failure this guards.
+        std::fs::remove_file(dir.join("cudnn_cnn64_9.dll")).unwrap();
+        std::fs::remove_file(dir.join("cufft64_11.dll")).unwrap();
+        let gap = runtime_gap_in(&dir);
+        assert_eq!(
+            gap,
+            RuntimeGap::Incomplete(vec!["cufft64_11.dll".into(), "cudnn_cnn64_9.dll".into()])
+        );
+        let d = diagnose(true, true, gap);
+        assert_eq!(d.state, CudaState::RuntimeIncomplete);
+        assert_eq!(d.present, CUDA_FILES.len() - 2);
+        assert!(!d.attempt_cuda(), "an incomplete runtime must not be attempted");
+        let m = d.message();
+        assert!(m.contains("cufft64_11.dll"), "missing file must be named: {m}");
+        assert!(m.contains("cudnn_cnn64_9.dll"), "missing file must be named: {m}");
+        assert!(m.contains("2 من 16"), "count must be explicit: {m}");
+        assert!(m.contains("DirectML"), "the fallback must be stated: {m}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// الحالة 4 — «كرت موجود لكن لم تُنزَّل المكتبات»: الرسالة تدلّ على الحل
+    /// بخطوة واحدة، وتُفرَّق عن «لا كرت».
+    #[test]
+    fn present_card_with_no_download_gets_the_one_click_advice() {
+        let d = diagnose(true, true, RuntimeGap::Absent);
+        assert_eq!(d.state, CudaState::RuntimeIncomplete);
+        assert_eq!(d.present, 0);
+        assert!(!d.attempt_cuda());
+        let m = d.message();
+        assert!(m.contains("لم تُنزَّل أي من 16"), "absent is stated as such: {m}");
+        assert!(m.contains("تنزيلها تلقائياً"), "the one-click fix is stated: {m}");
+        assert!(!m.contains(DRIVER_DLL), "the driver is present, not the problem: {m}");
+    }
+
+    /// الحالة 5 — الاكتمال: الستة عشر موجودة، فتُجرَّب CUDA فعلاً. وإن فشلت
+    /// التهيئة (تعريف أقدم أو cuDNN غير مطابق) فذلك لا يُكتشف من الأسماء —
+    /// تلتقطه رسالة `ort` والسقوط الصريح في `separator`.
+    #[test]
+    fn complete_runtime_attempts_cuda_and_defers_failure_to_the_chain() {
+        let base = std::env::temp_dir().join(format!("hl_full_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let dir = fake_bin(&base);
+        assert_eq!(runtime_gap_in(&dir), RuntimeGap::Usable);
+        assert!(dir_has_runtime(&dir), "existing behaviour preserved");
+        let d = diagnose(true, true, runtime_gap_in(&dir));
+        assert_eq!(d.state, CudaState::Ready);
+        assert!(d.attempt_cuda());
+        assert_eq!(d.present, CUDA_FILES.len());
+        assert!(d.message().contains("16/16"), "message states completeness");
+        // The chain is confirmed BEFORE any attempt — so a silent fallback is
+        // impossible to report as CUDA.
+        assert_eq!(plan(&d).provider_chain, "CUDA -> DirectML -> CPU");
+        // Complete NAMES but no driver: attempting would only burn a provider
+        // build that cannot register — the device is reported instead.
+        let nd = diagnose(true, false, RuntimeGap::Usable);
+        assert_eq!(nd.state, CudaState::NoNvidiaGpu);
+        assert!(!nd.attempt_cuda());
+        assert_eq!(plan(&nd).provider_chain, "DirectML -> CPU");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// لا طلب → لا تحذير، مهما كانت حالة الجهاز.
+    #[test]
+    fn not_requested_stays_silent_about_cuda() {
+        let gaps = [
+            RuntimeGap::Usable,
+            RuntimeGap::Absent,
+            RuntimeGap::Incomplete(vec![DRIVER_DLL.into()]),
+        ];
+        for gap in &gaps {
+            for driver in [true, false] {
+                // `diagnose` takes the gap by value so it can move the missing
+                // list into the diagnosis; rebuild it per iteration instead of
+                // cloning (keeps `RuntimeGap` free of a Clone impl it needs
+                // nowhere else).
+                let gap = match gap {
+                    RuntimeGap::Usable => RuntimeGap::Usable,
+                    RuntimeGap::Absent => RuntimeGap::Absent,
+                    RuntimeGap::Incomplete(m) => RuntimeGap::Incomplete(m.clone()),
+                };
+                let d = diagnose(false, driver, gap);
+                assert_eq!(d.state, CudaState::NotRequested);
+                assert!(!d.attempt_cuda());
+                assert!(!d.message().contains("ينقص"));
+                assert_eq!(plan(&d).provider_chain, "DirectML -> CPU");
+            }
+        }
+    }
+
+    /// كشف التعريف من مجلد النظام، وفصل «غائب» عن «ناقص»، وتقصير القوائم
+    /// الطويلة.
+    #[test]
+    fn driver_presence_absent_vs_incomplete_and_long_lists() {
+        assert!(nvidia_gpu_present_in(&sysroot(true)));
+        assert!(!nvidia_gpu_present_in(&sysroot(false)));
+        // Empty dir = Absent, one file present = Incomplete.
+        let base = std::env::temp_dir().join(format!("hl_gapkind_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        assert_eq!(runtime_gap_in(&base), RuntimeGap::Absent);
+        std::fs::write(base.join(CUDA_FILES[0]), b"stub").unwrap();
+        match runtime_gap_in(&base) {
+            RuntimeGap::Incomplete(m) => {
+                assert_eq!(m.len(), CUDA_FILES.len() - 1);
+                assert!(!m.contains(&CUDA_FILES[0].to_string()), "present file is not 'missing'");
+            }
+            other => panic!("expected Incomplete, got {other:?}"),
+        }
+        // The long-list summary must not print sixteen names. All sixteen
+        // missing is the `Absent` wording, so one file is kept present here to
+        // reach the `Incomplete` summary path.
+        let long: Vec<String> = CUDA_FILES.iter().skip(1).map(|s| s.to_string()).collect();
+        assert_eq!(long.len(), CUDA_FILES.len() - 1);
+        let long = diagnose(true, true, RuntimeGap::Incomplete(long)).message();
+        assert!(long.contains("و12 غيرها"), "long lists are summarised: {long}");
+        assert!(
+            !long.contains(&CUDA_FILES[5].to_string()),
+            "only the first few names are listed: {long}"
+        );
+        // All sixteen missing has its own, shorter wording.
+        let absent = diagnose(true, true, RuntimeGap::Absent).message();
+        assert!(absent.contains("لم تُنزَّل أي من 16"), "absent wording: {absent}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+}
+

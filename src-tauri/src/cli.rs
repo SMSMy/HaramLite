@@ -27,6 +27,9 @@ struct CliOpts {
     video_height: Option<u32>,
     url: Option<String>,
     update_ytdlp: bool,
+    /// ROADMAP §٧.ب بند ٩: طلب CUDA من سطر الأوامر، ليكون مسار السقوط
+    /// (CUDA ← DirectML ← CPU) قابلاً للاختبار بلا واجهة.
+    cuda: bool,
 }
 
 fn print_help() {
@@ -46,6 +49,7 @@ fn print_help() {
   --inst-only        حفظ الموسيقى فقط
   --probe FILE       فحص ملف وطباعة تصنيفه ثم الخروج
   --check            فحص صحة الأدوات والنموذج ثم الخروج
+  --cuda             محاولة تسريع CUDA أولاً (تسقط إلى DirectML ثم CPU تلقائياً)
   -h, --help         هذه الشاشة
   -V, --version      رقم الإصدار
 
@@ -70,6 +74,7 @@ fn parse_args(args: &[String]) -> Result<CliOpts, String> {
         video_height: None,
         url: None,
         update_ytdlp: false,
+        cuda: false,
     };
 
     let mut i = 0usize;
@@ -97,6 +102,7 @@ fn parse_args(args: &[String]) -> Result<CliOpts, String> {
                 o.url = Some(args.get(i).ok_or("-u يحتاج رابطاً")?.clone());
             }
             "--update-ytdlp" => o.update_ytdlp = true,
+            "--cuda" => o.cuda = true,
             "--video" => o.video = true,
             "--video-h" => {
                 i += 1;
@@ -197,7 +203,7 @@ fn run_files(o: &CliOpts) -> i32 {
         } else {
             pipeline::OutKind::Audio { fmt: o.format }
         };
-        match pipeline::process_file(path, &out_dir, o.mode, kind, o.keep_both || o.keep_inst_only, !o.keep_inst_only, false, None, &|p| {
+        match pipeline::process_file(path, &out_dir, o.mode, kind, o.keep_both || o.keep_inst_only, !o.keep_inst_only, o.cuda, None, &|p| {
             let pct = (p * 100.0) as u32;
             if pct > last_pct.get() + 4 {
                 last_pct.set(pct);

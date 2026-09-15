@@ -480,6 +480,17 @@ pub fn health_check() -> Result<Vec<(String, bool, String)>, String> {
         Err(_) => rows.push(("model".into(), false, String::new())),
     }
 
+    // ROADMAP §٧.ب بند ٩: report the CUDA situation explicitly instead of
+    // leaving `--check` silent about it. `true` = the row states a fact, not a
+    // promise: CUDA being absent is NOT a health failure (DirectML/CPU remains
+    // the default and the app is fully functional without it), so this row must
+    // never turn `--check` red. Only a machine that ASKED for CUDA and cannot
+    // have it shows the reason here.
+    {
+        let d = crate::cuda_runtime::current_diagnosis(true);
+        rows.push(("cuda".into(), true, d.message()));
+    }
+
     Ok(rows)
 }
 

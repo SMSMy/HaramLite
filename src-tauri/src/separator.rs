@@ -346,12 +346,36 @@ impl MdxSession {
         // attempt CUDA when the self-downloaded runtime DLLs actually exist —
         // otherwise skip straight to DirectML with an honest warning (a CUDA
         // session build would "succeed" on CPU while the log claimed CUDA).
-        let try_cuda = use_cuda && crate::cuda_runtime::is_available();
-        if use_cuda && !try_cuda {
-            tracing::warn!(
-                target: "sep",
-                "CUDA طُلبت لكن مكتبات تشغيل CUDA غير مثبتة — سيُستخدم DirectML"
-            );
+        //
+        // ROADMAP §٧.ب بند ٩: the single `is_available()` gate conflated three
+        // different causes (no NVIDIA card / no driver / incomplete or
+        // mismatched libraries) into one line that named none of them. The
+        // diagnosis below names the actual cause; the CHAIN ITSELF IS
+        // UNCHANGED (CUDA → DirectML → CPU, or DirectML → CPU when CUDA cannot
+        // be attempted) — this is reporting, not behaviour.
+        let diag = crate::cuda_runtime::current_diagnosis(use_cuda);
+        let cuda_plan = crate::cuda_runtime::plan(&diag);
+        let try_cuda = cuda_plan.attempt_cuda;
+        if use_cuda {
+            // `warn` (not `info`) when CUDA was asked for and will not be
+            // attempted: that is the case the user must be able to find, and it
+            // is the level the previous single-line message used. A ready CUDA
+            // is the expected outcome and stays at `info`.
+            if cuda_plan.attempt_cuda {
+                tracing::info!(
+                    target: "sep",
+                    "تشخيص CUDA: {} | السلسلة: {}",
+                    diag.message(),
+                    cuda_plan.provider_chain
+                );
+            } else {
+                tracing::warn!(
+                    target: "sep",
+                    "تشخيص CUDA: {} | السلسلة: {}",
+                    diag.message(),
+                    cuda_plan.provider_chain
+                );
+            }
         }
         let build = |provider_type: &str| -> Result<ort::session::Session, SepError> {
             let mut b = ort::session::Session::builder()
@@ -416,12 +440,18 @@ impl MdxSession {
                 provider_name = "CUDA";
                 s
             } else if let Some(s) = attempt("dml") {
-                tracing::warn!(target: "sep", "CUDA غير صالح — التراجع لـ DirectML");
+                tracing::warn!(
+                    target: "sep",
+                    "CUDA غير صالحة على هذا الجهاز (تعريف أقدم أو cuDNN غير مطابق أو تهيئة فاشلة) — التراجع إلى DirectML، والمعالجة تكمل بلا توقف"
+                );
                 ready("DirectML (GPU)");
                 provider_name = "DirectML";
                 s
             } else {
-                tracing::warn!(target: "sep", "DirectML غير صالح — التراجع لـ CPU");
+                tracing::warn!(
+                    target: "sep",
+                    "DirectML غير صالحة أيضاً — التراجع إلى CPU، والمعالجة تكمل بلا توقف"
+                );
                 let s = attempt("cpu").ok_or_else(|| {
                     SepError::Inference("تعذر إنشاء جلسة الاستدلال حتى على CPU".into())
                 })?;
@@ -433,7 +463,10 @@ impl MdxSession {
             provider_name = "DirectML";
             s
         } else {
-            tracing::warn!(target: "sep", "DirectML init failed — falling back to CPU");
+            tracing::warn!(
+                target: "sep",
+                "تعذّر تحميل DirectML — التراجع إلى CPU، والمعالجة تكمل بلا توقف"
+            );
             let s = attempt("cpu").ok_or_else(|| {
                 SepError::Inference("تعذر إنشاء جلسة الاستدلال حتى على CPU".into())
             })?;
