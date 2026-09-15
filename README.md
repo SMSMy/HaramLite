@@ -19,12 +19,14 @@
   <a href="https://haramlite.com/"><img src="https://img.shields.io/badge/Website-haramlite.com-0F766E?style=for-the-badge" alt="Website — haramlite.com"></a>
   <a href="https://haramlite.com/#download"><img src="https://img.shields.io/badge/Download-Windows_x64-111827?style=for-the-badge" alt="Download — Windows x64"></a>
   <a href="https://github.com/SMSMy/HaramLite/releases/latest"><img src="https://img.shields.io/github/v/release/SMSMy/HaramLite?style=for-the-badge&label=Release" alt="Latest release"></a>
+  <a href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg"><img src="https://img.shields.io/badge/Extension-Chrome_Web_Store-4285F4?style=for-the-badge" alt="Browser extension — Chrome Web Store"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-2F6F4E?style=for-the-badge" alt="MIT License"></a>
 </p>
 
 <p align="center">
   <a href="https://haramlite.com/">الموقع الرسمي</a> ·
   <a href="https://haramlite.com/#download">التحميل</a> ·
+  <a href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg">إضافة المتصفح</a> ·
   <a href="https://haramlite.com/PRIVACY.html">سياسة الخصوصية</a> ·
   <a href="https://github.com/SMSMy/HaramLite/releases/latest">الإصدارات</a>
 </p>
@@ -96,6 +98,14 @@ HaramLite تطبيق ويندوز يفصل الموسيقى عن الكلام **
 
 السياسة الكاملة: **[haramlite.com/PRIVACY.html](https://haramlite.com/PRIVACY.html)**
 
+## إضافة المتصفح
+
+إضافة مجانية لمتصفح كروم: إرسال الرابط إلى التطبيق بنقرة، والمشاهدة بعد إزالة الموسيقى **داخل الصفحة** مع تخطي فترات الصمت. الإضافة **لا ترسل أي طلب شبكة**: تتحدّث مع التطبيق على جهازك عبر Native Messaging فقط.
+
+**تتطلّب تطبيق HaramLite لسطح المكتب** (ويندوز 10/11) — بدونه لا تعمل.
+
+**[التثبيت من متجر كروم](https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg)** · صلاحياتها الثلاث (`contextMenus` · `nativeMessaging` · `activeTab`) ونطاق عملها (`youtube.com`) موثّقة في [`docs/STORE.md`](docs/STORE.md).
+
 ## للمطورين
 
 البناء من المصدر موثّق في [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
@@ -136,7 +146,7 @@ This repository is the source. **Users should start at [haramlite.com](https://h
 - **Clip mode** — remove the music, keep speech natural
 - **Song mode** — isolate vocals, polish presence, trim silence
 - Paste a YouTube (or other) URL, batch files, or a watch folder
-- Browser extension (local native messaging) and an optional paired Telegram bot you link yourself
+- Browser extension (local native messaging) and an optional paired Telegram bot you link yourself — **[Chrome Web Store](https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg)** (requires the Windows desktop app)
 - Windows 10/11 x64 · GPU via CUDA or DirectML when enabled
 
 Download: **[haramlite.com/#download](https://haramlite.com/#download)**  
