@@ -45,6 +45,18 @@ jobs:
       - name: Install frontend deps
         run: pnpm install
 
+      # tauri-build validates bundle.resources paths (tauri.conf.json:54-58) BEFORE
+      # compiling anything, and bin/ + models/ + vc_redist.x64.exe are gitignored —
+      # so a clean runner dies with "resource path `..\bin` doesn't exist".
+      # Stub them: this gate compiles and tests, it does not bundle (~515MB of
+      # runtime assets are fetched by release.yml via fetch_redist.js instead).
+      - name: Stub bundle resources
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bin, models | Out-Null
+          New-Item -ItemType File -Force -Path bin/.stub, models/.stub | Out-Null
+          New-Item -ItemType File -Force -Path src-tauri/vc_redist.x64.exe | Out-Null
+
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test --quiet
