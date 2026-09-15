@@ -506,6 +506,7 @@ function nextGapStart(t, kept) {
       handlers: [],
       drift: 0,
       gapTimer: 0,
+      selfSeek: 0,   // طابع آخر قفزة صنعناها (لتمييزها عن قفزة المستخدم)
       held: false,
     };
     const on = (el, ev, fn) => { el.addEventListener(ev, fn); w.handlers.push([el, ev, fn]); };
@@ -552,6 +553,11 @@ function nextGapStart(t, kept) {
     });
     on(video, 'pause', () => { audio.pause(); });
     on(video, 'seeking', () => {
+      // قفزة صنعناها نحن هي إسنادٌ لـcurrentTime، والصفحة تُطلق seeking لها
+      // والموضع القديم لا يزال داخل الفجوة. معالجتها كقفزة مستخدم كان يضبط
+      // w.held ويوقف الصوت، ثم يُرسيه المؤقّت فيُعاد سماع ما سُمِع (تكرار حتى
+      // ثلاث مرات مع الفجوات المتقاربة — بلاغ المالك 2026-09-15). فتُتجاهل هنا.
+      if (Date.now() - (w.selfSeek || 0) < 600) return;
       const now = video.currentTime || 0;
       if (isGap(now, kept)) {
         w.held = true;
@@ -620,12 +626,26 @@ function nextGapStart(t, kept) {
     // 250ms cadence and >0.15s jumps, so a play/pause toggle or a pause mid
     // gap never triggers a stray seek, and the map has already dropped every
     // sliver under 100ms.
-    const gapTick = () => {
+    const gapTick = (boundary, landing) => {
       if (!WATCH || video.paused) return;
       if (!skipChecked()) return;
       const now = video.currentTime || 0;
-      const target = skipVideoGaps(now, kept);
+      let target = null;
+      if (typeof boundary === 'number' && typeof landing === 'number' && now >= boundary - 0.12) {
+        if (now < boundary) {
+          // أطلقت بضعة أجزاء من الثانية قبل الحدّ (تقريب المؤقّت). نُعيد التسليح
+          // للباقي بدل القفز الآن (القفز المبكر يقصّ محتوى محفوظاً) وبدل لا شيء
+          // (وهو ما كان يُرجع العمل للماسح 250ms فيتقدّم الصوت على الصورة عند كل
+          // فجوة ولا يُصحَّح إلا بعد تراكم 0.35s — بلاغ المالك 2026-09-15).
+          if (w.gapTimer) clearTimeout(w.gapTimer);
+          w.gapTimer = setTimeout(() => { w.gapTimer = 0; gapTick(boundary, landing); }, (boundary - now) * 1000);
+          return;
+        }
+        target = landing;         // وصلنا الحدّ: نقطة الهبوط محسوبة مسبقاً
+      }
+      if (target === null) target = skipVideoGaps(now, kept);
       if (!(Math.abs(target - now) > 0.15)) return;
+      w.selfSeek = Date.now();    // قفزتنا: تُعلَن كي لا يعدّها معالج seeking قفزة مستخدم
       try { video.currentTime = target; } catch { /* gone */ }
       if (w.held) {
         // A seek landed inside a removed stretch and the jump just left it: the
@@ -647,18 +667,21 @@ function nextGapStart(t, kept) {
     // second after the picture entered it — and in that window the filtered
     // audio plays on while the picture still shows silence, so the sound leads
     // the picture by that much at every seam. This arms a one-shot timer for
-    // the exact boundary; the scanner stays as the safety net and re-arms it on
-    // every tick, and a play that starts inside a gap jumps immediately.
+    // the exact boundary (with the landing point precomputed, since reading
+    // currentTime right after a jump is not trustworthy); the scanner stays as
+    // the safety net and re-arms it on every tick, and a play that starts inside
+    // a gap jumps immediately.
     const armGapJump = () => {
       if (w.gapTimer) { clearTimeout(w.gapTimer); w.gapTimer = 0; }
       if (!WATCH || video.paused || !skipChecked()) return;
       const now = video.currentTime || 0;
       if (isGap(now, kept)) { gapTick(); return; }
-      const next = nextGapStart(now, kept);
-      if (next === null) return;
-      const dt = (next - now) * 1000;
+      const boundary = nextGapStart(now, kept);
+      if (boundary === null) return;
+      const dt = (boundary - now) * 1000;
       if (!(dt >= 0) || dt > 1500) return;   // only the imminent boundary
-      w.gapTimer = setTimeout(() => { w.gapTimer = 0; gapTick(); }, dt);
+      const landing = skipVideoGaps(boundary + 1e-6, kept);
+      w.gapTimer = setTimeout(() => { w.gapTimer = 0; gapTick(boundary, landing); }, dt);
     };
     w.gap = setInterval(armGapJump, 250);
     setWatchBtn('watching');
@@ -802,4 +825,3 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   return true; // الرد متزامن لكن إبقاء القناة مفتوحة آمن
 });
 })();
-
