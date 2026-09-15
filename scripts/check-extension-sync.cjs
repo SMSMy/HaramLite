@@ -111,7 +111,13 @@ console.log('\n=== ٥) حارس الانحدار ٢: قفزتنا لا تُعد�
 const seekBlock = extractBlock(src, "on(video, 'seeking', () =>");
 ok('معالج seeking موجود', !!seekBlock);
 ok('يتجاهل قفزتنا عبر selfSeek', /Date\.now\(\)\s*-\s*\(w\.selfSeek \|\| 0\)\s*<\s*\d+/.test(seekBlock.body));
-ok('القفزة تُعلَن قبل الإسناد في gapTick', /w\.selfSeek = Date\.now\(\);[^\n]*\n\s*try \{ video\.currentTime = target; \}/.test(src));
+ok('القفزة تُعلَن قبل الإسناد في gapTick', (() => {
+  // قياس بالفهرس لا بنمط: أسطر الأثر أُدرجت بينهما لاحقاً فكسرت نمطاً ترتيبياً صارماً.
+  const g = src.slice(src.indexOf('const gapTick ='));
+  const stamp = g.indexOf('w.selfSeek = Date.now()');
+  const assign = g.indexOf('try { video.currentTime = target; }');
+  return stamp >= 0 && assign >= 0 && stamp < assign;
+})());
 ok('selfSeek مُهيَّأة في كائن الحالة', /selfSeek: 0,/.test(src));
 
 console.log('\n=== ٦) حارس الانحدار ٣: الحدّ الدقيق أو إعادة التسليح (لا «لا شيء») ===');
@@ -146,6 +152,47 @@ ok('  والحارس يسقط عليه', /Date\.now\(\)\s*-\s*\(w\.selfSeek \|\|
 const mutC = src.replace(/if \(now < boundary\) \{[\s\S]*?return;\n        \}/, '');
 ok('مُفسَد ج: بلا إعادة تسليح عند الإطلاق المبكر', mutC !== src);
 ok('  والحارس يسقط عليه', /now < boundary/.test(extractBlock(mutC, 'const gapTick = (boundary, landing) =>').body) === false);
+
+console.log('\n=== ٨) حُرّاس المُسجّل (trace) وإحصاء الفجوات — جولة القياس ===');
+// ٨.١ المواضع الخمسة المكتوبة لموضع الصوت تبقى خمسة: أي مسار سادس للسحب للخلف يُكشف
+const writes = src.match(/audio\.currentTime\s*=/g) || [];
+ok(`عدد كتابات موضع الصوت = 5 (وجد ${writes.length})`, writes.length === 5);
+// ٨.٢ المُسجّل مبوَّب: لا يعمل إلّا عند الطلب
+ok('trace موجودة ومبوَّبة بـ w.synclog', /const trace = \(site, extra\) => \{\s*\n\s*if \(!w\.synclog\) return;/.test(src));
+ok('حلقة الأثر محدودة السعة (4000 + shift)', /ring\.length > 4000\) ring\.shift\(\)/.test(src));
+ok('علم المُسجّل يُقرأ من localStorage مرة واحدة', /synclog: \(\(\) => \{ try \{ return localStorage\.getItem\('hl\.synclog'\) === '1'; \} catch/.test(src));
+ok('العيّنة 50ms تُنشأ فقط عند التفعيل', (() => {
+  // قياس بالفهرس داخل كتلة التفعيل نفسها (النافذة السابقة 400 حرف قصُر عنها سطر load).
+  const i = src.indexOf("if (w.synclog) {");
+  if (i < 0) return false;
+  const j = src.indexOf("w.sample = setInterval(", i);
+  if (j < 0) return false;
+  const between = src.slice(i, j);
+  return between.includes("trace('load'") && !/\n    \}\n/.test(between);
+})());
+ok('العيّنة تُحرَّر في stopWatch', /if \(w\.sample\) clearInterval\(w\.sample\)/.test(src));
+// ٨.٣ نداءات الأثر عند المواضع الخمسة والقفزة
+for (const site of ['2-kick-before', '3-seeking-before', '4-hold-release-before', '5-drift-periodic-before', '1-reanchor-before', 'gap-jump']) {
+  ok(`نداء أثر: ${site}`, src.includes(`'${site}'`));
+}
+// ٨.٤ دالة إحصاء الفجوات (نقية، وتكشف «تسريب الفجوات تحت العتبة»)
+const gsFn = extractBlock(src, 'function gapStats(');
+ok('gapStats موجودة', !!gsFn);
+const gapStats = new Function(`${gsFn.full} return gapStats;`)();
+const gEmpty = gapStats(null, 0.15);
+ok('بلا خريطة: أصفار', gEmpty.keptSum === 0 && gEmpty.gaps === 0 && gEmpty.smallGaps === 0);
+const gContig = gapStats([[0, 10], [10, 20]], 0.15);
+ok('مقاطع متلاصقة: لا فجوات', gContig.gaps === 0 && Math.abs(gContig.keptSum - 20) < 1e-9);
+const gLead = gapStats([[12, 30]], 0.15);
+ok('فجوة أمامية 12s: فجوة واحدة كبيرة', gLead.gaps === 1 && gLead.smallGaps === 0 && Math.abs(gLead.largestGap - 12) < 1e-9);
+// الحالة التي تكشف العطل: فجوة أقصر من عتبة القفز ⇒ لا تُقفز والصوت يسبق بمقدارها
+const gSmall = gapStats([[0, 10], [10.08, 20], [20.05, 30]], 0.15);
+ok('فجوتان صغيرتان (80ms و50ms) تُحسبان', gSmall.smallGaps === 2 && Math.abs(gSmall.smallSeconds - 0.13) < 1e-9);
+ok('مجموع المحفوظ صحيح مع الفجوات الصغيرة', Math.abs(gSmall.keptSum - 29.87) < 1e-9);
+// ٨.٥ اختبار سلبي: إزالة بوابة المُسجّل تُسقط الحارس
+const mutT = src.replace(/const trace = \(site, extra\) => \{\s*\n\s*if \(!w\.synclog\) return;/, 'const trace = (site, extra) => {');
+ok('مُفسَد هـ: بلا بوابة synclog', mutT !== src);
+ok('  والحارس يسقط عليه', /const trace = \(site, extra\) => \{\s*\n\s*if \(!w\.synclog\) return;/.test(mutT) === false);
 
 console.log('');
 if (failures.length) {

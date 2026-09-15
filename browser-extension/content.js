@@ -417,6 +417,29 @@ function nextGapStart(t, kept) {
   return null;
 }
 
+// إحصاء فجوات الخريطة. الغرض المزدوج: (أ) حسم فرضية الانزياح الثابت بمقارنة
+// keptSum بمدة الصوت المُسلَّم، (ب) كشف **الفجوات الأقصر من عتبة القفز** — وهذه
+// لا تُقفز (شرط القفز `> 0.15s`) بينما الصوت المُسلَّم **لا يحتويها** ⇒ يتقدّم
+// الصوت بمقدارها تراكمياً فيصحّحه المُصحّح الدوري لاحقاً (تكرار مسموع).
+function gapStats(kept, jumpThreshold) {
+  const out = { keptSum: 0, gaps: 0, smallGaps: 0, smallSeconds: 0, largestGap: 0 };
+  if (!kept || !kept.length) return out;
+  let prevEnd = 0;
+  for (const pair of kept) {
+    const a = Number(pair[0]);
+    const b = Number(pair[1]);
+    if (!(b > a)) continue;
+    out.keptSum += b - a;
+    if (a > prevEnd) {
+      const g = a - prevEnd;
+      out.gaps++;
+      if (g > out.largestGap) out.largestGap = g;
+      if (g <= jumpThreshold) { out.smallGaps++; out.smallSeconds += g; }
+    }
+    prevEnd = b;
+  }
+  return out;
+}
   function pageVideo() {
     return document.querySelector('#movie_player video') || document.querySelector('video');
   }
@@ -507,6 +530,8 @@ function nextGapStart(t, kept) {
       drift: 0,
       gapTimer: 0,
       selfSeek: 0,   // طابع آخر قفزة صنعناها (لتمييزها عن قفزة المستخدم)
+      synclog: (() => { try { return localStorage.getItem('hl.synclog') === '1'; } catch { return false; } })(),
+      sample: 0,
       held: false,
     };
     const on = (el, ev, fn) => { el.addEventListener(ev, fn); w.handlers.push([el, ev, fn]); };
@@ -514,6 +539,30 @@ function nextGapStart(t, kept) {
       const t = mapFullToCut(video.currentTime || 0, kept);
       return Math.min(Math.max(t, 0), Math.max(audio.duration - 0.05, 0));
     };
+    // ── مُسجّل المزامنة: معطّل افتراضياً، يُفتح بـ localStorage['hl.synclog']='1' ──
+    // لا يكتب موضعاً ولا يُرسل شيئاً، وحلقته محدودة السعة (4000). الغرض: حسم
+    // فرضيات سحب الصوت للخلف بالأثر لا بالتخمين.
+    const trace = (site, extra) => {
+      if (!w.synclog) return;
+      const v = video.currentTime || 0;
+      const row = {
+        t: Math.round(performance.now()), site,
+        v: +v.toFixed(3), a: +audio.currentTime.toFixed(3), want: +audioPos().toFixed(3),
+        gap: isGap(v, kept), held: w.held, paused: video.paused,
+      };
+      if (extra) row.x = extra;
+      const ring = (window.__hlSync = window.__hlSync || []);
+      ring.push(row);
+      if (ring.length > 4000) ring.shift();
+      console.log('HL-SYNC', JSON.stringify(row));
+    };
+    if (w.synclog) {
+      const st = gapStats(kept, 0.15);
+      const ad = isFinite(audio.duration) ? audio.duration : 0;
+      const vd = isFinite(video.duration) ? video.duration : 0;
+      trace('load', `keptSum=${st.keptSum.toFixed(3)} audioDur=${ad.toFixed(3)} vDur=${vd.toFixed(3)} diff=${(st.keptSum - ad).toFixed(3)} gaps=${st.gaps} smallGaps=${st.smallGaps} smallSeconds=${st.smallSeconds.toFixed(3)} largestGap=${st.largestGap.toFixed(3)}`);
+      w.sample = setInterval(() => { if (WATCH && !video.paused) trace('sample'); }, 50);
+    }
     // إعادة إرساء الصوت على موضع القفزة نفسها.
     // السبب (عطل ميداني موصوف): الصورة تقفز وحدها بـcurrentTime، والصوت عنصر
     // آخر يواصل مكانه، فلا يُصحَّح إلا بتسامح 0.35s كل ثانية ⇒ يُسمع ذيل المقطع
@@ -531,12 +580,18 @@ function nextGapStart(t, kept) {
       };
       // كتم لحظي يعبر القفزة: يقطع الذيل المسموع بين الإسناد ووصول seeked
       try { audio.muted = true; } catch { /* gone */ }
+      trace('1-reanchor-before', `want=${want.toFixed(3)}`);
       try { audio.currentTime = want; } catch { /* gone */ }
+      trace('1-reanchor-after');
       audio.addEventListener('seeked', unmute);
       setTimeout(unmute, 120);   // شبكة أمان إن لم يصل seeked
     };
     const kickAudio = () => {
+      trace('2-kick-before');
+      trace('4-hold-release-before');
       audio.currentTime = audioPos();
+      trace('4-hold-release-after');
+      trace('2-kick-after');
       audio.play().then(() => {
         if (WATCH) toast(watchLine());
       }).catch(() => {
@@ -546,13 +601,16 @@ function nextGapStart(t, kept) {
       });
     };
     on(video, 'play', () => {
+      trace('ev-play');
       // The page player fights mute — pin it on every play.
       if (video.muted === false) { try { video.muted = true; } catch { /* gone */ } }
       kickAudio();
       gapTick();   // فجوة أمامية (فيديو يبدأ بموسيقى): اقلبها فوراً لا بعد 250ms
     });
     on(video, 'pause', () => { audio.pause(); });
+      trace('ev-pause');
     on(video, 'seeking', () => {
+      trace('ev-seeking');
       // قفزة صنعناها نحن هي إسنادٌ لـcurrentTime، والصفحة تُطلق seeking لها
       // والموضع القديم لا يزال داخل الفجوة. معالجتها كقفزة مستخدم كان يضبط
       // w.held ويوقف الصوت، ثم يُرسيه المؤقّت فيُعاد سماع ما سُمِع (تكرار حتى
@@ -570,10 +628,13 @@ function nextGapStart(t, kept) {
         // contain, so the mapped position barely moves — re-anchoring there
         // would rewind ~0.2s of sound at every gap edge. Only a real seek
         // lands far enough away to need correcting.
+        trace('3-seeking-before', `want=${want.toFixed(3)}`);
         if (Math.abs(audio.currentTime - want) > 0.35) audio.currentTime = want;
+        trace('3-seeking-after');
       }
     });
     on(video, 'ratechange', () => {
+      trace('ev-ratechange');
       // Guard both sides at 1.0 for the whole watch (anti-2x).
       if (video.playbackRate !== 1) { try { video.playbackRate = 1; } catch { /* gone */ } }
       pinPlayerRate();
@@ -591,6 +652,7 @@ function nextGapStart(t, kept) {
       stopWatch();
     });
     on(video, 'ended', () => { stopWatch(); });
+    on(video, 'seeked', () => { trace('ev-seeked'); });
     // Declared mute + 1x clamp on both sides (+ player API guard).
     video.muted = true;
     try { video.playbackRate = 1; } catch { /* gone */ }
@@ -618,7 +680,9 @@ function nextGapStart(t, kept) {
       // looped the seams. Correct only a freely playing audio.
       if (audio.paused) return;
       const expect = audioPos();
+    trace('5-drift-periodic-before', `expect=${expect.toFixed(3)}`);
       if (Math.abs(audio.currentTime - expect) > 0.35) audio.currentTime = expect;
+    trace('5-drift-periodic-after');
     }, 1000);
     // The skip itself (option, default on): the page video jumps over every
     // removed stretch while the filtered audio — which has those stretches cut
@@ -638,6 +702,7 @@ function nextGapStart(t, kept) {
           // (وهو ما كان يُرجع العمل للماسح 250ms فيتقدّم الصوت على الصورة عند كل
           // فجوة ولا يُصحَّح إلا بعد تراكم 0.35s — بلاغ المالك 2026-09-15).
           if (w.gapTimer) clearTimeout(w.gapTimer);
+    if (w.sample) clearInterval(w.sample);
           w.gapTimer = setTimeout(() => { w.gapTimer = 0; gapTick(boundary, landing); }, (boundary - now) * 1000);
           return;
         }
@@ -646,6 +711,7 @@ function nextGapStart(t, kept) {
       if (target === null) target = skipVideoGaps(now, kept);
       if (!(Math.abs(target - now) > 0.15)) return;
       w.selfSeek = Date.now();    // قفزتنا: تُعلَن كي لا يعدّها معالج seeking قفزة مستخدم
+      trace('gap-jump', `from=${now.toFixed(3)} to=${target.toFixed(3)}`);
       try { video.currentTime = target; } catch { /* gone */ }
       if (w.held) {
         // A seek landed inside a removed stretch and the jump just left it: the
