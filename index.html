@@ -30,20 +30,23 @@
 <span class="material-symbols-outlined" data-icon="settings">settings</span>
 </button>
 <div id="settings-menu" class="hidden absolute left-0 top-full mt-2 w-64 max-h-[75vh] overflow-y-auto overscroll-contain glass-effect border border-border-muted rounded-lg shadow-xl p-stack-md flex flex-col gap-stack-sm z-50 fade-in-up">
-    <h3 class="font-label-md text-clay-accent border-b border-border-muted pb-2 mb-2">الإعدادات</h3>
-    <label class="flex items-center gap-stack-sm cursor-pointer group">
-        <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-cuda" type="checkbox"/>
-        <span class="font-body-sm text-cream-text transition-colors duration-200">استخدام تسريع CUDA (NVIDIA)</span>
-    </label>
-    <div id="cuda-hint" class="hidden flex flex-col gap-unit bg-tertiary/10 border border-tertiary/30 rounded p-unit mt-1">
-        <span id="cuda-hint-text" class="font-label-sm text-label-sm text-tertiary leading-relaxed"></span>
+    <h3 class="font-label-md text-clay-accent border-b border-border-muted pb-2 mb-2" data-i18n="settings_title">الإعدادات</h3>
+
+    <!-- ⚙️ الأداء والمعالجة -->
+    <div class="flex flex-col gap-stack-sm">
+        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_perf">⚙️ الأداء والمعالجة</h4>
+        <label class="flex items-center gap-stack-sm cursor-pointer group">
+            <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-cuda" type="checkbox"/>
+            <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="set_cuda">استخدام تسريع CUDA (NVIDIA)</span>
+        </label>
+        <div id="cuda-hint" class="hidden flex flex-col gap-unit bg-tertiary/10 border border-tertiary/30 rounded p-unit mt-1">
+            <span id="cuda-hint-text" class="font-label-sm text-label-sm text-tertiary leading-relaxed"></span>
+        </div>
     </div>
-    <label class="flex items-center gap-stack-sm cursor-pointer group">
-        <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-notify" type="checkbox"/>
-        <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="set_notify">إشعارات الانتهاء + صوت خفيف</span>
-    </label>
+
+    <!-- 📁 المراقبة التلقائية -->
     <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
-        <h4 class="font-label-sm text-label-sm text-on-surface-variant">📁 مجلد المراقبة</h4>
+        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_watch">📁 المراقبة التلقائية</h4>
         <label class="flex items-center gap-stack-sm cursor-pointer group">
             <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-watch" type="checkbox"/>
             <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="watch_enable">تفعيل مجلد المراقبة</span>
@@ -57,24 +60,18 @@
             <div class="flex items-center gap-stack-sm">
                 <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="watch_mode_label">وضع المعالجة:</span>
                 <select id="watch-mode" class="form-select bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent cursor-pointer">
-                    <option value="song">أغنية</option>
-                    <option value="clip">مقطع عادي</option>
+                    <option value="song" data-i18n="watch_mode_song">أغنية</option>
+                    <option value="clip" data-i18n="watch_mode_clip">مقطع عادي</option>
                 </select>
             </div>
             <span id="watch-status" class="font-label-sm text-label-sm text-on-surface-variant"></span>
-            <button id="btn-watch-cancel" class="hidden text-error hover:text-red-400 font-label-sm text-label-sm p-unit rounded hover:bg-surface-variant/30 cursor-pointer transition-colors">⏹ إلغاء الملف الجاري</button>
+            <button id="btn-watch-cancel" class="hidden text-error hover:text-red-400 font-label-sm text-label-sm p-unit rounded hover:bg-surface-variant/30 cursor-pointer transition-colors" data-i18n="watch_cancel">⏹ إلغاء الملف الجاري</button>
         </div>
     </div>
+
+    <!-- 🔗 التكامل -->
     <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
-        
-        <button id="btn-report" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
-            <span class="material-symbols-outlined text-sm" data-icon="bug_report">bug_report</span>
-            <span class="font-body-sm" data-i18n="btn_report">الإبلاغ عن مشكلة</span>
-        </button>
-        <button id="btn-repair-open" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
-            <span class="material-symbols-outlined text-sm" data-icon="build">build</span>
-            <span class="font-body-sm" data-i18n="btn_repair">فحص وإصلاح المكونات</span>
-        </button>
+        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_integration">🔗 التكامل</h4>
         <label class="flex items-center gap-stack-sm cursor-pointer group">
             <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-bridge" type="checkbox"/>
             <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="btn_bridge">تفعيل التكامل مع المتصفح</span>
@@ -86,14 +83,6 @@
             <span class="material-symbols-outlined text-sm" data-icon="extension">extension</span>
             <span data-i18n="bridge_page_link">صفحة إضافة المتصفح — التثبيت والشرح</span>
         </button>
-        <!-- التشغيل مع بدء تشغيل ويندوز: الغرض بقاء الخلفية (البوت والمتصفح) جاهزة -->
-        <label class="flex items-center gap-stack-sm cursor-pointer group mt-1">
-            <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-autostart" type="checkbox"/>
-            <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="autostart_label">التشغيل مع بدء تشغيل ويندوز</span>
-        </label>
-        <p class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed px-unit" data-i18n="autostart_hint">يقلع في الخلفية بلا نافذة، ليبقى بوت تيليجرام وتكامل المتصفح جاهزين — وتفتح النافذة متى شئت من أيقونة الشريط.</p>
-    </div>
-    <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
         <button id="btn-telegram" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer w-full">
             <span class="material-symbols-outlined text-sm" data-icon="smart_toy">smart_toy</span>
             <span class="font-body-sm" data-i18n="tg_title">📨 بوت تيليجرام</span>
@@ -101,10 +90,36 @@
         </button>
     </div>
 
+    <!-- 🖥️ النظام -->
+    <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
+        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_system">🖥️ النظام</h4>
+        <label class="flex items-center gap-stack-sm cursor-pointer group">
+            <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-autostart" type="checkbox"/>
+            <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="autostart_label">التشغيل مع بدء تشغيل ويندوز</span>
+        </label>
+        <p class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed px-unit" data-i18n="autostart_hint">يقلع في الخلفية بلا نافذة، ليبقى بوت تيليجرام وتكامل المتصفح جاهزين — وتفتح النافذة متى شئت من أيقونة الشريط.</p>
+        <label class="flex items-center gap-stack-sm cursor-pointer group">
+            <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-notify" type="checkbox"/>
+            <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="set_notify">إشعارات الانتهاء + صوت خفيف</span>
+        </label>
+    </div>
+
+    <!-- 🧰 الأدوات والمساعدة -->
+    <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
+        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_tools">🧰 الأدوات والمساعدة</h4>
+        <button id="btn-repair-open" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
+            <span class="material-symbols-outlined text-sm" data-icon="build">build</span>
+            <span class="font-body-sm" data-i18n="btn_repair">فحص وإصلاح المكونات</span>
+        </button>
+        <button id="btn-report" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
+            <span class="material-symbols-outlined text-sm" data-icon="bug_report">bug_report</span>
+            <span class="font-body-sm" data-i18n="btn_report">الإبلاغ عن مشكلة</span>
+        </button>
         <button id="btn-about" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
             <span class="material-symbols-outlined text-sm" data-icon="info">info</span>
             <span class="font-body-sm" data-i18n="btn_about">حول البرنامج</span>
         </button>
+    </div>
     </div>
 </div>
 </header>
