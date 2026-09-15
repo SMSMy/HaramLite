@@ -396,6 +396,27 @@
     return t;
   }
 
+// The boundary where the picture must jump next: the end of the kept range
+// containing t, provided a removed stretch follows it. null when there is
+// nothing to jump (inside a gap already, after the last range, or contiguous
+// ranges). Pure, so scripts/check-extension-sync.cjs can extract and test it.
+function nextGapStart(t, kept) {
+  if (!kept || !kept.length) return null;
+  for (let i = 0; i < kept.length; i++) {
+    const a = Number(kept[i][0]);
+    const b = Number(kept[i][1]);
+    if (!(b > a)) continue;
+    if (t < a) return a;                 // t sits in the stretch before this range
+    if (t >= a && t < b) {
+      const nxt = kept[i + 1];
+      if (!nxt) return null;
+      const na = Number(nxt[0]);
+      return na > b ? b : null;          // a removed stretch follows this range
+    }
+  }
+  return null;
+}
+
   function pageVideo() {
     return document.querySelector('#movie_player video') || document.querySelector('video');
   }
@@ -484,6 +505,7 @@
       prevRate: video.playbackRate || 1,
       handlers: [],
       drift: 0,
+      gapTimer: 0,
       held: false,
     };
     const on = (el, ev, fn) => { el.addEventListener(ev, fn); w.handlers.push([el, ev, fn]); };
@@ -526,6 +548,7 @@
       // The page player fights mute — pin it on every play.
       if (video.muted === false) { try { video.muted = true; } catch { /* gone */ } }
       kickAudio();
+      gapTick();   // فجوة أمامية (فيديو يبدأ بموسيقى): اقلبها فوراً لا بعد 250ms
     });
     on(video, 'pause', () => { audio.pause(); });
     on(video, 'seeking', () => {
@@ -597,25 +620,47 @@
     // 250ms cadence and >0.15s jumps, so a play/pause toggle or a pause mid
     // gap never triggers a stray seek, and the map has already dropped every
     // sliver under 100ms.
-    w.gap = setInterval(() => {
+    const gapTick = () => {
       if (!WATCH || video.paused) return;
       if (!skipChecked()) return;
       const now = video.currentTime || 0;
       const target = skipVideoGaps(now, kept);
-      if (Math.abs(target - now) > 0.15) {
-        try { video.currentTime = target; } catch { /* gone */ }
-        // ✓ أعد إرساء الصوت على القفزة نفسها، لا عند وصول المصحّح الدوري.
-        // كان هذا داخل if (w.held) وحده ⇒ القفزة العادية تُسمع ذيلها ثم تُصحَّح.
+      if (!(Math.abs(target - now) > 0.15)) return;
+      try { video.currentTime = target; } catch { /* gone */ }
+      if (w.held) {
+        // A seek landed inside a removed stretch and the jump just left it: the
+        // audio was paused at the seam, so it must be re-seated — and the hold
+        // is released here instead of waiting up to a second for the scanner.
         reanchorAudio(target);
-        if (w.held) {
-          // A seek landed inside a removed stretch and the jump just left it:
-          // release the hold here instead of waiting up to a second.
-          // (الموضع ضُبط أعلاه من target؛ لا نقرأ video.currentTime هنا.)
-          w.held = false;
-          audio.play().catch(() => { w.held = true; });
-        }
+        w.held = false;
+        audio.play().catch(() => { w.held = true; });
       }
-    }, 250);
+      // Otherwise the audio is deliberately NOT touched. mapFullToCut is FLAT
+      // across a removed stretch, so continuously playing audio is already in
+      // step with the picture after the jump; re-seating it would drag it
+      // BACKWARDS over sound that was legitimately heard. That drag is the
+      // repeated-word artefact reported 2026-09-15 (silence 0..12s: the first
+      // ~0.2s of the next segment was heard twice, then corrected). Only the
+      // held case — a real seek into a gap — needs a re-seat.
+    };
+    // The 250ms scanner below only DISCOVERS a removed stretch, up to a quarter
+    // second after the picture entered it — and in that window the filtered
+    // audio plays on while the picture still shows silence, so the sound leads
+    // the picture by that much at every seam. This arms a one-shot timer for
+    // the exact boundary; the scanner stays as the safety net and re-arms it on
+    // every tick, and a play that starts inside a gap jumps immediately.
+    const armGapJump = () => {
+      if (w.gapTimer) { clearTimeout(w.gapTimer); w.gapTimer = 0; }
+      if (!WATCH || video.paused || !skipChecked()) return;
+      const now = video.currentTime || 0;
+      if (isGap(now, kept)) { gapTick(); return; }
+      const next = nextGapStart(now, kept);
+      if (next === null) return;
+      const dt = (next - now) * 1000;
+      if (!(dt >= 0) || dt > 1500) return;   // only the imminent boundary
+      w.gapTimer = setTimeout(() => { w.gapTimer = 0; gapTick(); }, dt);
+    };
+    w.gap = setInterval(armGapJump, 250);
     setWatchBtn('watching');
     toast(watchLine());
     // The video was paused at request time — resume both together.
@@ -629,6 +674,7 @@
     if (!w) return;
     if (w.drift) clearInterval(w.drift);
     if (w.gap) clearInterval(w.gap);
+    if (w.gapTimer) clearTimeout(w.gapTimer);
     for (const [el, ev, fn] of w.handlers) {
       try { el.removeEventListener(ev, fn); } catch { /* gone */ }
     }
