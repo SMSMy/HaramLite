@@ -2,8 +2,8 @@ name: Quality gate
 
 # Wave 1 (1.5) — one workflow that runs the four checks from the release gate
 # (ROADMAP §6.1): cargo test, cargo clippy (errors only), tsc, and the five
-# site guards. No `-D warnings`: 57 pre-existing clippy warnings are scheduled
-# for Wave 3, so denying warnings now would keep this red by design.
+# site guards. No `-D warnings`: 11 clippy warnings remain, each a documented
+# exception in docs/AUDIT.md (NaN-deliberate comparisons and two deferred refactors);
 #
 # Cost note: windows-latest runners bill at 2× minutes. This workflow does NOT
 # build the installer (~650MB uploads) — it compiles the test/profile targets
