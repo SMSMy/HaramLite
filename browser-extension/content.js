@@ -422,7 +422,7 @@ function nextGapStart(t, kept) {
 // لا تُقفز (شرط القفز `> 0.15s`) بينما الصوت المُسلَّم **لا يحتويها** ⇒ يتقدّم
 // الصوت بمقدارها تراكمياً فيصحّحه المُصحّح الدوري لاحقاً (تكرار مسموع).
 function gapStats(kept, jumpThreshold) {
-  const out = { keptSum: 0, gaps: 0, smallGaps: 0, smallSeconds: 0, largestGap: 0 };
+  const out = { keptSum: 0, gaps: 0, smallGaps: 0, smallSeconds: 0, largestGap: 0, smallestGap: 0 };
   if (!kept || !kept.length) return out;
   let prevEnd = 0;
   for (const pair of kept) {
@@ -434,6 +434,8 @@ function gapStats(kept, jumpThreshold) {
       const g = a - prevEnd;
       out.gaps++;
       if (g > out.largestGap) out.largestGap = g;
+      if (g > out.largestGap) out.largestGap = g;
+      if (!out.smallestGap || g < out.smallestGap) out.smallestGap = g;
       if (g <= jumpThreshold) { out.smallGaps++; out.smallSeconds += g; }
     }
     prevEnd = b;
@@ -551,16 +553,23 @@ function gapStats(kept, jumpThreshold) {
         gap: isGap(v, kept), held: w.held, paused: video.paused,
       };
       if (extra) row.x = extra;
+      if (/-after$/.test(site)) {
+        // dv: الفرق المُوقَّع الذي أحدثته الكتابة، مقروءاً من صفّ الـ-before المطابق.
+        for (let k = ring.length - 1; k >= 0 && k > ring.length - 12; k--) {
+          if (/-before$/.test(ring[k].site)) { row.dv = +(row.a - ring[k].a).toFixed(3); row.src = ring[k].site; break; }
+        }
+      }
+      row.sinceJump = w.selfSeek ? Math.round(performance.now() - w.selfSeek) : -1;
       const ring = (window.__hlSync = window.__hlSync || []);
       ring.push(row);
       if (ring.length > 4000) ring.shift();
       console.log('HL-SYNC', JSON.stringify(row));
     };
     if (w.synclog) {
-      const st = gapStats(kept, 0.15);
+      const st = gapStats(kept, 0.5);
       const ad = isFinite(audio.duration) ? audio.duration : 0;
       const vd = isFinite(video.duration) ? video.duration : 0;
-      trace('load', `keptSum=${st.keptSum.toFixed(3)} audioDur=${ad.toFixed(3)} vDur=${vd.toFixed(3)} diff=${(st.keptSum - ad).toFixed(3)} gaps=${st.gaps} smallGaps=${st.smallGaps} smallSeconds=${st.smallSeconds.toFixed(3)} largestGap=${st.largestGap.toFixed(3)}`);
+      trace('load', `keptSum=${st.keptSum.toFixed(3)} audioDur=${ad.toFixed(3)} vDur=${vd.toFixed(3)} diff=${(st.keptSum - ad).toFixed(3)} gaps=${st.gaps} smallestGap=${st.smallestGap.toFixed(3)} belowHalf=${st.smallGaps} belowHalfSeconds=${st.smallSeconds.toFixed(3)} largestGap=${st.largestGap.toFixed(3)}`);
       w.sample = setInterval(() => { if (WATCH && !video.paused) trace('sample'); }, 50);
     }
     // إعادة إرساء الصوت على موضع القفزة نفسها.
@@ -588,9 +597,7 @@ function gapStats(kept, jumpThreshold) {
     };
     const kickAudio = () => {
       trace('2-kick-before');
-      trace('4-hold-release-before');
       audio.currentTime = audioPos();
-      trace('4-hold-release-after');
       trace('2-kick-after');
       audio.play().then(() => {
         if (WATCH) toast(watchLine());
@@ -608,7 +615,7 @@ function gapStats(kept, jumpThreshold) {
       gapTick();   // فجوة أمامية (فيديو يبدأ بموسيقى): اقلبها فوراً لا بعد 250ms
     });
     on(video, 'pause', () => { audio.pause(); });
-      trace('ev-pause');
+    on(video, 'pause', () => { trace('ev-pause'); audio.pause(); });
     on(video, 'seeking', () => {
       trace('ev-seeking');
       // قفزة صنعناها نحن هي إسنادٌ لـcurrentTime، والصفحة تُطلق seeking لها
@@ -672,8 +679,10 @@ function gapStats(kept, jumpThreshold) {
         audio.pause();
         w.held = true;
       } else if (w.held && !video.paused) {
+        trace('4-hold-release-before');
         w.held = false;
         audio.currentTime = audioPos();
+        trace('4-hold-release-after');
         audio.play().catch(() => { w.held = true; });
       }
       // No forced sync while stopped (paused or held) — that fight is what
@@ -702,7 +711,6 @@ function gapStats(kept, jumpThreshold) {
           // (وهو ما كان يُرجع العمل للماسح 250ms فيتقدّم الصوت على الصورة عند كل
           // فجوة ولا يُصحَّح إلا بعد تراكم 0.35s — بلاغ المالك 2026-09-15).
           if (w.gapTimer) clearTimeout(w.gapTimer);
-    if (w.sample) clearInterval(w.sample);
           w.gapTimer = setTimeout(() => { w.gapTimer = 0; gapTick(boundary, landing); }, (boundary - now) * 1000);
           return;
         }
@@ -764,6 +772,7 @@ function gapStats(kept, jumpThreshold) {
     if (w.drift) clearInterval(w.drift);
     if (w.gap) clearInterval(w.gap);
     if (w.gapTimer) clearTimeout(w.gapTimer);
+    if (w.sample) clearInterval(w.sample);
     for (const [el, ev, fn] of w.handlers) {
       try { el.removeEventListener(ev, fn); } catch { /* gone */ }
     }

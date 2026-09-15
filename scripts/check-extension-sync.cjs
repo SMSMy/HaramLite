@@ -170,7 +170,15 @@ ok('العيّنة 50ms تُنشأ فقط عند التفعيل', (() => {
   const between = src.slice(i, j);
   return between.includes("trace('load'") && !/\n    \}\n/.test(between);
 })());
-ok('العيّنة تُحرَّر في stopWatch', /if \(w\.sample\) clearInterval\(w\.sample\)/.test(src));
+ok('العيّنة تُحرَّر **داخل** stopWatch (احتواء لا وجود)', (() => {
+  // الدرس: حارس «الوجود» مرّ سابقاً والعيّنة تُحرَّر في المكان الخطأ (داخل gapTick).
+  const sw = extractBlock(src, 'function stopWatch(');
+  return !!sw && /clearInterval\(w\.sample\)/.test(sw.body);
+})());
+ok('ولا تُحرَّر العيّنة داخل gapTick', (() => {
+  const g = extractBlock(src, 'const gapTick = (boundary, landing) =>');
+  return !!g && !/clearInterval\(w\.sample\)/.test(g.body);
+})());
 // ٨.٣ نداءات الأثر عند المواضع الخمسة والقفزة
 for (const site of ['2-kick-before', '3-seeking-before', '4-hold-release-before', '5-drift-periodic-before', '1-reanchor-before', 'gap-jump']) {
   ok(`نداء أثر: ${site}`, src.includes(`'${site}'`));
@@ -193,6 +201,45 @@ ok('مجموع المحفوظ صحيح مع الفجوات الصغيرة', Math
 const mutT = src.replace(/const trace = \(site, extra\) => \{\s*\n\s*if \(!w\.synclog\) return;/, 'const trace = (site, extra) => {');
 ok('مُفسَد هـ: بلا بوابة synclog', mutT !== src);
 ok('  والحارس يسقط عليه', /const trace = \(site, extra\) => \{\s*\n\s*if \(!w\.synclog\) return;/.test(mutT) === false);
+
+console.log('\n=== ٩) احتواء كل أثر في موضعه (الدرس: الوجود ≠ الموضع) ===');
+// ٩.١ ev-pause داخل معالج الإيقاف لا في جسم startWatch
+ok('ev-pause داخل معالج pause', /on\(video, 'pause', \(\) => \{[^}]*trace\('ev-pause'\)/.test(src));
+// ٩.٢ آثار الموضع ٢ حول كتابة kickAudio وحدها
+const kick = extractBlock(src, 'const kickAudio = () =>');
+ok('kickAudio موجودة', !!kick);
+ok('2-kick-before/after داخلها', !!kick && /trace\('2-kick-before'\)/.test(kick.body) && /trace\('2-kick-after'\)/.test(kick.body));
+ok('ولا أثر 4-* داخلها (كان موضوعاً خطأً)', !!kick && !/4-hold-release/.test(kick.body));
+// ٩.٣ آثار الموضع ٤ داخل نبضة الانحراف (تحرير الاحتجاز) لا في kickAudio
+const drift = extractBlock(src, 'w.drift = setInterval(');
+ok('نبضة الانحراف موجودة', !!drift);
+ok('4-hold-release-before/after داخلها', !!drift && /trace\('4-hold-release-before'\)/.test(drift.body) && /trace\('4-hold-release-after'\)/.test(drift.body));
+ok('4-hold-release-before قبل تحرير الاحتجاز', !!drift && drift.body.indexOf("trace('4-hold-release-before')") < drift.body.indexOf('w.held = false'));
+// ٩.٤ حقلا الحكم الجديدان في دالة trace
+ok('حقل dv محسوب من صفّ الـ-before', /row\.dv = \+\(row\.a - ring\[k\]\.a\)\.toFixed\(3\)/.test(src));
+ok('حقل sinceJump من وسم آخر قفزة', /row\.sinceJump = w\.selfSeek \? Math\.round\(performance\.now\(\) - w\.selfSeek\) : -1/.test(src));
+// ٩.٥ العتبة الفعلية 0.5s (الحدّ من مسار Rust: min_silence 800ms − 2×keep 150ms = 500ms)
+ok('العتبة في سطر load = 0.5s لا 0.15', /gapStats\(kept, 0\.5\)/.test(src) && !/gapStats\(kept, 0\.15\)/.test(src));
+ok('gapStats تُرجع smallestGap', /smallestGap: 0 \}/.test(src) && /if \(!out\.smallestGap \|\| g < out\.smallestGap\)/.test(src));
+ok('سطر load يطبع smallestGap و belowHalfSeconds', /smallestGap=\$\{st\.smallestGap\.toFixed\(3\)\}/.test(src) && /belowHalfSeconds=/.test(src));
+// ٩.٦ اختبارات سلبية للاحتواء
+const mutP = src.replace("on(video, 'pause', () => { trace('ev-pause'); audio.pause(); });", "on(video, 'pause', () => { audio.pause(); });\n    trace('ev-pause');");
+ok('مُفسَد و: ev-pause خارج معالجه', mutP !== src);
+ok('  والحارس يسقط عليه', /on\(video, 'pause', \(\) => \{[^}]*trace\('ev-pause'\)/.test(mutP) === false);
+const mutK = src.replace(/(const kickAudio = \(\) => \{\n)/, "$1      trace('4-hold-release-before');\n");
+ok('مُفسَد ح: أثر 4-* داخل kickAudio', mutK !== src);
+ok('  والحارس يسقط عليه', /4-hold-release/.test(extractBlock(mutK, 'const kickAudio = () =>').body));
+
+// مُفسَد ز: نقل تحرير العيّنة إلى داخل gapTick (حيث كان فعلاً) يجب أن يُسقط حارس الاحتواء
+const mutS = src.replace(/\n    if \(w\.sample\) clearInterval\(w\.sample\);/, '').replace(
+  /(\n      if \(w\.gapTimer\) clearTimeout\(w\.gapTimer\);\n)(\s+)w\.gapTimer = setTimeout/,
+  '$1$2if (w.sample) clearInterval(w.sample);\n$2w.gapTimer = setTimeout'
+);
+ok('مُفسَد ز: تحرير العيّنة داخل gapTick', mutS !== src);
+ok('  والحارس يسقط عليه', (() => {
+  const sw = extractBlock(mutS, 'function stopWatch(');
+  return !!sw && !/clearInterval\(w\.sample\)/.test(sw.body);
+})());
 
 console.log('');
 if (failures.length) {
