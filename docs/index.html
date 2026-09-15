@@ -51,7 +51,7 @@
       "applicationCategory": "MultimediaApplication",
       "applicationSubCategory": "Audio separation",
       "operatingSystem": "Windows 10, Windows 11",
-      "softwareVersion": "0.2.4",
+      "softwareVersion": "0.2.5",
       "inLanguage": [
         "ar",
         "en"
@@ -109,8 +109,8 @@
     lang: 'ar',
     /* رقم الإصدار يُقرأ من نشرة GitHub، والنسخة الاحتياطية هنا للعمل بلا شبكة.
        {v} في data-i18n-ar/en و data-i18n-alt-v يُستبدلان بهذا الرقم. */
-    version: '0.2.4',
-    releases: { tag: 'v0.2.4', exeUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.4/HaramLite_0.2.4_x64-setup.exe', msiUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.4/HaramLite_0.2.4_x64_en-US.msi' },
+    version: '0.2.5',
+    releases: { tag: 'v0.2.5', exeUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.5/HaramLite_0.2.5_x64-setup.exe', msiUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.5/HaramLite_0.2.5_x64_en-US.msi' },
     /* في وضع en نضع English في data و data-i18n-ar في alt ليصير زرّ اللغة
        بالعربية. والعكس صحيح. */
     applyLang(lang) {
@@ -160,7 +160,7 @@
         var exeAsset = (data.assets || []).find(function (a) { return a.name.endsWith('-setup.exe'); });
         var msiAsset = (data.assets || []).find(function (a) { return a.name.endsWith('.msi'); });
         /* الرقم من النشرة نفسها: شارة الهيرو وأسماء الملفات ونصوص الأزرار كلها
-           تُبنى منه، فلا يبقى «0.2.4» مكتوباً في مكان يخالف النشرة. */
+           تُبنى منه، فلا يبقى «0.2.5» مكتوباً في مكان يخالف النشرة. */
         var tag = data.tag_name;
         var raw = String(tag).replace(/^v/i, '');
         /* لا نستعمل المتغيّر S هنا: فهو محلي داخل DOMContentLoaded وليس في نطاق
@@ -247,7 +247,7 @@
 <div class="inline-flex flex-wrap items-center justify-center gap-stack-sm px-stack-md py-unit rounded-full bg-surface-container-high text-on-surface-variant mb-6 shadow-sm">
 <span class="w-2 h-2 rounded-full bg-clay-accent animate-pulse"></span>
 <span class="font-mono-code text-mono-code tracking-wide">
-<span class="text-clay-accent font-bold js-release-tag">v0.2.4</span> • 
+<span class="text-clay-accent font-bold js-release-tag">v0.2.5</span> • 
             <span data-i18n-ar="ويندوز 10/11 (x64)" data-i18n-en="Windows 10/11 (x64)">ويندوز 10/11 (x64)</span> • 
             <span data-i18n-ar="معالجة محلية 100%" data-i18n-en="100% On-Device AI">معالجة محلية 100%</span>
 </span>
@@ -270,8 +270,8 @@
 <div class="flex flex-wrap items-center justify-center gap-stack-md w-full mb-8">
 <a class="js-exe-link inline-flex items-center gap-stack-sm px-stack-lg py-stack-md rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold shadow-md hover:bg-primary transition-all duration-150 transform hover:-translate-y-0.5" href="https://github.com/SMSMy/HaramLite/releases/latest" rel="noreferrer">
 <span class="material-symbols-outlined text-[20px]">download</span>
-<span class="js-exe-text" data-i18n-ar="تحميل المثبّت الذكي ({v})" data-i18n-en="Download Setup ({v})">تحميل المثبّت الذكي (0.2.4)</span>
-<span class="inline-block font-mono-code text-mono-code opacity-75 js-exe-size" dir="ltr">219.8 MB</span>
+<span class="js-exe-text" data-i18n-ar="تحميل المثبّت الذكي ({v})" data-i18n-en="Download Setup ({v})">تحميل المثبّت الذكي (0.2.5)</span>
+<span class="inline-block font-mono-code text-mono-code opacity-75 js-exe-size" dir="ltr">188.0 MB</span>
 </a>
 <a class="inline-flex items-center gap-stack-sm px-stack-lg py-stack-md rounded bg-surface-container text-cream-text font-label-md text-label-md hover:bg-surface-container-high transition-colors shadow-sm" href="bridge.html" rel="noreferrer" target="_blank">
 <span class="material-symbols-outlined text-clay-accent text-[20px]">extension</span>
@@ -362,7 +362,7 @@
 <span class="w-3 h-3 rounded-full bg-warn-yellow inline-block"></span>
 <span class="w-3 h-3 rounded-full bg-tertiary inline-block"></span>
 </div>
-<span class="font-mono-code text-mono-code text-on-surface-variant mx-stack-sm">HaramLite Desktop v<span class="js-version-text">0.2.4</span> • [Tauri v2 + ONNX DirectML/CUDA]</span>
+<span class="font-mono-code text-mono-code text-on-surface-variant mx-stack-sm">HaramLite Desktop v<span class="js-version-text">0.2.5</span> • [Tauri v2 + ONNX DirectML/CUDA]</span>
 </div>
 <div class="flex items-center gap-stack-sm text-on-surface-variant font-mono-code text-mono-code">
 <span class="material-symbols-outlined text-[16px] text-clay-accent">memory</span>
@@ -503,7 +503,7 @@
 <span class="material-symbols-outlined text-[24px]">info</span>
 </div>
 <div class="flex-1">
-<span class="font-label-md text-label-md text-warn-yellow font-bold block mb-0.5" data-i18n-ar="تنبيه شفاف بخصوص التحديث في الإصدار {v}" data-i18n-en="Transparent Notice Regarding v{v} Auto-Updates">تنبيه شفاف بخصوص التحديث في الإصدار 0.2.4</span>
+<span class="font-label-md text-label-md text-warn-yellow font-bold block mb-0.5" data-i18n-ar="تنبيه شفاف بخصوص التحديث في الإصدار {v}" data-i18n-en="Transparent Notice Regarding v{v} Auto-Updates">تنبيه شفاف بخصوص التحديث في الإصدار 0.2.5</span>
 <p class="font-body-md text-body-md text-cream-text/90" data-i18n-ar="التحديث الذاتي التلقائي موقوف حالياً في هذا الإصدار لأن مفتاح توقيع الإصدارات الرقمي غير مضبوط في مسار البناء الآلي بعد. يتم الترقية مستقبلاً بتنزيل المثبّت الجديد مباشرة من صفحة الإصدارات." data-i18n-en="Automatic in-app updates are currently disabled in this build as release signing keys are not yet configured in CI. Future upgrades are performed by running the new installer directly from GitHub Releases.">التحديث الذاتي التلقائي موقوف حالياً في هذا الإصدار لأن مفتاح توقيع الإصدارات الرقمي غير مضبوط في مسار البناء الآلي بعد. يتم الترقية مستقبلاً بتنزيل المثبّت الجديد مباشرة من صفحة الإصدارات.</p>
 </div>
 </div>
@@ -521,13 +521,13 @@
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="مثبّت متكامل يجهّز بيئة العمل تلقائياً: يثبت VC++ Redistributable، ومسارات FFmpeg، ونموذج الذكاء الاصطناعي مع اختصارات سطح المكتب." data-i18n-en="All-in-one setup wizard: installs required VC++ redistributable, FFmpeg binaries, and AI models with desktop shortcuts.">مثبّت متكامل يجهّز بيئة العمل تلقائياً: يثبت VC++ Redistributable، ومسارات FFmpeg، ونموذج الذكاء الاصطناعي مع اختصارات سطح المكتب.</p>
 <div class="font-mono-code text-mono-code text-on-surface-variant/80 bg-surface-container-lowest p-stack-sm rounded mb-6" dir="ltr">
-              HaramLite_<span class="js-version-text">0.2.4</span>_x64-setup.exe
+              HaramLite_<span class="js-version-text">0.2.5</span>_x64-setup.exe
               <!-- المقاس أدناه (وكذلك .js-msi-size) يُستبدل عند التحميل من واجهة GitHub؛
-                   والمكتوب هنا مقاس الأصل المنشور فعلاً في 0.2.4 لا تقدير. -->
-              <span class="js-exe-size block text-clay-accent">219.8 MB</span>
+                   والمكتوب هنا مقاس الأصل المنشور فعلاً في 0.2.5 لا تقدير. -->
+              <span class="js-exe-size block text-clay-accent font-mono-code text-mono-code">188.0 MB</span>
             </div>
 </div>
-<a class="js-exe-link w-full py-stack-md rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold text-center hover:bg-primary transition-colors flex items-center justify-center gap-stack-sm shadow" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.4/HaramLite_0.2.4_x64-setup.exe">
+<a class="js-exe-link w-full py-stack-md rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold text-center hover:bg-primary transition-colors flex items-center justify-center gap-stack-sm shadow" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.5/HaramLite_0.2.5_x64-setup.exe">
 <span class="material-symbols-outlined text-[20px]">download</span>
 <span data-i18n-ar="تحميل المثبّت (.exe)" data-i18n-en="Download Setup (.exe)">تحميل المثبّت (.exe)</span>
 </a>
@@ -541,11 +541,11 @@
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="حزمة MSI القياسية المخصصة لمسؤولي الأنظمة وبيئات النطاقات (Domain Admins)، تدعم التثبيت الصامت عبر سياسات المجموعات (GPO / Intune)." data-i18n-en="Standard MSI package tailored for system admins, supporting silent deployment, GPO automation, and MDM policies.">حزمة MSI القياسية المخصصة لمسؤولي الأنظمة وبيئات النطاقات (Domain Admins)، تدعم التثبيت الصامت عبر سياسات المجموعات (GPO / Intune).</p>
 <div class="font-mono-code text-mono-code text-on-surface-variant/80 bg-surface-container-lowest p-stack-sm rounded mb-6" dir="ltr">
-              HaramLite_<span class="js-version-text">0.2.4</span>_x64_en-US.msi
-              <span class="js-msi-size block text-clay-accent">424.5 MB</span>
+              HaramLite_<span class="js-version-text">0.2.5</span>_x64_en-US.msi
+              <span class="js-msi-size block text-clay-accent font-mono-code text-mono-code">371.4 MB</span>
             </div>
 </div>
-<a class="js-msi-link w-full py-stack-md rounded bg-surface-container-high text-cream-text font-label-md text-label-md font-bold text-center hover:bg-surface-bright transition-colors flex items-center justify-center gap-stack-sm" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.4/HaramLite_0.2.4_x64_en-US.msi">
+<a class="js-msi-link w-full py-stack-md rounded bg-surface-container-high text-cream-text font-label-md text-label-md font-bold text-center hover:bg-surface-bright transition-colors flex items-center justify-center gap-stack-sm" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.5/HaramLite_0.2.5_x64_en-US.msi">
 <span class="material-symbols-outlined text-[20px]">folder_zip</span>
 <span data-i18n-ar="تحميل حزمة MSI" data-i18n-en="Download MSI Package">تحميل حزمة MSI</span>
 </a>
@@ -557,7 +557,7 @@
 <span class="material-symbols-outlined text-on-surface-variant text-[28px]">package_2</span>
 <h3 class="font-headline-lg text-headline-lg text-on-surface-variant">النسخة المحمولة</h3>
 </div>
-<p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="تنويه: النسخة المحمولة (Portable) لم تتوفر في الإصدار 0.2.4 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في إصدار لاحق بعد ضغط النماذج." data-i18n-en="Notice: Standalone portable archive is paused in 0.2.4 due to required bin/ and models/ payload constraints (~515MB). Will return in upcoming pruned model updates.">تنويه: النسخة المحمولة (Portable) لم تتوفر في الإصدار 0.2.4 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في إصدار لاحق بعد ضغط النماذج.</p>
+<p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="تنويه: النسخة المحمولة (Portable) لم تتوفر في الإصدار 0.2.5 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في إصدار لاحق بعد ضغط النماذج." data-i18n-en="Notice: Standalone portable archive is paused in 0.2.5 due to required bin/ and models/ payload constraints (~515MB). Will return in upcoming pruned model updates.">تنويه: النسخة المحمولة (Portable) لم تتوفر في الإصدار 0.2.5 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في إصدار لاحق بعد ضغط النماذج.</p>
 </div>
 <div class="p-stack-sm bg-surface-container-lowest rounded text-center font-mono-code text-mono-code text-on-surface-variant">
             الحالة: مؤجّلة إلى 0.3
@@ -709,58 +709,76 @@
 </div>
 </div>
 </section>
-<!-- 6. WHAT'S NEW IN 0.2.4 (#whatsnew) -->
+<!-- 6. WHAT'S NEW IN 0.2.5 (#whatsnew) -->
 <section class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop mb-24 scroll-mt-20" id="whatsnew">
 <div class="bg-surface-container-high rounded-xl p-stack-lg sm:p-12 shadow-lg">
 <div class="flex flex-col md:flex-row md:items-center justify-between gap-stack-md mb-8 pb-stack-md border-b border-border-muted">
 <div>
 <div class="inline-flex items-center gap-stack-sm px-stack-sm py-0.5 rounded bg-clay-accent/15 text-clay-accent font-mono-code text-mono-code font-bold mb-2">
-سجل التغييرات • الإصدار <span class="js-version-text">0.2.4</span>
+سجل التغييرات • الإصدار <span class="js-version-text">0.2.5</span>
 </div>
-<h2 class="font-headline-xl text-headline-xl text-cream-text" data-i18n-ar="الجديد في إصدار {v}" data-i18n-en="What&#39;s New in v{v}">الجديد في إصدار 0.2.4</h2>
+<h2 class="font-headline-xl text-headline-xl text-cream-text" data-i18n-ar="الجديد في إصدار {v}" data-i18n-en="What&#39;s New in v{v}">الجديد في إصدار 0.2.5</h2>
 </div>
-<a class="inline-flex items-center gap-stack-sm font-label-md text-label-md text-clay-accent hover:underline" href="https://github.com/SMSMy/HaramLite/releases/latest" rel="noreferrer" target="_blank">
+<a class="inline-flex items-center gap-stack-sm font-label-md text-label-md text-clay-accent hover:underline" href="https://github.com/SMSMy/HaramLite/releases/tag/v0.2.5" rel="noreferrer" target="_blank">
 <span data-i18n-ar="عرض تقرير الإصدار في GitHub" data-i18n-en="View release on GitHub">عرض تقرير الإصدار في GitHub</span>
 <span class="material-symbols-outlined text-[16px]">arrow_outward</span>
 </a>
 </div>
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-stack-lg">
+
+<div class="space-y-stack-sm">
+<div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
+<span class="material-symbols-outlined text-clay-accent">movie</span>
+<span data-i18n-ar="المحرّك صار بناءً متوافقاً مع LGPLv3" data-i18n-en="The media engine is now an LGPLv3 build">المحرّك صار بناءً متوافقاً مع LGPLv3</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="لم يبقَ في الكود أي اعتماد على مكتبة بترخيص GPL، فصار المثبّت أصغر: 220.2 ⟶ 188.0 ميجابايت للمثبّت الذكي، و431.2 ⟶ 371.4 للملف MSI." data-i18n-en="No GPL-licensed library remains in the code, and the installer got smaller: 220.2 &rarr; 188.0 MB for the setup and 431.2 &rarr; 371.4 MB for the MSI.">لم يبقَ في الكود أي اعتماد على مكتبة بترخيص GPL، فصار المثبّت أصغر: 220.2 ⟶ 188.0 ميجابايت للمثبّت الذكي، و431.2 ⟶ 371.4 للملف MSI.</p>
+</div>
+
+<div class="space-y-stack-sm">
+<div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
+<span class="material-symbols-outlined text-clay-accent">bolt</span>
+<span data-i18n-ar="الجودة أولاً: المُرمِّز الجديد مكافئ أو أفضل" data-i18n-en="Quality first: the new encoder matches or beats the old one">الجودة أولاً: المُرمِّز الجديد مكافئ أو أفضل</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="قيس على ثلاثة محتويات حقيقية: الجودة مكافئة أو أفضل قليلاً، لكن حجم الملف قد يكبر على محتوى معيّن — والاختيار كان الجودة على الحجم." data-i18n-en="Measured on three real clips: quality matches or is slightly better, while the output file may grow on some content — quality was chosen over size.">قيس على ثلاثة محتويات حقيقية: الجودة مكافئة أو أفضل قليلاً، لكن حجم الملف قد يكبر على محتوى معيّن — والاختيار كان الجودة على الحجم.</p>
+</div>
+
+<div class="space-y-stack-sm">
+<div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
+<span class="material-symbols-outlined text-clay-accent">download</span>
+<span data-i18n-ar="زرّ التحقق من التحديثات عاد — ويعمل" data-i18n-en="The update check button is back, and it works">زرّ التحقق من التحديثات عاد — ويعمل</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="من الإعدادات: يقرأ آخر إصدار منشور ويخبرك إن كان أحدث، ويفتح صفحة التنزيل. وكل مسار فشل له رسالة واضحة، بلا زرّ يفشل بصمت." data-i18n-en="From Settings: it reads the latest published version, tells you if one is newer, and opens the download page. Every failure path shows a clear message.">من الإعدادات: يقرأ آخر إصدار منشور ويخبرك إن كان أحدث، ويفتح صفحة التنزيل. وكل مسار فشل له رسالة واضحة، بلا زرّ يفشل بصمت.</p>
+</div>
+
 <div class="space-y-stack-sm">
 <div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
 <span class="material-symbols-outlined text-clay-accent">graphic_eq</span>
-<span data-i18n-ar="قصّ الصمت لم يعد يُتلف الملف" data-i18n-en="Silence trimming can no longer shred a file">قصّ الصمت لم يعد يُتلف الملف</span>
+<span data-i18n-ar="قائمة إعدادات أوضح: معتمة وبلا رموز تعبيرية" data-i18n-en="A clearer settings menu: opaque, no emoji">قائمة إعدادات أوضح: معتمة وبلا رموز تعبيرية</span>
 </div>
-<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="إذا حمل الملف قيماً غير منتهية (NaN أو Inf) في نحو 10% من نوافذ القياس، صارت العتبة التكيفية لا نهائية فاعتُبرت كل نافذة سليمة «صامتة» وقُصّ الملف إلى شذرات. صارت العتبة تُحسب من النوافذ السليمة وحدها، وإن لم توجد نافذة سليمة فلا قصّ إطلاقاً." data-i18n-en="When a file carried non-finite samples (NaN or Inf) in roughly 10% of the measurement windows, the adaptive threshold became infinite: every healthy window counted as silence and the file was cut into slivers. The threshold is now computed from healthy windows only, and when none exists nothing is trimmed at all.">إذا حمل الملف قيماً غير منتهية (NaN أو Inf) في نحو 10% من نوافذ القياس، صارت العتبة التكيفية لا نهائية فاعتُبرت كل نافذة سليمة «صامتة» وقُصّ الملف إلى شذرات. صارت العتبة تُحسب من النوافذ السليمة وحدها، وإن لم توجد نافذة سليمة فلا قصّ إطلاقاً.</p>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="كانت زجاجية فيظهر ما خلفها تحت النصوص؛ صارت معتمة مع إبقاء الإطار والظل، وأُزيلت الرموز التعبيرية وحلّت محلها أيقونات موحّدة." data-i18n-en="It used to be glassy, letting content show through the labels; it is now opaque with the border and shadow kept, and the emoji are replaced by consistent icons.">كانت زجاجية فيظهر ما خلفها تحت النصوص؛ صارت معتمة مع إبقاء الإطار والظل، وأُزيلت الرموز التعبيرية وحلّت محلها أيقونات موحّدة.</p>
 </div>
+
 <div class="space-y-stack-sm">
 <div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
-<span class="material-symbols-outlined text-clay-accent">cancel</span>
-<span data-i18n-ar="زرّ الإلغاء صار يوقف الترميز فعلاً" data-i18n-en="Cancel now actually stops the encode">زرّ الإلغاء صار يوقف الترميز فعلاً</span>
+<span class="material-symbols-outlined text-clay-accent">check_circle</span>
+<span data-i18n-ar="أول تشغيل لم يكن متجمّداً — بل كان ترتيباً خاطئاً في الملف" data-i18n-en="The frozen first play was a file-layout problem">أول تشغيل لم يكن متجمّداً — بل كان ترتيباً خاطئاً في الملف</span>
 </div>
-<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="كان التطبيق يتجاهل نتيجة فحص الإلغاء الأخير: فيُنهي ترميز الفيديو ويُعلن النجاح ثم يمضي في مسار يحذف المصدر المنزَّل. الآن الإلغاء يُلغي المهمة، ويحذف ما كُتب منها، ويُعلن الإلغاء." data-i18n-en="The app ignored the result of its final cancel check: it finished encoding the video, reported success, and then walked the path that deletes the downloaded source. Cancelling now ends the job, removes what it wrote, and reports the cancellation.">كان التطبيق يتجاهل نتيجة فحص الإلغاء الأخير: فيُنهي ترميز الفيديو ويُعلن النجاح ثم يمضي في مسار يحذف المصدر المنزَّل. الآن الإلغاء يُلغي المهمة، ويحذف ما كُتب منها، ويُعلن الإلغاء.</p>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="كان فهرس الملف في آخره، فالمشغّل الذي يقرأ تدريجياً (تيليجرام أو المتصفح) لا يبدأ حتى يكتمل التنزيل. الآن الفهرس في المقدمة." data-i18n-en="The file index sat at the end, so a progressively-reading player (Telegram, a browser) could not start until the download finished. The index now comes first.">كان فهرس الملف في آخره، فالمشغّل الذي يقرأ تدريجياً (تيليجرام أو المتصفح) لا يبدأ حتى يكتمل التنزيل. الآن الفهرس في المقدمة.</p>
 </div>
+
 <div class="space-y-stack-sm">
 <div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
-<span class="material-symbols-outlined text-clay-accent">language</span>
-<span data-i18n-ar="واجهة معرَّبة بالكامل وأسهل وصولاً" data-i18n-en="A fully translated, more accessible interface">واجهة معرَّبة بالكامل وأسهل وصولاً</span>
+<span class="material-symbols-outlined text-clay-accent">build</span>
+<span data-i18n-ar="صيانة: تبعيات منظّمة وتنظيف بلا تغيير سلوك" data-i18n-en="Maintenance: tidier dependencies, behaviour-preserving cleanup">صيانة: تبعيات منظّمة وتنظيف بلا تغيير سلوك</span>
 </div>
-<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="التعريب صار كاملاً (192 مفتاحاً في كل لغة)، فلا يبقى نصّ عربي في الواجهة الإنجليزية. والتباين صار يمرّ بمعيار AA على 129 عنصراً بعد أن كان يفشل على 12، ومنطقة الإفلات تعمل بلوحة المفاتيح، والحوارات لها أدوارها وتُغلق بـEsc." data-i18n-en="Translation is now complete (192 keys per language), so no Arabic remains in the English interface. Contrast passes AA on 129 elements after failing on 12, the drop zone works from the keyboard, and the dialogs carry their roles and close with Escape.">التعريب صار كاملاً (192 مفتاحاً في كل لغة)، فلا يبقى نصّ عربي في الواجهة الإنجليزية. والتباين صار يمرّ بمعيار AA على 129 عنصراً بعد أن كان يفشل على 12، ومنطقة الإفلات تعمل بلوحة المفاتيح، والحوارات لها أدوارها وتُغلق بـEsc.</p>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="سياسة تحديث التبعيات أُحكمت (طلب واحد للدنيا والرقعة لكل نظام، وتجاهل الترقيات الكبرى)، ونُظّفت تحذيرات التحليل الساكن مع توثيق كل استثناء بسببه." data-i18n-en="The dependency policy is tighter (one minor/patch PR per ecosystem, majors ignored), and the static-analysis warnings were cleaned with every exception documented.">سياسة تحديث التبعيات أُحكمت (طلب واحد للدنيا والرقعة لكل نظام، وتجاهل الترقيات الكبرى)، ونُظّفت تحذيرات التحليل الساكن مع توثيق كل استثناء بسببه.</p>
 </div>
-<div class="space-y-stack-sm">
-<div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
-<span class="material-symbols-outlined text-clay-accent">memory</span>
-<span data-i18n-ar="ذاكرة أقل إلى النصف في قراءة الصوت" data-i18n-en="Half the memory when reading audio">ذاكرة أقل إلى النصف في قراءة الصوت</span>
+
 </div>
-<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="قياس على ملف ستيريو 300 ثانية (105.8 MB): الذروة انخفضت من 213.5 MB إلى 112.5 MB — أي نحو 100.9 MB (47%). والبيانات لم تتغيّر: بصمة القناتين متطابقة، وتكافؤ بتّي مُثبَت مع الطريقة القديمة." data-i18n-en="Measured on a 300 second stereo file (105.8 MB): peak memory fell from 213.5 MB to 112.5 MB, about 100.9 MB (47%). The data is unchanged - the channel hashes match, and bit-for-bit equality with the old reader was proven.">قياس على ملف ستيريو 300 ثانية (105.8 MB): الذروة انخفضت من 213.5 MB إلى 112.5 MB — أي نحو 100.9 MB (47%). والبيانات لم تتغيّر: بصمة القناتين متطابقة، وتكافؤ بتّي مُثبَت مع الطريقة القديمة.</p>
-</div>
-</div>
-<p class="mt-6 font-body-md text-body-md text-on-surface-variant">
-<span data-i18n-ar="ملاحظة: وضع «أغنية» ما زال يطبّق سلسلة التحسين بعده — قصّ الصمت والتطبيع إلى −14 LUFS — وهو سلوك مقصود، لا أثر جانبي." data-i18n-en="Note: Song mode still applies its enhancement chain afterwards — silence trimming and normalisation to −14 LUFS — which is intended behaviour, not a side effect.">ملاحظة: وضع «أغنية» ما زال يطبّق سلسلة التحسين بعده — قصّ الصمت والتطبيع إلى −14 LUFS — وهو سلوك مقصود، لا أثر جانبي.</span>
-<a class="font-label-md text-label-md text-clay-accent hover:underline" href="https://github.com/SMSMy/HaramLite/releases" target="_blank" rel="noreferrer"><span data-i18n-ar="تفاصيل الإصدارات السابقة" data-i18n-en="Earlier release details">تفاصيل الإصدارات السابقة</span></a>
-</p>
 </div>
 </section>
-  <!-- 7. STRICT ZERO-COMPROMISE PRIVACY (#privacy) -->
+
+<!-- 7. STRICT ZERO-COMPROMISE PRIVACY (#privacy) -->
 <section class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop mb-24 scroll-mt-20" id="privacy">
 <div class="bg-surface-container rounded-xl p-stack-lg sm:p-12 shadow-md">
 <div class="flex flex-col lg:flex-row items-center justify-between gap-stack-lg">

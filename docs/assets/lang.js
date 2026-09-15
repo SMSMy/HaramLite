@@ -24,7 +24,7 @@
     if (fromDom) return fromDom;
     var state = window.HaramLiteState;
     if (state && state.version) return String(state.version);
-    return '0.2.4';
+    return '0.2.5';
   }
   function fill(t) {
     return String(t).replace(/\{v\}/g, version());
