@@ -60,7 +60,7 @@ jobs:
         run: pnpm exec node ./scripts/fetch_redist.js
 
       - name: Build & publish Tauri release
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # TEMPORARY (user decision 2026-09-05): signing deferred — the secret
