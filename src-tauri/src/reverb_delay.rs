@@ -77,11 +77,11 @@ impl Freeverb {
         let damp = 0.35 - room * 0.25;
 
         let mk_combs = || {
-            COMB_TUNING.iter().map(|&t| Comb::new(scaled(t), fb as f32, damp as f32)).collect::<Vec<_>>()
+            COMB_TUNING.iter().map(|&t| Comb::new(scaled(t), fb, damp)).collect::<Vec<_>>()
         };
         let mk_combs_r = || {
             COMB_TUNING.iter()
-                .map(|&t| Comb::new(scaled(t + STEREO_SPREAD), fb as f32, damp as f32))
+                .map(|&t| Comb::new(scaled(t + STEREO_SPREAD), fb, damp))
                 .collect::<Vec<_>>()
         };
 
@@ -95,7 +95,7 @@ impl Freeverb {
         }
     }
 
-    pub fn process(&mut self, l: &mut Vec<f32>, r: &mut Vec<f32>) {
+    pub fn process(&mut self, l: &mut [f32], r: &mut [f32]) {
         let n = l.len();
         for i in 0..n {
             let (xl, xr) = (l[i], r[i]);
@@ -128,7 +128,7 @@ impl PingpongDelay {
         Self { buf_l: vec![0.0; size], buf_r: vec![0.0; size], idx: 0, time_ms, sr, mix, feedback }
     }
 
-    pub fn process(&mut self, l: &mut Vec<f32>, r: &mut Vec<f32>) {
+    pub fn process(&mut self, l: &mut [f32], r: &mut [f32]) {
         if self.sr == 0 {
             return;
         }

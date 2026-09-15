@@ -22,7 +22,7 @@ impl Compressor {
         }
     }
 
-    pub fn process(&mut self, l: &mut Vec<f32>, r: &mut Vec<f32>) {
+    pub fn process(&mut self, l: &mut [f32], r: &mut [f32]) {
         let n = l.len().min(r.len());
         // Instant-attack peak follower: env jumps to peaks immediately,
         // decays exponentially — required when carrier period << attack ms.

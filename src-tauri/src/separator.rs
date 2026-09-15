@@ -453,13 +453,13 @@ impl MdxSession {
 
         // spek tensor [1,4,DIM_F,DIM_T]: rows ch0_re, ch0_im, ch1_re, ch1_im
         let mut spek = vec![0.0f32; 4 * DIM_F * frames];
-        for c in 0..2 {
-            let (re, im) = self.plan.forward(&chunk[c]);
+        for (c, chan) in chunk.iter().enumerate() {
+            let (re, im) = self.plan.forward(chan);
             for (k, rowset) in [&re, &im].into_iter().enumerate() {
-                for f in 3..DIM_F {
+                for (f, row) in rowset.iter().enumerate().skip(3) {
                     // bins <3 zeroed exactly like python (`spek[:,:,:3,:]*=0`)
                     let base = ((c * 2 + k) * DIM_F + f) * frames;
-                    spek[base..base + frames].copy_from_slice(&rowset[f]);
+                    spek[base..base + frames].copy_from_slice(row);
                 }
             }
         }
@@ -481,16 +481,16 @@ impl MdxSession {
             vec![0.0f32; CHUNK_SIZE],
             vec![0.0f32; CHUNK_SIZE],
         ];
-        for c in 0..2 {
+        for (c, out_c) in out.iter_mut().enumerate() {
             let mut re = vec![vec![0.0f32; frames]; DIM_F];
             let mut im = vec![vec![0.0f32; frames]; DIM_F];
             for (k, rowset) in [&mut re, &mut im].into_iter().enumerate() {
-                for f in 0..DIM_F {
+                for (f, row) in rowset.iter_mut().enumerate() {
                     let base = ((c * 2 + k) * DIM_F + f) * frames;
-                    rowset[f].copy_from_slice(&pred[base..base + frames]);
+                    row.copy_from_slice(&pred[base..base + frames]);
                 }
             }
-            out[c] = self.plan.inverse(&re, &im, frames);
+            *out_c = self.plan.inverse(&re, &im, frames);
         }
         Ok(out)
     }
@@ -523,7 +523,7 @@ fn demix(
     }
 
     let step = ((1.0 - OVERLAP) * CHUNK_SIZE as f64) as usize;
-    let total_steps = (padded_len + step - 1) / step;
+    let total_steps = padded_len.div_ceil(step);
 
     // hanning window over the ACTUAL chunk length (np.hanning = symmetric)
     let mut result = [vec![0.0f32; padded_len], vec![0.0f32; padded_len]];
@@ -572,11 +572,11 @@ fn demix(
     }
 
     let mut source = [vec![0.0f32; n], vec![0.0f32; n]];
-    for c in 0..2 {
-        for j in 0..n {
+    for (c, source_c) in source.iter_mut().enumerate() {
+        for (j, s) in source_c.iter_mut().enumerate() {
             let p = TRIM + j;
             let d = divider[p];
-            source[c][j] = if d > 1e-9 { result[c][p] / d } else { 0.0 };
+            *s = if d > 1e-9 { result[c][p] / d } else { 0.0 };
         }
     }
     Ok(source)
@@ -815,7 +815,7 @@ mod tests {
             let (pad, padded) = demix_padding(n);
             assert_eq!(pad, gen + TRIM - (n % gen), "pad formula for n={n}");
             assert_eq!(padded, TRIM + n + pad, "padded length for n={n}");
-            assert!(pad >= TRIM + 1 && pad <= gen + TRIM, "pad range for n={n}: {pad}");
+            assert!(pad > TRIM && pad <= gen + TRIM, "pad range for n={n}: {pad}");
         }
         // 10s @44.1kHz: the concrete tail the old code got wrong.
         let (pad10, padded10) = demix_padding(441000);

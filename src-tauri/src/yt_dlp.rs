@@ -7,6 +7,7 @@
 //!   3. only then rename to `<target>.new`
 //!   4. back up active binary → `.previous`, atomic-swap `.new` into place
 //!   5. run `--version`; on ANY failure restore `.previous`
+//!
 //! No tokens are embedded — public API only.
 
 use std::collections::VecDeque;
@@ -521,7 +522,7 @@ fn find_slots(out_dir: &Path, video_id: &str) -> Vec<PathBuf> {
             found.push((m, p));
         }
     }
-    found.sort_by(|a, b| b.0.cmp(&a.0));
+    found.sort_by_key(|b| std::cmp::Reverse(b.0));
     found.into_iter().map(|(_, p)| p).collect()
 }
 

@@ -410,7 +410,7 @@ mod tests {
         let info = probe(&norm).expect("probe normalized");
         assert_eq!(info.sample_rate, Some(44100));
         assert_eq!(info.channels, Some(2));
-        assert!(info.audio_disguised_as_video == false && !info.has_video);
+        assert!(!info.audio_disguised_as_video && !info.has_video);
 
         std::fs::remove_dir_all(&tmp).ok();
     }

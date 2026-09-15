@@ -83,7 +83,7 @@ fn to_hex(bytes: &[u8]) -> String {
 }
 
 fn from_hex(s: &str) -> Option<Vec<u8>> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return None;
     }
     let b = s.as_bytes();
@@ -111,7 +111,7 @@ fn dpapi(data: &[u8], protect: bool) -> Option<Vec<u8>> {
         CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
     };
 
-    let mut input = CRYPT_INTEGER_BLOB {
+    let input = CRYPT_INTEGER_BLOB {
         cbData: data.len() as u32,
         pbData: data.as_ptr() as *mut u8,
     };
@@ -123,7 +123,7 @@ fn dpapi(data: &[u8], protect: bool) -> Option<Vec<u8>> {
     let ok = unsafe {
         if protect {
             CryptProtectData(
-                &mut input,
+                &input,
                 std::ptr::null(),
                 std::ptr::null(),
                 std::ptr::null_mut(),
@@ -133,7 +133,7 @@ fn dpapi(data: &[u8], protect: bool) -> Option<Vec<u8>> {
             )
         } else {
             CryptUnprotectData(
-                &mut input,
+                &input,
                 std::ptr::null_mut(),
                 std::ptr::null(),
                 std::ptr::null_mut(),
@@ -166,8 +166,8 @@ mod tests {
     fn hex_codec_round_trips_and_rejects_junk() {
         let bytes: Vec<u8> = (0u8..=255).collect();
         assert_eq!(from_hex(&to_hex(&bytes)).unwrap(), bytes);
-        assert_eq!(from_hex("0").is_none(), true, "odd length");
-        assert_eq!(from_hex("zz").is_none(), true, "non-hex");
+        assert!(from_hex("0").is_none(), "odd length");
+        assert!(from_hex("zz").is_none(), "non-hex");
     }
 
     #[test]

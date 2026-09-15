@@ -83,7 +83,7 @@ fn save_done_keys_at(path: &Path, fp: &str, keys: &HashSet<String>) {
     if let Ok(bytes) = serde_json::to_vec(&d) {
         let tmp = path.with_extension("tmp");
         if std::fs::write(&tmp, bytes).is_ok() {
-            let _ = std::fs::rename(&tmp, &path);
+            let _ = std::fs::rename(&tmp, path);
         }
     }
 }

@@ -733,7 +733,7 @@ pub fn status_json() -> Value {
         .as_ref()
         .map(|c| c.issued.elapsed() <= PAIR_TTL)
         .unwrap_or(false);
-    let s = status().lock().map(|g| g).unwrap_or_else(|p| p.into_inner());
+    let s = status().lock().unwrap_or_else(|p| p.into_inner());
     json!({
         "running": s.running,
         "last_error": s.last_error,
@@ -1495,9 +1495,11 @@ mod tests {
 
     #[test]
     fn local_url_is_normalised_and_switches_the_transport() {
-        let mut s = Settings::default();
-        s.telegram_token = " 123:abc ".into();
-        s.telegram_local_url = "127.0.0.1:8081/".into();
+        let s = Settings {
+            telegram_token: " 123:abc ".into(),
+            telegram_local_url: "127.0.0.1:8081/".into(),
+            ..Default::default()
+        };
         let cfg = TgConfig::from_settings(&s);
         assert_eq!(cfg.token, "123:abc");
         assert_eq!(cfg.local_url.as_deref(), Some("http://127.0.0.1:8081"));

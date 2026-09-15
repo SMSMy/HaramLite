@@ -125,7 +125,7 @@ pub fn run_calibration(samples: &[Sample], sr: u32, dcfg: &DecideConfig) -> Cali
     let pm = pool_of(Truth::MusicLike);
     let pn: Vec<f32> = pool_of(Truth::SpeechLike)
         .into_iter()
-        .chain(pool_of(Truth::Noise).into_iter())
+        .chain(pool_of(Truth::Noise))
         .collect();
     let rate = |pool: &[f32], thr: f32| {
         if pool.is_empty() {

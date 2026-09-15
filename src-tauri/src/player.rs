@@ -102,12 +102,8 @@ impl PlayerEngine {
     /// the frontier is fully Ready (worker idles).
     pub fn next_needed(&self, pos_sec: f64) -> Option<usize> {
         let cur = self.chunk_of(pos_sec)?;
-        for idx in cur..(cur + 1 + self.lookahead).min(self.chunks) {
-            if self.states[idx] == ChunkState::Pending {
-                return Some(idx);
-            }
-        }
-        None
+        (cur..(cur + 1 + self.lookahead).min(self.chunks))
+            .find(|&idx| self.states[idx] == ChunkState::Pending)
     }
 
     /// Mark every chunk strictly before the playhead Consumed.

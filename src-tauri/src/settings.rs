@@ -141,10 +141,12 @@ mod tests {
     #[test]
     fn settings_round_trip_and_secrets_never_land_in_the_clear() {
         let dir = tmp("seal");
-        let mut s = Settings::default();
-        s.telegram_token = "1234567890:AA_fixture_token".into();
-        s.telegram_api_hash = "abcdef0123456789".into();
-        s.lang = "en".into();
+        let s = Settings {
+            telegram_token: "1234567890:AA_fixture_token".into(),
+            telegram_api_hash: "abcdef0123456789".into(),
+            lang: "en".into(),
+            ..Default::default()
+        };
         save(&dir, &s).unwrap();
 
         let raw = std::fs::read_to_string(path(&dir)).unwrap();

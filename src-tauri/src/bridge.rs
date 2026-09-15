@@ -945,10 +945,8 @@ fn handle_request(
                     // data — drop it now that real outputs exist (it used to
                     // pile up next to every processed video forever).
                     let mut outs: Vec<PathBuf> = Vec::new();
-                    for slot in [&o.vocals, &o.instrumental, &o.video] {
-                        if let Some(p) = slot {
-                            outs.push(p.clone());
-                        }
+                    for p in [&o.vocals, &o.instrumental, &o.video].into_iter().flatten() {
+                        outs.push(p.clone());
                     }
                     if should_remove_bridge_source(&file, &out_dir, &outs) {
                         match std::fs::remove_file(&file) {
@@ -1059,7 +1057,7 @@ pub fn ensure_registered() {
             }
             // correct structure: a SUBKEY named after the host whose
             // DEFAULT value points at the manifest JSON.
-            if let Ok((key, _)) = hkcu.create_subkey(&format!("{t}\\{HOST_NAME}")) {
+            if let Ok((key, _)) = hkcu.create_subkey(format!("{t}\\{HOST_NAME}")) {
                 let current: Result<String, _> = key.get_value("");
                 let needs_write = match current {
                     Ok(v) => v != manifest_str,
@@ -1129,7 +1127,7 @@ pub fn is_registered(app: &tauri::AppHandle) -> bool {
                 }
             }
         }
-        return false;
+        false
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -1203,7 +1201,7 @@ pub fn register(app: &tauri::AppHandle, browser: &str) -> Result<String, String>
             let _ = parent.delete_value(HOST_NAME);
             // Chrome/Firefox expect a SUBKEY whose default value is the path
             let (key, _) = hkcu
-                .create_subkey(&format!("{t}\\{HOST_NAME}"))
+                .create_subkey(format!("{t}\\{HOST_NAME}"))
                 .map_err(|e| e.to_string())?;
             key.set_value("", &manifest_str)
                 .map_err(|e| e.to_string())?;
@@ -1518,9 +1516,9 @@ mod tests {
         let vid = out_dir.join("song_(Clean)_haramlite.mp4");
         std::fs::write(&vid, b"clean").unwrap();
 
-        assert!(should_remove_bridge_source(&src, &out_dir, &[vid.clone()]));
+        assert!(should_remove_bridge_source(&src, &out_dir, std::slice::from_ref(&vid)));
         // same file / no outputs / missing output → keep
-        assert!(!should_remove_bridge_source(&src, &out_dir, &[src.clone()]));
+        assert!(!should_remove_bridge_source(&src, &out_dir, std::slice::from_ref(&src)));
         assert!(!should_remove_bridge_source(&src, &out_dir, &[]));
         assert!(!should_remove_bridge_source(&src, &out_dir, &[out_dir.join("gone.mp4")]));
         // outside our managed folder → never touch (user files)

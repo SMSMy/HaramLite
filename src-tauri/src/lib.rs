@@ -284,8 +284,7 @@ async fn repair_component(app: tauri::AppHandle, key: String) -> Result<String, 
         use tauri::Emitter;
         let path = repair::repair(&key, &|p| {
             let _ = app.emit("repair-progress", p.clamp(0.0, 1.0));
-        })
-        .map_err(|e| e)?;
+        })?;
         Ok(path.display().to_string())
     })
     .await
@@ -407,10 +406,8 @@ async fn separate_file(
         // literally: same folder + real outputs exist + no output IS the source.
         // User files are never tracked, so they can never match.
         let mut outs: Vec<PathBuf> = Vec::new();
-        for slot in [&out.vocals, &out.instrumental, &out.video] {
-            if let Some(p) = slot {
-                outs.push(p.clone());
-            }
+        for p in [&out.vocals, &out.instrumental, &out.video].into_iter().flatten() {
+            outs.push(p.clone());
         }
         let src = Path::new(&path);
         if take_tracked_download(&downloaded, src)
@@ -1187,11 +1184,11 @@ mod p2_tests {
         remember_downloaded(&set, &src);
         // success path: tracked + same folder + live output -> delete allowed
         assert!(take_tracked_download(&set, &src));
-        assert!(bridge::should_remove_bridge_source(&src, &dir, &[out.clone()]));
+        assert!(bridge::should_remove_bridge_source(&src, &dir, std::slice::from_ref(&out)));
         // output IS the source -> forbidden even if tracked
         remember_downloaded(&set, &src);
         assert!(take_tracked_download(&set, &src));
-        assert!(!bridge::should_remove_bridge_source(&src, &dir, &[src.clone()]));
+        assert!(!bridge::should_remove_bridge_source(&src, &dir, std::slice::from_ref(&src)));
         // user file (never tracked) -> take fails first, nothing proceeds
         let user = dir.join("mine.mp4");
         std::fs::write(&user, b"z").unwrap();

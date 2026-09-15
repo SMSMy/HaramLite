@@ -260,7 +260,7 @@ mod tests {
         };
 
         let mut l = tone(2.0);
-        l.extend(std::iter::repeat(0.0).take(sr as usize * 2)); // 2s silence
+        l.extend(std::iter::repeat_n(0.0, sr as usize * 2)); // 2s silence
         l.extend(tone(2.0));
         let mut r = l.clone();
 
@@ -340,9 +340,9 @@ mod tests {
         let sr = 44100u32;
         let mut l = vec![0.7f32; sr as usize]; // constant DC → "silence" by RMS?
         // craft: quiet then loud then quiet
-        let mut sig: Vec<f32> = std::iter::repeat(0.00001f32).take(sr as usize).collect();
-        sig.extend(std::iter::repeat(0.6f32).take(sr as usize));
-        sig.extend(std::iter::repeat(0.00001f32).take(sr as usize));
+        let mut sig: Vec<f32> = std::iter::repeat_n(0.00001f32, sr as usize).collect();
+        sig.extend(std::iter::repeat_n(0.6f32, sr as usize));
+        sig.extend(std::iter::repeat_n(0.00001f32, sr as usize));
         let mut r = sig.clone();
         let mut ll = sig.clone();
         let _ = (&mut l, &mut r);

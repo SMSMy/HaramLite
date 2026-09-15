@@ -115,8 +115,8 @@ impl StftPlan {
                     Complex::new(0.0, 0.0) // freq padding done by python inverse
                 };
             }
-            for f in N_BINS..N_FFT {
-                frame[f] = Complex::new(0.0, 0.0);
+            for f in frame.iter_mut().take(N_FFT).skip(N_BINS) {
+                *f = Complex::new(0.0, 0.0);
             }
 
             self.inverse.process(&mut frame);
