@@ -1304,6 +1304,125 @@ for (const [label, mutant] of cntMuts) {
   ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
 }
 
+console.log('\n=== ٣٢) عبارات لازمة في مسار المزامنة: وجود · ترتيب · احتواء · وسائط (بلا تجميد بقية العبارات) ===');
+// الحدّ الذي بلغه §٢٨ كان عند الشروط والخروج المبكر والنداءات الحرّة، فبقيت تغييرات **العبارة
+// نفسها** مُفلتة — وأثبتَها القياس بمُفسَدات فعلية: حذف وسم قفزتنا `w.selfSeek = Date.now();`
+// و`reanchorAudio(target)` ⟶ `reanchorAudio(target + 0.1)` وحذف `w.held = false;` كلها كانت
+// تمرّ. وهذا القسم يثبّت **العبارات اللازمة وحدها**: وجودها وترتيبها واحتواءها ووسائطها —
+// وما عداها من عبارات الكتل الثلاث يبقى حرّاً (لا قائمة تجميد لكل عبارة). وكل فحص يذكر
+// العبارة بنصّها وسبب لزومها، كي يُعرف المطلوب عند التعديل الشرعي.
+const SELF_SEEK_STMT = 'w.selfSeek = Date.now();';
+const JUMP_WRITE = 'video.currentTime = target';
+const REANCHOR_CALL = 'reanchorAudio';
+const HELD_RELEASE_STMT = 'w.held = false;';
+const PENDING_STMT = 'w.pendingLead = lead;';
+const PACEPLAN_CALL = 'pacePlan';
+const stmtBody = (text, key) => {
+  const b = extractBlock(stripLiterals(text), SYNC_BLOCK_OPENER[key]);
+  return b ? b.body : null;
+};
+const atIn = (body, needle) => (body == null ? -1 : body.indexOf(needle));
+/** وسائط كل نداء لاسم داخل كتلة، مطبَّعة — فيُثبَّت الوسيط نفسه لا وجود النداء وحده. */
+const argsOf = (body, name) => {
+  const out = [];
+  if (body == null) return out;
+  const re = new RegExp('(?:^|[^\\w$.])' + name + '\\s*\\(', 'g');
+  let m;
+  while ((m = re.exec(body)) !== null) {
+    const end = parenEndAt(body, m.index + m[0].length - 1);
+    if (end > 0) out.push(body.slice(m.index + m[0].length, end).trim().replace(/\s+/g, ' '));
+  }
+  return out;
+};
+const branchOf = (body, opener) => {
+  const i = atIn(body, opener);
+  if (i < 0) return null;
+  const end = braceEnd(body, body.indexOf('{', i));
+  return end > 0 ? body.slice(i, end + 1) : null;
+};
+/** عبارات لازمة بترتيبها داخل نصّ (كل واحدة بعد سابقتها) — للاحتواء لا للمطابقة الكاملة. */
+const orderIn = (hay, needles) => {
+  let at = -1;
+  return needles.every((n) => {
+    const i = hay.indexOf(n, at + 1);
+    if (i < 0) return false;
+    at = i;
+    return true;
+  });
+};
+/** تطبيع العبارة: المسافات والفراغات داخل الأقواس وقبل الفاصلة — فإعادة التنسيق وحدها
+ *  (`reanchorAudio( target );`) لا تُسقط فحصاً. يُطبَّق على الطرفين معاً فلا يُضعف المطابقة. */
+const normStmt = (s) => s.replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+([;,])/g, '$1').trim();
+const gapS = stmtBody(src, 'gapTick');
+const driftS = stmtBody(src, 'drift');
+const armS = stmtBody(src, 'armGapJump');
+const heldS = branchOf(gapS, 'if (w.held) {');
+const heldNorm = heldS == null ? null : normStmt(heldS);
+ok('عبارة لازمة في gapTick: وسم قفزتنا `w.selfSeek = Date.now();` موجودة (حذفها يُعيد «تكرار الكلمة»: قفزتنا تُحسب قفزة مستخدم)',
+  atIn(gapS, SELF_SEEK_STMT) >= 0, `الموضع=${atIn(gapS, SELF_SEEK_STMT)}`);
+ok('وترتيبها **قبل** كتابة موضع الصورة `video.currentTime = target` (فحص ترتيب بالفهرس داخل الكتلة)',
+  atIn(gapS, SELF_SEEK_STMT) >= 0 && atIn(gapS, JUMP_WRITE) > atIn(gapS, SELF_SEEK_STMT),
+  `selfSeek@${atIn(gapS, SELF_SEEK_STMT)} · jump@${atIn(gapS, JUMP_WRITE)}`);
+ok('عبارة لازمة في gapTick: `reanchorAudio(target);` بوسيط `target` **بالضبط** (لا تعبير آخر ولا نداء ثانٍ)',
+  JSON.stringify(argsOf(gapS, REANCHOR_CALL)) === JSON.stringify(['target']),
+  `وجد: ${argsOf(gapS, REANCHOR_CALL).join(' | ') || 'لا شيء'}`);
+ok('عبارة لازمة **داخل** فرع `w.held` في gapTick: `w.held = false;` (حذفها يُبقي الصوت محتجَزاً بعد القفزة)',
+  !!heldNorm && heldNorm.includes(normStmt(HELD_RELEASE_STMT)), heldS ? 'الفرع موجود لكن العبارة ليست داخله' : 'الفرع `if (w.held) {` غير موجود');
+// ومسار الفرع نفسه بترتيبه: الإرساء ثم تصفير الاحتجاز ثم إعادة الاحتجاز عند فشل التشغيل
+// (`{ w.held = true; }`). وجود `w.held = false;` وحده لا يكفي: قِيس أن قلب إعادة الاحتجاز
+// إلى `false` — أو حذفها كاملة — يمرّ من فحص الوجود، فالتسلسل هو الذي يمسكهما.
+const HELD_BRANCH_STMTS = ['reanchorAudio(target);', HELD_RELEASE_STMT, 'audio.play().catch(() => { w.held = true; });'].map(normStmt);
+ok('وتسلسل عبارات فرع `w.held` المعروف: إرساء ← تصفير الاحتجاز ← إعادة الاحتجاز `{ w.held = true; }`',
+  !!heldNorm && orderIn(heldNorm, HELD_BRANCH_STMTS),
+  heldS ? `وُجد ${HELD_BRANCH_STMTS.filter((n) => heldNorm.includes(n)).length} من ${HELD_BRANCH_STMTS.length}` : 'الفرع غير موجود');
+ok('عبارة لازمة في نبضة الانحراف: `w.pendingLead = lead;` (حذفها يُلغي تأكيد التقدّم فيصير السحب للخلف بلا شرط)',
+  atIn(driftS, PENDING_STMT) >= 0);
+ok('عبارة لازمة في armGapJump: نداء `pacePlan` **واحد** بوسيطي `boundary, landing` بالضبط (القرار يُحسب عند التسليح)',
+  JSON.stringify(argsOf(armS, PACEPLAN_CALL)) === JSON.stringify(['boundary, landing']),
+  `وجد: ${argsOf(armS, PACEPLAN_CALL).join(' | ') || 'لا شيء'}`);
+const stmtFell = (text) => {
+  const g = stmtBody(text, 'gapTick');
+  const d = stmtBody(text, 'drift');
+  const a = stmtBody(text, 'armGapJump');
+  const held = branchOf(g, 'if (w.held) {');
+  const heldN = held == null ? null : normStmt(held);
+  const bad = [];
+  if (atIn(g, SELF_SEEK_STMT) < 0) bad.push('وسم قفزتنا مفقود');
+  else if (!(atIn(g, JUMP_WRITE) > atIn(g, SELF_SEEK_STMT))) bad.push('ترتيب الوسم بعد الإسناد');
+  if (JSON.stringify(argsOf(g, REANCHOR_CALL)) !== JSON.stringify(['target'])) bad.push('وسائط إعادة الإرساء');
+  if (!heldN || !heldN.includes(normStmt(HELD_RELEASE_STMT))) bad.push('تصفير الاحتجاز داخل فرعه');
+  if (!heldN || !orderIn(heldN, HELD_BRANCH_STMTS)) bad.push('تسلسل عبارات فرع w.held');
+  if (atIn(d, PENDING_STMT) < 0) bad.push('تأكيد التقدّم (pendingLead = lead)');
+  if (JSON.stringify(argsOf(a, PACEPLAN_CALL)) !== JSON.stringify(['boundary, landing'])) bad.push('نداء pacePlan في الماسح');
+  return bad;
+};
+// مُفسَدات القسم: بحثها **متسامح مع التنسيق** (`\s*`) كي لا يسقط الحارس على إعادة تنسيق
+// مشروعة للعبارة (قِيس ذلك: إضافة مسافة داخل `reanchorAudio( target );` كانت تُسقط حارس
+// المُفسَدات نفسه لا الفحص). والفحوص نفسها متسامحة أيضاً (وسائط مطبَّعة).
+const stmtMuts = [
+  ['ص١ (R1): حذف وسم قفزتنا من gapTick', src.replace(/w\.selfSeek\s*=\s*Date\.now\(\);/, '')],
+  ['ص٢ (R2): `reanchorAudio(target)` ⟶ `reanchorAudio(target + 0.1)`',
+    src.replace(/reanchorAudio\(\s*target\s*\)/, 'reanchorAudio(target + 0.1)')],
+  ['ص٣ (R4): حذف تصفير الاحتجاز من فرع w.held في gapTick',
+    src.replace(/reanchorAudio\(\s*target\s*\);\s*\n\s*w\.held = false;/, 'reanchorAudio(target);')],
+  ['ص٤ (R5): نقل وسم قفزتنا إلى **بعد** الإسناد (يجب أن يسقط فحص الترتيب وحده)',
+    src.replace(/w\.selfSeek\s*=\s*Date\.now\(\);/, '').replace(
+      /try \{ video\.currentTime = target; \} catch \{ \/\* gone \*\/ \}/,
+      'try { video.currentTime = target; } catch { /* gone */ }\n      w.selfSeek = Date.now();')],
+  ['ص٥: نداء `pacePlan` ثانٍ بوسيطين آخرين في الماسح',
+    src.replace(/pacePlan\(\s*boundary,\s*landing\s*\);/, 'pacePlan(boundary, landing);\n      pacePlan(now, land);')],
+  ['ص٦: حذف تأكيد التقدّم `w.pendingLead = lead;` من النبضة', src.replace(/w\.pendingLead\s*=\s*lead;/, '')],
+  ['ص٧: قلب إعادة الاحتجاز في فرع w.held: `{ w.held = true; }` ⟶ `{ w.held = false; }`',
+    src.replace(/(w\.held = false;\s*\n\s*audio\.play\(\)\.catch\(\(\) => \{ w\.held = )true(; \}\);)/, '$1false$2')],
+  ['ص٨: حذف إعادة الاحتجاز كاملة من فرع w.held (يبقى الإرساء والتصفير)',
+    src.replace(/(reanchorAudio\(\s*target\s*\);\s*\n\s*w\.held = false;\s*\n)\s*audio\.play\(\)\.catch\(\(\) => \{ w\.held = true; \}\);/, '$1')],
+];
+for (const [label, mutant] of stmtMuts) {
+  const fell = mutant !== src ? stmtFell(mutant) : [];
+  ok(`مُفسَد ${label}`, mutant !== src);
+  ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
+}
+
 console.log('');
 if (failures.length) {
   console.error(`✗ فشل ${failures.length} من ${checks} فحصاً:`);
