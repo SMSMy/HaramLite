@@ -424,10 +424,22 @@ function nextGapStart(t, kept) {
 // إحصاء فجوات الخريطة. أسقطه إصدار المراجعة فأُعيد: يقيس (أ) مجموع المحفوظ مقابل
 // مدة الصوت المُسلَّم (فرضية الانزياح الثابت)، (ب) أصغر فجوة وأكبر فجوة وعدد ما
 // دون نصف ثانية — والحدّ الفعلي من مسار Rust: min_silence 800ms − 2×keep 150ms.
+// وأُضيف قياسان لضبط عتبات خطة «المشاهدة الأسلس» (نطاق 0.5–8s وحيث المقطع السابق
+// طويل): hist مدرّج أطوال الفجوات، و before أدنى ووسيط طول المقطع المحفوظ السابق
+// للفجوة — حساب خالص فوق kept، لا سلوك ولا مؤقّت ولا مستمع.
 function gapStats(kept, jumpThreshold) {
-  const out = { keptSum: 0, gaps: 0, smallGaps: 0, smallSeconds: 0, largestGap: 0, smallestGap: 0 };
+  const out = {
+    keptSum: 0, gaps: 0, smallGaps: 0, smallSeconds: 0, largestGap: 0, smallestGap: 0,
+    // عدد الفجوات في خمس نطاقات بالثواني: 0.5–1 ثم 1–2 ثم 2–4 ثم 4–8 ثم 8 فأكثر.
+    // وما دون نصف ثانية لا نطاق له هنا — يُقرأ من smallGaps/smallSeconds أعلاه.
+    hist: [0, 0, 0, 0, 0],
+    // طول المقطع المحفوظ السابق لكل فجوة: أدناه (min) ووسيطه (median) بالثواني.
+    before: { min: 0, median: 0 },
+  };
   if (!kept || !kept.length) return out;
+  const befores = [];
   let prevEnd = 0;
+  let prevLen = 0;                        // طول المقطع المحفوظ السابق، لا موضعه
   for (const pair of kept) {
     const a = Number(pair[0]);
     const b = Number(pair[1]);
@@ -439,8 +451,25 @@ function gapStats(kept, jumpThreshold) {
       if (g > out.largestGap) out.largestGap = g;
       if (!out.smallestGap || g < out.smallestGap) out.smallestGap = g;
       if (g <= jumpThreshold) { out.smallGaps++; out.smallSeconds += g; }
+      if (g >= 0.5) {
+        if (g < 1) out.hist[0]++;
+        else if (g < 2) out.hist[1]++;
+        else if (g < 4) out.hist[2]++;
+        else if (g < 8) out.hist[3]++;
+        else out.hist[4]++;
+      }
+      // الفجوة الأولى — أي قبل أول مقطع محفوظ — لا مقطع سابق لها يُقاس، فتُهمَل
+      // هنا وحدها: إدخال صفر مُصطنع كان سيسحب الأدنى والوسيط إلى الصفر.
+      if (prevLen > 0) befores.push(prevLen);
     }
     prevEnd = b;
+    prevLen = b - a;
+  }
+  if (befores.length) {
+    befores.sort((x, y) => x - y);
+    const mid = befores.length >> 1;
+    out.before.min = befores[0];
+    out.before.median = (befores.length % 2) ? befores[mid] : (befores[mid - 1] + befores[mid]) / 2;
   }
   return out;
 }
@@ -563,7 +592,9 @@ function gapStats(kept, jumpThreshold) {
       const st = gapStats(kept, 0.5);
       const ad = isFinite(audio.duration) ? audio.duration : 0;
       const vd = isFinite(video.duration) ? video.duration : 0;
-      trace('load', `keptSum=${st.keptSum.toFixed(3)} audioDur=${ad.toFixed(3)} vDur=${vd.toFixed(3)} diff=${(st.keptSum - ad).toFixed(3)} gaps=${st.gaps} smallestGap=${st.smallestGap.toFixed(3)} belowHalf=${st.smallGaps} belowHalfSeconds=${st.smallSeconds.toFixed(3)} largestGap=${st.largestGap.toFixed(3)}`);
+      // والحقول المضافة: hist مدرّج الفجوات (خمسة نطاقات) و keptBefore أدنى/وسيط
+      // طول المقطع المحفوظ السابق للفجوة — لضبط عتبات قرار التسريع/القطع بالتجربة.
+      trace('load', `keptSum=${st.keptSum.toFixed(3)} audioDur=${ad.toFixed(3)} vDur=${vd.toFixed(3)} diff=${(st.keptSum - ad).toFixed(3)} gaps=${st.gaps} smallestGap=${st.smallestGap.toFixed(3)} belowHalf=${st.smallGaps} belowHalfSeconds=${st.smallSeconds.toFixed(3)} largestGap=${st.largestGap.toFixed(3)} hist=[${st.hist.join(',')}] keptBefore={min:${st.before.min.toFixed(3)},med:${st.before.median.toFixed(3)}}`);
     }
       (window.__hlSync = window.__hlSync || []).push(row);
       if (window.__hlSync.length > 4000) window.__hlSync.shift();
