@@ -23,6 +23,12 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # 2026-09-15 (أ.٤): `semver-major` لا يوقف قفزات ما قبل الإصدار (rc)،
+      # و`ort` هو محرّك الفصل: نسخة المزوّد (ort) يجب أن تطابق بناء ORT
+      # المضمَّن 1.22.0 بدقّة، فقفزة rc.10→rc.13 تُسقط تسجيل المزوّد بصمت
+      # (ROADMAP ٤.ب.١١ · cuda-assets.yml). يُرفع التجاهل عند 2.0.0 المستقر.
+      - dependency-name: "ort"
+        versions: ["<2.0.0"]
     commit-message:
       prefix: "chore(deps)"
     labels:
@@ -59,6 +65,12 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+    # 2026-09-15 (أ.٤): كانت هذه المجموعة بلا `ignore` أصلاً — فترقية كبرى
+    # لـ`tauri-action` (0→1 تغيّر تسمية الأصول) تصل مدمَجة مع غيرها وتكسر مسار
+    # النشر. التجاهل هنا يمنع الكبرى فقط، والدنيا/الرقعة تبقى في مجموعة واحدة.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "chore(ci)"
     labels:
