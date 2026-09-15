@@ -72,6 +72,15 @@ HaramLite تطبيق ويندوز يفصل الموسيقى عن الكلام **
 
 النسخ الثنائية نفسها منشورة أيضاً في [GitHub Releases](https://github.com/SMSMy/HaramLite/releases/latest).
 
+**التحقّق من سلامة ما نزّلت:** كل إصدار يُرفَق معه ملف [`SHA256SUMS.txt`](https://github.com/SMSMy/HaramLite/releases/latest/download/SHA256SUMS.txt) يحمل بصمة SHA-256 لكل ملف. للتأكد أن ما نزّلته لم يتغيّر بعد التنزيل:
+
+```powershell
+# يُطابق البصمة الظاهرة في SHA256SUMS.txt
+Get-FileHash .\HaramLite_*_x64-setup.exe -Algorithm SHA256
+```
+
+> التوقيع الرقمي غير متوفّر بعد (يحتاج شهادة توقيع كود)، والبصمات هي وسيلة التحقّق المتاحة حالياً.
+
 > التحديث الذاتي داخل التطبيق متوقف حالياً (مفتاح توقيع الإصدارات غير مضبوط بعد). للترقية: نزّل المثبت الجديد من الموقع أو من صفحة الإصدارات.  
 > إن نُقص أي مكوّن (نموذج / أدوات) يظهر **معالج إصلاح ذاتي** يعيد تنزيله ويتحقق من بصمة SHA-256.
 
@@ -149,7 +158,7 @@ This repository is the source. **Users should start at [haramlite.com](https://h
 - Browser extension (local native messaging) and an optional paired Telegram bot you link yourself — **[Chrome Web Store](https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg)** (requires the Windows desktop app)
 - Windows 10/11 x64 · GPU via CUDA or DirectML when enabled
 
-Download: **[haramlite.com/#download](https://haramlite.com/#download)**  
+Download: **[haramlite.com/#download](https://haramlite.com/#download)** — verify your download against the [`SHA256SUMS.txt`](https://github.com/SMSMy/HaramLite/releases/latest/download/SHA256SUMS.txt) attached to every release (code signing is not available yet).  
 Privacy: **[haramlite.com/PRIVACY.html](https://haramlite.com/PRIVACY.html)**  
 Build from source: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)  
 License: [MIT](LICENSE)
