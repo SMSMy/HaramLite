@@ -109,7 +109,7 @@ const drift = extractBlock(src, 'w.drift = setInterval(');
 ok('تتجاهل صوتاً متوقفاً', /if \(audio\.paused\) return;/.test(drift.body));
 ok('تتجاهل ما بعد قفزتنا (نافذة selfSeek)', /Date\.now\(\) - \(w\.selfSeek \|\| 0\) < SELF_SEEK_MS\) return;/.test(drift.body));
 ok('تتجاهل أثناء وجود الصورة في فجوة مع التخطي', /if \(skipping && isGap\(video\.currentTime \|\| 0, kept\)\) return;/.test(drift.body));
-ok('شرط الإلحاق أمامي فقط (< -0.35)', /audio\.currentTime - expect < -0\.35/.test(drift.body));
+ok('شرط الإلحاق أمامي فقط (lead < -0.35)', /const lead = audio\.currentTime - expect;/.test(drift.body) && /lead < -0\.35/.test(drift.body));
 ok('لا يوجد شرط متماثل يكتب للخلف', !/Math\.abs\(audio\.currentTime - expect\)/.test(drift.body));
 
 console.log('\n=== ٩) نافذة selfSeek موحّدة 1200ms ===');
@@ -131,8 +131,8 @@ console.log('\n=== ١١) الاختبارات السلبية: كل مُفسَد 
 const muts = [
   ['أ: حذف الحارس البنيوي (سحب للخلف مسموح)', src.replace(/if \(!allowBack && !audio\.paused && delta > 0\.05\) \{/, 'if (false) {'),
     (s) => !/if \(!allowBack && !audio\.paused && delta > 0\.05\)/.test(s)],
-  ['ب: جعل النبضة متماثلة (سحب للخلف)', src.replace(/audio\.currentTime - expect < -0\.35/, 'Math.abs(audio.currentTime - expect) > 0.35'),
-    (s) => /Math\.abs\(audio\.currentTime - expect\)/.test(s)],
+  ['ب: جعل النبضة متماثلة (سحب للخلف)', src.replace(/lead < -0\.35/, 'Math.abs(lead) > 0.35'),
+    (s) => /Math\.abs\(lead\) > 0\.35/.test(s)],
   ['ج: إزالة بوابة kickAudio', src.replace(/trace\('kick-skip', 'selfSeek'\);/, ''),
     (s) => !/trace\('kick-skip', 'selfSeek'\)/.test(s)],
   ['د: إخراج أثر الإيقاف من معالجه', src.replace("on(video, 'pause', () => { trace('pause'); audio.pause(); });", "on(video, 'pause', () => { audio.pause(); });\n    trace('pause');"),
@@ -146,6 +146,38 @@ for (const [label, mutant, trips] of muts) {
   ok(`مُفسَد ${label}`, mutant !== src);
   ok('  والحارس يسقط عليه', mutant !== src && trips(mutant) === true);
 }
+
+console.log('\n=== ١٢) تجمّد المشغّل: احتجاز الصوت ثم إرساؤه (بلاغ «الفيديو يقف قليلاً بعد التخطي») ===');
+ok('حقل stalled في الحالة', /stalled: false,/.test(src));
+ok('حقل pendingLead في الحالة', /pendingLead: null,/.test(src));
+ok('معالج waiting يُحتجز', /on\(video, 'waiting', stallHold\)/.test(src));
+ok('معالج stalled يُحتجز', /on\(video, 'stalled', stallHold\)/.test(src));
+ok('معالج playing يُرسي ويستأنف', /on\(video, 'playing', stallRelease\)/.test(src));
+const stallFn = extractBlock(src, 'const stallHold = () =>');
+ok('الاحتجاز يوقف الصوت ويسجّل', has(stallFn, 'audio.pause()') && has(stallFn, "trace('stall', 'hold')"));
+const releaseFn = extractBlock(src, 'const stallRelease = () =>');
+ok('الإرساء يُسمح فيه بالسحب للخلف (الموضع الوحيد بلا قفزة مستخدم)', /setAudioTime\('stall-release', audioPos\(\), true\)/.test(releaseFn ? releaseFn.body : ''));
+ok('الإرساء يستأنف التشغيل', has(releaseFn, 'audio.play()'));
+
+console.log('\n=== ١٣) التقدّم المستمر: تصحيح خلفي **مؤكَّد** فقط ===');
+const drift2 = extractBlock(src, 'w.drift = setInterval(');
+ok('النبضة تتجاهل زمن التجمّد', /if \(w\.stalled\) return;/.test(drift2.body));
+ok('التجمّد يُفحص **قبل** حساب الموضع المتوقّع', drift2.body.indexOf('if (w.stalled) return;') < drift2.body.indexOf('const expect = audioPos()'));
+ok('إلحاق أمامي بلا سماح بالرجوع', /setAudioTime\('drift', expect, false\)/.test(drift2.body));
+ok('السحب للخلف مشروط بتكرار التقدّم', /w\.pendingLead && Math\.abs\(lead - w\.pendingLead\) < 0\.35/.test(drift2.body));
+ok('والمؤكَّد يُسمح له بالرجوع ويُوسَم', /setAudioTime\('drift-confirmed', expect, true\)/.test(drift2.body) && /confirmed-backward/.test(drift2.body));
+ok('التقدّم غير المؤكَّد يُسجَّل ولا يُنفَّذ', /pending-lead/.test(drift2.body) && /w\.pendingLead = lead;/.test(drift2.body));
+
+console.log('\n=== ١٤) اختبارات سلبية للوقفة والتقدّم ===');
+const m1 = src.replace(/    on\(video, 'waiting', stallHold\);\n/, '');
+ok('مُفسَد ط: بلا احتجاز عند التجمّد', m1 !== src);
+ok('  والحارس يسقط عليه', /on\(video, 'waiting', stallHold\)/.test(m1) === false);
+const m2 = src.replace(/      if \(w\.stalled\) return;   \/\/ الصورة متجمّدة[^\n]*\n/, '');
+ok('مُفسَد ي: النبضة تعمل أثناء التجمّد', m2 !== src);
+ok('  والحارس يسقط عليه', /if \(w\.stalled\) return;/.test(extractBlock(m2, 'w.drift = setInterval(').body) === false);
+const m3 = src.replace(/w\.pendingLead && Math\.abs\(lead - w\.pendingLead\) < 0\.35/, 'true');
+ok('مُفسَد ك: تصحيح خلفي بلا تأكيد', m3 !== src);
+ok('  والحارس يسقط عليه', /w\.pendingLead && Math\.abs\(lead - w\.pendingLead\) < 0\.35/.test(m3) === false);
 
 console.log('');
 if (failures.length) {

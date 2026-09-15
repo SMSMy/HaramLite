@@ -535,6 +535,8 @@ function gapStats(kept, jumpThreshold) {
       gapTimer: 0,
       selfSeek: 0,   // طابع آخر قفزة صنعناها (لتمييزها عن قفزة المستخدم)
       held: false,
+      stalled: false,   // المشغّل يتجمّد (إعادة تخزين بعد قفزتنا) والصوت يجب أن يُحتجَز
+      pendingLead: null, // تقدّم ظهر مرة؛ لا يُصحَّح للخلف إلّا إن تكرّر
     };
     const SELF_SEEK_MS = 1200; // كان 600؛ مشغّل ثقيل قد يتأخّر play أكثر من ذلك
     const on = (el, ev, fn) => { el.addEventListener(ev, fn); w.handlers.push([el, ev, fn]); };
@@ -629,6 +631,27 @@ function gapStats(kept, jumpThreshold) {
       gapTick();   // فجوة أمامية (فيديو يبدأ بموسيقى): اقلبها فوراً لا بعد 250ms
     });
     on(video, 'pause', () => { trace('pause'); audio.pause(); });
+    // وقفة المشغّل ليست إيقافاً: بعد قفزتنا يُعيد يوتيوب التخزين فيتجمّد عدّاد
+    // الصورة بينما الصوت يواصل ⇒ ينشأ **تقدّم** لا يُصحّحه الانحراف الأمامي أبداً
+    // (بلاغ المالك 2026-09-15: «الفيديو قد يقف قليلاً بعد التخطي» + تقدّم قوي).
+    // فتُحتجَز هنا كما في فجوة الصمت، وتُرسى عند الاستئناف — وهو الموضع الوحيد
+    // الذي يُسمح فيه بالسحب للخلف بلا قفزة مستخدم، ولهذا يُوسَم في الأثر.
+    const stallHold = () => {
+      if (!WATCH || video.paused || w.stalled) return;
+      w.stalled = true;
+      try { audio.pause(); } catch { /* gone */ }
+      trace('stall', 'hold');
+    };
+    const stallRelease = () => {
+      if (!WATCH || !w.stalled) return;
+      w.stalled = false;
+      setAudioTime('stall-release', audioPos(), true);
+      audio.play().catch(() => { w.stalled = true; });
+      trace('stall', 'release');
+    };
+    on(video, 'waiting', stallHold);
+    on(video, 'stalled', stallHold);
+    on(video, 'playing', stallRelease);
     on(video, 'seeking', () => {
       // قفزة صنعناها نحن هي إسنادٌ لـcurrentTime، والصفحة تُطلق seeking لها
       // والموضع القديم لا يزال داخل الفجوة. معالجتها كقفزة مستخدم كان يضبط
@@ -701,8 +724,29 @@ function gapStats(kept, jumpThreshold) {
       if (audio.paused) return;
       if (Date.now() - (w.selfSeek || 0) < SELF_SEEK_MS) return;
       if (skipping && isGap(video.currentTime || 0, kept)) return;
+      if (w.stalled) return;   // الصورة متجمّدة: الاحتجاز يعالجها لا النبضة
       const expect = audioPos();
-      if (audio.currentTime - expect < -0.35) setAudioTime('drift', expect, false);
+      // أمامي افتراضاً: السحب للخلف يُسمع كلمة مكررة. لكن تقدّماً **يستمر** هو
+      // انزياح حقيقي (وقفة لم نرها، أو فرق ساعة بين العنصرين)، والقاعدة الأمامية
+      // وحدها تتركه ينمو بلا حدّ — ولهذا يُسمح بالسحب للخلف فقط إذا تكرّر التقدّم
+      // بنفس الاتجاه والمقدار في نبضتين متتاليتين (فارق ~ثانية).
+      const lead = audio.currentTime - expect;
+      if (lead > 0.35) {
+        const confirmed = w.pendingLead && Math.abs(lead - w.pendingLead) < 0.35;
+        if (confirmed) {
+          w.pendingLead = null;
+          trace('drift', `confirmed-backward d=${lead.toFixed(3)}`);
+          setAudioTime('drift-confirmed', expect, true);
+        } else {
+          w.pendingLead = lead;
+          trace('drift', `pending-lead d=${lead.toFixed(3)}`);
+        }
+      } else if (lead < -0.35) {
+        w.pendingLead = null;
+        setAudioTime('drift', expect, false);   // إلحاق أمامي — لا يُسمع
+      } else {
+        w.pendingLead = null;
+      }
     }, 1000);
     // The skip itself (option, default on): the page video jumps over every
     // removed stretch while the filtered audio — which has those stretches cut
