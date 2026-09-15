@@ -87,7 +87,25 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $files = @('bin/ffmpeg.exe','bin/ffprobe.exe','bin/yt-dlp.exe','models/UVR-MDX-NET-Voc_FT.onnx')
+          # 2026-09-15 (ب.١ · ب.٤.أ): the bundled ffmpeg/ffprobe are now the
+          # LGPL build, and they are published under license-stating asset names
+          # (ffmpeg-lgpl.exe / ffprobe-lgpl.exe) — NEVER under the old
+          # `ffmpeg.exe`/`ffprobe.exe` names, which a published 0.2.4 client
+          # still verifies against its embedded GPL hash. A --clobber upload on
+          # those old names would silently break self-repair for every installed
+          # 0.2.4 (it would download fine and then fail the hash check).
+          # Keep these names in sync with src-tauri/src/repair.rs COMPONENTS
+          # (`asset` = remote name, `local` = installed name).
+          $stage = Join-Path $env:RUNNER_TEMP 'repair-assets'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item 'bin/ffmpeg.exe'  (Join-Path $stage 'ffmpeg-lgpl.exe')  -Force
+          Copy-Item 'bin/ffprobe.exe' (Join-Path $stage 'ffprobe-lgpl.exe') -Force
+          $files = @(
+            (Join-Path $stage 'ffmpeg-lgpl.exe'),
+            (Join-Path $stage 'ffprobe-lgpl.exe'),
+            'bin/yt-dlp.exe',
+            'models/UVR-MDX-NET-Voc_FT.onnx'
+          )
           if (-not (gh release view assets-v1 --json tagName -q .tagName 2>$null)) {
             gh release create assets-v1 $files --title "Repair assets (stable)" --notes "مصادر معالج الإصلاح الذاتي — لا تحذف هذا الإصدار."
           } else {

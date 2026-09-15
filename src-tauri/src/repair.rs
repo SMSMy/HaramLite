@@ -18,8 +18,15 @@ const USER_AGENT: &str = "HaramLite-Repair/0.2";
 pub struct Component {
     /// stable key used by the frontend / repair command
     pub key: &'static str,
-    /// release asset file name
+    /// release asset file name on the `assets-v1` release. It may differ from
+    /// `local` on purpose: the asset name records the license variant
+    /// (`ffmpeg-lgpl.exe`) and the old GPL assets keep their own names, so a
+    /// published 0.2.4 client still verifies the bytes its embedded hash expects.
     pub asset: &'static str,
+    /// name the file is INSTALLED under, i.e. what `media::resolve_tool` looks
+    /// for inside `bin/`. Renaming this breaks repair silently: the download
+    /// succeeds, the hash matches, and nothing ever finds the file.
+    pub local: &'static str,
     /// expected SHA-256 (hex, lowercase)
     pub sha256: &'static str,
     /// install subdirectory relative to the executable (bin | models)
@@ -31,21 +38,24 @@ pub struct Component {
 pub const COMPONENTS: &[Component] = &[
     Component {
         key: "ffmpeg",
-        asset: "ffmpeg.exe",
-        sha256: "09948d4cdd0650da6ff5a87577469f2a218dc2615ae379f8f734d24c49de0f73",
+        asset: "ffmpeg-lgpl.exe",
+        local: "ffmpeg.exe",
+        sha256: "799b9ee9484f1cb7eeee997099afc8ab8cda7a2a9bd52615d5ddf3770561dd4b",
         subdir: "bin",
         label: "FFmpeg (معالجة الوسائط)",
     },
     Component {
         key: "ffprobe",
-        asset: "ffprobe.exe",
-        sha256: "a6618e99bb58869ded3c6f37b53aa1a8d701c3591dbb7b5b317d47369c112be2",
+        asset: "ffprobe-lgpl.exe",
+        local: "ffprobe.exe",
+        sha256: "01af86fa4b71fd53c11862ecbc7089519cdf9fe7403b821ceee860f415b94dab",
         subdir: "bin",
         label: "ffprobe (فحص الملفات)",
     },
     Component {
         key: "yt-dlp",
         asset: "yt-dlp.exe",
+        local: "yt-dlp.exe",
         sha256: "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a",
         subdir: "bin",
         label: "yt-dlp (التنزيل من الروابط)",
@@ -53,6 +63,7 @@ pub const COMPONENTS: &[Component] = &[
     Component {
         key: "model",
         asset: "UVR-MDX-NET-Voc_FT.onnx",
+        local: "UVR-MDX-NET-Voc_FT.onnx",
         sha256: "534b2070fcc7df514b13ef660dc8cbb328679c2374d04354a5c42bb14ecce111",
         subdir: "models",
         label: "نموذج الفصل UVR-MDX-NET-Voc_FT",
@@ -70,7 +81,7 @@ pub struct HealthRow {
 fn component_path(c: &Component) -> PathBuf {
     let exe = std::env::current_exe().unwrap_or_default();
     let base = exe.parent().map(|p| p.to_path_buf()).unwrap_or_default();
-    base.join(c.subdir).join(c.asset)
+    base.join(c.subdir).join(c.local)
 }
 
 fn is_ok(c: &Component) -> bool {
@@ -190,6 +201,32 @@ fn download_and_verify(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Negative test for the `asset` ≠ `local` split (2026-09-15, ب.٤.أ): the
+    /// release asset is named after its license (`ffmpeg-lgpl.exe`) while the app
+    /// resolves `bin/ffmpeg.exe` (`media::resolve_tool`). If `local` ever follows
+    /// `asset`, repair downloads, verifies and installs a file that nothing looks
+    /// for — a silent failure that reports success. Break `local` and this fails.
+    #[test]
+    fn every_binary_component_installs_under_the_name_the_app_resolves() {
+        for c in COMPONENTS.iter().filter(|c| c.key != "model") {
+            let expected = if cfg!(windows) { format!("{}.exe", c.key) } else { c.key.to_string() };
+            assert_eq!(
+                c.local,
+                expected.as_str(),
+                "component `{}` would install as `{}` but the app resolves `{}`",
+                c.key,
+                c.local,
+                expected
+            );
+        }
+        let ffmpeg = COMPONENTS.iter().find(|c| c.key == "ffmpeg").expect("ffmpeg component");
+        assert_ne!(
+            ffmpeg.asset, ffmpeg.local,
+            "the LGPL asset name must differ from the installed name: assets-v1 keeps the 0.2.4 GPL names untouched so published clients still verify"
+        );
+        assert!(ffmpeg.asset.contains("lgpl"), "the asset name must state the license variant: {}", ffmpeg.asset);
+    }
 
     /// A transfer that yields a little data and then fails — the shape of a
     /// dropped connection, i.e. the exit path that used to leave the partial

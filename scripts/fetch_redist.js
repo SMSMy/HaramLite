@@ -15,16 +15,23 @@ const MIN_SANE_BYTES = 5 * 1024 * 1024;
 // Release-CI root cause: a clean runner has no bin/ or models/ (both
 // gitignored, fetched by nothing) so tauri build dies on `..\bin`.
 // These MUST stay byte-identical to `src-tauri/src/repair.rs` COMPONENTS
-// (same assets-v1 release, same SHA-256) — the in-app repair wizard and CI
-// then resolve the exact same bytes. Existing files are NEVER touched
-// (dev machines may carry newer self-updated tools); only missing files
-// are downloaded and hash-verified before use.
+// (same assets-v1 release, same remote asset name, same SHA-256) — the in-app
+// repair wizard and CI then resolve the exact same bytes. Existing files are
+// NEVER touched (dev machines may carry newer self-updated tools); only missing
+// files are downloaded and hash-verified before use.
+//
+// 2026-09-15 (ب.١ · ب.٤.أ): `asset` and `dest` are now separate. The release
+// asset is named after its license (`ffmpeg-lgpl.exe`) so the LGPL switch is
+// auditable, while the file must still LAND as `bin/ffmpeg.exe` because
+// `media::resolve_tool("ffmpeg")` looks for exactly that name. The 0.2.4 GPL
+// assets keep their old names on the same release, so a published client's
+// self-repair keeps verifying the bytes its embedded hash expects.
 const ASSET_BASE = 'https://github.com/SMSMy/HaramLite/releases/download/assets-v1';
 const COMPONENTS = [
-    { asset: 'ffmpeg.exe', subdir: 'bin', sha256: '09948d4cdd0650da6ff5a87577469f2a218dc2615ae379f8f734d24c49de0f73' },
-    { asset: 'ffprobe.exe', subdir: 'bin', sha256: 'a6618e99bb58869ded3c6f37b53aa1a8d701c3591dbb7b5b317d47369c112be2' },
-    { asset: 'yt-dlp.exe', subdir: 'bin', sha256: '66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a' },
-    { asset: 'UVR-MDX-NET-Voc_FT.onnx', subdir: 'models', sha256: '534b2070fcc7df514b13ef660dc8cbb328679c2374d04354a5c42bb14ecce111' },
+    { asset: 'ffmpeg-lgpl.exe', dest: 'ffmpeg.exe', subdir: 'bin', sha256: '799b9ee9484f1cb7eeee997099afc8ab8cda7a2a9bd52615d5ddf3770561dd4b' },
+    { asset: 'ffprobe-lgpl.exe', dest: 'ffprobe.exe', subdir: 'bin', sha256: '01af86fa4b71fd53c11862ecbc7089519cdf9fe7403b821ceee860f415b94dab' },
+    { asset: 'yt-dlp.exe', dest: 'yt-dlp.exe', subdir: 'bin', sha256: '66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a' },
+    { asset: 'UVR-MDX-NET-Voc_FT.onnx', dest: 'UVR-MDX-NET-Voc_FT.onnx', subdir: 'models', sha256: '534b2070fcc7df514b13ef660dc8cbb328679c2374d04354a5c42bb14ecce111' },
 ];
 const MIN_COMPONENT_BYTES = 1 * 1024 * 1024;
 
@@ -76,9 +83,9 @@ function sha256File(filePath) {
 }
 
 async function fetchComponent(comp) {
-    const dest = path.join(process.cwd(), comp.subdir, comp.asset);
+    const dest = path.join(process.cwd(), comp.subdir, comp.dest);
     if (fs.existsSync(dest)) {
-        console.log(`${comp.asset} already exists, skipping download.`);
+        console.log(`${comp.dest} already exists, skipping download.`);
         return;
     }
     fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -98,7 +105,7 @@ async function fetchComponent(comp) {
             fail(`${comp.asset} SHA-256 mismatch:\n  got      ${actual}\n  expected ${comp.sha256}`);
         }
         fs.renameSync(tmp, dest);
-        console.log(`${comp.asset} verified (${size} bytes, sha256 ok).`);
+        console.log(`${comp.asset} verified (${size} bytes, sha256 ok) → ${comp.dest}`);
     } catch (err) {
         try { fs.unlinkSync(dest + '.download'); } catch { /* already gone */ }
         fail(`Failed fetching ${comp.asset}: ${err.message}`);
