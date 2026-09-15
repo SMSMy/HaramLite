@@ -1710,6 +1710,155 @@ for (const [label, mutant] of deadMuts) {
   ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
 }
 
+console.log('\n=== ٣٥) الفحص الدلالي لـ`at` + تعميم «العبارة المباشرة» خارج الكتل الثلاث (الدفعة الأخيرة) ===');
+// (١) `at` في شبكة الأمان (armGapJump) يجب أن يُقرأ من `video.currentTime` لا من ثابت: وإلا بقي
+//     التسريع فعّالاً بعد الهبوط ويُكتب موضع صوت خاطئ. وقد كان سقوط المُفسَد H6 **عرضياً** (عبر
+//     تأكيد تطبيق مُفسَد §٢٨ «ذ») لا دلالياً؛ فهذا فحص دلالي مستقلّ بنصّه.
+const armNorm = normStmt(stmtBody(src, 'armGapJump') || '');
+const atBind = /const at = ([^;]+);/.exec(armNorm);
+const atSource = atBind ? atBind[1].trim() : null;
+ok('`at` في شبكة الأمان (armGapJump) يُقرأ من `video.currentTime` (لا من ثابت)',
+  !!atSource && /video\.currentTime/.test(atSource), `وجد: const at = ${atSource === null ? 'غير موجود' : atSource};`);
+// (٢) تعميم «العبارة المباشرة»: عبارة حسّاسة خارج الكتل الثلاث لا يجوز أن تكون داخل `if` —
+//     ولو كان شرطه علماً محلّياً (`const NEVER = false; if (NEVER) { … }`) لأن القاعدة الحرفية
+//     في §٣٤ لا تراه، وفحص الاحتواء يمرّ (النصّ موجود). والقياس: فرع ميت محلّي حول
+//     `w.held = true; audio.pause();` في paceEnter يُبقي صوتاً يعمل على صورة مسرَّعة.
+/** نوع الكتلة التي يفتحها القوس عند `braceIdx`: هل هي `if`/`else`؟ (بمطابقة القوس الخلفي) */
+const blockOpenerIsIf = (text, braceIdx) => {
+  let j = braceIdx - 1;
+  while (j >= 0 && /\s/.test(text[j])) j--;
+  if (j < 0) return false;
+  if (text[j] === ')') {
+    let depth = 0;
+    let k = j;
+    for (; k >= 0; k--) {
+      if (text[k] === ')') depth++;
+      else if (text[k] === '(') { depth--; if (depth === 0) break; }
+    }
+    let w = k - 1;
+    while (w >= 0 && /\s/.test(text[w])) w--;
+    let s = w;
+    while (s >= 0 && /[\w$]/.test(text[s])) s--;
+    const word = text.slice(s + 1, w + 1);
+    if (word === 'if') return true;
+    if (word === 'for' || word === 'while' || word === 'switch' || word === 'catch' || word === 'function') return false;
+    let e = s;
+    while (e >= 0 && /\s/.test(text[e])) e--;
+    let p = e;
+    while (p >= 0 && /[\w$]/.test(text[p])) p--;
+    return text.slice(p + 1, e + 1) === 'else';      // else if (…)
+  }
+  let s = j;
+  while (s >= 0 && /[\w$]/.test(text[s])) s--;
+  return text.slice(s + 1, j + 1) === 'else';        // else { … }
+};
+/** هل العبارة عند `at` داخل كتلة `if`/`else`؟ المسح على **قناع مجرَّد من النصوص والتعليقات**
+ *  (نفس الإزاحات)، فلا يُشوّش المطابقةَ نصٌّ حرفي ولا قوس داخل تعليق — قِيس أن مسح النصّ
+ *  الخام كان ينحرف عند قالب نصّي فتُقرأ العبارة «خارج if» وهي داخله. */
+const insideIfBlock = (mask, at) => {
+  const stack = [];
+  for (let i = 0; i < at; i++) {
+    if (mask[i] === '{') stack.push(blockOpenerIsIf(mask, i));
+    else if (mask[i] === '}') stack.pop();
+  }
+  return stack.some(Boolean);
+};
+/** عبارة مباشرة في حاويتها: لا داخل `if` (بأقواس أو بلا أقواس) ولا في فرع ميت.
+ *  `com` = متن الحاوية بتجريد التعليقات (للنصّ الحرفي والبحث)، `mask` = بتجريد النصوص أيضاً. */
+const isDirectStmt = (com, mask, needle) => {
+  if (com == null || mask == null) return false;
+  const at = com.indexOf(needle);
+  if (at < 0) return false;
+  const linePrefix = com.slice(com.lastIndexOf('\n', at) + 1, at).trim();
+  if (/^(?:if|else)\b/.test(linePrefix)) return false;
+  return !insideIfBlock(mask, at);
+};
+/** مدى متن كتلة في النصّ بإزاحات مطلقة (extractBlock لا يُرجع موضعاً، فيُحسب هنا). */
+const spanOf = (text, opener) => {
+  const i = text.indexOf(opener);
+  if (i < 0) return null;
+  const open = text.indexOf('{', i);
+  if (open < 0) return null;
+  const end = braceEnd(text, open);
+  return end > 0 ? { start: open + 1, end } : null;
+};
+/** مدى **متن** فرع `isGap` في معالج seeking (بلا رأس `if` نفسه، فالحاوية هي الفرع). */
+const spanOfSeekingGap = (text) => {
+  const sk = text.indexOf("on(video, 'seeking', () =>");
+  if (sk < 0) return null;
+  const s0 = text.indexOf('{', sk) + 1;
+  const i = text.indexOf('if (isGap(now, kept)) {', s0);
+  if (i < 0) return null;
+  const open = text.indexOf('{', i);
+  const end = braceEnd(text, open);
+  return end > 0 ? { start: open + 1, end } : null;
+};
+const replaceInSpan = (text, span, needle, replacement) => {
+  if (!span) return text;
+  const seg = text.slice(span.start, span.end);
+  const at = seg.indexOf(needle);
+  if (at < 0) return text;
+  const abs = span.start + at;
+  return text.slice(0, abs) + replacement + text.slice(abs + needle.length);
+};
+const SPANS = { paceEnter: spanOf(src, SYNC_BLOCK_OPENER.paceEnter), paceExit: spanOf(src, SYNC_BLOCK_OPENER.paceExit), seekingGap: spanOfSeekingGap(src) };
+const containersOf = (text) => {
+  const sp = { paceEnter: spanOf(text, SYNC_BLOCK_OPENER.paceEnter), paceExit: spanOf(text, SYNC_BLOCK_OPENER.paceExit), seekingGap: spanOfSeekingGap(text) };
+  const cut = (s) => (s ? { com: stripComments(text.slice(s.start, s.end)), mask: stripLiterals(text.slice(s.start, s.end)) } : null);
+  return { paceEnter: cut(sp.paceEnter), paceExit: cut(sp.paceExit), seekingGap: cut(sp.seekingGap), spans: sp };
+};
+const SENSITIVE_DIRECT = [
+  ['paceEnter', 'w.held = true;', 'احتضار الصوت عند التسريع'],
+  ['paceEnter', 'audio.pause()', 'إسكات الصوت عند التسريع'],
+  ['paceExit', 'w.held = false;', 'تصفير الاحتجاز قبل الاستئناف'],
+  ['paceExit', 'audio.play()', 'استئناف الصوت عند الخروج'],
+  ['seekingGap', 'audio.pause()', 'احتضار الصوت عند القفز داخل فجوة'],
+];
+const CONTAINER_LABEL = { paceEnter: 'paceEnter', paceExit: 'paceExit', seekingGap: 'فرع isGap في معالج seeking' };
+const directOf = (text) => {
+  const c = containersOf(text);
+  return SENSITIVE_DIRECT.filter(([key, needle]) => !isDirectStmt(c[key] ? c[key].com : null, c[key] ? c[key].mask : null, needle))
+    .map(([key, needle]) => `${key}:${needle}`);
+};
+const directBad = directOf(src);
+ok(`العبارات الحسّاسة الخمس خارج الكتل الثلاث عبارات **مباشرة** في حاوياتها (لا داخل أي if) — خارجها ${directBad.length}`,
+  directBad.length === 0, directBad.join(' · '));
+for (const [key, needle, why] of SENSITIVE_DIRECT) {
+  const c = containersOf(src);
+  const com = c[key] ? c[key].com : null;
+  const mask = c[key] ? c[key].mask : null;
+  const at = (com || '').indexOf(needle);
+  ok(`عبارة مباشرة: \`${needle}\` في ${CONTAINER_LABEL[key]} (${why}) — موضعها ${at >= 0 ? 'موجود' : 'مفقود'} وداخل if: ${at >= 0 ? insideIfBlock(mask, at) : '—'}`,
+    at >= 0 && isDirectStmt(com, mask, needle));
+}
+const deadWrap = (indent, stmt) => `const NEVER_${indent} = false;\n      if (NEVER_${indent}) {\n        ${stmt}\n      }`;
+const directMuts = [
+  ['د١: فرع ميت محلّي حول `w.held = true;` في paceEnter',
+    replaceInSpan(src, SPANS.paceEnter, 'w.held = true;', deadWrap('A5', 'w.held = true;'))],
+  ['د٢: فرع ميت محلّي حول `audio.pause()` في paceEnter',
+    replaceInSpan(src, SPANS.paceEnter, 'try { audio.pause(); } catch { /* gone */ }', deadWrap('A5B', 'try { audio.pause(); } catch { /* gone */ }'))],
+  ['د٣: فرع ميت محلّي حول `w.held = false;` في paceExit',
+    replaceInSpan(src, SPANS.paceExit, 'w.held = false;', deadWrap('H8', 'w.held = false;'))],
+  ['د٤: فرع ميت محلّي حول `audio.play()` في paceExit (سطر النداء يبقى كما هو)',
+    replaceInSpan(src, SPANS.paceExit, 'audio.play().catch(() => { w.held = true; });', deadWrap('H10', 'audio.play().catch(() => { w.held = true; });'))],
+  ['د٥: فرع ميت محلّي حول `audio.pause()` في فرع isGap في معالج seeking',
+    replaceInSpan(src, SPANS.seekingGap, 'try { audio.pause(); } catch { /* gone */ }', deadWrap('SK', 'try { audio.pause(); } catch { /* gone */ }'))],
+  ['د٦ (H6): استبدال مصدر `at` في شبكة الأمان بثابت (`const at = -1;`)',
+    src.replace('const at = video.currentTime || 0;', 'const at = -1;')],
+];
+const directFell = (text) => {
+  const bad = [];
+  const n = normStmt(stmtBody(text, 'armGapJump') || '');
+  const b = /const at = ([^;]+);/.exec(n);
+  if (!b || !/video\.currentTime/.test(b[1])) bad.push('مصدر at ثابت أو مفقود');
+  return bad.concat(directOf(text));
+};
+for (const [label, mutant] of directMuts) {
+  const fell = mutant !== src ? directFell(mutant) : [];
+  ok(`مُفسَد ${label}`, mutant !== src);
+  ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
+}
+
 console.log('');
 if (failures.length) {
   console.error(`✗ فشل ${failures.length} من ${checks} فحصاً:`);
