@@ -87,6 +87,13 @@ jobs:
       - name: TypeScript check
         run: pnpm exec tsc --noEmit
 
+      # `tsc` يتحقّق من الأنواع ولا يبني الحزمة: تقسيم src/main.ts (البند ١٢) كشف
+      # أن CI لم يُشغّل `vite build` ولا مرّة — فانكسار البناء (استيراد دائري،
+      # وحدة مفقودة، خطأ Rollup) كان يمرّ أخضر. البناء هنا ~١ ثانية + tailwind
+      # ~٠.٦ ثانية، ولا يحتوي fetch_redist.js كي لا ينزّل شيئاً في البوابة.
+      - name: Frontend build (tailwind + vite)
+        run: pnpm build:web
+
       - name: Settings parity guard
         run: pnpm settings:parity
 
