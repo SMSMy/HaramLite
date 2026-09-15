@@ -13,6 +13,10 @@
 // plays on untouched, so both stay in step. Unticking the option holds the
 // audio at the seam instead and lets the picture play the silent stretch
 // through. Drift backstop without forced sync while stopped, clean restore.
+// 1.1.4: never rewind freely-playing audio (kickAudio was ungated on every
+// play — YouTube fires play around our gap jumps; mapFullToCut is flat at the
+// seam, so that write repeats the next words). Asymmetric drift. 1200ms selfSeek.
+// Optional HL-SYNC tracer: localStorage['hl.synclog']='1'.
 // Right-click Watch for options (gap-skip default on + full reprocess).
 // 2s fading toast.
 // No chunk streaming, no time-stretching, no telemetry — local only.
@@ -417,10 +421,9 @@ function nextGapStart(t, kept) {
   return null;
 }
 
-// إحصاء فجوات الخريطة. الغرض المزدوج: (أ) حسم فرضية الانزياح الثابت بمقارنة
-// keptSum بمدة الصوت المُسلَّم، (ب) كشف **الفجوات الأقصر من عتبة القفز** — وهذه
-// لا تُقفز (شرط القفز `> 0.15s`) بينما الصوت المُسلَّم **لا يحتويها** ⇒ يتقدّم
-// الصوت بمقدارها تراكمياً فيصحّحه المُصحّح الدوري لاحقاً (تكرار مسموع).
+// إحصاء فجوات الخريطة. أسقطه إصدار المراجعة فأُعيد: يقيس (أ) مجموع المحفوظ مقابل
+// مدة الصوت المُسلَّم (فرضية الانزياح الثابت)، (ب) أصغر فجوة وأكبر فجوة وعدد ما
+// دون نصف ثانية — والحدّ الفعلي من مسار Rust: min_silence 800ms − 2×keep 150ms.
 function gapStats(kept, jumpThreshold) {
   const out = { keptSum: 0, gaps: 0, smallGaps: 0, smallSeconds: 0, largestGap: 0, smallestGap: 0 };
   if (!kept || !kept.length) return out;
@@ -433,7 +436,6 @@ function gapStats(kept, jumpThreshold) {
     if (a > prevEnd) {
       const g = a - prevEnd;
       out.gaps++;
-      if (g > out.largestGap) out.largestGap = g;
       if (g > out.largestGap) out.largestGap = g;
       if (!out.smallestGap || g < out.smallestGap) out.smallestGap = g;
       if (g <= jumpThreshold) { out.smallGaps++; out.smallSeconds += g; }
@@ -532,46 +534,52 @@ function gapStats(kept, jumpThreshold) {
       drift: 0,
       gapTimer: 0,
       selfSeek: 0,   // طابع آخر قفزة صنعناها (لتمييزها عن قفزة المستخدم)
-      synclog: (() => { try { return localStorage.getItem('hl.synclog') === '1'; } catch { return false; } })(),
-      sample: 0,
       held: false,
     };
+    const SELF_SEEK_MS = 1200; // كان 600؛ مشغّل ثقيل قد يتأخّر play أكثر من ذلك
     const on = (el, ev, fn) => { el.addEventListener(ev, fn); w.handlers.push([el, ev, fn]); };
     const audioPos = () => {
       const t = mapFullToCut(video.currentTime || 0, kept);
       return Math.min(Math.max(t, 0), Math.max(audio.duration - 0.05, 0));
     };
-    // ── مُسجّل المزامنة: معطّل افتراضياً، يُفتح بـ localStorage['hl.synclog']='1' ──
-    // لا يكتب موضعاً ولا يُرسل شيئاً، وحلقته محدودة السعة (4000). الغرض: حسم
-    // فرضيات سحب الصوت للخلف بالأثر لا بالتخمين.
+    const slog = (() => { try { return localStorage.getItem('hl.synclog') === '1'; } catch { return false; } })();
     const trace = (site, extra) => {
-      if (!w.synclog) return;
-      const v = video.currentTime || 0;
+      if (!slog) return;
       const row = {
-        t: Math.round(performance.now()), site,
-        v: +v.toFixed(3), a: +audio.currentTime.toFixed(3), want: +audioPos().toFixed(3),
-        gap: isGap(v, kept), held: w.held, paused: video.paused,
+        t: Date.now() % 60000, site,
+        v: +((video.currentTime || 0).toFixed(3)),
+        a: +(audio.currentTime.toFixed(3)),
+        want: +(audioPos().toFixed(3)),
+        gap: isGap(video.currentTime || 0, kept),
+        held: w.held,
+        selfMs: Date.now() - (w.selfSeek || 0),
+        drift: extra || '',
       };
-      if (extra) row.x = extra;
-      if (/-after$/.test(site)) {
-        // dv: الفرق المُوقَّع الذي أحدثته الكتابة، مقروءاً من صفّ الـ-before المطابق.
-        for (let k = ring.length - 1; k >= 0 && k > ring.length - 12; k--) {
-          if (/-before$/.test(ring[k].site)) { row.dv = +(row.a - ring[k].a).toFixed(3); row.src = ring[k].site; break; }
-        }
-      }
-      row.sinceJump = w.selfSeek ? Math.round(performance.now() - w.selfSeek) : -1;
-      const ring = (window.__hlSync = window.__hlSync || []);
-      ring.push(row);
-      if (ring.length > 4000) ring.shift();
-      console.log('HL-SYNC', JSON.stringify(row));
-    };
-    if (w.synclog) {
+    if (slog) {
+      // سطر قياس واحد: يحسم «هل الخريطة تطابق الملف المُسلَّم» و«هل توجد فجوة أصغر
+      // من عتبة القفز» (وهو ما أسقط الفرضية الخامسة: الحدّ الفعلي 500ms).
       const st = gapStats(kept, 0.5);
       const ad = isFinite(audio.duration) ? audio.duration : 0;
       const vd = isFinite(video.duration) ? video.duration : 0;
       trace('load', `keptSum=${st.keptSum.toFixed(3)} audioDur=${ad.toFixed(3)} vDur=${vd.toFixed(3)} diff=${(st.keptSum - ad).toFixed(3)} gaps=${st.gaps} smallestGap=${st.smallestGap.toFixed(3)} belowHalf=${st.smallGaps} belowHalfSeconds=${st.smallSeconds.toFixed(3)} largestGap=${st.largestGap.toFixed(3)}`);
-      w.sample = setInterval(() => { if (WATCH && !video.paused) trace('sample'); }, 50);
     }
+      (window.__hlSync = window.__hlSync || []).push(row);
+      if (window.__hlSync.length > 4000) window.__hlSync.shift();
+      try { console.log('HL-SYNC', JSON.stringify(row)); } catch { /* gone */ }
+    };
+    // لا سحب للخلف على صوت يعمل: الخريطة مسطّحة داخل الفجوة، فأي إرساء من
+    // video.currentTime عند الحدّ يعيد كلمات سُمعت. قفزة المستخدم وحدها مسموحة.
+    const setAudioTime = (site, want, allowBack) => {
+      const cur = audio.currentTime;
+      const delta = cur - want;
+      trace(site, `d=${delta.toFixed(3)}`);
+      if (!allowBack && !audio.paused && delta > 0.05) {
+        trace(site + '-skip', 'no-rewind');
+        return;
+      }
+      if (!(Math.abs(delta) > 0.05)) return;
+      try { audio.currentTime = want; } catch { /* gone */ }
+    };
     // إعادة إرساء الصوت على موضع القفزة نفسها.
     // السبب (عطل ميداني موصوف): الصورة تقفز وحدها بـcurrentTime، والصوت عنصر
     // آخر يواصل مكانه، فلا يُصحَّح إلا بتسامح 0.35s كل ثانية ⇒ يُسمع ذيل المقطع
@@ -589,16 +597,22 @@ function gapStats(kept, jumpThreshold) {
       };
       // كتم لحظي يعبر القفزة: يقطع الذيل المسموع بين الإسناد ووصول seeked
       try { audio.muted = true; } catch { /* gone */ }
-      trace('1-reanchor-before', `want=${want.toFixed(3)}`);
       try { audio.currentTime = want; } catch { /* gone */ }
-      trace('1-reanchor-after');
       audio.addEventListener('seeked', unmute);
       setTimeout(unmute, 120);   // شبكة أمان إن لم يصل seeked
+      trace('reanchor', `full=${fullT.toFixed(3)}`);
     };
     const kickAudio = () => {
-      trace('2-kick-before');
-      audio.currentTime = audioPos();
-      trace('2-kick-after');
+      // play حول قفزتنا: يوتيوب يطلق play/playing بعد الإسناد. الخريطة مسطّحة
+      // عند الحدّ ⇒ audioPos() = الدرزة، والصوت قد تقدّم ⇒ سحب للخلف = تكرار.
+      // لا نُرسي إلا صوتاً متوقفاً وخارج نافذة selfSeek (بدء المشاهدة / قفزة مستخدم).
+      if (Date.now() - (w.selfSeek || 0) < SELF_SEEK_MS) {
+        trace('kick-skip', 'selfSeek');
+      } else if (audio.paused) {
+        setAudioTime('kick', audioPos(), false);
+      } else {
+        trace('kick-skip', 'playing');
+      }
       audio.play().then(() => {
         if (WATCH) toast(watchLine());
       }).catch(() => {
@@ -608,21 +622,19 @@ function gapStats(kept, jumpThreshold) {
       });
     };
     on(video, 'play', () => {
-      trace('ev-play');
       // The page player fights mute — pin it on every play.
       if (video.muted === false) { try { video.muted = true; } catch { /* gone */ } }
+      trace('play', audio.paused ? 'paused' : 'playing');
       kickAudio();
       gapTick();   // فجوة أمامية (فيديو يبدأ بموسيقى): اقلبها فوراً لا بعد 250ms
     });
-    on(video, 'pause', () => { audio.pause(); });
-    on(video, 'pause', () => { trace('ev-pause'); audio.pause(); });
+    on(video, 'pause', () => { trace('pause'); audio.pause(); });
     on(video, 'seeking', () => {
-      trace('ev-seeking');
       // قفزة صنعناها نحن هي إسنادٌ لـcurrentTime، والصفحة تُطلق seeking لها
       // والموضع القديم لا يزال داخل الفجوة. معالجتها كقفزة مستخدم كان يضبط
       // w.held ويوقف الصوت، ثم يُرسيه المؤقّت فيُعاد سماع ما سُمِع (تكرار حتى
       // ثلاث مرات مع الفجوات المتقاربة — بلاغ المالك 2026-09-15). فتُتجاهل هنا.
-      if (Date.now() - (w.selfSeek || 0) < 600) return;
+      if (Date.now() - (w.selfSeek || 0) < SELF_SEEK_MS) return;
       const now = video.currentTime || 0;
       if (isGap(now, kept)) {
         w.held = true;
@@ -635,13 +647,13 @@ function gapStats(kept, jumpThreshold) {
         // contain, so the mapped position barely moves — re-anchoring there
         // would rewind ~0.2s of sound at every gap edge. Only a real seek
         // lands far enough away to need correcting.
-        trace('3-seeking-before', `want=${want.toFixed(3)}`);
-        if (Math.abs(audio.currentTime - want) > 0.35) audio.currentTime = want;
-        trace('3-seeking-after');
+        if (Math.abs(audio.currentTime - want) > 0.35) {
+          // قفزة مستخدم حقيقية فقط. السماح بالرجوع لأن المستخدم طلب موضعاً أقدم.
+          setAudioTime('seeking', want, true);
+        }
       }
     });
     on(video, 'ratechange', () => {
-      trace('ev-ratechange');
       // Guard both sides at 1.0 for the whole watch (anti-2x).
       if (video.playbackRate !== 1) { try { video.playbackRate = 1; } catch { /* gone */ } }
       pinPlayerRate();
@@ -659,7 +671,6 @@ function gapStats(kept, jumpThreshold) {
       stopWatch();
     });
     on(video, 'ended', () => { stopWatch(); });
-    on(video, 'seeked', () => { trace('ev-seeked'); });
     // Declared mute + 1x clamp on both sides (+ player API guard).
     video.muted = true;
     try { video.playbackRate = 1; } catch { /* gone */ }
@@ -679,19 +690,19 @@ function gapStats(kept, jumpThreshold) {
         audio.pause();
         w.held = true;
       } else if (w.held && !video.paused) {
-        trace('4-hold-release-before');
         w.held = false;
-        audio.currentTime = audioPos();
-        trace('4-hold-release-after');
+        setAudioTime('held-release', audioPos(), true);
         audio.play().catch(() => { w.held = true; });
       }
       // No forced sync while stopped (paused or held) — that fight is what
       // looped the seams. Correct only a freely playing audio.
+      // Asymmetric: catch up FORWARD if audio lags; never rewind a lead —
+      // a 0.35s skip is inaudible, a 0.35s rewind is a repeated word.
       if (audio.paused) return;
+      if (Date.now() - (w.selfSeek || 0) < SELF_SEEK_MS) return;
+      if (skipping && isGap(video.currentTime || 0, kept)) return;
       const expect = audioPos();
-    trace('5-drift-periodic-before', `expect=${expect.toFixed(3)}`);
-      if (Math.abs(audio.currentTime - expect) > 0.35) audio.currentTime = expect;
-    trace('5-drift-periodic-after');
+      if (audio.currentTime - expect < -0.35) setAudioTime('drift', expect, false);
     }, 1000);
     // The skip itself (option, default on): the page video jumps over every
     // removed stretch while the filtered audio — which has those stretches cut
@@ -719,7 +730,7 @@ function gapStats(kept, jumpThreshold) {
       if (target === null) target = skipVideoGaps(now, kept);
       if (!(Math.abs(target - now) > 0.15)) return;
       w.selfSeek = Date.now();    // قفزتنا: تُعلَن كي لا يعدّها معالج seeking قفزة مستخدم
-      trace('gap-jump', `from=${now.toFixed(3)} to=${target.toFixed(3)}`);
+      trace('gapTick', `→${target.toFixed(3)}`);
       try { video.currentTime = target; } catch { /* gone */ }
       if (w.held) {
         // A seek landed inside a removed stretch and the jump just left it: the
@@ -758,6 +769,7 @@ function gapStats(kept, jumpThreshold) {
       w.gapTimer = setTimeout(() => { w.gapTimer = 0; gapTick(boundary, landing); }, dt);
     };
     w.gap = setInterval(armGapJump, 250);
+    if (slog) w.tracePulse = setInterval(() => { if (WATCH) trace('tick'); }, 40);
     setWatchBtn('watching');
     toast(watchLine());
     // The video was paused at request time — resume both together.
@@ -771,8 +783,8 @@ function gapStats(kept, jumpThreshold) {
     if (!w) return;
     if (w.drift) clearInterval(w.drift);
     if (w.gap) clearInterval(w.gap);
+    if (w.tracePulse) clearInterval(w.tracePulse);
     if (w.gapTimer) clearTimeout(w.gapTimer);
-    if (w.sample) clearInterval(w.sample);
     for (const [el, ev, fn] of w.handlers) {
       try { el.removeEventListener(ev, fn); } catch { /* gone */ }
     }
