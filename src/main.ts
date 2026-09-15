@@ -3,8 +3,8 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import * as dialog from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import dingUrl from './assets/ding.wav';
 import { applyLang, currentLang, t, wireLang } from './i18n';
+import { fileBaseName, notify, playDing, sanitizePath, showToast, trapFocus } from './util';
 
 type LogLine = { ts: string; level: string; target: string; message: string };
 type MediaInfo = {
@@ -25,50 +25,6 @@ type SepResult = {
   seconds: number;
 };
 
-
-/* ── modal focus containment (WCAG 2.4.3 / 2.1.2) ──────────────────────
- * The dialogs were reachable but focus could walk out of them with Tab, and
- * «حول»/«الإصلاح» could not be dismissed from the keyboard at all. */
-function trapFocus(overlay: HTMLElement): () => void {
-  const prev = document.activeElement as HTMLElement | null;
-  const list = (): HTMLElement[] => Array.from(
-    overlay.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    ),
-  ).filter((el) => !el.classList.contains('hidden') && el.getBoundingClientRect().width + el.getBoundingClientRect().height > 0);
-  const onKey = (ev: KeyboardEvent): void => {
-    if (ev.key !== 'Tab') return;
-    const items = list();
-    if (!items.length) { ev.preventDefault(); return; }
-    const first = items[0];
-    const last = items[items.length - 1];
-    const active = document.activeElement as HTMLElement | null;
-    if (ev.shiftKey && (active === first || !overlay.contains(active))) {
-      ev.preventDefault();
-      last.focus();
-    } else if (!ev.shiftKey && (active === last || !overlay.contains(active))) {
-      ev.preventDefault();
-      first.focus();
-    }
-  };
-  document.addEventListener('keydown', onKey, true);
-  const first = list()[0];
-  if (first) first.focus();
-  return () => {
-    document.removeEventListener('keydown', onKey, true);
-    if (prev && document.contains(prev)) prev.focus();
-  };
-}
-
-/* ── path sanitization (B1/B2 root cause) ─────────────────────────── */
-function sanitizePath(raw: string): string {
-  let p = raw.trim();
-  // strip ONE pair of surrounding quotes (Explorer "copy as path")
-  if (p.length >= 2 && p.startsWith('"') && p.endsWith('"')) {
-    p = p.slice(1, -1).trim();
-  }
-  return p;
-}
 
 const view = document.getElementById('log-view') as HTMLDivElement;
 const autoscroll = document.getElementById('autoscroll') as HTMLInputElement;
@@ -189,41 +145,6 @@ let previewEnabled = false;
 let previewSeconds = 15;
 let appVersion = '';
 
-/* ── notifications (Sprint B2) ──────────────────────────────────────── */
-let toastTimer: number | undefined;
-function showToast(msg: string): void {
-  const el = document.getElementById('toast');
-  if (!el) return;
-  el.textContent = msg;
-  el.classList.remove('hidden');
-  if (toastTimer) window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => el.classList.add('hidden'), 5000);
-}
-// F-7: one reusable Audio element — avoid leaking a new object per ding.
-const ding = new Audio(dingUrl);
-function playDing(): void {
-  try {
-    ding.currentTime = 0;
-    void ding.play();
-  } catch {
-    /* sound is a nicety — never let it break the flow */
-  }
-}
-/** System notification + soft sound; falls back to an in-app toast when
- *  the OS notification is unavailable (e.g. portable Windows without an
- *  AUMID/Start Menu shortcut). */
-async function notify(title: string, body: string): Promise<void> {
-  if (localStorage.getItem('hl.notify') !== '1') return;
-  playDing();
-  try {
-    await invoke('notify_done', { title, body });
-  } catch {
-    showToast(`${title} — ${body}`);
-  }
-}
-function fileBaseName(p: string): string {
-  return p.split(/[\\/]/).pop() ?? p;
-}
 
 /* ── UI freeze forensics ────────────────────────────────────────────── */
 // If the renderer event loop ever stalls, leave a dated trace in the backend
