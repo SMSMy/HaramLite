@@ -1718,9 +1718,35 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         let server = std::thread::spawn(move || {
             let (mut sock, _) = listener.accept().unwrap();
-            let mut buf = vec![0u8; 8192];
-            let n = sock.read(&mut buf).unwrap_or(0);
-            let head = String::from_utf8_lossy(&buf[..n]).to_string();
+            // Read until the header terminator AND the start of the first body part.
+            // A single read() is not guaranteed to return the whole request: on some
+            // hosts (loopback segmentation changes with VPN/filter drivers) it returns
+            // only the headers, so the body assertion below would fail for reasons
+            // that have nothing to do with the code under test.
+            let mut buf: Vec<u8> = Vec::with_capacity(8192);
+            let mut chunk = [0u8; 4096];
+            loop {
+                let n = match sock.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => n,
+                };
+                buf.extend_from_slice(&chunk[..n]);
+                let body_start = buf
+                    .windows(4)
+                    .position(|w| w == b"\r\n\r\n")
+                    .map(|i| i + 4);
+                if let Some(p) = body_start {
+                    // 128 bytes into the body covers "--<boundary>" + the first
+                    // Content-Disposition line, which is what the test asserts on.
+                    if buf.len() >= p + 128 {
+                        break;
+                    }
+                }
+                if buf.len() > 64 * 1024 {
+                    break; // never hang the test on a malformed request
+                }
+            }
+            let head = String::from_utf8_lossy(&buf).to_string();
             let _ = sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\n{\"ok\":true}");
             std::thread::sleep(Duration::from_millis(120));
             head
