@@ -150,12 +150,29 @@ mod tests {
         let raw = std::fs::read_to_string(path(&dir)).unwrap();
         #[cfg(target_os = "windows")]
         {
+            // Audit 2026-09-15 (٤.ب.٢): the guard here asserted on a string that
+            // existed only in this test ("AAH_roundtrip_secret"), so it proved
+            // nothing. Assert on the REAL fixture values, and on the file as a
+            // whole, so a plaintext write fails the test.
             assert!(
-                !raw.contains("AAH_roundtrip_secret"),
+                !raw.contains("1234567890:AA_fixture_token"),
                 "the token must never be written in the clear: {raw}"
             );
             assert!(!raw.contains("abcdef0123456789"), "api_hash sealed too");
             assert!(raw.contains(crate::seal::MARKER), "sealed marker expected");
+            // The marker must be ON the secret's own field, not just somewhere.
+            let on_disk: serde_json::Value = serde_json::from_str(&raw).unwrap();
+            let stored = on_disk["telegram_token"].as_str().unwrap_or_default();
+            assert!(
+                crate::seal::is_sealed(stored),
+                "the token field itself must carry the marker: {stored}"
+            );
+            assert_eq!(
+                crate::seal::open_setting(stored),
+                "1234567890:AA_fixture_token",
+                "the sealed field must still open back to the token"
+            );
+            assert!(!needs_sealing(&dir), "a freshly saved file has nothing left to seal");
         }
         // …and it still comes back whole.
         let back = load(&dir);
