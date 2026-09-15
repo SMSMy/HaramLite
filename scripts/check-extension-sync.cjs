@@ -754,6 +754,556 @@ for (const [label, mutant, trips] of paceMuts) {
   ok('  والحارس يسقط عليه', mutant !== src && trips(mutant) === true);
 }
 
+console.log('\n=== ٢٦) حظر بناء المعرّفات ديناميكياً: وصول محسوب · eval · تركيب أسماء (ثقب Z1) ===');
+// الثقب المُقاس في هذه النسخة: `void globalThis[["plan","Gap"].join("")]; void globalThis[["PACE","CFG"].join("_")];`
+// داخل gapTick يشير إلى planGap وPACE_CFG بلا أن يظهر أيٌّ منهما نصّاً واحداً — فتمرّ كل
+// فحوص العدّ النصّي القائمة (`planGap(` = 2 و`PACE_CFG` = 2) ويبقى الحارس أخضر.
+// العلاج ليس عدّاً آخر بل حظر **طريقة البناء** نفسها في الملف المشحون كلّه: لا وصول محسوب
+// إلى الكائن العام، ولا eval ولا مُنشئ دوال، ولا مصفوفة حرفية تُبنى بها تسمية، ولا تجزئة
+// نصّ حرفي (`"hl." + "skipgaps"` — وهي طريقة قراءة الخيار المحذوف نفسها)، ولا معرّف حسّاس مقتبس.
+// (الحارس نفسه غير مشمول بالحظر: يبني دواله النقية من نصّ الملف بـnew Function كما كان.)
+const SENSITIVE_NAMES = ['planGap', 'PACE_CFG'];
+const GLOBAL_ALIASES = ['globalThis', 'window', 'self', 'global'];
+/** يُفرّغ التعليقات والنصوص الحرفية **بمسافات** فيحفظ الطول والإزاحات (فلا يُزيح نصّاً).
+ *  حدّه المعروف: لا يميّز النصّ النمطي (regex) — وفي المحروس ثلاثة نصوص نمطية (أسطر ٥٢–٥٦)
+ *  بلا محرف اقتباس وبلا `//`، فالتجريد سليم ويُقاس صراحةً بمطابقة الطول أدناه. */
+function stripLiterals(text) {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    const d = text[i + 1];
+    if (c === '/' && d === '/') { while (i < text.length && text[i] !== '\n') { out += ' '; i++; } continue; }
+    if (c === '/' && d === '*') {
+      out += '  ';
+      i += 2;
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) { out += text[i] === '\n' ? '\n' : ' '; i++; }
+      if (i < text.length) { out += '  '; i += 2; }
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') {
+      const q = c;
+      out += ' ';
+      i++;
+      while (i < text.length && text[i] !== q) {
+        if (text[i] === '\\') { out += ' '; i++; if (i < text.length) { out += text[i] === '\n' ? '\n' : ' '; i++; } continue; }
+        out += text[i] === '\n' ? '\n' : ' '; i++;
+      }
+      if (i < text.length) { out += ' '; i++; }
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+/** كواشف البناء الديناميكي — تُستعمل للفحص على الملف المشحون ولإسقاط المُفسَدات معاً. */
+const dynScan = (text) => {
+  const txt = stripLiterals(text);
+  const out = { len: txt.length, bracket: [], ctor: 0, joinBuild: 0, frag: [], quoted: [] };
+  for (const alias of GLOBAL_ALIASES) {
+    const re = new RegExp('\\b' + alias + '\\s*\\[', 'g');
+    let m;
+    while ((m = re.exec(txt)) !== null) out.bracket.push(alias + '[');
+  }
+  out.ctor = (txt.match(/\beval\s*\(|\bnew\s+Function\s*\(|\bFunction\s*\(/g) || []).length;
+  out.joinBuild = (txt.match(/\]\s*\.join\s*\(/g) || []).length;
+  out.frag = text.match(/['"][^'"\n]{0,60}['"]\s*\+\s*['"][^'"\n]{0,60}['"]/g) || [];
+  for (const n of SENSITIVE_NAMES) if (new RegExp('[\'"`]' + n + '[\'"`]').test(text)) out.quoted.push(n);
+  return out;
+};
+const dyn = dynScan(src);
+ok(`مانع التعليقات والنصوص يحفظ الإزاحة (${dyn.len} = ${src.length})`, dyn.len === src.length);
+ok(`لا وصول محسوب إلى الكائن العام: globalThis[ · window[ · self[ · global[ (وجد ${dyn.bracket.length})`,
+  dyn.bracket.length === 0, dyn.bracket.join(' · '));
+ok(`لا eval ولا مُنشئ دوال في الملف المشحون: eval( · new Function( · Function( (وجد ${dyn.ctor})`, dyn.ctor === 0);
+ok(`لا تركيب اسم بمصفوفة حرفية: ].join( (وجد ${dyn.joinBuild})`, dyn.joinBuild === 0);
+ok(`لا تجزئة نصّ حرفي: نصّ + نصّ (وجد ${dyn.frag.length})`, dyn.frag.length === 0, dyn.frag.join(' · '));
+ok(`المعرّفات الحسّاسة لا تظهر مقتبسة (${SENSITIVE_NAMES.join(' · ')}) — وجد ${dyn.quoted.length}`,
+  dyn.quoted.length === 0, dyn.quoted.join(' · '));
+const dynFell = (text) => {
+  const d = dynScan(text);
+  const bad = [];
+  if (d.bracket.length) bad.push('وصول محسوب: ' + d.bracket.join(','));
+  if (d.ctor) bad.push('eval/مُنشئ دوال');
+  if (d.joinBuild) bad.push('تركيب اسم بـ].join(');
+  if (d.frag.length) bad.push('تجزئة نصّ حرفي');
+  if (d.quoted.length) bad.push('معرّف حسّاس مقتبس: ' + d.quoted.join(','));
+  return bad;
+};
+const dynMuts = [
+  ['ز١: إشارة محسوبة إلى planGap/PACE_CFG (مُفسَد Z1 نفسه)',
+    src.replace('const gapTick = (boundary, landing) => {\n', 'const gapTick = (boundary, landing) => {\n      void globalThis[["plan","Gap"].join("")]; void globalThis[["PACE","CFG"].join("_")];\n')],
+  ['ز٢: وصول محسوب بمفتاح حرفي كامل window["planGap"]',
+    src.replace('const gapTick = (boundary, landing) => {\n', 'const gapTick = (boundary, landing) => {\n      void window["planGap"];\n')],
+  ['ز٣: مُنشئ دوال eval',
+    src.replace('const gapTick = (boundary, landing) => {\n', 'const gapTick = (boundary, landing) => {\n      eval("void 0");\n')],
+  ['ز٤: تركيب اسم بـ[].join بلا كائن عام',
+    src.replace('const gapTick = (boundary, landing) => {\n', 'const gapTick = (boundary, landing) => {\n      const k = ["pace","Plan"].join("");\n')],
+  ['ز٥: تجزئة نصّ لبناء مفتاح تخزين',
+    src.replace('const PACE_CFG = {', 'const _legacy = localStorage.getItem("hl." + "skipgaps");\nconst PACE_CFG = {')],
+];
+for (const [label, mutant] of dynMuts) {
+  const fell = mutant !== src ? dynFell(mutant) : [];
+  ok(`مُفسَد ${label}`, mutant !== src);
+  ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
+}
+
+console.log('\n=== ٢٧) قائمة بيضاء لمفاتيح التخزين: hl.synclog وحده (ثقب X1) ===');
+// الثقب المُقاس: `localStorage.getItem("hl." + "skipgaps")` يقرأ خيار المستخدم المحذوف بلا أن
+// يظهر `hl.skipgaps` نصّاً، فلا يراه فحص §١٥ (ولا أي فحص قائم). العلاج: كل نداء تخزين في الملف
+// المشحون مفتاحه الأول **نصّ حرفي** في المجموعة المسموحة — وهي `hl.synclog` وحدها (خطوة ٦
+// أزالت مفتاح الخيار كلياً). والمقيس في الملف الآن: **نداء واحد فقط** (سطر ٦٤١) بمفتاح
+// `hl.synclog`، فيُثبَّت العدد أيضاً، ويُمنع تمرير localStorage إلى اسم آخر أو الوصول المحسوب.
+const LS_KEY_ALLOWED = ["'hl.synclog'", '"hl.synclog"'];
+const LS_METHODS = ['getItem', 'setItem', 'removeItem'];
+/** الوسيط الأول لنداء يبدأ عند `(` بفهرسه — يوازن الأقواس ويتخطّى النصوص الحرفية. */
+function firstArgAt(text, open) {
+  let depth = 0;
+  for (let j = open; j < text.length; j++) {
+    const c = text[j];
+    if (c === "'" || c === '"' || c === '`') {
+      const q = c;
+      j++;
+      while (j < text.length && text[j] !== q) { if (text[j] === '\\') j++; j++; }
+      continue;
+    }
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') { depth--; if (depth === 0) return text.slice(open + 1, j).trim(); }
+    else if (c === ',' && depth === 1) return text.slice(open + 1, j).trim();
+  }
+  return null;
+}
+const lsScan = (text) => {
+  const calls = [];
+  const re = /localStorage\s*\.\s*(getItem|setItem|removeItem)\s*\(/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    calls.push({ method: m[1], arg: firstArgAt(text, m.index + m[0].length - 1), line: text.slice(0, m.index).split('\n').length });
+  }
+  const txt = stripLiterals(text);
+  return {
+    calls,
+    // ظهور localStorage لا يتبعه أحد الأساليب الثلاثة = تمرير أو إسناد إلى اسم آخر.
+    alias: (txt.match(/localStorage(?!\s*\.\s*(?:getItem|setItem|removeItem)\s*\()/g) || []).length,
+    bracket: (txt.match(/localStorage\s*\[/g) || []).length,
+  };
+};
+const ls = lsScan(src);
+ok(`كل نداءات التخزين (${ls.calls.length}) مفتاحها الأول نصّ حرفي في المجموعة المسموحة {hl.synclog}`,
+  ls.calls.length > 0 && ls.calls.every((c) => LS_METHODS.includes(c.method) && LS_KEY_ALLOWED.includes(c.arg)),
+  ls.calls.map((c) => `سطر ${c.line}: ${c.method}(${c.arg})`).join(' · '));
+ok(`وعدد نداءات التخزين = 1 بالضبط كما في الملف الآن (وجد ${ls.calls.length})`, ls.calls.length === 1);
+ok(`وlocalStorage لا يُمرَّر ولا يُسنَد إلى اسم آخر (كل ظهور نداءً مباشراً) — وجد ${ls.alias}`, ls.alias === 0);
+ok(`ولا وصول محسوب إلى localStorage (localStorage[…] بمفتاح حرفي أو متغيّر) — وجد ${ls.bracket}`, ls.bracket === 0);
+const lsFell = (text) => {
+  const l = lsScan(text);
+  const bad = [];
+  if (!l.calls.length) bad.push('لا نداء تخزين');
+  if (l.calls.some((c) => !LS_METHODS.includes(c.method) || !LS_KEY_ALLOWED.includes(c.arg))) bad.push('مفتاح/أسلوب خارج القائمة البيضاء');
+  if (l.calls.length !== 1) bad.push(`عدد النداءات=${l.calls.length}`);
+  if (l.alias) bad.push('إسناد/تمرير localStorage');
+  if (l.bracket) bad.push('وصول محسوب localStorage[');
+  return bad;
+};
+const lsMuts = [
+  ['ح١: قراءة الخيار بصيغة مجزّأة (مُفسَد X1 نفسه)',
+    src.replace('const PACE_CFG = {', 'const _legacy = localStorage.getItem("hl." + "skipgaps");\nconst PACE_CFG = {')],
+  ['ح٢: مفتاح تخزين آخر غير مجزّأ (hl.pacerate)',
+    src.replace("localStorage.getItem('hl.synclog')", "localStorage.getItem('hl.pacerate')")],
+  ['ح٣: إسناد localStorage إلى اسم آخر ثم النداء منه',
+    src.replace("const slog = (() => { try { return localStorage.getItem('hl.synclog') === '1'; } catch { return false; } })();",
+      "const _ls = localStorage;\n  const slog = (() => { try { return _ls.getItem('hl.synclog') === '1'; } catch { return false; } })();")],
+  ['ح٤: وصول محسوب بمفتاح متغيّر localStorage[_k]',
+    src.replace("localStorage.getItem('hl.synclog')", 'localStorage[_k]')],
+];
+for (const [label, mutant] of lsMuts) {
+  const fell = mutant !== src ? lsFell(mutant) : [];
+  ok(`مُفسَد ${label}`, mutant !== src);
+  ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
+}
+
+console.log('\n=== ٢٨) مسار المزامنة مُثبَّت: قائمة بيضاء للخروج المبكر والدوال (ثقبا Y1 · Y4) ===');
+// الثقبان المقاسان: (Y1) `const BAN_GAP_SKIP = false; if (BAN_GAP_SKIP) return;` يعيد باب
+// الخيار المحذوف بكود ميت يمرّ؛ و(Y4) `function optedIntoSkip() { return true; }` تُنادى في
+// شرط فيصير جزء من السلوك مبنياً على دالة ثابتة. العلاج ثلاث طبقات:
+//   (١) قائمة بيضاء **نصّية** لصيغ الخروج المبكر في الكتل الثلاث (gapTick · armGapJump ·
+//       نبضة الانحراف) — مُستخرجة من الملف الآن ومُسجَّلة أدناه حرفياً بترتيبها، فأي شرط
+//       جديد ولو كان كاذباً دائماً يُسقط الفحص حتى يُضاف وعياً.
+//   (٢) النبضة **قبل فرع held-release** تحديداً (الموضع الذي يقرّر إطلاق الصوت أو احتجازه)
+//       مُثبَّتة بقائمتها، ومعه فحص أن الفرع نفسه قائم وإلا فالقائمة بلا مرساة.
+//   (٣) كل دالة جسمها `return true;`/`return false;` وحدها لا تُنادى داخل مسار المزامنة،
+//       ولا وجود لها في الملف المشحون أصلاً — كشف مستقلّ عن صيغة النداء (تعريف مسمّى أو
+//       سهم مختصر) وعن موضعه (شرط خروج أو غيره)، فلا تنجو دالة ثابتة من إعادة الخيار.
+// ويُضاف رابع احتياطي: قائمة بيضاء للنداءات الحرّة داخل الكتل الثلاث — أي نداء جديد يظهر
+// فيها (setInterval مثلاً) يُسقط الفحص، فلا يُضاف سلوك دوري في مسار المزامنة بلا وعي.
+const WANT_RETURNS = {
+  gapTick: [
+    'if (!WATCH || video.paused) return;',
+    'if (w.pace && w.paceTimer) return;',
+    'return;',
+    'if (pace) { paceEnter(pace.boundary, pace.landing, pace.rate); return; }',
+    'if (!(Math.abs(target - now) > 0.15)) return;',
+  ],
+  armGapJump: [
+    'return;',
+    'if (!WATCH || video.paused) return;',
+    'if (isGap(now, kept)) { gapTick(); return; }',
+    'if (boundary === null) return;',
+    'if (!(dt >= 0) || dt > 1500) return;',
+  ],
+  drift: [
+    'if (!WATCH) return;',
+    'if (w.pace) return;',
+    'if (audio.paused) return;',
+    'if (Date.now() - (w.selfSeek || 0) < SELF_SEEK_MS) return;',
+    'if (isGap(video.currentTime || 0, kept)) return;',
+    'if (w.stalled) return;',
+  ],
+  driftBeforeHeld: [
+    'if (!WATCH) return;',
+    'if (w.pace) return;',
+  ],
+};
+const RETURN_BLOCK_LABEL = { gapTick: 'gapTick', armGapJump: 'armGapJump', drift: 'نبضة الانحراف', driftBeforeHeld: 'النبضة قبل فرع held-release' };
+const WANT_SYNC_CALLEES = ['audioPos', 'clearTimeout', 'gapTick', 'isGap', 'nextGapStart', 'paceEnter', 'paceExit', 'pacePlan', 'reanchorAudio', 'setAudioTime', 'setTimeout', 'skipVideoGaps', 'trace'];
+const RESERVED_WORDS = new Set(['if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'function', 'new', 'do', 'else', 'in', 'of', 'await', 'yield', 'void', 'delete', 'instanceof', 'case', 'super', 'this']);
+const SYNC_PATH_OPENERS = [
+  'const gapTick = (boundary, landing) =>', 'const armGapJump = () =>', 'w.drift = setInterval(',
+  'const paceEnter = (boundary, landing, rate) =>', 'const paceExit = (why) =>', 'const pacePlan = (gapStart, gapEnd) =>',
+  'const paceReject = () =>', 'const stallRelease = () =>', 'const stallHold = () =>', 'const kickAudio = () =>',
+  'const setAudioTime = (site, want, allowBack) =>',
+];
+const SYNC_BLOCK_OPENER = { gapTick: 'const gapTick = (boundary, landing) =>', armGapJump: 'const armGapJump = () =>', drift: 'w.drift = setInterval(' };
+/** كتل مسار المزامنة من نصّ (يُجرَّد داخلها؛ الإزاحات محفوظة فيبقى extractBlock صالحاً). */
+const syncBlocks = (text) => {
+  const txt = stripLiterals(text);
+  const g = extractBlock(txt, SYNC_BLOCK_OPENER.gapTick);
+  const a = extractBlock(txt, SYNC_BLOCK_OPENER.armGapJump);
+  const d = extractBlock(txt, SYNC_BLOCK_OPENER.drift);
+  const driftBody = d ? d.body : null;
+  return {
+    gapTick: g ? g.body : null,
+    armGapJump: a ? a.body : null,
+    drift: driftBody,
+    driftBeforeHeld: driftBody ? driftBody.slice(0, driftBody.indexOf('if (w.held && !video.paused) {')) : null,
+  };
+};
+/** صيغ الخروج المبكر نصّاً: كل سطر يحمل `return` بصيغته المطبَّعة (مسافات مطبَّعة). */
+const returnForms = (bodyText) => bodyText == null ? null : bodyText.split('\n')
+  .map((l) => l.trim().replace(/\s+/g, ' '))
+  .filter((l) => /(^|[^.\w$])return\b/.test(l));
+const sameList = (a, b) => !!a && a.length === b.length && a.every((v, i) => v === b[i]);
+const listDiff = (got, want) => {
+  if (!got) return ['تعذّر الاستخراج'];
+  return [...got.filter((v) => !want.includes(v)).map((v) => 'زائد: ' + v),
+    ...want.filter((v) => !got.includes(v)).map((v) => 'ناقص: ' + v)];
+};
+const blocks = syncBlocks(src);
+ok('فرع held-release قائم في النبضة (مرساة قائمة النبضة البيضاء)',
+  !!blocks.drift && blocks.drift.includes('if (w.held && !video.paused) {'));
+for (const key of Object.keys(WANT_RETURNS)) {
+  const got = returnForms(blocks[key]);
+  ok(`خروج ${RETURN_BLOCK_LABEL[key]} المبكر = الصيغ المعروفة حصراً (${WANT_RETURNS[key].length})`,
+    sameList(got, WANT_RETURNS[key]), listDiff(got, WANT_RETURNS[key]).join(' · '));
+}
+// وشروط كل كتلة **كلها** مُثبَّتة نصّاً كذلك (لا الخروج المبكر وحده): بوّابة كاذبة بلا `return`
+// تعدّل حالة داخل الكتلة (مثل `if ([1].every(() => false)) { w.pace = null; }`) أو بوّابة
+// ثابتة عبر نداء عضو (`w.opt = () => true` ثم `if (w.opt())`) تُفلت من قائمة الخروج ومن
+// قائمة النداءات الحرّة معاً — قِيست الإفلاتان فعلاً قبل إضافة هذه القائمة. والاستخراج من
+// النصّ **الخام** بحجب مواضع التعليقات فقط، فتبقى النصوص الحرفية داخل الشرط ('number')؛
+// ولهذا يُفحص أيضاً ألّا تعليقَ داخل شرط محروس (وإلا دخل نصّه في القائمة بلا وعي).
+const WANT_CONDITIONS = {
+  gapTick: [
+    '!WATCH || video.paused',
+    'w.pace && w.paceTimer',
+    "typeof boundary === 'number' && typeof landing === 'number' && now >= boundary - 0.12",
+    'now < boundary',
+    'w.gapTimer',
+    'now < landing',
+    'isGap(now, kept)',
+    'land > now',
+    'pace',
+    'target === null',
+    '!(Math.abs(target - now) > 0.15)',
+    'w.held',
+  ],
+  armGapJump: [
+    'w.pace && w.paceTimer',
+    '!isGap(at, kept) || at >= w.pace.landing',
+    'w.gapTimer',
+    '!WATCH || video.paused',
+    'isGap(now, kept)',
+    'boundary === null',
+    '!(dt >= 0) || dt > 1500',
+  ],
+  drift: [
+    '!WATCH',
+    'video.muted === false',
+    'w.pace',
+    'w.held && !video.paused',
+    'audio.paused',
+    'Date.now() - (w.selfSeek || 0) < SELF_SEEK_MS',
+    'isGap(video.currentTime || 0, kept)',
+    'w.stalled',
+    'lead > 0.35',
+    'confirmed',
+    'lead < -0.35',
+  ],
+};
+const parenEndAt = (text, open) => {
+  let depth = 0;
+  for (let j = open; j < text.length; j++) {
+    if (text[j] === '(') depth++;
+    else if (text[j] === ')') { depth--; if (depth === 0) return j; }
+  }
+  return -1;
+};
+/** شروط `if (…)`/`else if (…)` نصّاً: من الخام، والمواضع تُقاس على النصّ المجرَّد (نفس الإزاحات). */
+const conditionForms = (rawBody, maskBody) => {
+  if (rawBody == null || maskBody == null) return null;
+  const out = [];
+  const re = /(?:^|[^\w$.])if\s*\(/g;
+  let m;
+  while ((m = re.exec(rawBody)) !== null) {
+    const iAt = m.index + m[0].indexOf('if');
+    if (maskBody.slice(iAt, iAt + 2) !== 'if') continue;   // `if` داخل تعليق أو نصّ حرفي
+    const open = m.index + m[0].length - 1;
+    const end = parenEndAt(maskBody, open);
+    if (end < 0) continue;
+    out.push(rawBody.slice(open + 1, end).trim().replace(/\s+/g, ' '));
+  }
+  return out;
+};
+const conditionsOf = (text, key) => {
+  const raw = extractBlock(text, SYNC_BLOCK_OPENER[key]);
+  const mask = extractBlock(stripLiterals(text), SYNC_BLOCK_OPENER[key]);
+  return raw && mask ? conditionForms(raw.body, mask.body) : null;
+};
+for (const key of Object.keys(WANT_CONDITIONS)) {
+  const got = conditionsOf(src, key);
+  ok(`شروط ${RETURN_BLOCK_LABEL[key]} = المعروفة حصراً (${WANT_CONDITIONS[key].length})`,
+    sameList(got, WANT_CONDITIONS[key]), listDiff(got, WANT_CONDITIONS[key]).join(' · '));
+}
+ok('ولا تعليق داخل أي شرط محروس (فالقائمة تُقرأ من النصّ الخام)',
+  Object.keys(WANT_CONDITIONS).every((key) => (conditionsOf(src, key) || []).every((c) => !c.includes('//') && !c.includes('/*'))));
+/** دوال جسمها ثابت: `function f() { return true; }` أو `const f = () => false;` */
+const constReturners = (text) => {
+  const txt = stripLiterals(text);
+  const found = [];
+  const add = (name, body) => {
+    const b = body.replace(/\s+/g, ' ').trim();
+    if (/^return (true|false);$/.test(b) || /^(true|false);?$/.test(b)) found.push(name);
+  };
+  let m;
+  const reFn = /function\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/g;
+  while ((m = reFn.exec(txt)) !== null) {
+    const end = braceEnd(txt, reFn.lastIndex - 1);
+    if (end > 0) add(m[1], txt.slice(reFn.lastIndex, end));
+  }
+  const reArrow = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/g;
+  while ((m = reArrow.exec(txt)) !== null) {
+    const at = reArrow.lastIndex;
+    if (txt[at] === '{') { const end = braceEnd(txt, at); if (end > 0) add(m[1], txt.slice(at + 1, end)); }
+    else { const semi = txt.indexOf(';', at); if (semi > 0) add(m[1], txt.slice(at, semi)); }
+  }
+  return found;
+};
+const syncPathText = (text) => {
+  const txt = stripLiterals(text);
+  return SYNC_PATH_OPENERS.map((o) => { const b = extractBlock(txt, o); return b ? b.body : ''; }).join('\n');
+};
+const calledIn = (name, text) => new RegExp('(?<![\\w$.])' + name + '\\s*\\(').test(text);
+const crAll = constReturners(src);
+const crInSync = crAll.filter((n) => calledIn(n, syncPathText(src)));
+ok(`لا دالة ثابتة الإرجاع (return true/false وحدها) تُنادى داخل مسار المزامنة (في المسار ${crInSync.length})`,
+  crInSync.length === 0, crInSync.join(' · '));
+ok(`ولا دالة ثابتة الإرجاع في الملف المشحون أصلاً (المقيس الآن: ${crAll.length})`, crAll.length === 0, crAll.join(' · '));
+const syncCallees = (text) => {
+  const b = syncBlocks(text);
+  const body = [b.gapTick, b.armGapJump, b.drift].join('\n');
+  const out = new Set();
+  const re = /(?<![\w$.])([A-Za-z_$][\w$]*)\s*\(/g;
+  let m;
+  while ((m = re.exec(body)) !== null) if (!RESERVED_WORDS.has(m[1])) out.add(m[1]);
+  return [...out].sort();
+};
+const gotCallees = syncCallees(src);
+ok(`نداءات الكتل الثلاث محصورة في المعروفة (${WANT_SYNC_CALLEES.length} — وجد ${gotCallees.length})`,
+  gotCallees.join('|') === [...WANT_SYNC_CALLEES].sort().join('|'),
+  `زائد: ${gotCallees.filter((n) => !WANT_SYNC_CALLEES.includes(n)).join(',') || 'لا شيء'} · ناقص: ${WANT_SYNC_CALLEES.filter((n) => !gotCallees.includes(n)).join(',') || 'لا شيء'}`);
+const syncFell = (text) => {
+  const bad = [];
+  const b = syncBlocks(text);
+  for (const key of Object.keys(WANT_RETURNS)) if (!sameList(returnForms(b[key]), WANT_RETURNS[key])) bad.push('خروج ' + key + ' المبكر');
+  for (const key of Object.keys(WANT_CONDITIONS)) if (!sameList(conditionsOf(text, key), WANT_CONDITIONS[key])) bad.push('شروط ' + key);
+  const cr = constReturners(text);
+  if (cr.length) bad.push('دالة ثابتة الإرجاع: ' + cr.join(','));
+  const extra = syncCallees(text).filter((n) => !WANT_SYNC_CALLEES.includes(n));
+  if (extra.length) bad.push('نداء جديد: ' + extra.join(','));
+  return bad;
+};
+const syncMuts = [
+  ['ط١: كود ميت يعيد الخيار (مُفسَد Y1 نفسه)',
+    src.replace('const gapTick = (boundary, landing) => {\n', 'const gapTick = (boundary, landing) => {\n      const BAN_GAP_SKIP = false; if (BAN_GAP_SKIP) return;\n')],
+  ['ط٢: دالة ثابتة تُعيد true تُنادى في المسار (مُفسَد Y4 نفسه)',
+    src.replace('const gapTick = (boundary, landing) => {\n', 'function optedIntoSkip() { return true; }\n    const gapTick = (boundary, landing) => {\n      if (optedIntoSkip()) { /* x */ }\n')],
+  ['ط٣: الصيغة السهمية المختصرة const optedIntoSkip = () => true',
+    src.replace('const gapTick = (boundary, landing) => {\n', 'const optedIntoSkip = () => true;\n    const gapTick = (boundary, landing) => {\n      if (optedIntoSkip()) { w.pendingLead = null; }\n')],
+  ['ط٤: شرط خروج جديد كاذب دائماً في النبضة قبل فرع held-release',
+    src.replace('if (w.held && !video.paused) {', 'const HOLD_OFF = 1 > 2;\n      if (HOLD_OFF) return;\n      if (w.held && !video.paused) {')],
+  ['ط٥: خروج مبكر جديد داخل armGapJump',
+    src.replace('if (isGap(now, kept)) { gapTick(); return; }', 'if (w.muteSync) return;\n      if (isGap(now, kept)) { gapTick(); return; }')],
+  ['ط٦: نداء دوري جديد داخل gapTick (setInterval)',
+    src.replace('const gapTick = (boundary, landing) => {\n', 'const gapTick = (boundary, landing) => {\n      setInterval(() => {}, 5000);\n')],
+  ['ط٧: بوّابة كاذبة بلا خروج تعدّل حالة (شرط جديد [1].every(() => false))',
+    src.replace('const gapTick = (boundary, landing) => {\n', 'const gapTick = (boundary, landing) => {\n      if ([1].every(() => false)) { w.pace = null; }\n')],
+  ['ط٨: بوّابة ثابتة عبر نداء عضو (w.opt = () => true ثم if (w.opt()))',
+    src.replace('const gapTick = (boundary, landing) => {\n', 'w.opt = () => true;\n    const gapTick = (boundary, landing) => {\n      if (w.opt()) { w.pendingLead = null; }\n')],
+];
+for (const [label, mutant] of syncMuts) {
+  const fell = mutant !== src ? syncFell(mutant) : [];
+  ok(`مُفسَد ${label}`, mutant !== src);
+  ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
+}
+
+console.log('\n=== ٢٩) planGap: معدّلات كسرية حقيقية لا أرقام «جميلة» (ثقب P1) ===');
+// الثقب المُقاس: `+rate.toFixed(2)` ⟶ `+rate.toFixed(1)` يمرّ، لأن كل حالات §١٦ وشبكته فيها
+// معدّلات «جميلة» (أعشار صحيحة: 1.2 · 2.4 · 3.0) فالتقريب إلى منزلة واحدة لا يُظهر فرقاً.
+// العلاج حالات بمعدّل كسري حقيقي: 2.35 ⟶ 2.35 بالضبط (وtoFixed(1) يعطي 2.4) و1.24 ⟶ 1.24،
+// مع شبكة قيم بثلاث منازل تُطابَق بالصيغة المعلنة نفسها لا بقيمة مكتوبة بيدي، مع حدّ maxDwell
+// تماماً (4.5 ÷ 3 = 1.5 ⇒ تسريع لا قطع، فالشرط `>` لا `>=`).
+const FRAC_CASES = [
+  ['معدّل كسري: gap 2.35s محفوظ 1/1 ⇒ speed 2.35 بالضبط (toFixed(1) يعطي 2.4)', 2.35, 1, 1],
+  ['معدّل كسري أصغر: gap 1.24s محفوظ 1/1 ⇒ speed 1.24 بالضبط (toFixed(1) يعطي 1.2)', 1.24, 1, 1],
+];
+for (const [label, gap, keptBefore, keptAfter] of FRAC_CASES) {
+  const got = planGap({ gap, keptBefore, keptAfter }, shippedCfg);
+  ok(label, !!got && got.mode === 'speed' && got.rate === gap, `أعاد ${fmt(got)} والمتوقَّع speed ${gap}`);
+}
+const FRAC_GAPS = [1.001, 1.234, 1.999, 2.347, 2.913, 3.456, 4.001, 4.499, 4.5];
+const fracRateOf = (f, cfg, g) => { const r = f({ gap: g, keptBefore: 0, keptAfter: 0 }, cfg); return r && r.mode === 'speed' ? r.rate : null; };
+const fracWrong = (f, cfg) => FRAC_GAPS.filter((g) => fracRateOf(f, cfg, g) !== +Math.min(cfg.rate, Math.max(1.2, g / cfg.targetDwell)).toFixed(2));
+ok(`شبكة كسرية (${FRAC_GAPS.length} قيمة بثلاث منازل): rate = +min(rate, max(1.2, gap/targetDwell)).toFixed(2) بالضبط`,
+  fracWrong(planGap, shippedCfg).length === 0, `خالفت: ${fracWrong(planGap, shippedCfg).join(' · ')}`);
+ok('وحدّ maxDwell تماماً (4.5s ÷ 3 = 1.5) تسريع لا قطع — الشرط > لا >=',
+  fracRateOf(planGap, shippedCfg, 4.5) === 3, `أعاد rate=${fracRateOf(planGap, shippedCfg, 4.5)}`);
+const planFracFell = (text) => {
+  const f = buildPlanGap(text);
+  const cfg = cfgOf(text);
+  if (!f || !cfg) return ['تعذّر بناء planGap'];
+  const bad = [];
+  for (const [label, gap, before, after] of FRAC_CASES) {
+    const r = f({ gap, keptBefore: before, keptAfter: after }, cfg);
+    if (!r || r.mode !== 'speed' || r.rate !== gap) bad.push(label.slice(0, 22));
+  }
+  const wrong = fracWrong(f, cfg);
+  if (wrong.length) bad.push('الشبكة الكسرية: ' + wrong.join(','));
+  if (fracRateOf(f, cfg, 4.5) !== 3) bad.push('حدّ maxDwell تماماً');
+  return bad;
+};
+const planFracMuts = [
+  ['ي١: toFixed(2) ⟶ toFixed(1) (مُفسَد P1 نفسه)',
+    src.replace("return { mode: 'speed', rate: +rate.toFixed(2) };", "return { mode: 'speed', rate: +rate.toFixed(1) };")],
+  ['ي٢: toFixed(2) ⟶ toFixed(3)', src.replace('+rate.toFixed(2)', '+rate.toFixed(3)')],
+  ['ي٣: تقريب إلى عدد صحيح Math.round(rate)', src.replace('+rate.toFixed(2)', 'Math.round(rate)')],
+  ['ي٤: حدّ maxDwell بـ>= بدل > (فجوة 4.5s تُقطع)', src.replace('if (gap / rate > cfg.maxDwell)', 'if (gap / rate >= cfg.maxDwell)')],
+];
+for (const [label, mutant] of planFracMuts) {
+  const fell = mutant !== src ? planFracFell(mutant) : [];
+  ok(`مُفسَد ${label}`, mutant !== src);
+  ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
+}
+
+console.log('\n=== ٣٠) gapStats: عتبة المدرّج وحدود smallGaps/smallestGap (ثقوب G3 · G5 · G7) ===');
+// ثلاثة ثقوب مقاسة: (G3) `if (g >= 0.5)` ⟶ `g >= 0` يُدخل الفجوات الصغيرة في hist؛
+// (G5) `if (!out.smallestGap || g < out.smallestGap) out.smallestGap = g;` ⟶ `out.smallestGap = g;`
+// فيصير smallestGap آخر فجوة لا أصغرها (يمرّ لأن آخر فجوة في خريطة §٣ هي الأصغر)؛
+// (G7) `g <= jumpThreshold` ⟶ `<` يُخرج فجوة 0.5 بالضبط من smallGaps.
+// الحالات تفصل الثلاثة: آخر فجوة هي الأكبر (G5)، وفجوة دون 0.5 مع أخرى فوق العتبة (G3)،
+// وفجوتان كلتاهما ≤ 0.5، وفجوة 0.5 تماماً على الحدّين (G7 + حدّ hist). ومقيس: في (أ)
+// فجوة 0.7 فوق العتبة 0.5 فلا تُحتسب في smallGaps — فالعدد 1 لا 2، و(ب) تُثبت الاثنتين.
+const GS_CASES = [
+  ['أ) 0.35 ثم 0.7: hist [1,0,0,0,0] (الصغيرة لا تُحتسب) · smallGaps = 1 · smallSeconds ≈ 0.35 · smallestGap 0.35 · gaps = 2',
+    [[0, 10], [10.35, 20], [20.7, 30]],
+    (s) => JSON.stringify(s.hist) === JSON.stringify([1, 0, 0, 0, 0]) && s.smallGaps === 1 && s.gaps === 2
+      && Math.abs(s.smallSeconds - 0.35) < 1e-9 && Math.abs(s.smallestGap - 0.35) < 1e-9],
+  ['ب) 0.35 ثم 0.45 (كلتاهما ≤ 0.5): smallGaps = 2 · smallSeconds ≈ 0.8 · hist أصفار',
+    [[0, 10], [10.35, 20], [20.45, 30]],
+    (s) => s.smallGaps === 2 && Math.abs(s.smallSeconds - 0.8) < 1e-9 && JSON.stringify(s.hist) === JSON.stringify([0, 0, 0, 0, 0])],
+  ['ج) آخر فجوة هي الأكبر (0.2 ثم 1.0): smallestGap = 0.2 لا 1.0 · largestGap = 1.0 · hist [0,1,0,0,0]',
+    [[0, 10], [10.2, 20], [21, 30]],
+    (s) => Math.abs(s.smallestGap - 0.2) < 1e-9 && Math.abs(s.largestGap - 1) < 1e-9 && JSON.stringify(s.hist) === JSON.stringify([0, 1, 0, 0, 0])],
+  ['د) فجوة 0.5 تماماً: في smallGaps (1) وsmallSeconds ≈ 0.5 وفي النطاق الأول من hist',
+    [[0, 10], [10.5, 20]],
+    (s) => s.smallGaps === 1 && Math.abs(s.smallSeconds - 0.5) < 1e-9 && Math.abs(s.smallestGap - 0.5) < 1e-9
+      && JSON.stringify(s.hist) === JSON.stringify([1, 0, 0, 0, 0])],
+];
+for (const [label, map, test] of GS_CASES) {
+  const s = gapStats(map, 0.5);
+  ok(label, test(s), `hist=${JSON.stringify(s.hist)} smallGaps=${s.smallGaps} smallSeconds=${s.smallSeconds} smallestGap=${s.smallestGap} largestGap=${s.largestGap}`);
+}
+const gsFell = (text) => {
+  const b = extractBlock(text, 'function gapStats(');
+  if (!b) return ['تعذّر استخراج gapStats'];
+  let f;
+  try { f = new Function(`${b.full} return gapStats;`)(); } catch { return ['تعذّر بناء gapStats']; }
+  return GS_CASES.filter(([, map, test]) => { try { return !test(f(map, 0.5)); } catch { return true; } }).map(([label]) => label.slice(0, 2));
+};
+const gsMuts = [
+  ['ك١: احتساب الفجوات دون 0.5 في المدرّج (g >= 0 — مُفسَد G3 نفسه)', src.replace('if (g >= 0.5) {', 'if (g >= 0) {')],
+  ['ك٢: smallestGap يصير آخر فجوة لا أصغرها (مُفسَد G5 نفسه)',
+    src.replace('if (!out.smallestGap || g < out.smallestGap) out.smallestGap = g;', 'out.smallestGap = g;')],
+  ['ك٣: فجوة 0.5 تماماً تخرج من smallGaps (g < jumpThreshold — مُفسَد G7 نفسه)',
+    src.replace('if (g <= jumpThreshold) { out.smallGaps++; out.smallSeconds += g; }', 'if (g < jumpThreshold) { out.smallGaps++; out.smallSeconds += g; }')],
+  ['ك٤: فجوة 0.5 تماماً تخرج من المدرّج (g > 0.5)', src.replace('if (g >= 0.5) {', 'if (g > 0.5) {')],
+  ['ك٥: العتبة تصير نصف المعلنة (jumpThreshold * 0.5)',
+    src.replace('if (g <= jumpThreshold) { out.smallGaps++; out.smallSeconds += g; }', 'if (g <= jumpThreshold * 0.5) { out.smallGaps++; out.smallSeconds += g; }')],
+];
+for (const [label, mutant] of gsMuts) {
+  const fell = mutant !== src ? gsFell(mutant) : [];
+  ok(`مُفسَد ${label}`, mutant !== src);
+  ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
+}
+
+console.log('\n=== ٣١) عدّ ثابت للمجدولات والمستمعين: لا مؤقّت ولا مستمع جديد (ثقب N1) ===');
+// الثقب المُقاس: `setInterval(() => {}, 5000);` داخل gapTick يمرّ — سلوك دوري جديد دائم لا
+// يراه أي فحص قائم. العلاج عدّ ثابت لكل مواضع الجدولة والتسجيل في الملف المشحون (بأسلوب
+// «عدد كتابات موضع الصوت = 2» نفسه). المقيس على هذا الالتزام: setInterval( = 5 ·
+// setTimeout( = 8 · on( = 10 · addEventListener( = 11. والمستمعون يُعدّون على النصّ مجرَّد
+// التعليقات والنصوص، فلا يُضلّل تعليقٌ يذكر on(، والمجدولات على النصّ كما هو.
+const COUNT_WANT = { setInterval: 5, setTimeout: 8, on: 10, addEventListener: 11 };
+const countScan = (text) => {
+  const txt = stripLiterals(text);
+  return {
+    setInterval: (text.match(/setInterval\s*\(/g) || []).length,
+    setTimeout: (text.match(/setTimeout\s*\(/g) || []).length,
+    on: (txt.match(/(?<![\w$.])on\s*\(/g) || []).length,
+    addEventListener: (txt.match(/addEventListener\s*\(/g) || []).length,
+  };
+};
+const cnt = countScan(src);
+ok(`عدد setInterval( = ${COUNT_WANT.setInterval} بالضبط (وجد ${cnt.setInterval})`, cnt.setInterval === COUNT_WANT.setInterval);
+ok(`عدد setTimeout( = ${COUNT_WANT.setTimeout} بالضبط (وجد ${cnt.setTimeout})`, cnt.setTimeout === COUNT_WANT.setTimeout);
+ok(`عدد تسجيلات المستمعين on( = ${COUNT_WANT.on} بالضبط (وجد ${cnt.on})`, cnt.on === COUNT_WANT.on);
+ok(`وaddEventListener( = ${COUNT_WANT.addEventListener} بالضبط (وجد ${cnt.addEventListener})`, cnt.addEventListener === COUNT_WANT.addEventListener);
+const cntFell = (text) => { const c = countScan(text); return Object.keys(COUNT_WANT).filter((k) => c[k] !== COUNT_WANT[k]).map((k) => `${k}=${c[k]}`); };
+const cntMuts = [
+  ['ن١: setInterval جديد بلا داعٍ (مُفسَد N1 نفسه)',
+    src.replace('const gapTick = (boundary, landing) => {\n', 'const gapTick = (boundary, landing) => {\n      setInterval(() => {}, 5000);\n')],
+  ['ن٢: setTimeout جديد في مسار المراقبة',
+    src.replace('w.gap = setInterval(armGapJump, 250);\n', 'w.gap = setInterval(armGapJump, 250);\n      setTimeout(() => {}, 0);\n')],
+  ['ن٣: مستمع جديد على عنصر الفيديو عبر on',
+    src.replace("on(video, 'ended', () => { stopWatch(); });", "on(video, 'ended', () => { stopWatch(); });\n    on(video, 'timeupdate', () => {});")],
+  ['ن٤: مستمع addEventListener إضافي',
+    src.replace("on(video, 'ended', () => { stopWatch(); });", "on(video, 'ended', () => { stopWatch(); });\n    video.addEventListener('suspend', () => {});")],
+];
+for (const [label, mutant] of cntMuts) {
+  const fell = mutant !== src ? cntFell(mutant) : [];
+  ok(`مُفسَد ${label}`, mutant !== src);
+  ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
+}
+
 console.log('');
 if (failures.length) {
   console.error(`✗ فشل ${failures.length} من ${checks} فحصاً:`);
