@@ -48,14 +48,25 @@ jobs:
       # tauri-build validates bundle.resources paths (tauri.conf.json:54-58) BEFORE
       # compiling anything, and bin/ + models/ + vc_redist.x64.exe are gitignored —
       # so a clean runner dies with "resource path `..\bin` doesn't exist".
-      # Stub them: this gate compiles and tests, it does not bundle (~515MB of
-      # runtime assets are fetched by release.yml via fetch_redist.js instead).
+      # Stub them: this gate compiles and tests, it does not bundle.
       - name: Stub bundle resources
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path bin, models | Out-Null
           New-Item -ItemType File -Force -Path bin/.stub, models/.stub | Out-Null
           New-Item -ItemType File -Force -Path src-tauri/vc_redist.x64.exe | Out-Null
+
+      # The separation-engine tests exercise the REAL MDX model (63.7MB, gitignored).
+      # Fetch just the model — not the 434MB ffmpeg/ffprobe pair, whose tests skip
+      # themselves when the tools are absent — so the heart of the product is
+      # genuinely tested on every push instead of silently skipped.
+      - name: Fetch the separation model
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download assets-v1 -R $env:GITHUB_REPOSITORY -p UVR-MDX-NET-Voc_FT.onnx -D models
+          Get-Item models/UVR-MDX-NET-Voc_FT.onnx | ForEach-Object { "model: $($_.Length) bytes" }
 
       - name: Rust tests
         working-directory: src-tauri
