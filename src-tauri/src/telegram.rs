@@ -98,6 +98,9 @@ fn random_code(digits: usize) -> String {
 /// The code shown in the app's settings panel. Generated on first sight or when
 /// the previous one expired.
 pub fn pairing_code(force: bool) -> Value {
+    // Lock order (٤.ب.٩): pair_slot BEFORE status, held across it. Both sites
+    // that take this pair use this order; reversed in either one, two threads
+    // can hold one lock each and wait for the other forever.
     let mut slot = pair_slot().lock().unwrap_or_else(|p| p.into_inner());
     let stale = slot
         .as_ref()
@@ -723,15 +726,14 @@ fn set_activity(a: impl Into<String>) {
 
 /// Live status for the settings panel — ground truth is the worker itself.
 pub fn status_json() -> Value {
-    let s = status().lock().map(|g| g).unwrap_or_else(|p| p.into_inner());
-    let code_active = pair_slot()
-        .lock()
-        .map(|g| {
-            g.as_ref()
-                .map(|c| c.issued.elapsed() <= PAIR_TTL)
-                .unwrap_or(false)
-        })
+    // Lock order (٤.ب.٩): pair_slot BEFORE status — the same order
+    // `pairing_code` uses. This site used to take them the other way round.
+    let slot = pair_slot().lock().unwrap_or_else(|p| p.into_inner());
+    let code_active = slot
+        .as_ref()
+        .map(|c| c.issued.elapsed() <= PAIR_TTL)
         .unwrap_or(false);
+    let s = status().lock().map(|g| g).unwrap_or_else(|p| p.into_inner());
     json!({
         "running": s.running,
         "last_error": s.last_error,
@@ -1696,6 +1698,39 @@ mod tests {
         assert_eq!(st["cloud_send_max_mb"], json!(50));
         forget_pairing_code();
         assert_eq!(status_json()["pairing_code_active"], json!(false));
+    }
+
+    /// Negative test for ٤.ب.٩: the two sites that take the settings lock PAIR
+    /// (`pairing_code`, `status_json`) must take them in ONE order — pair_slot
+    /// before status. Taken the other way round in either site, two threads can
+    /// hold one lock each and wait for the other forever. Probe: while this
+    /// thread holds `status`, a thread inside `status_json` must already hold
+    /// pair_slot (= it is parked on the second lock, not on the first).
+    #[test]
+    fn status_json_takes_pair_slot_before_status() {
+        // Several attempts: a child that has not been scheduled yet looks
+        // exactly like one that took `status` first.
+        let mut pair_slot_taken_first = false;
+        for _ in 0..10 {
+            let held_status = status().lock().unwrap_or_else(|p| p.into_inner());
+            let finished = Arc::new(AtomicBool::new(false));
+            let flag = finished.clone();
+            let child = std::thread::spawn(move || {
+                let _ = status_json();
+                flag.store(true, Ordering::SeqCst);
+            });
+            std::thread::sleep(Duration::from_millis(50));
+            let parked_on_status = !finished.load(Ordering::SeqCst);
+            let holds_pair_slot = pair_slot().try_lock().is_err();
+            drop(held_status); // let the child through, whatever it did
+            let _ = child.join();
+            assert!(finished.load(Ordering::SeqCst), "the child must finish once status is free");
+            if parked_on_status && holds_pair_slot {
+                pair_slot_taken_first = true;
+                break;
+            }
+        }
+        assert!(pair_slot_taken_first, "status_json must take pair_slot BEFORE status (٤.ب.٩)");
     }
 
     #[test]

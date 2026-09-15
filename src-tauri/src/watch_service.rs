@@ -33,11 +33,23 @@ struct WatchHandle {
     fingerprint: String,
 }
 
+/// The one way to reach the watch handle.
+///
+/// Audit 2026-09-15 (٤.ب.٩): poison-tolerant. The three call sites below used
+/// `.lock().unwrap()`, so one thread panicking while holding this lock turned
+/// every later caller — cancel, settings apply, watcher start — into a
+/// permanent panic loop. A poisoned lock still holds valid data.
+fn handle_lock() -> std::sync::MutexGuard<'static, Option<WatchHandle>> {
+    HANDLE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+}
+
 /// Cancel the currently processing watched file, if any (functional gap:
 /// the watch path used to have no cancel affordance at all).
 pub fn cancel_current() {
-    let handle = HANDLE.get_or_init(|| Mutex::new(None));
-    if let Some(h) = handle.lock().unwrap().as_ref() {
+    if let Some(h) = handle_lock().as_ref() {
         h.cancel_file.store(true, Ordering::SeqCst);
         tracing::warn!(target: "watch", "أُرسل إلغاء ملف المراقبة الجاري");
     }
@@ -474,7 +486,8 @@ pub fn apply_settings(s: &Settings) {
     // long DSP job while holding HANDLE froze every other set_settings
     // caller behind this mutex (audit 2026-09-03).
     let old = {
-        let mut guard = HANDLE.get_or_init(|| Mutex::new(None)).lock().unwrap();
+        // ٤.ب.٩: poison-tolerant (see handle_lock).
+        let mut guard = handle_lock();
         if let Some(h) = guard.as_ref() {
             if h.fingerprint == fp {
                 return; // nothing changed
@@ -519,7 +532,8 @@ pub fn apply_settings(s: &Settings) {
         .name("watch".into())
         .spawn(move || run_watch(stop2, cancel2, dir, opts, fp2))
         .ok();
-    let mut guard = HANDLE.get_or_init(|| Mutex::new(None)).lock().unwrap();
+    // ٤.ب.٩: poison-tolerant (see handle_lock).
+    let mut guard = handle_lock();
     *guard = Some(WatchHandle {
         stop,
         cancel_file,
@@ -557,5 +571,46 @@ mod tests {
         );
         assert!(load_done_keys_at(&dir.join("missing.json"), "fp1").is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Negative test for ٤.ب.٩: a poisoned watch lock must not panic. With the
+    /// old `.lock().unwrap()`, one panicking thread turned every later caller
+    /// (cancel / settings apply / watcher start) into a permanent panic loop.
+    ///
+    /// All three sites take the lock through `handle_lock`, so poisoning it
+    /// once proves the acquisition they share. The test does NOT call
+    /// `apply_settings`: reaching it links `run_watch` → the pipeline into the
+    /// lib test binary, which then needs the comctl32 v6 manifest a test
+    /// executable does not carry (verified: the binary stops loading with
+    /// STATUS_ENTRYPOINT_NOT_FOUND on `comctl32!TaskDialogIndirect`).
+    #[test]
+    fn a_poisoned_watch_lock_never_panics_its_callers() {
+        let handle = HANDLE.get_or_init(|| Mutex::new(None));
+
+        // Poison it the way a panicking worker would.
+        let _ = std::panic::catch_unwind(|| {
+            let _hold = handle.lock().unwrap();
+            panic!("poison the watch handle");
+        });
+        assert!(handle.lock().is_err(), "fixture: the lock must be poisoned");
+
+        // The acquisition every site uses must still hand out the data…
+        assert!(handle_lock().is_none(), "a poisoned lock still holds valid data");
+        // …and the cancel path must still work through it.
+        let cancel_file = Arc::new(AtomicBool::new(false));
+        let _ = handle_lock().replace(WatchHandle {
+            stop: Arc::new(AtomicBool::new(false)),
+            cancel_file: cancel_file.clone(),
+            join: None,
+            fingerprint: "poison-test".into(),
+        });
+        cancel_current();
+        assert!(
+            cancel_file.load(Ordering::SeqCst),
+            "cancel must still reach the live handle on a poisoned lock"
+        );
+
+        *handle_lock() = None;
+        handle.clear_poison(); // leave the process as we found it
     }
 }
