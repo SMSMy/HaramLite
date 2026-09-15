@@ -974,7 +974,7 @@ const SYNC_PATH_OPENERS = [
   'const paceReject = () =>', 'const stallRelease = () =>', 'const stallHold = () =>', 'const kickAudio = () =>',
   'const setAudioTime = (site, want, allowBack) =>',
 ];
-const SYNC_BLOCK_OPENER = { gapTick: 'const gapTick = (boundary, landing) =>', armGapJump: 'const armGapJump = () =>', drift: 'w.drift = setInterval(', paceExit: 'const paceExit = (why) =>' };
+const SYNC_BLOCK_OPENER = { gapTick: 'const gapTick = (boundary, landing) =>', armGapJump: 'const armGapJump = () =>', drift: 'w.drift = setInterval(', paceExit: 'const paceExit = (why) =>', paceEnter: 'const paceEnter = (boundary, landing, rate) =>' };
 /** كتل مسار المزامنة من نصّ (يُجرَّد داخلها؛ الإزاحات محفوظة فيبقى extractBlock صالحاً). */
 const syncBlocks = (text) => {
   const txt = stripLiterals(text);
@@ -1481,6 +1481,231 @@ const contractMuts = [
 ].concat(TRACE_ROWS.map((row) => [`حذف صفّ الأثر \`${row}…\``, src.split(row).join("trace('__محذوف__'")]));
 for (const [label, mutant] of contractMuts) {
   const fell = mutant !== src ? contractFell(mutant) : [];
+  ok(`مُفسَد ${label}`, mutant !== src);
+  ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
+}
+
+console.log('\n=== ٣٤) قاعدة الفرع الميت والتعليق + أعطال المُكذِّب (H3 · A5 · H8 · H9 · H10 · H15ب) ===');
+// أصل العلّة في خمسة من الستّة (بتعبير المُكذِّب): الحارس كان يفحص **وجود النصّ** لا **حياة
+// العبارة**، فيمرّ كود حسّاس **مُعلَّقاً** أو موضوعاً في فرع شرطه كاذب دائماً. فالقاعدة أولاً:
+//   (أ) لا شرط ثابت كاذب في الملف المشحون: `if (false)` · `if (0)` · `if (null)` ·
+//       `if (undefined)` · `if (!true)` · `if (!1)` · `if ('')`.
+//   (ب) لا خاصية `w.<اسم>` خارج قائمة خصائص الحالة المعروفة — فـ`if (w.never)` بوّابة ميتة.
+//   (ج) لا وصول محسوب إلى `w` (`w[مفتاح غير حرفي]`) — عائلة H15: كتابة `w.prevRate` بمفتاح
+//       محسوب تُبقي استعادة ٢٫٥٥× صامتة. (الصيغة **المجزّأة حرفياً** مُغلقة سلفاً في §٢٦،
+//       وقِيس ذلك؛ وهذا الفحص يغطّي المفتاح المتغيّر الذي لا تجزئة فيه — وقِيس أنه كان مفتوحاً.)
+//   (د) العبارات الحسّاسة تُبحث في نصّ **مجرَّد من التعليقات** والنصوص الحرفية محفوظة فيه،
+//       فتعليق عبارة حيّة يُسقط الفحص: هذا فرق «الوجود» عن «الحياة».
+function stripComments(text) {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    const d = text[i + 1];
+    if (c === '/' && d === '/') { while (i < text.length && text[i] !== '\n') { out += ' '; i++; } continue; }
+    if (c === '/' && d === '*') {
+      out += '  ';
+      i += 2;
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) { out += text[i] === '\n' ? '\n' : ' '; i++; }
+      if (i < text.length) { out += '  '; i += 2; }
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') {
+      const q = c;
+      out += c;
+      i++;
+      while (i < text.length && text[i] !== q) {
+        if (text[i] === '\\') { out += text[i]; i++; if (i < text.length) { out += text[i]; i++; } continue; }
+        out += text[i]; i++;
+      }
+      if (i < text.length) { out += text[i]; i++; }
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+const noComment = stripComments(src);
+const CAL_COMMENT = 'قفزة صنعناها نحن';
+const CAL_LITERAL = "'hl.synclog'";
+ok(`مانع التعليقات وحده يحفظ الإزاحة (${noComment.length} = ${src.length})`, noComment.length === src.length);
+ok('ومعايرته: يُخفي نصّ التعليق ويُبقي النصّ الحرفي (فالفحوص التالية تقرأ الحياة لا الوجود)',
+  src.includes(CAL_COMMENT) && noComment.includes(CAL_LITERAL) && !noComment.includes(CAL_COMMENT));
+const CONST_FALSE_RE = /\bif\s*\(\s*(?:false|0|null|undefined|''|""|!\s*(?:true|1))\s*\)/g;
+const constFalseHits = (text) => (stripComments(text).match(CONST_FALSE_RE) || []);
+ok(`لا شرط ثابت كاذب في الملف المشحون: if (false) · if (0) · if (null) · if (undefined) · if (!true) · if ('') (وجد ${constFalseHits(src).length})`,
+  constFalseHits(src).length === 0, constFalseHits(src).join(' · '));
+const W_STATE_PROPS = ['audio', 'drift', 'gap', 'gapTimer', 'handlers', 'held', 'loadLogged', 'pace', 'paceTimer', 'pendingLead', 'prevMuted', 'prevRate', 'selfRate', 'selfSeek', 'stalled', 'tracePulse', 'url', 'video'];
+const wPropsOf = (text) => {
+  const out = new Set();
+  const re = /\bw\.([A-Za-z_$][\w$]*)/g;
+  let m;
+  const txt = stripLiterals(text);
+  while ((m = re.exec(txt)) !== null) out.add(m[1]);
+  return [...out].sort();
+};
+const wPropsExtra = (text) => wPropsOf(text).filter((k) => !W_STATE_PROPS.includes(k));
+ok(`كل خصائص حالة w معروفة في القائمة البيضاء (${W_STATE_PROPS.length}) — خارجها ${wPropsExtra(src).length} (فلا بوّابة ميتة مثل if (w.never))`,
+  wPropsExtra(src).length === 0, wPropsExtra(src).join(' · '));
+const keyEndAt = (text, open) => {
+  let depth = 0;
+  for (let j = open; j < text.length; j++) {
+    const c = text[j];
+    if (c === "'" || c === '"' || c === '`') { const q = c; j++; while (j < text.length && text[j] !== q) { if (text[j] === '\\') j++; j++; } continue; }
+    if (c === '[') depth++;
+    else if (c === ']') { depth--; if (depth === 0) return j; }
+  }
+  return -1;
+};
+const computedWKeys = (text) => {
+  const noCom = stripComments(text);
+  const out = [];
+  const re = /\bw\s*\[/g;
+  let m;
+  while ((m = re.exec(noCom)) !== null) {
+    const end = keyEndAt(noCom, m.index + m[0].length - 1);
+    if (end < 0) { out.push('قوس غير مغلق'); continue; }
+    const key = noCom.slice(m.index + m[0].length, end).trim();
+    if (!/^(['"][A-Za-z_$][\w$]*['"]|\d+)$/.test(key)) out.push(key);
+  }
+  return out;
+};
+ok(`ولا وصول محسوب إلى w: w[…] بمفتاح غير حرفي (وجد ${computedWKeys(src).length}) — عائلة H15: استعادة معدّل صامتة`,
+  computedWKeys(src).length === 0, computedWKeys(src).join(' · '));
+// H3: `kept` مُعطى من مسار المعالجة (`LAST.kept`) ولا يُظلَّل — تظليله بمصفوفة فارغة كان
+// يُعطّل التسريع **صامتاً** (كل فجوة تُقرأ «لا مقاطع محفوظة» ⇒ cut دائماً).
+const KEPT_BINDING = 'const kept = LAST.kept;';
+const keptBindings = (text) => (stripLiterals(text).match(/(?:const|let|var)\s+kept\b/g) || []);
+const keptParamsInStartWatch = (text) => {
+  const b = extractBlock(stripLiterals(text), 'async function startWatch()');
+  if (!b) return ['تعذّر استخراج startWatch'];
+  return b.body.match(/\([^)]*\bkept\b[^)]*\)\s*(?:=>|\{)/g) || [];
+};
+const gapBody = stmtBody(src, 'gapTick');
+ok(`عبارة لازمة: \`${KEPT_BINDING}\` — الخريطة مُعطاة من مسار المعالجة لا مصفوفة فارغة`,
+  !!gapBody && atIn(gapBody, 'kept') >= 0 && (stripLiterals(src)).includes(KEPT_BINDING));
+ok(`و\`kept\` لا يُظلَّل: تعريف واحد فقط في الملف (وجد ${keptBindings(src).length}) ولا وسيط باسمه داخل startWatch (وجد ${keptParamsInStartWatch(src).length})`,
+  keptBindings(src).length === 1 && keptParamsInStartWatch(src).length === 0,
+  keptBindings(src).join(' · '));
+// A5: احتضار الصوت في paceEnter قبل كتابة المعدّل — إسقاطه يُبقي صوتاً يعمل مع صورة مسرَّعة
+// (وهو العطل الذي وُجد التسريع لمنعه).
+const enterS = stmtBody(src, 'paceEnter');
+const enterN = enterS == null ? null : normStmt(enterS);
+const RATE_WRITE = 'video.playbackRate = rate';
+ok('عبارة لازمة في paceEnter: `w.held = true;` قبل كتابة المعدّل (احتضار الصوت)',
+  atNorm(enterN, 'w.held = true;') >= 0 && atNorm(enterN, RATE_WRITE) > atNorm(enterN, 'w.held = true;'),
+  `الموضع=${atNorm(enterN, 'w.held = true;')} · المعدّل=${atNorm(enterN, RATE_WRITE)}`);
+ok('عبارة لازمة في paceEnter: `audio.pause()` (وإلا سُمع الصوت على صورة مسرَّعة)',
+  atNorm(enterN, 'audio.pause()') >= 0 && atNorm(enterN, RATE_WRITE) > atNorm(enterN, 'audio.pause()'),
+  `الموضع=${atNorm(enterN, 'audio.pause()')} · المعدّل=${atNorm(enterN, RATE_WRITE)}`);
+// H8/H10: في paceExit — تصفير الاحتجاز **قبل** استئناف الصوت (وإلا بقي w.held=true وصوتٌ
+// يعمل، فتلتقطه نبضة الانحراف في فرع held-release ⇒ سحب للخلف على صوت يعمل ⇒ كلمة مكررة)،
+// والاستئناف نفسه **حيّ** لا مُعلَّقاً.
+const exitRaw = extractBlock(src, SYNC_BLOCK_OPENER.paceExit);
+const exitNoCom = exitRaw ? stripComments(exitRaw.body) : null;
+const exitN = exitNoCom == null ? null : normStmt(exitNoCom);
+ok('عبارة لازمة في paceExit: `w.held = false;` قبل استئناف `audio.play()` (وإلا بقي الاحتجاز على صوت يعمل ⇒ سحب للخلف ⇒ كلمة مكررة)',
+  atNorm(exitN, 'w.held = false;') >= 0 && atNorm(exitN, 'audio.play()') > atNorm(exitN, 'w.held = false;'),
+  `التصفير=${atNorm(exitN, 'w.held = false;')} · الاستئناف=${atNorm(exitN, 'audio.play()')}`);
+ok('ونداء الاستئناف `audio.play()` **حيّ** في paceExit (بعد تجريد التعليقات، لا نصّاً مُعلَّقاً)',
+  !!exitNoCom && exitNoCom.includes('audio.play()'));
+// H9: قفزة المستخدم تُخرج من التسريع — النداء حيّ في معالج seeking (تعليقه يُبقي كتماً مسرَّعاً).
+const seekingRaw = extractBlock(src, "on(video, 'seeking', () =>");
+const seekingNoCom = seekingRaw ? stripComments(seekingRaw.body) : null;
+ok('ونداء `paceExit(\'seeking\');` **حيّ** في معالج seeking (لا مُعلَّقاً ولا في فرع ميت)',
+  !!seekingNoCom && seekingNoCom.includes("paceExit('seeking')"));
+// و«الحياة» لا تكفي: القاعدة العامة أعلاه تمسك الشرط **الحرفي** الكاذب والبوّابة على خاصية
+// مجهولة، لكن فرعاً ميتاً بعلم **محلّي** (`const NEVER = false; if (NEVER) …`) لا يمسكه حرفيّ.
+// فالفحصان التاليان يطلبان أن يكون النداءان الحسّاسان **عبارة مباشرة** (سطرها لا يبدأ بـ`if (`).
+const directLine = (bodyText, needle) => {
+  if (bodyText == null) return null;
+  const hits = bodyText.split('\n').map((l) => l.trim()).filter((l) => l.includes(needle));
+  return hits.length ? hits[0].replace(/\s+/g, ' ') : null;
+};
+const resumeLine = directLine(exitNoCom, 'audio.play()');
+ok('ونداء الاستئناف `audio.play()` عبارة **مباشرة** في paceExit (لا داخل `if (` ولو كان علمه محلّياً)',
+  !!resumeLine && resumeLine.startsWith('audio.play()'), `السطر: ${resumeLine || 'لا شيء'}`);
+const seekExitLine = directLine(seekingNoCom, "paceExit('seeking')");
+ok('ونداء `paceExit(\'seeking\');` عبارة **مباشرة** في معالج seeking (لا داخل فرع ميت)',
+  !!seekExitLine && seekExitLine.startsWith("paceExit('seeking')"), `السطر: ${seekExitLine || 'لا شيء'}`);
+// واحتضار الصوت عند القفز داخل فجوة في معالج seeking (نفس عائلة A5): حذفه يُبقي صوتاً يعمل
+// على موضع آخر ⇒ سبق/تكرار.
+const seekingGapBranch = (() => {
+  if (seekingNoCom == null) return null;
+  const i = seekingNoCom.indexOf('if (isGap(now, kept)) {');
+  if (i < 0) return null;
+  const end = braceEnd(seekingNoCom, seekingNoCom.indexOf('{', i));
+  return end > 0 ? seekingNoCom.slice(i, end + 1) : null;
+})();
+ok('عبارة لازمة في معالج seeking عند القفز داخل فجوة: `w.held = true;` مع `audio.pause()` (احتضار الصوت)',
+  !!seekingGapBranch && seekingGapBranch.includes('w.held = true;') && seekingGapBranch.includes('audio.pause()'));
+const deadFell = (text) => {
+  const bad = [];
+  const cf = constFalseHits(text);
+  if (cf.length) bad.push('شرط ثابت كاذب: ' + cf.join(','));
+  const we = wPropsExtra(text);
+  if (we.length) bad.push('خصائص w خارج القائمة: ' + we.join(','));
+  const cw = computedWKeys(text);
+  if (cw.length) bad.push('وصول محسوب إلى w: ' + cw.join(','));
+  if (keptBindings(text).length !== 1) bad.push(`تعريفات kept=${keptBindings(text).length}`);
+  if (!stripLiterals(text).includes(KEPT_BINDING)) bad.push('kept ليس LAST.kept');
+  const eS = stmtBody(text, 'paceEnter');
+  const eN = eS == null ? null : normStmt(eS);
+  if (!(atNorm(eN, 'w.held = true;') >= 0 && atNorm(eN, RATE_WRITE) > atNorm(eN, 'w.held = true;'))) bad.push('احتضار paceEnter: w.held = true');
+  if (!(atNorm(eN, 'audio.pause()') >= 0 && atNorm(eN, RATE_WRITE) > atNorm(eN, 'audio.pause()'))) bad.push('احتضار paceEnter: audio.pause()');
+  const xRaw = extractBlock(text, SYNC_BLOCK_OPENER.paceExit);
+  const xNo = xRaw ? stripComments(xRaw.body) : null;
+  const xN = xNo == null ? null : normStmt(xNo);
+  if (!(atNorm(xN, 'w.held = false;') >= 0 && atNorm(xN, 'audio.play()') > atNorm(xN, 'w.held = false;'))) bad.push('تصفير الاحتجاز في paceExit');
+  if (!xNo || !xNo.includes('audio.play()')) bad.push('استئناف paceExit ميت أو مفقود');
+  const sRaw = extractBlock(text, "on(video, 'seeking', () =>");
+  const sNo = sRaw ? stripComments(sRaw.body) : null;
+  if (!sNo || !sNo.includes("paceExit('seeking')")) bad.push('paceExit(seeking) ميت أو مفقود');
+  const rl = directLine(xNo, 'audio.play()');
+  if (!rl || !rl.startsWith('audio.play()')) bad.push('استئناف paceExit ليس عبارة مباشرة');
+  const sl = directLine(sNo, "paceExit('seeking')");
+  if (!sl || !sl.startsWith("paceExit('seeking')")) bad.push('paceExit(seeking) ليس عبارة مباشرة');
+  const sgb = (() => {
+    if (sNo == null) return null;
+    const i = sNo.indexOf('if (isGap(now, kept)) {');
+    if (i < 0) return null;
+    const end = braceEnd(sNo, sNo.indexOf('{', i));
+    return end > 0 ? sNo.slice(i, end + 1) : null;
+  })();
+  if (!sgb || !sgb.includes('w.held = true;') || !sgb.includes('audio.pause()')) bad.push('احتضار seeking داخل فجوة');
+  return bad;
+};
+const deadMuts = [
+  ['ح٣ (H3): تظليل kept بمصفوفة فارغة قبل SELF_SEEK_MS',
+    src.replace('const SELF_SEEK_MS = 1200;', 'const kept = [];\n    const SELF_SEEK_MS = 1200;')],
+  ['ح٥ (A5أ): إسقاط `w.held = true;` من paceEnter',
+    src.replace('w.pace = { boundary, landing, rate };\n      w.held = true;', 'w.pace = { boundary, landing, rate };')],
+  ['ح٦ (A5ب): إسقاط `audio.pause()` من paceEnter',
+    src.replace('w.held = true;\n      try { audio.pause(); } catch { /* gone */ }', 'w.held = true;')],
+  ['ح٨ (H8): حذف `w.held = false;` من paceExit (أول ظهور في الملف)',
+    src.replace('w.held = false;', '')],
+  ['ح٩ (H9): تعليق `paceExit(\'seeking\');`',
+    src.replace("paceExit('seeking');", "// paceExit('seeking');")],
+  ['ح١٠ (H10): تعليق `audio.play()` الحيّ في paceExit',
+    src.replace("      audio.play().catch(() => { w.held = true; });\n      trace('pace-exit', why || 'end');", "      // audio.play().catch(() => { w.held = true; });\n      trace('pace-exit', why || 'end');")],
+  ['ح١٠ب: إبقاء نصّ `audio.play()` في فرع شرطه ثابت كاذب (`if (false)`)',
+    src.replace("      audio.play().catch(() => { w.held = true; });\n      trace('pace-exit', why || 'end');", "      if (false) audio.play().catch(() => { w.held = true; });\n      trace('pace-exit', why || 'end');")],
+  ['ح٩ب: إبقاء `paceExit(\'seeking\');` في بوّابة ميتة (`if (w.never)`)',
+    src.replace("      paceExit('seeking');", '      if (w.never) paceExit(\'seeking\');')],
+  ['ح١٥ب (H15ب): كتابة `w.prevRate` بمفتاح متغيّر `const KEY = …; w[KEY] = rate;`',
+    src.replace('w.selfRate = rate;', "w.selfRate = rate;\n      const KEY = 'prevRate'; w[KEY] = rate;")],
+  ['ح١٥ (H15): كتابة `w.prevRate` بمفتاح مجزّأ حرفياً `w[\'prev\' + \'Rate\']` (مُغلق سلفاً في §٢٦)',
+    src.replace('w.selfRate = rate;', "w.selfRate = rate;\n      w['prev' + 'Rate'] = rate;")],
+  ['ح١٠ج: فرع ميت بعلم **محلّي** حول استئناف paceExit (`const NEVER = false; if (NEVER) audio.play()`)',
+    src.replace("      audio.play().catch(() => { w.held = true; });\n      trace('pace-exit', why || 'end');", "      const NEVER = false;\n      if (NEVER) audio.play().catch(() => { w.held = true; });\n      trace('pace-exit', why || 'end');")],
+  ['ح٩ج: فرع ميت بعلم **محلّي** حول `paceExit(\'seeking\');`',
+    src.replace("      paceExit('seeking');", "      const NEVER = false;\n      if (NEVER) paceExit('seeking');")],
+  ['ح٧: حذف `audio.pause()` من فرع isGap في معالج seeking (احتضار الصوت عند القفز داخل فجوة)',
+    src.replace("      if (isGap(now, kept)) {\n        w.held = true;\n        try { audio.pause(); } catch { /* gone */ }\n", "      if (isGap(now, kept)) {\n        w.held = true;\n")],
+];
+for (const [label, mutant] of deadMuts) {
+  const fell = mutant !== src ? deadFell(mutant) : [];
   ok(`مُفسَد ${label}`, mutant !== src);
   ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
 }
