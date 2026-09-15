@@ -633,7 +633,7 @@ document.write('<scr' + 'ipt src="../assets/lang.js"><\/scr' + 'ipt>');
 document.addEventListener('DOMContentLoaded', function () {
   var n = document.getElementById('ar-only-notice');
   if (!n) return;
-  var sync = function () { n.classList.toggle('hidden', document.documentElement.lang !== 'en'); };
+  var sync = function () { n.classList.toggle('hidden', (window.HaramLiteLang ? window.HaramLiteLang.current() : 'ar') !== 'en'); };
   sync();
   var b = document.getElementById('lang-btn');
   if (b) b.addEventListener('click', function () { setTimeout(sync, 0); });

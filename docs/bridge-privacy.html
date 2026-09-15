@@ -43,7 +43,7 @@
 <main class="w-full pt-16">
   <div id="ar-only-notice" role="status" aria-live="polite" class="hidden max-w-3xl mx-auto px-margin-mobile lg:px-margin-desktop pt-stack-md font-label-sm text-label-sm text-on-surface-variant" data-i18n-ar="" data-i18n-en="The page text is in Arabic. The interface is available in English, but the written content has no English edition yet."></div>
 <div class="doc">
-  <h2 style="margin-top:1.5rem">سياسة خصوصية إضافة المتصفح — HaramLite Bridge</h2>
+  <h1 class="font-serif text-headline-lg text-cream-text border-b border-border-muted pb-2 mb-3" style="margin-top:1.5rem">سياسة خصوصية إضافة المتصفح — HaramLite Bridge</h1>
   <p class="font-mono-code text-mono-code text-on-surface-variant">Chrome / Edge · آخر تحديث: 2026-09-12</p>
 
   <div class="lead">
@@ -141,7 +141,7 @@ document.write('<scr' + 'ipt src="assets/lang.js"><\/scr' + 'ipt>');
 document.addEventListener('DOMContentLoaded', function () {
   var n = document.getElementById('ar-only-notice');
   if (!n) return;
-  var sync = function () { n.classList.toggle('hidden', document.documentElement.lang !== 'en'); };
+  var sync = function () { n.classList.toggle('hidden', (window.HaramLiteLang ? window.HaramLiteLang.current() : 'ar') !== 'en'); };
   sync();
   var b = document.getElementById('lang-btn');
   if (b) b.addEventListener('click', function () { setTimeout(sync, 0); });

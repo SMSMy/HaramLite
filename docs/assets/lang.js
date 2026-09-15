@@ -1,12 +1,26 @@
 /* ملف الترجمة المشترك لصفحات الموقع — يستعمله الهيدر/الفوتر الموحّد.
    المفتاح hl.lang هو نفسه في الرئيسية وصفحة الإضافة، فالاختيار يسري على
-   الموقع كله. الصيغة: [data-i18n-ar] مع [data-i18n-en]. */
+   الموقع كله. الصيغة: [data-i18n-ar] مع [data-i18n-en].
+
+   الاتجاه لا يتبع لغة الواجهة، بل وجود نسخة إنجليزية من **متن الصفحة**:
+   في صفحات الأدلة والسياسات لا يُترجم إلا الهيدر والفوتر والمتن عربي، فقلب
+   dir إلى ltr هناك يعرض نصاً عربياً بمحاذاة لاتينية. (وهو ما كان يقع: كان
+   القلب يتم بمجرّد أن تكون لغة الواجهة en، بصرف النظر عن وجود ترجمة.)
+   فالقاعدة الآن: تبقى الصفحة rtl ما لم تُعلن على <html> السمة
+   data-i18n-edition="en" — والرئيسية وصفحة الإضافة وحدهما تعلنانها لأن
+   متنهما مترجم فعلاً. إضافة السمة لصفحة بلا ترجمة تعني قلب اتجاه نص عربي.
+
+   ولهذا لا يصلح documentElement.lang دليلاً على لغة الواجهة في سكربتات
+   الصفحات (إشعار «المتن عربي فقط»): استعمل HaramLiteLang.current(). */
 (function () {
   var KEY = 'hl.lang';
   function apply(lang) {
     var l = lang === 'en' ? 'en' : 'ar';
-    document.documentElement.lang = l;
-    document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
+    // نسخة إنجليزية للمتن: تُعلَن ولا تُستنتج
+    var contentEn = document.documentElement.getAttribute('data-i18n-edition') === 'en';
+    var doc = contentEn ? l : 'ar';
+    document.documentElement.lang = doc;
+    document.documentElement.dir = doc === 'ar' ? 'rtl' : 'ltr';
     document.querySelectorAll('[data-i18n-ar]').forEach(function (el) {
       var t = el.getAttribute(l === 'ar' ? 'data-i18n-ar' : 'data-i18n-en');
       if (t) el.textContent = t;

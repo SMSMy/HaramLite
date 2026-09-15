@@ -1,7 +1,5 @@
 User-agent: *
 Allow: /
-Disallow: /AUDIT.html
-Disallow: /STORE.html
 Disallow: /_config.yml
 
 Sitemap: https://haramlite.com/sitemap.xml

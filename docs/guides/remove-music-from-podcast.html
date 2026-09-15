@@ -198,7 +198,7 @@
 </div>
 <h3 class="font-label-md text-label-md text-cream-text mb-2 font-bold">محرك الخلفية الهادئ (Background Service)</h3>
 <p class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed mb-4">
-              مقيم في شريط المهام (System Tray). يبدأ تلقائياً مع ويندوز، ويفحص مساحة القرص قبل البدء لضمان عدم توقف النظام.
+              مقيم في شريط المهام (System Tray). يبدأ تلقائياً مع ويندوز، وقبل أن يعالج أي ملف يتحقق من المساحة الحرة على قرص المخرجات: يطلب ثلاثة أضعاف حجم الملف وبحدّ أدنى 1 جيجابايت، فإن لم تكفِ المساحة يتخطى الملف ويبيّن السبب بدل أن يتوقف في منتصف المعالجة.
             </p>
 </div>
 <!-- Daemon Status Card -->
@@ -208,7 +208,7 @@
 <span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
 </div>
 <div class="text-on-surface-variant text-[10px]">Auto-start on OS boot: ON</div>
-<div class="text-on-surface-variant text-[10px]">Disk headroom alert: > 5GB</div>
+<div class="text-on-surface-variant text-[10px]">Disk guard: free space ≥ 3x file size (min 1GB)</div>
 </div>
 </div>
 <!-- Step 3: Batch Queue & GC -->
@@ -792,7 +792,7 @@ document.write('<scr' + 'ipt src="../assets/lang.js"><\/scr' + 'ipt>');
 document.addEventListener('DOMContentLoaded', function () {
   var n = document.getElementById('ar-only-notice');
   if (!n) return;
-  var sync = function () { n.classList.toggle('hidden', document.documentElement.lang !== 'en'); };
+  var sync = function () { n.classList.toggle('hidden', (window.HaramLiteLang ? window.HaramLiteLang.current() : 'ar') !== 'en'); };
   sync();
   var b = document.getElementById('lang-btn');
   if (b) b.addEventListener('click', function () { setTimeout(sync, 0); });
