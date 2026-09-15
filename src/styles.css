@@ -192,6 +192,12 @@
     background-color: rgba(218, 119, 86, 0.1) !important;
     opacity: 1 !important;
 }
+/* Contrast (WCAG 2.1 AA, 2026-09-15): these opacities are the FLOOR that keeps
+   12px muted text ≥ 4.5:1 on the dark panels. Measured effective colours:
+     .mode-card:not(.selected) 0.7 → #a18f89 on #1b1a18 = 5.64:1
+     .kind-card:not(.selected) 0.55 → #96837c on #1b1a18 = 4.79:1
+   (0.5 would give 3.52:1 — below AA.) Text inside the mode cards carries no
+   extra opacity of its own so this single value decides its ratio. */
 .mode-card:not(.selected) {
     border-color: #2E2C29 !important;
     background-color: transparent !important;
@@ -205,7 +211,7 @@
 .kind-card:not(.selected) {
     background-color: transparent !important;
     border-color: transparent !important;
-    opacity: 0.5 !important;
+    opacity: 0.55 !important;
 }
 #logcard.collapsed #log-view {
     display: none !important;

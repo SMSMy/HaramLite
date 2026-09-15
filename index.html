@@ -16,9 +16,8 @@
 <h1 class="font-headline-xl text-headline-xl font-black text-clay-accent tracking-tight drop-shadow-md">HaramLite</h1>
 <span class="bg-surface-container text-on-surface-variant px-stack-sm py-unit rounded font-label-sm text-label-sm border border-border-muted cursor-pointer select-none transition-all duration-300 apple-ease hover:bg-surface-variant hover:scale-105 active:scale-95" id="version-badge">v0.2.0</span>
 </div>
-<div class="absolute left-1/2 transform -translate-x-1/2 opacity-80 pointer-events-none hidden md:block">
-<p class="font-body-lg text-cream-text text-sm font-semibold tracking-wide">الموسيقى لا تليق بقلبٍ يريد <span class="kashida-text text-clay-accent">الطمأنينة</span>.</p>
-</div>
+<div class="absolute left-1/2 transform -translate-x-1/2 pointer-events-none hidden md:block">
+<p class="font-body-lg text-cream-text text-sm font-semibold tracking-wide flex items-baseline gap-unit justify-center"><span data-i18n="tagline_pre">الموسيقى لا تليق بقلبٍ يريد</span> <span class="kashida-text text-clay-accent" data-i18n="tagline_hl">الطمأنينة</span><span aria-hidden="true">.</span></p></div>
 <div class="flex items-center gap-stack-md">
 <div id="lang-toggle" class="flex items-center gap-stack-md cursor-pointer group">
 <button class="text-on-surface-variant hover:bg-surface-variant/80 transition-all duration-300 apple-ease p-unit rounded font-label-md text-label-md hover:scale-105 active:scale-95">EN</button>
@@ -29,7 +28,7 @@
 <button id="btn-settings" class="text-on-surface-variant hover:bg-surface-variant/80 transition-all duration-300 apple-ease p-unit rounded hover:scale-110 active:scale-90 hover:text-cream-text">
 <span class="material-symbols-outlined" data-icon="settings">settings</span>
 </button>
-<div id="settings-menu" class="hidden absolute left-0 top-full mt-2 w-64 max-h-[75vh] overflow-y-auto overscroll-contain glass-effect border border-border-muted rounded-lg shadow-xl p-stack-md flex flex-col gap-stack-sm z-50 fade-in-up">
+<div id="settings-menu" class="hidden absolute left-0 top-full mt-2 w-64 max-h-[75vh] overflow-y-auto overscroll-contain glass-effect border border-border-muted rounded-lg shadow-xl p-stack-md flex flex-col gap-stack-sm z-50 fade-in-up" role="dialog" aria-modal="false" data-i18n-aria="settings_title">
     <h3 class="font-label-md text-clay-accent border-b border-border-muted pb-2 mb-2" data-i18n="settings_title">الإعدادات</h3>
 
     <!-- ⚙️ الأداء والمعالجة -->
@@ -135,14 +134,14 @@
 <!-- Mode Selection -->
 <div class="grid grid-cols-2 gap-stack-md fade-in-up">
 <button id="mode-song" data-mode="song" class="mode-card selected glass-effect border-[1.5px] border-clay-accent/50 bg-clay-accent/10 rounded-lg p-stack-lg flex flex-col items-center justify-center gap-unit transition-all duration-300 apple-ease hover:bg-clay-accent/20 hover:-translate-y-1 hover:shadow-[0_8px_20px_-8px_rgba(218,119,86,0.4)] active:scale-[0.98]">
-<span class="material-symbols-outlined text-4xl text-clay-accent drop-shadow-md mb-2" data-icon="music_note">music_note</span>
+<span class="material-symbols-outlined text-4xl text-clay-accent drop-shadow-md mb-2" data-icon="music_note" aria-hidden="true">music_note</span>
 <span class="font-label-md text-label-md text-clay-accent font-bold" data-i18n="mode_song">أغنية</span>
-<p class="font-label-sm text-xs mt-2 opacity-80 text-center leading-relaxed text-clay-accent" data-i18n="mode_song_desc">إذا كنت تعزل الموسيقى عن أغنية، اختر هذا الخيار؛ سضيف قطع الصمت ويزيل كتمة الصوت.</p>
+<p class="font-label-sm text-xs mt-2 text-center leading-relaxed text-cream-text" data-i18n="mode_song_desc">إذا كنت تعزل الموسيقى عن أغنية، اختر هذا الخيار؛ سضيف قطع الصمت ويزيل كتمة الصوت.</p>
 </button>
-<button id="mode-clip" data-mode="clip" class="mode-card glass-effect border border-border-muted rounded-lg p-stack-lg flex flex-col items-center justify-center gap-unit opacity-70 transition-all duration-300 apple-ease hover:opacity-100 hover:bg-surface-container-high hover:-translate-y-1 hover:shadow-lg active:scale-[0.98]">
-<span class="material-symbols-outlined text-4xl text-on-surface-variant mb-2" data-icon="movie">movie</span>
+<button id="mode-clip" data-mode="clip" class="mode-card glass-effect border border-border-muted rounded-lg p-stack-lg flex flex-col items-center justify-center gap-unit transition-all duration-300 apple-ease hover:bg-surface-container-high hover:-translate-y-1 hover:shadow-lg active:scale-[0.98]">
+<span class="material-symbols-outlined text-4xl text-on-surface-variant mb-2 opacity-50" data-icon="movie" aria-hidden="true">movie</span>
 <span class="font-label-md text-label-md text-on-surface-variant font-bold" data-i18n="mode_clip">مقطع عادي</span>
-<p class="font-label-sm text-xs mt-2 opacity-70 text-center leading-relaxed text-on-surface-variant" data-i18n="mode_clip_desc">للمقاطع التي تحتوي على متحدثين: لن يقطع الصمت، وسيزيل الموسيقى فقط.</p>
+<p class="font-label-sm text-xs mt-2 opacity-80 text-center leading-relaxed text-on-surface-variant" data-i18n="mode_clip_desc">للمقاطع التي تحتوي على متحدثين: لن يقطع الصمت، وسيزيل الموسيقى فقط.</p>
 </button>
 </div>
 <!-- Advanced Settings Panel -->
@@ -151,15 +150,15 @@
 <div class="glass-effect border border-border-muted rounded-lg p-stack-lg flex flex-col gap-stack-md shadow-lg" id="advanced-panel">
 <h3 class="font-label-md text-label-md text-cream-text flex items-center gap-unit">
 <span class="material-symbols-outlined text-sm text-clay-accent" data-icon="tune">tune</span>
-            إعدادات متقدمة
+            <span data-i18n="dlg_advanced">إعدادات متقدمة</span>
         </h3>
 <div class="flex flex-col gap-stack-md">
 <label class="flex items-center gap-stack-sm cursor-pointer group">
 <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent focus:ring-offset-coal-surface transition-all duration-200 group-hover:border-clay-accent group-active:scale-90" id="keep-inst" type="checkbox"/>
-<span class="font-body-md text-cream-text transition-colors duration-200 group-hover:text-white">الاحتفاظ بالموسيقى (Keep Instrumental)</span>
+<span class="font-body-md text-cream-text transition-colors duration-200 group-hover:text-white" data-i18n="keep_inst">الاحتفاظ بالموسيقى (Keep Instrumental)</span>
 </label>
 <div class="flex items-center gap-stack-sm">
-<span class="font-label-md text-on-surface-variant">صيغة الصوت:</span>
+<span class="font-label-md text-on-surface-variant" data-i18n="audio_format">صيغة الصوت:</span>
 <select id="fmt-select" class="form-select bg-coal-surface border border-border-muted rounded px-stack-md py-stack-sm text-cream-text focus:outline-none focus:border-clay-accent focus:ring-1 focus:ring-clay-accent font-body-md transition-all duration-300 apple-ease hover:border-on-surface-variant cursor-pointer">
 <option value="mp3">MP3</option>
 <option value="wav">WAV</option>
@@ -180,36 +179,36 @@
 </div>
 <!-- File Dropzone Card -->
 <div class="glass-effect border border-border-muted rounded-lg p-stack-lg flex flex-col gap-stack-md fade-in-up delay-100 hover:shadow-xl transition-shadow duration-300">
-<div class="border-2 border-dashed border-border-muted rounded-lg p-margin-desktop flex flex-col items-center justify-center gap-stack-md hover:border-clay-accent transition-all duration-300 apple-ease cursor-pointer bg-coal-surface/30 group" id="dropzone">
-<span class="material-symbols-outlined text-4xl text-on-surface-variant transition-all duration-300 apple-ease group-hover:text-clay-accent group-hover:scale-110 group-hover:-translate-y-1" data-icon="upload_file">upload_file</span>
-<p class="font-body-md text-body-md text-on-surface-variant text-center transition-colors duration-300 group-hover:text-cream-text">اسحب وأفلت الملفات هنا أو</p>
-<button class="bg-surface-container text-cream-text border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high hover:border-on-surface-variant transition-all duration-300 apple-ease font-label-md text-label-md active:scale-95 shadow-sm">تصفح الملفات</button>
+<div class="border-2 border-dashed border-border-muted rounded-lg p-margin-desktop flex flex-col items-center justify-center gap-stack-md hover:border-clay-accent transition-all duration-300 apple-ease cursor-pointer bg-coal-surface/30 group" id="dropzone" role="button" tabindex="0" data-i18n-aria="dropzone_label">
+<span class="material-symbols-outlined text-4xl text-on-surface-variant transition-all duration-300 apple-ease group-hover:text-clay-accent group-hover:scale-110 group-hover:-translate-y-1" data-icon="upload_file" aria-hidden="true">upload_file</span>
+<p class="font-body-md text-body-md text-on-surface-variant text-center transition-colors duration-300 group-hover:text-cream-text" data-i18n="drop_hint_plain">اسحب وأفلت الملفات هنا أو</p>
+<button class="bg-surface-container text-cream-text border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high hover:border-on-surface-variant transition-all duration-300 apple-ease font-label-md text-label-md active:scale-95 shadow-sm" data-i18n="btn_browse_plain">تصفح الملفات</button>
 </div>
 <!-- Status & Options -->
 <div class="flex justify-between items-center bg-coal-surface/40 p-stack-sm rounded border border-border-muted backdrop-blur-sm transition-all duration-300 hover:bg-coal-surface/60">
 <div class="flex items-center gap-stack-sm text-tertiary">
 <span class="material-symbols-outlined animate-bounce" data-icon="check_circle" style="animation-duration: 2s; animation-timing-function: cubic-bezier(0.28, 0.84, 0.42, 1);">check_circle</span>
-<span id="media-verdict" class="font-label-sm text-label-sm tracking-wide">نوع الإخراج: <span class="bg-clay-accent/20 text-clay-accent px-1.5 py-0.5 rounded font-bold mr-1 inline-block">فيديو</span></span>
+<span id="media-verdict" class="font-label-sm text-label-sm tracking-wide"><span data-i18n="out_type_label">نوع الإخراج:</span> <span class="bg-clay-accent/20 text-primary-fixed-dim px-1.5 py-0.5 rounded font-bold mr-1 inline-block" data-i18n="out_video">فيديو</span></span>
 </div>
 <div class="flex gap-stack-sm animate-pulse" style="animation-duration: 3s;">
-<button id="kind-audio" data-kind="audio" class="kind-card text-on-surface-variant opacity-50 px-stack-sm py-unit rounded font-label-sm text-label-sm border border-transparent transition-all duration-300 apple-ease hover:opacity-80 hover:bg-surface-variant/30 hover:scale-105 active:scale-95">MP3</button>
+<button id="kind-audio" data-kind="audio" class="kind-card text-on-surface-variant opacity-70 px-stack-sm py-unit rounded font-label-sm text-label-sm border border-transparent transition-all duration-300 apple-ease hover:opacity-100 hover:bg-surface-variant/30 hover:scale-105 active:scale-95">MP3</button>
 <button id="kind-video" data-kind="video" class="kind-card selected bg-clay-accent/10 text-clay-accent border border-clay-accent/30 px-stack-sm py-unit rounded font-label-sm text-label-sm transition-all duration-300 apple-ease hover:bg-clay-accent/20 hover:scale-105 active:scale-95">MP4</button>
 </div>
 </div>
 <!-- URL Card -->
 <div id="dl-container" class="w-full">
 <div class="glass-effect border border-border-muted rounded-lg p-stack-lg flex flex-col gap-stack-md fade-in-up delay-200 hover:shadow-lg transition-shadow duration-300">
-<h3 class="font-label-md text-label-md text-cream-text">تحميل من رابط</h3>
+<h3 class="font-label-md text-label-md text-cream-text" data-i18n="dl_url_title">تحميل من رابط</h3>
 <div class="flex gap-stack-sm">
 <input id="url-input" class="flex-1 bg-coal-surface/50 border border-border-muted rounded px-stack-md py-stack-sm text-cream-text focus:outline-none focus:border-clay-accent focus:ring-1 focus:ring-clay-accent font-body-md text-body-md transition-all duration-300 apple-ease hover:border-on-surface-variant" placeholder="https://..." type="text"/>
 <button id="btn-download" class="bg-surface-container text-cream-text border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high hover:border-on-surface-variant transition-all duration-300 apple-ease font-label-md text-label-md flex items-center gap-unit active:scale-95 shadow-sm group">
-<span class="material-symbols-outlined transition-transform duration-300 group-hover:translate-y-0.5" data-icon="download">download</span>
-                        تحميل
+<span class="material-symbols-outlined transition-transform duration-300 group-hover:translate-y-0.5" data-icon="download" aria-hidden="true">download</span>
+                        <span data-i18n="dl_btn">تحميل</span>
                     </button>
 </div>
 <div class="flex items-center gap-unit text-on-surface-variant opacity-70 transition-opacity duration-300 hover:opacity-100">
-<span class="material-symbols-outlined text-sm" data-icon="info">info</span>
-<button id="btn-upd-ytdlp" class="font-label-sm text-label-sm hover:text-clay-accent cursor-pointer transition-colors duration-200">yt-dlp محدث لآخر إصدار</button>
+<span class="material-symbols-outlined text-sm" data-icon="info" aria-hidden="true">info</span>
+<button id="btn-upd-ytdlp" class="font-label-sm text-label-sm hover:text-clay-accent cursor-pointer transition-colors duration-200" data-i18n="ytdlp_uptodate">yt-dlp محدث لآخر إصدار</button>
 </div>
 
     <div id="dl-progress-wrap" class="hidden w-full h-1.5 bg-border-muted rounded-full overflow-hidden mt-2">
@@ -234,7 +233,7 @@
 <div class="flex items-center gap-stack-sm">
 <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="pl_seek">الموضع</span>
 <div class="relative flex-1 flex flex-col gap-unit">
-<input id="pl-seek" type="range" min="0" max="100" step="0.1" value="0" class="w-full accent-[#da7756] cursor-pointer"/>
+<input id="pl-seek" type="range" min="0" max="100" step="0.1" value="0" class="w-full accent-[#da7756] cursor-pointer" data-i18n-aria="pl_seek"/>
 <div id="pl-ticks" class="relative h-1.5 rounded bg-coal-surface/60 border border-border-muted overflow-hidden"></div>
 </div>
 <span id="pl-pos" class="font-label-sm text-label-sm text-on-surface-variant w-20 text-left" dir="ltr">0:00</span>
@@ -269,87 +268,88 @@
 <aside class="w-80 flex-shrink-0 glass-effect border-r border-border-muted flex flex-col h-full z-40 shadow-[-10px_0_20px_-10px_rgba(0,0,0,0.5)]">
 <div class="p-stack-md border-b border-border-muted bg-coal-surface/60 backdrop-blur-md">
 <h2 class="mursala-text font-label-md text-label-md text-clay-accent flex items-center gap-stack-sm drop-shadow-sm w-full">
-<span class="material-symbols-outlined" data-icon="format_list_bulleted">format_list_bulleted</span>
-                    طابور المعالجة <span id="batch-counter" class="hidden text-sm mx-2"></span>
-<button id="btn-open-folder" class="mr-auto text-on-surface-variant hover:text-clay-accent transition-colors p-1" title="فتح مجلد الإخراج">
-<span class="material-symbols-outlined" data-icon="folder_open">folder_open</span>
+<span class="flex items-center gap-stack-sm" data-i18n="queue_title"><span class="material-symbols-outlined" data-icon="format_list_bulleted" aria-hidden="true">format_list_bulleted</span>
+                    طابور المعالجة</span> <span id="batch-counter" class="hidden text-sm mx-2"></span>
+<button id="btn-open-folder" class="mr-auto text-on-surface-variant hover:text-clay-accent transition-colors p-1" data-i18n-title="open_out_folder" title="فتح مجلد الإخراج" data-i18n-aria="open_out_folder">
+<span class="material-symbols-outlined" data-icon="folder_open" aria-hidden="true">folder_open</span>
 </button>
                 </h2>
 </div>
 <div id="batch-list" class="flex-1 overflow-y-auto p-stack-md flex flex-col gap-stack-sm">
 <!-- Queue Item Active -->
-<div class="bg-coal-surface/80 border border-clay-accent/40 rounded p-stack-sm flex flex-col gap-unit relative overflow-hidden shadow-[0_4px_12px_-4px_rgba(218,119,86,0.2)] transition-all duration-300 opacity-50 cursor-default">
+<div class="bg-coal-surface/80 border border-clay-accent/40 rounded p-stack-sm flex flex-col gap-unit relative overflow-hidden shadow-[0_4px_12px_-4px_rgba(218,119,86,0.2)] transition-all duration-300 opacity-70 cursor-default">
 <div class="absolute inset-0 bg-clay-accent/10 w-1/3 transition-all duration-1000 ease-linear" id="progress-bg"></div>
 <div class="flex justify-between items-center relative z-10">
 <span class="font-label-sm text-label-sm text-cream-text truncate w-3/4 font-semibold" dir="ltr">track_01_vocals.mp3</span>
-<span class="font-label-sm text-label-sm text-clay-accent font-bold drop-shadow-sm">33%</span>
+<span class="font-label-sm text-label-sm text-cream-text font-bold drop-shadow-sm">33%</span>
 </div>
 <div class="h-1.5 bg-border-muted rounded-full overflow-hidden relative z-10 shadow-inner">
 <div class="h-full bg-clay-accent w-1/3 rounded-full relative transition-all duration-1000 ease-linear shadow-[0_0_10px_rgba(218,119,86,0.8)]" id="progress-bar"></div>
 </div>
-<span class="font-label-sm text-label-sm text-on-surface-variant relative z-10">1/3 جاري المعالجة...</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant relative z-10" data-i18n="queue_processing_3">1/3 جاري المعالجة...</span>
 </div>
 <!-- Queue Item Pending -->
-<div class="bg-coal-surface/40 border border-border-muted rounded p-stack-sm flex flex-col gap-unit opacity-30 transition-all duration-300 cursor-default">
+<div class="bg-coal-surface/40 border border-border-muted rounded p-stack-sm flex flex-col gap-unit opacity-70 transition-all duration-300 cursor-default">
 <div class="flex justify-between items-center">
 <span class="font-label-sm text-label-sm text-cream-text truncate" dir="ltr">podcast_ep44.wav</span>
 </div>
-<span class="font-label-sm text-label-sm text-on-surface-variant">في الانتظار</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="queue_pending">في الانتظار</span>
 </div>
 </div>
 <div class="p-stack-md border-t border-border-muted">
 <h3 class="font-label-md text-label-md text-clay-accent flex items-center gap-stack-sm mb-2">
-<span class="material-symbols-outlined text-sm" data-icon="lan">lan</span>
-                    وظائف خارجية
+<span class="material-symbols-outlined text-sm" data-icon="lan" aria-hidden="true">lan</span>
+                    <span data-i18n="ext_title">وظائف خارجية</span>
                 </h3>
 <div id="ext-list" class="flex flex-col gap-unit">
-<span id="ext-empty" class="font-label-sm text-label-sm text-on-surface-variant opacity-60">لا وظائف خارجية جارية</span>
+<span id="ext-empty" class="font-label-sm text-label-sm text-on-surface-variant opacity-80" data-i18n="ext_empty">لا وظائف خارجية جارية</span>
 </div>
 </div>
 </aside>
 </main>
 <!-- Bottom Log Drawer -->
 <div id="logcard" class="glass-effect border-t border-border-muted flex flex-col z-50 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.5)] collapsed">
-<button id="log-toggle" class="w-full flex justify-between items-center px-gutter py-stack-sm bg-coal-surface/80 hover:bg-surface-container-high transition-colors duration-300 apple-ease cursor-pointer border-b border-border-muted group active:bg-surface-variant">
-<div class="flex items-center gap-stack-md">
+<div class="w-full flex justify-between items-center px-gutter py-stack-sm bg-coal-surface/80 border-b border-border-muted group">
+<button id="log-toggle" type="button" aria-expanded="false" aria-controls="log-view" class="flex-1 flex items-center gap-stack-md text-left hover:bg-surface-container-high transition-colors duration-300 apple-ease cursor-pointer active:bg-surface-variant bg-transparent border-0 p-0">
     <span class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-unit transition-colors duration-300 group-hover:text-cream-text">
-        <span class="material-symbols-outlined text-sm" data-icon="terminal">terminal</span>
-        سجل الأحداث / Activity Log
+        <span class="material-symbols-outlined text-sm" data-icon="terminal" aria-hidden="true">terminal</span>
+        <span data-i18n="log_toggle">سجل الأحداث / Activity Log</span>
     </span>
-    <label class="autoscroll text-xs text-on-surface-variant hover:text-cream-text transition-colors flex items-center gap-unit cursor-pointer">
-        <input type="checkbox" id="autoscroll" class="form-checkbox h-3 w-3 text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent focus:ring-offset-coal-surface transition-all duration-200" checked /> المتابعة التلقائية
-    </label>
-</div>
-<div class="flex items-center gap-stack-md">
-    <span class="material-symbols-outlined text-on-surface-variant text-sm transition-transform duration-300 apple-ease group-hover:-translate-y-0.5 group-hover:text-cream-text" data-icon="expand_less">expand_less</span>
-</div>
 </button>
-<div class="h-32 bg-coal-bg/90 p-stack-sm overflow-y-auto font-mono-code text-mono-code text-on-surface-variant scroll-smooth" dir="ltr" id="log-view">
+    <label class="autoscroll text-xs text-on-surface-variant hover:text-cream-text transition-colors flex items-center gap-unit cursor-pointer">
+        <input type="checkbox" id="autoscroll" class="form-checkbox h-3 w-3 text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent focus:ring-offset-coal-surface transition-all duration-200" checked />
+        <span data-i18n="autoscroll">المتابعة التلقائية</span>
+    </label>
+<div class="flex items-center gap-stack-md">
+    <span class="material-symbols-outlined text-on-surface-variant text-sm transition-transform duration-300 apple-ease group-hover:-translate-y-0.5 group-hover:text-cream-text" data-icon="expand_less" aria-hidden="true">expand_less</span>
+</div>
+</div>
+<div class="h-32 bg-coal-bg/90 p-stack-sm overflow-y-auto font-mono-code text-mono-code text-on-surface-variant scroll-smooth" dir="ltr" id="log-view" role="log" aria-live="polite" aria-relevant="additions" data-i18n-aria="log_toggle">
 <div class="flex gap-stack-sm hover:bg-surface-variant/40 transition-colors duration-200 px-unit py-1 rounded cursor-text animate-log-entry" style="animation-delay: 100ms;">
 <span class="text-tertiary font-bold drop-shadow-sm">[INFO]</span>
-<span>yt-dlp update check: already up to date.</span>
+<span data-i18n="log_demo_info">yt-dlp update check: already up to date.</span>
 </div>
 <div class="flex gap-stack-sm hover:bg-surface-variant/40 transition-colors duration-200 px-unit py-1 rounded cursor-text animate-log-entry" style="animation-delay: 200ms;">
 <span class="text-warn-yellow font-bold drop-shadow-sm">[WARN]</span>
-<span>Track 2 audio format might cause slight degradation.</span>
+<span data-i18n="log_demo_warn">Track 2 audio format might cause slight degradation.</span>
 </div>
 <div class="flex gap-stack-sm hover:bg-surface-variant/40 transition-colors duration-200 px-unit py-1 rounded cursor-text animate-log-entry" style="animation-delay: 300ms;">
 <span class="text-error font-bold drop-shadow-sm">[ERROR]</span>
-<span>Failed to locate model weights in ./models directory.</span>
+<span data-i18n="log_demo_error">Failed to locate model weights in ./models directory.</span>
 </div>
 <div class="flex gap-stack-sm hover:bg-surface-variant/40 transition-colors duration-200 px-unit py-1 rounded cursor-text animate-log-entry" style="animation-delay: 400ms;">
 <span class="text-tertiary font-bold drop-shadow-sm">[INFO]</span>
-<span>Initialization complete. Ready.</span>
+<span data-i18n="log_demo_ready">Initialization complete. Ready.</span>
 </div>
 </div>
 </div>
 
 <!-- About modal (Sprint B3) -->
-<div id="about-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+<div id="about-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="about-title">
 <div class="glass-effect border border-border-muted rounded-xl p-stack-lg w-96 max-w-[90vw] flex flex-col gap-stack-md fade-in-up" style="animation-duration: 0.25s;">
 <div class="flex justify-between items-center">
-<h3 class="font-label-md text-label-md text-clay-accent" data-i18n="about_title">حول HaramLite</h3>
-<button id="about-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit rounded cursor-pointer" title="إغلاق">
+<h3 id="about-title" class="font-label-md text-label-md text-clay-accent" data-i18n="about_title">حول HaramLite</h3>
+<button id="about-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit rounded cursor-pointer" title="إغلاق" data-i18n-title="dlg_close" data-i18n-aria="dlg_close">
 <span class="material-symbols-outlined text-sm" data-icon="close">close</span>
 </button>
 </div>
@@ -361,9 +361,9 @@
      dropdown is too narrow, and hiding the token field behind its own toggle
      made the feature impossible to switch on (real field defect, 2026-09-11). -->
 <!-- سؤال مرة واحدة: التشغيل مع النظام (يظهر بعد التثبيت فقط) -->
-  <div id="autostart-overlay" class="hidden fixed inset-0 z-[130] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+  <div id="autostart-overlay" class="hidden fixed inset-0 z-[130] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="autostart-ask-title">
     <div class="glass-effect border border-border-muted rounded-xl p-stack-lg w-[26rem] max-w-[92vw] flex flex-col gap-stack-md fade-in-up" style="animation-duration: 0.25s;">
-      <h3 class="font-label-md text-label-md text-clay-accent" data-i18n="autostart_ask_title">تشغيل HaramLite مع بدء تشغيل ويندوز؟</h3>
+      <h3 id="autostart-ask-title" class="font-label-md text-label-md text-clay-accent" data-i18n="autostart_ask_title">تشغيل HaramLite مع بدء تشغيل ويندوز؟</h3>
       <p class="font-body-sm text-sm text-on-surface-variant leading-relaxed" data-i18n="autostart_ask_body">سيعمل البرنامج في الخلفية بلا فتح نافذة، فيبقى بوت تيليجرام وتكامل المتصفح جاهزين بعد كل إقلاع. يمكنك تغيير هذا في أي وقت من الإعدادات.</p>
       <div class="flex gap-stack-sm justify-end">
         <button id="autostart-no" class="px-stack-md py-unit rounded border border-border-muted text-on-surface-variant hover:text-cream-text font-label-sm text-label-sm cursor-pointer" data-i18n="autostart_no">لا، لاحقاً</button>
@@ -372,11 +372,11 @@
     </div>
   </div>
 
-  <div id="tg-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+  <div id="tg-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="tg-panel-title">
 <div class="glass-effect border border-border-muted rounded-xl p-stack-lg w-[30rem] max-w-[92vw] max-h-[85vh] overflow-y-auto flex flex-col gap-stack-md fade-in-up" style="animation-duration: 0.25s;">
 <div class="flex justify-between items-center">
-<h3 class="font-label-md text-label-md text-clay-accent" data-i18n="tg_title">📨 بوت تيليجرام</h3>
-<button id="tg-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit rounded cursor-pointer" title="إغلاق">
+<h3 id="tg-panel-title" class="font-label-md text-label-md text-clay-accent" data-i18n="tg_title">📨 بوت تيليجرام</h3>
+<button id="tg-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit rounded cursor-pointer" title="إغلاق" data-i18n-title="dlg_close" data-i18n-aria="dlg_close">
 <span class="material-symbols-outlined text-sm" data-icon="close">close</span>
 </button>
 </div>
@@ -399,8 +399,8 @@
 <div id="tg-pair-row" class="flex items-center gap-unit bg-coal-surface border border-border-muted rounded p-unit">
     <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="tg_paircode">رمز الاقتران</span>
     <span id="tg-pair-code" class="font-label-md text-label-md text-clay-accent tracking-[0.25em]" dir="ltr">------</span>
-    <button id="tg-pair-new" type="button" class="material-symbols-outlined text-sm text-on-surface-variant hover:text-clay-accent cursor-pointer transition-colors ms-auto" title="رمز جديد">refresh</button>
-    <button id="tg-pair-copy" type="button" class="material-symbols-outlined text-sm text-on-surface-variant hover:text-clay-accent cursor-pointer transition-colors" title="نسخ">content_copy</button>
+    <button id="tg-pair-new" type="button" class="material-symbols-outlined text-sm text-on-surface-variant hover:text-clay-accent cursor-pointer transition-colors ms-auto" title="رمز جديد" data-i18n-title="tg_pair_new" data-i18n-aria="tg_pair_new">refresh</button>
+    <button id="tg-pair-copy" type="button" class="material-symbols-outlined text-sm text-on-surface-variant hover:text-clay-accent cursor-pointer transition-colors" title="نسخ" data-i18n-title="tg_pair_copy" data-i18n-aria="tg_pair_copy">content_copy</button>
 </div>
 <span id="tg-pair-hint" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="tg_pair_hint">أرسل هذا الرمز إلى بوتك في تيليجرام لربط حسابك (صالح 10 دقائق).</span>
 <span id="tg-status" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed"></span>
@@ -422,19 +422,19 @@
 <!-- Bridge completion card (browser-initiated jobs) -->
 <div id="bridge-card" class="hidden fixed bottom-4 right-4 z-[110] glass-effect border border-border-muted rounded-xl p-stack-md flex flex-col gap-unit shadow-xl max-w-xs">
 <div class="flex justify-between items-center">
-<span class="font-label-sm text-label-sm text-clay-accent font-bold">🎵 اكتمل طلب المتصفح</span>
-<button id="bridge-card-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit cursor-pointer">✕</button>
+<span class="font-label-sm text-label-sm text-clay-accent font-bold" data-i18n="bridge_card_title">🎵 اكتمل طلب المتصفح</span>
+<button id="bridge-card-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit cursor-pointer" data-i18n-aria="dlg_close">✕</button>
 </div>
 <span id="bridge-card-text" class="font-body-sm text-sm text-cream-text"></span>
-<button id="bridge-card-open" class="bg-clay-accent text-coal-surface rounded px-stack-sm py-unit font-label-sm text-label-sm font-bold self-start hover:bg-primary-container transition-all duration-300 cursor-pointer">📂 فتح مجلد النتائج</button>
+<button id="bridge-card-open" class="bg-clay-accent text-coal-surface rounded px-stack-sm py-unit font-label-sm text-label-sm font-bold self-start hover:bg-primary-container transition-all duration-300 cursor-pointer" data-i18n="bridge_card_open">📂 فتح مجلد النتائج</button>
 </div>
 
 <!-- Repair wizard (Sprint C1) -->
-<div id="repair-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+<div id="repair-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="repair-title">
 <div class="glass-effect border border-border-muted rounded-xl p-stack-lg w-[28rem] max-w-[92vw] flex flex-col gap-stack-md fade-in-up" style="animation-duration: 0.25s;">
 <div class="flex justify-between items-center">
-<h3 class="font-label-md text-label-md text-clay-accent" data-i18n="repair_title">مكوّنات ناقصة</h3>
-<button id="repair-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit rounded cursor-pointer" title="إغلاق">
+<h3 id="repair-title" class="font-label-md text-label-md text-clay-accent" data-i18n="repair_title">مكوّنات ناقصة</h3>
+<button id="repair-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit rounded cursor-pointer" title="إغلاق" data-i18n-title="dlg_close" data-i18n-aria="dlg_close">
 <span class="material-symbols-outlined text-sm" data-icon="close">close</span>
 </button>
 </div>

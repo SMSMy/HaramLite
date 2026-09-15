@@ -159,6 +159,73 @@ const i18n = {
     cuda_downloading: 'جارٍ تنزيل مكتبات تسريع CUDA…',
     cuda_download_failed: 'تعذر تنزيل مكتبات CUDA — سيبقى DirectML نشطاً. أعد المحاولة لاحقاً',
     cuda_banner_enable: 'كرت NVIDIA لديك مدعوم! فعّل تسريع CUDA من الإعدادات — سيُنزّل التطبيق المكتبات تلقائياً (تنزيل لمرة واحدة).',
+    // Audit 2026-09-15: every string still hard-coded in index.html got a key so
+    // the English UI is no longer half-Arabic. `tagline_pre`/`tagline_hl` keep the
+    // same two-span markup in both languages because applyLang() writes innerHTML.
+    tagline_pre: 'الموسيقى لا تليق بقلبٍ يريد',
+    tagline_hl: 'الطمأنينة',
+    dlg_advanced: 'إعدادات متقدمة',
+    keep_inst: 'الاحتفاظ بالموسيقى (Keep Instrumental)',
+    audio_format: 'صيغة الصوت:',
+    dropzone_label: 'اسحب وأفلت الملفات هنا أو اختر ملفاً من الجهاز',
+    drop_hint_plain: 'اسحب وأفلت الملفات هنا أو',
+    btn_browse_plain: 'تصفح الملفات',
+    out_type_label: 'نوع الإخراج:',
+    out_video: 'فيديو',
+    out_audio: 'صوت',
+    dl_url_title: 'تحميل من رابط',
+    dl_btn: 'تحميل',
+    ytdlp_uptodate: 'yt-dlp محدث لآخر إصدار',
+    queue_title: 'طابور المعالجة',
+    open_out_folder: 'فتح مجلد الإخراج',
+    queue_processing_3: '1/3 جاري المعالجة...',
+    queue_processing: 'جاري المعالجة...',
+    queue_pending: 'في الانتظار',
+    ext_title: 'وظائف خارجية',
+    ext_empty: 'لا وظائف خارجية جارية',
+    log_toggle: 'سجل الأحداث / Activity Log',
+    log_demo_info: 'yt-dlp update check: already up to date.',
+    log_demo_warn: 'Track 2 audio format might cause slight degradation.',
+    log_demo_error: 'Failed to locate model weights in ./models directory.',
+    log_demo_ready: 'Initialization complete. Ready.',
+    dlg_close: 'إغلاق',
+    tg_pair_new: 'رمز جديد',
+    tg_pair_copy: 'نسخ',
+    sep_need_file: 'أفلت ملفاً أو اختره أولاً — سيُفحص تلقائياً',
+    sep_done_secs: 'تم الفصل خلال {secs}s',
+    sep_out_audio: 'صوت:',
+    sep_out_music: 'موسيقى:',
+    sep_out_video: 'فيديو:',
+    sep_cancelled: 'أُلغيت المعالجة.',
+    sep_failed: 'فشل الفصل:',
+    dl_done: 'تم التنزيل:',
+    dl_failed: 'فشل التنزيل:',
+    batch_label: '📦 الدفعة:',
+    batch_done: 'اكتملت الدفعة:',
+    batch_failed_list: 'فشل:',
+    batch_restored: '⏸ دفعة منقطعة ({count}{skipped}) — اضغط فصل للاستئناف',
+    batch_restored_skipped: '، تخطي {skipped} منجزة',
+    cancel_processing: 'إلغاء المعالجة',
+    open_file: 'فتح الملف',
+    open_folder: 'فتح المجلد',
+    retry: 'إعادة المحاولة',
+    open_folder_output: 'فتح مجلد الإخراج',
+    ext_cancel: 'إلغاء',
+    ext_bridge_detail: 'تنزيل/فصل عبر المتصفح…',
+    ext_bridge_queued: ' (في الطابور: {n})',
+    ext_watch_detail: 'معالجة ملف مراقب…',
+    sep_done_short: '✓ مكتمل',
+    sep_done_preview: '✓ مكتمل (عينة)',
+    sep_failed_short: '✗ فشل',
+    probe_flag_disguised: '⚠ صوت متنكّر في حاوية فيديو — سنعالجه كصوت',
+    probe_flag_cover: 'ℹ الفيديو مجرد صورة غلاف',
+    quality_same: 'نفس الجودة ({h}p)',
+    bridge_done_in: 'تم في {secs}s',
+    bridge_card_title: '🎵 اكتمل طلب المتصفح',
+    bridge_card_open: '📂 فتح مجلد النتائج',
+    autostart_failed: 'تعذر تغيير التشغيل مع النظام:',
+    toggle_pause: '⏸ إيقاف',
+    toggle_cancel: '⏹ إلغاء',
   },
   en: {
     actions_title: 'Diagnostics',
@@ -289,13 +356,79 @@ const i18n = {
     cuda_downloading: 'Downloading CUDA acceleration libraries…',
     cuda_download_failed: 'Could not download the CUDA libraries — DirectML stays active. Try again later',
     cuda_banner_enable: 'Your NVIDIA GPU is supported! Enable CUDA acceleration in Settings — the app downloads the libraries automatically (one-time download).',
+    tagline_pre: 'Music does not suit a heart that seeks',
+    tagline_hl: 'tranquility',
+    dlg_advanced: 'Advanced settings',
+    keep_inst: 'Keep instrumental',
+    audio_format: 'Audio format:',
+    dropzone_label: 'Drag and drop files here, or browse files',
+    drop_hint_plain: 'Drag and drop files here or',
+    btn_browse_plain: 'Browse files',
+    out_type_label: 'Output type:',
+    out_video: 'video',
+    out_audio: 'audio',
+    dl_url_title: 'Download from a link',
+    dl_btn: 'Download',
+    ytdlp_uptodate: 'yt-dlp is up to date',
+    queue_title: 'Processing queue',
+    open_out_folder: 'Open the output folder',
+    queue_processing_3: '1/3 processing...',
+    queue_processing: 'Processing...',
+    queue_pending: 'Waiting',
+    ext_title: 'External jobs',
+    ext_empty: 'No external jobs running',
+    log_toggle: 'Activity Log',
+    log_demo_info: 'yt-dlp update check: already up to date.',
+    log_demo_warn: 'Track 2 audio format might cause slight degradation.',
+    log_demo_error: 'Failed to locate model weights in ./models directory.',
+    log_demo_ready: 'Initialization complete. Ready.',
+    dlg_close: 'Close',
+    tg_pair_new: 'New code',
+    tg_pair_copy: 'Copy',
+    sep_need_file: 'Drop or pick a file first — it will be probed automatically',
+    sep_done_secs: 'Separation finished in {secs}s',
+    sep_out_audio: 'audio:',
+    sep_out_music: 'music:',
+    sep_out_video: 'video:',
+    sep_cancelled: 'Processing cancelled.',
+    sep_failed: 'Separation failed:',
+    dl_done: 'Downloaded:',
+    dl_failed: 'Download failed:',
+    batch_label: '📦 Batch:',
+    batch_done: 'Batch complete:',
+    batch_failed_list: 'Failed:',
+    batch_restored: '⏸ Interrupted batch ({count}{skipped}) — press Separate to resume',
+    batch_restored_skipped: ', {skipped} finished skipped',
+    cancel_processing: 'Cancel processing',
+    open_file: 'Open file',
+    open_folder: 'Open folder',
+    retry: 'Retry',
+    open_folder_output: 'Open output folder',
+    ext_cancel: 'Cancel',
+    ext_bridge_detail: 'Downloading/separating through the browser…',
+    ext_bridge_queued: ' (queued: {n})',
+    ext_watch_detail: 'Processing a watched file…',
+    sep_done_short: '✓ Done',
+    sep_done_preview: '✓ Done (preview)',
+    sep_failed_short: '✗ Failed',
+    probe_flag_disguised: '⚠ Audio disguised inside a video container — we will treat it as audio',
+    probe_flag_cover: 'ℹ The video is only cover art',
+    quality_same: 'Same quality ({h}p)',
+    bridge_done_in: 'done in {secs}s',
+    bridge_card_title: '🎵 Browser request finished',
+    bridge_card_open: '📂 Open the results folder',
+    autostart_failed: 'Could not change startup:',
+    toggle_pause: '⏸ Stop',
+    toggle_cancel: '⏹ Cancel',
   },
 } as const;
 
 let lang: 'ar' | 'en' = localStorage.getItem('hl.lang') === 'en' ? 'en' : 'ar';
 
-function t(key: keyof (typeof i18n)['ar']): string {
-  return i18n[lang][key];
+function t(key: keyof (typeof i18n)['ar'], vars?: Record<string, string | number>): string {
+  const s = i18n[lang][key];
+  if (!vars) return s;
+  return s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 }
 
 function applyLang(): void {
@@ -305,6 +438,50 @@ function applyLang(): void {
     const key = el.dataset.i18n as keyof (typeof i18n)['ar'];
     el.innerHTML = i18n[lang][key];
   });
+  // Accessible names for icon-only controls / regions, kept symmetric with the
+  // visible label (WCAG 2.5.3 label in name).
+  document.querySelectorAll<HTMLElement>('[data-i18n-aria]').forEach((el) => {
+    const key = el.dataset.i18nAria as keyof (typeof i18n)['ar'];
+    if (i18n[lang][key] !== undefined) el.setAttribute('aria-label', i18n[lang][key]);
+  });
+  document.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach((el) => {
+    const key = el.dataset.i18nTitle as keyof (typeof i18n)['ar'];
+    if (i18n[lang][key] !== undefined) el.setAttribute('title', i18n[lang][key]);
+  });
+}
+
+/* ── modal focus containment (WCAG 2.4.3 / 2.1.2) ──────────────────────
+ * The dialogs were reachable but focus could walk out of them with Tab, and
+ * «حول»/«الإصلاح» could not be dismissed from the keyboard at all. */
+function trapFocus(overlay: HTMLElement): () => void {
+  const prev = document.activeElement as HTMLElement | null;
+  const list = (): HTMLElement[] => Array.from(
+    overlay.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((el) => !el.classList.contains('hidden') && el.getBoundingClientRect().width + el.getBoundingClientRect().height > 0);
+  const onKey = (ev: KeyboardEvent): void => {
+    if (ev.key !== 'Tab') return;
+    const items = list();
+    if (!items.length) { ev.preventDefault(); return; }
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement as HTMLElement | null;
+    if (ev.shiftKey && (active === first || !overlay.contains(active))) {
+      ev.preventDefault();
+      last.focus();
+    } else if (!ev.shiftKey && (active === last || !overlay.contains(active))) {
+      ev.preventDefault();
+      first.focus();
+    }
+  };
+  document.addEventListener('keydown', onKey, true);
+  const first = list()[0];
+  if (first) first.focus();
+  return () => {
+    document.removeEventListener('keydown', onKey, true);
+    if (prev && document.contains(prev)) prev.focus();
+  };
 }
 
 /* ── path sanitization (B1/B2 root cause) ─────────────────────────── */
@@ -407,10 +584,14 @@ function wireLogToggle(): void {
     if (icon) {
        icon.textContent = logOpen ? 'expand_more' : 'expand_less';
     }
+    // the toggle no longer wraps the autoscroll checkbox, so its expanded state
+    // is announced instead of implied by nesting
+    toggle?.setAttribute('aria-expanded', logOpen ? 'true' : 'false');
     if (logOpen) void refresh();
   };
   toggle?.addEventListener('click', (ev) => {
-    // don't toggle if clicking on autoscroll
+    // the autoscroll checkbox is a SIBLING of the toggle now (it used to be
+    // nested inside the button — invalid HTML), so its clicks never reach here.
     if ((ev.target as HTMLElement).closest('.autoscroll')) return;
     logOpen = !logOpen;
     localStorage.setItem('hl.log_open', logOpen ? '1' : '0');
@@ -832,6 +1013,17 @@ function sepResultEl() { return document.getElementById('sep-result'); }
 function pathInputEl() { return document.getElementById('media-path') as HTMLInputElement; }
 function sepBtnEl() { return document.getElementById('btn-separate') as HTMLButtonElement; }
 
+/** The «نوع الإخراج: فيديو» verdict line. Markup is static and trusted (never
+ *  interpolates backend data); both the label and the value span carry a
+ *  data-i18n key so applyLang keeps them translated after a later rebuild. */
+function verdictHtml(outKind: 'audio' | 'video'): string {
+  const key = outKind === 'video' ? 'out_video' : 'out_audio';
+  // text-primary-fixed-dim (#ffb59d) instead of text-clay-accent: the clay
+  // chip background lifts the panel, and clay-on-clay only reached 4.17:1
+  // (this token is 7.62:1) — measured, see the audit in the report.
+  return `<span data-i18n="out_type_label">${t('out_type_label')}</span> <span class="bg-clay-accent/20 text-primary-fixed-dim px-1.5 py-0.5 rounded font-bold mr-1 inline-block" data-i18n="${key}">${t(key)}</span>`;
+}
+
 /** Validate a pasted/dropped path BEFORE any backend call. Returns cleaned path or null. */
 async function validatePath(rawPath: string): Promise<{ ok: true; path: string } | { ok: false }> {
   const p = sanitizePath(rawPath);
@@ -879,8 +1071,8 @@ async function runProbe(rawPath?: string): Promise<MediaInfo | null> {
       return null;
     }
     const flags: string[] = [];
-    if (info.audio_disguised_as_video) flags.push('⚠ ' + 'صوت متنكّر في حاوية فيديو — سنعالجه كصوت');
-    if (info.video_is_cover_art) flags.push('ℹ الفيديو مجرد صورة غلاف');
+    if (info.audio_disguised_as_video) flags.push('⚠ ' + t('probe_flag_disguised'));
+    if (info.video_is_cover_art) flags.push('ℹ ' + t('probe_flag_cover'));
 
     // Auto-switch UI based on media type
     if (info.has_video && !info.video_is_cover_art) {
@@ -891,8 +1083,7 @@ async function runProbe(rawPath?: string): Promise<MediaInfo | null> {
 
     const kindSel = document.querySelector<HTMLElement>('.kind-card.selected');
     const outKind = (kindSel?.dataset.kind as 'audio' | 'video') ?? 'video';
-    const word = outKind === 'video' ? 'فيديو' : 'صوت';
-    setVerdictHtml(v!, `نوع الإخراج: <span class="bg-clay-accent/20 text-clay-accent px-1.5 py-0.5 rounded font-bold mr-1 inline-block">${word}</span>`, false);
+    setVerdictHtml(v!, verdictHtml(outKind), false);
 
     lastProbeOk = true;
     sepBtnEl().disabled = false;
@@ -1043,8 +1234,7 @@ function wireKinds(): void {
       
       const v = document.getElementById('media-verdict');
       if (v) {
-        const word = card.dataset.kind === 'video' ? 'فيديو' : 'صوت';
-        setVerdictHtml(v, `نوع الإخراج: <span class="bg-clay-accent/20 text-clay-accent px-1.5 py-0.5 rounded font-bold mr-1 inline-block">${word}</span>`);
+        setVerdictHtml(v, verdictHtml(card.dataset.kind === 'video' ? 'video' : 'audio'));
       }
       
       invoke('push_log', { level: 'info', message: `kind → ${card.dataset.kind}` });
@@ -1054,7 +1244,7 @@ function wireKinds(): void {
 
 function wireDropzone(): void {
   const dz = document.getElementById('dropzone');
-  dz?.addEventListener('click', async () => {
+  const pickFiles = async (): Promise<void> => {
     const picked = await dialog.open({
       multiple: true,
       filters: [
@@ -1064,6 +1254,17 @@ function wireDropzone(): void {
     if (!picked) return;
     const files = Array.isArray(picked) ? picked : [picked];
     await ingestFiles(files);
+  };
+  dz?.addEventListener('click', () => { void pickFiles(); });
+  // #dropzone is a div with role="button"/tabindex="0": activate it with Enter
+  // or Space exactly like a click. Space is prevented from scrolling, and both
+  // keys are ignored when they come from the inner «تصفح الملفات» button, which
+  // already turns Enter/Space into a click of its own (no double dialog).
+  dz?.addEventListener('keydown', (ev: KeyboardEvent) => {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    if ((ev.target as HTMLElement | null)?.closest('button')) return;
+    ev.preventDefault();
+    void pickFiles();
   });
 
   const win = getCurrentWebviewWindow();
@@ -1096,8 +1297,7 @@ async function ingestFiles(files: string[]): Promise<void> {
   setBatchCounter(0, batchQueue.length);
   const kindSel = document.querySelector<HTMLElement>('.kind-card.selected');
   const outKind = (kindSel?.dataset.kind as 'audio' | 'video') ?? 'video';
-  const word = outKind === 'video' ? 'فيديو' : 'صوت';
-  setVerdictHtml(probeEl(), `نوع الإخراج: <span class="bg-clay-accent/20 text-clay-accent px-1.5 py-0.5 rounded font-bold mr-1 inline-block">${word}</span>`, false);
+  setVerdictHtml(probeEl(), verdictHtml(outKind), false);
   invoke('push_log', { level: 'info', message: `batch queued: ${batchQueue.length} files` });
 }
 
@@ -1128,7 +1328,7 @@ function updateQualityOptions(srcHeight: number | null): void {
     ...ladder.map((h, idx) => {
       const o = document.createElement('option');
       o.value = String(h);
-      o.textContent = idx === 0 ? `نفس الجودة (${h}p)` : `${h}p`;
+      o.textContent = idx === 0 ? t('quality_same', { h }) : `${h}p`;
       return o;
     }),
   );
@@ -1162,7 +1362,7 @@ function setBatchCounter(done: number, total: number): void {
   const el = document.getElementById('batch-counter');
   if (!el) return;
   el.classList.remove('hidden');
-  el.textContent = `📦 الدفعة: ${done}/${total}`;
+  el.textContent = `${t('batch_label')} ${done}/${total}`;
 }
 /** Batch rows must never shrink inside the flex column (30 files squeezed
  *  into slivers) and off-screen rows skip rendering (content-visibility). */
@@ -1207,7 +1407,7 @@ function renderBatchList(): void {
       
       const statusSpan = document.createElement('span');
       statusSpan.className = 'status-text font-label-sm text-label-sm text-on-surface-variant relative z-10 flex-1';
-      statusSpan.textContent = 'في الانتظار';
+      statusSpan.textContent = t('queue_pending');
       
       const bottomRow = document.createElement('div');
       bottomRow.className = 'flex justify-between items-center w-full relative z-10';
@@ -1261,7 +1461,10 @@ function restoreBatchState(): void {
   batchQueue = files;
   renderBatchList();
   setBatchCounter(0, batchQueue.length);
-  showToast(`⏸ دفعة منقطعة (${files.length}${skipped ? `، تخطي ${skipped} منجزة` : ''}) — اضغط فصل للاستئناف`);
+  showToast(t('batch_restored', {
+    count: files.length,
+    skipped: skipped ? t('batch_restored_skipped', { skipped }) : '',
+  }));
   invoke('push_log', { level: 'warn', message: `batch restored after restart: ${files.length} files (${skipped} done skipped)` });
 }
 function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?: string): void {
@@ -1279,11 +1482,13 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?:
       item.querySelector('.batch-pct')?.classList.remove('hidden');
       item.querySelector('.batch-prog-wrap')?.classList.remove('hidden');
       if (statusSpan) {
-          statusSpan.textContent = 'جاري المعالجة...';
+          statusSpan.textContent = t('queue_processing');
+          // full-strength clay, no opacity: clay at 70% on this running row
+          // measured 3.48:1; full strength is 5.87:1 (AA needs 4.5:1 at 12px)
           statusSpan.className = 'status-text font-label-sm text-label-sm text-clay-accent animate-pulse relative z-10 flex-1';
       }
       if (actionsDiv) {
-          actionsDiv.innerHTML = `<button class="text-error hover:text-red-400 p-1" title="إلغاء المعالجة"><span class="material-symbols-outlined text-sm" data-icon="cancel">cancel</span></button>`;
+          actionsDiv.innerHTML = `<button class="text-error hover:text-red-400 p-1" title="${t('cancel_processing')}"><span class="material-symbols-outlined text-sm" data-icon="cancel">cancel</span></button>`;
           actionsDiv.classList.remove('hidden');
           actionsDiv.querySelector('button')?.addEventListener('click', () => {
               invoke('cancel_process').catch(console.error);
@@ -1295,16 +1500,16 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?:
       item.querySelector('.batch-pct')?.classList.add('hidden');
       item.querySelector('.batch-prog-wrap')?.classList.add('hidden');
       if (statusSpan) {
-          statusSpan.textContent = previewEnabled ? '✓ مكتمل (عينة)' : '✓ مكتمل';
+          statusSpan.textContent = previewEnabled ? t('sep_done_preview') : t('sep_done_short');
           statusSpan.className = 'status-text font-label-sm text-label-sm text-tertiary relative z-10 flex-1';
       }
       if (actionsDiv && resultPath) {
           const folderPath = outDirOf(resultPath);
           actionsDiv.innerHTML = `
-            <button class="btn-play text-tertiary hover:text-green-300 p-1 bg-surface-container rounded" title="فتح الملف">
+            <button class="btn-play text-tertiary hover:text-green-300 p-1 bg-surface-container rounded" title="${t('open_file')}">
               <span class="material-symbols-outlined text-sm" data-icon="play_arrow">play_arrow</span>
             </button>
-            <button class="btn-folder text-tertiary hover:text-green-300 p-1 bg-surface-container rounded" title="فتح المجلد">
+            <button class="btn-folder text-tertiary hover:text-green-300 p-1 bg-surface-container rounded" title="${t('open_folder')}">
               <span class="material-symbols-outlined text-sm" data-icon="folder_open">folder_open</span>
             </button>
           `;
@@ -1320,13 +1525,13 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?:
       item.querySelector('.batch-pct')?.classList.add('hidden');
       item.querySelector('.batch-prog-wrap')?.classList.add('hidden');
       if (statusSpan) {
-          statusSpan.textContent = '✗ فشل';
+          statusSpan.textContent = t('sep_failed_short');
           statusSpan.className = 'status-text font-label-sm text-label-sm text-error relative z-10 flex-1';
       }
       // Functional gap: a transient failure used to be a dead end — offer
       // a per-item retry instead of forcing a manual queue rebuild.
       if (actionsDiv) {
-          actionsDiv.innerHTML = `<button class="text-tertiary hover:text-green-300 p-1 bg-surface-container rounded" title="إعادة المحاولة"><span class="material-symbols-outlined text-sm" data-icon="refresh">refresh</span></button>`;
+          actionsDiv.innerHTML = `<button class="text-tertiary hover:text-green-300 p-1 bg-surface-container rounded" title="${t('retry')}"><span class="material-symbols-outlined text-sm" data-icon="refresh">refresh</span></button>`;
           actionsDiv.classList.remove('hidden');
           actionsDiv.querySelector('button')?.addEventListener('click', () => void retryBatchItem(file));
       }
@@ -1455,7 +1660,7 @@ function wireSeparate(): void {
     // single-file fast path
     if (batchQueue.length <= 1) {
       if (!lastProbeOk || !currentMediaPath) {
-        setVerdict(probeEl(), 'أفلت ملفاً أو اختره أولاً — سيُفحص تلقائياً', true);
+        setVerdict(probeEl(), t('sep_need_file'), true);
         return;
       }
       lastSepOpts = { outKind, quality, advFmt };
@@ -1467,7 +1672,7 @@ function wireSeparate(): void {
     lastSepOpts = { outKind, quality, advFmt };
     batchRunning = true;
     batchAbort = false;
-    sepBtnEl().textContent = '⏸ إيقاف';
+    sepBtnEl().textContent = t('toggle_pause');
     const failures: string[] = [];
     const total = batchQueue.length;
     let done = 0;
@@ -1497,8 +1702,8 @@ function wireSeparate(): void {
        <span id="sep-label" data-i18n="${key}">${t(key)}</span>`;
     if (result) {
       result.textContent = failures.length
-        ? `اكتملت الدفعة: ${total - failures.length}/${total} نجح\nفشل:\n${failures.join('\n')}`
-        : `اكتملت الدفعة: ${total}/${total} ✓`;
+        ? `${t('batch_done')} ${total - failures.length}/${total}\n${t('batch_failed_list')}\n${failures.join('\n')}`
+        : `${t('batch_done')} ${total}/${total} ✓`;
       result.classList.remove('hidden');
     }
     invoke('push_log', {
@@ -1524,15 +1729,15 @@ async function runOne(
   singleRunning = true;
   const prevHtml = btn.innerHTML;
   btn.disabled = false; // F-4: stays clickable — it is now the cancel button
-  btn.textContent = '⏹ إلغاء';
+  btn.textContent = t('toggle_cancel');
   result.classList.add('hidden');
   markBatchItem(path, 'run');
   try {
     const res = await runSeparationFor(path, keepInst, o);
-    const lines = [`تم الفصل خلال ${res.seconds.toFixed(1)}s`];
-    if (res.vocals) lines.push(`صوت: ${res.vocals}`);
-    if (res.instrumental) lines.push(`موسيقى: ${res.instrumental}`);
-    if (res.video) lines.push(`فيديو: ${res.video}`);
+    const lines = [t('sep_done_secs', { secs: res.seconds.toFixed(1) })];
+    if (res.vocals) lines.push(`${t('sep_out_audio')} ${res.vocals}`);
+    if (res.instrumental) lines.push(`${t('sep_out_music')} ${res.instrumental}`);
+    if (res.video) lines.push(`${t('sep_out_video')} ${res.video}`);
     result.textContent = lines.join('\n');
     result.classList.remove('hidden');
     const resultPath = res.video || res.vocals || res.instrumental || undefined;
@@ -1540,7 +1745,7 @@ async function runOne(
     void notify(t('notify_done'), fileBaseName(path));
   } catch (e) {
     const msg = String(e);
-    result.textContent = msg.includes('إلغاء') ? 'أُلغيت المعالجة.' : `فشل الفصل: ${e}`;
+    result.textContent = msg.includes('إلغاء') ? t('sep_cancelled') : `${t('sep_failed')} ${e}`;
     result.classList.remove('hidden');
     markBatchItem(path, 'fail');
     invoke('push_log', { level: 'error', message: `separate failed: ${e}` });
@@ -1581,11 +1786,11 @@ function wireUrlDownload(): void {
         ? outDirOf(pathInputEl().value)
         : '';
       const file = await invoke<string>('download_media_cmd', { url, outDir });
-      res.textContent = `تم التنزيل: ${file}`;
+      res.textContent = `${t('dl_done')} ${file}`;
       res.classList.remove('hidden');
       await ingestFiles([file]); // auto-fill + probe the downloaded file
     } catch (e) {
-      res.textContent = `فشل التنزيل: ${e}`;
+      res.textContent = `${t('dl_failed')} ${e}`;
       res.classList.remove('hidden');
     } finally {
       bar.style.inlineSize = '100%';
@@ -1701,13 +1906,36 @@ function wireSettings(): void {
   }
 
   if (btnSettings && menu) {
+    let menuRelease: (() => void) | null = null;
+    const closeMenu = (): void => {
+      menu.classList.add('hidden');
+      menuRelease?.();
+      menuRelease = null;
+    };
+    btnSettings.setAttribute('aria-expanded', menu.classList.contains('hidden') ? 'false' : 'true');
     btnSettings.addEventListener('click', (e) => {
       e.stopPropagation();
-      menu.classList.toggle('hidden');
+      const willOpen = menu.classList.contains('hidden');
+      if (willOpen) {
+        menu.classList.remove('hidden');
+        if (menuRelease === null) menuRelease = trapFocus(menu);
+      } else {
+        closeMenu();
+      }
+      btnSettings.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
     });
     document.addEventListener('click', (e) => {
       if (!menu.contains(e.target as Node) && !btnSettings.contains(e.target as Node)) {
-        menu.classList.add('hidden');
+        closeMenu();
+        btnSettings.setAttribute('aria-expanded', 'false');
+      }
+    });
+    // the settings popup counts as one of the app's dialogs — ESC closes it
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !menu.classList.contains('hidden')) {
+        closeMenu();
+        btnSettings.setAttribute('aria-expanded', 'false');
+        btnSettings.focus();
       }
     });
   }
@@ -1779,8 +2007,8 @@ function renderExtJobs(): void {
   if (!extJobs.size) {
     const s = document.createElement('span');
     s.id = 'ext-empty';
-    s.className = 'font-label-sm text-label-sm text-on-surface-variant opacity-60';
-    s.textContent = 'لا وظائف خارجية جارية';
+    s.className = 'font-label-sm text-label-sm text-on-surface-variant opacity-80';
+    s.textContent = t('ext_empty');
     list.appendChild(s);
     return;
   }
@@ -1795,7 +2023,7 @@ function renderExtJobs(): void {
     name.textContent = `${job.kind === 'bridge' ? '🌐' : '📁'} ${job.name}`;
     const cancel = document.createElement('button');
     cancel.className = 'text-error hover:text-red-400 p-1 flex-shrink-0 font-label-sm text-label-sm';
-    cancel.title = 'إلغاء';
+    cancel.title = t('ext_cancel');
     cancel.textContent = '⏹';
     cancel.addEventListener('click', () => {
       invoke(job.kind === 'bridge' ? 'cancel_bridge_job' : 'cancel_watch_file')
@@ -1823,7 +2051,7 @@ function wireExtJobs(): void {
   void listen<{ name: string; queue?: number }>('bridge-start', (ev) => {
     extJobs.set(`bridge:${ev.payload.name}`, {
       kind: 'bridge', name: ev.payload.name,
-      detail: `تنزيل/فصل عبر المتصفح…${ev.payload.queue ? ` (في الطابور: ${ev.payload.queue})` : ''}`,
+      detail: `${t('ext_bridge_detail')}${ev.payload.queue ? t('ext_bridge_queued', { n: ev.payload.queue }) : ''}`,
       pct: null,
     });
     renderExtJobs();
@@ -1852,7 +2080,7 @@ function wireExtJobs(): void {
   });
   void listen<{ path: string }>('watch-start', (ev) => {
     extJobs.set(`watch:${ev.payload.path}`, {
-      kind: 'watch', name: ev.payload.path, detail: 'معالجة ملف مراقب…', pct: 0,
+      kind: 'watch', name: ev.payload.path, detail: t('ext_watch_detail'), pct: 0,
     });
     renderExtJobs();
   });
@@ -1860,7 +2088,7 @@ function wireExtJobs(): void {
     const job = extJobs.get(`watch:${ev.payload.path}`);
     if (job) {
       job.pct = ev.payload.pct;
-      job.detail = 'معالجة ملف مراقب…';
+      job.detail = t('ext_watch_detail');
       renderExtJobs();
     }
   });
@@ -1903,9 +2131,16 @@ function fillAbout(): void {
 }
 function wireAbout(): void {
   const overlay = document.getElementById('about-overlay');
+  let release: (() => void) | null = null;
+  const close = (): void => {
+    overlay?.classList.add('hidden');
+    release?.();
+    release = null;
+  };
   const open = () => {
     fillAbout();
     overlay?.classList.remove('hidden');
+    if (overlay) release = trapFocus(overlay);
   };
   // External links inside the modal (dev credit, inspiring projects):
   // delegated once on the stable container — innerHTML re-renders freely.
@@ -1917,10 +2152,14 @@ function wireAbout(): void {
     if (url) void openUrl(url).catch((err) => console.error('openUrl failed', err));
   });
   document.getElementById('btn-about')?.addEventListener('click', open);
-  document.getElementById('about-close')?.addEventListener('click', () => overlay?.classList.add('hidden'));
-  document.getElementById('about-ok')?.addEventListener('click', () => overlay?.classList.add('hidden'));
+  document.getElementById('about-close')?.addEventListener('click', close);
+  document.getElementById('about-ok')?.addEventListener('click', close);
   overlay?.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.classList.add('hidden');
+    if (e.target === overlay) close();
+  });
+  // ESC must dismiss this dialog too (the Telegram panel already did).
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && overlay && !overlay.classList.contains('hidden')) close();
   });
 }
 function wireReport(): void {
@@ -2001,24 +2240,44 @@ async function repairAll(): Promise<void> {
   const after = await fetchHealth();
   if (after.length && after.every((r) => r.ok)) {
     showToast(t('repair_all_ok'));
-    document.getElementById('repair-overlay')?.classList.add('hidden');
+    hideRepairDialog();
     void notify(t('repair_all_ok'), '');
   }
 }
 
+/** The overlay + focus trap live in wireRepair(); these two thin wrappers let the
+ *  startup auto-check open the wizard (and repairAll() close it) without
+ *  duplicating the trap bookkeeping. */
+let repairRelease: (() => void) | null = null;
+function showRepairDialog(): void {
+  const overlay = document.getElementById('repair-overlay');
+  overlay?.classList.remove('hidden');
+  if (overlay && repairRelease === null) repairRelease = trapFocus(overlay);
+}
+function hideRepairDialog(): void {
+  document.getElementById('repair-overlay')?.classList.add('hidden');
+  repairRelease?.();
+  repairRelease = null;
+}
+
 function wireRepair(): void {
   const overlay = document.getElementById('repair-overlay');
+  const show = showRepairDialog;
+  const close = hideRepairDialog;
   const open = async () => {
     const rows = await renderRepairList();
-    if (rows.some((r) => !r.ok)) overlay?.classList.remove('hidden');
+    if (rows.some((r) => !r.ok)) show();
     else showToast(t('repair_all_ok'));
   };
   document.getElementById('btn-repair-open')?.addEventListener('click', () => void open());
-  document.getElementById('repair-close')?.addEventListener('click', () => overlay?.classList.add('hidden'));
-  document.getElementById('repair-cancel')?.addEventListener('click', () => overlay?.classList.add('hidden'));
+  document.getElementById('repair-close')?.addEventListener('click', close);
+  document.getElementById('repair-cancel')?.addEventListener('click', close);
   document.getElementById('repair-all')?.addEventListener('click', () => void repairAll());
   overlay?.addEventListener('click', (e) => {
-    if (e.target === overlay) overlay.classList.add('hidden');
+    if (e.target === overlay) close();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && overlay && !overlay.classList.contains('hidden')) close();
   });
   void listen<number>('repair-progress', (ev) => {
     const bar = document.getElementById('repair-progress');
@@ -2036,7 +2295,7 @@ async function autoHealthCheck(): Promise<void> {
   if (rows.length === 0) return; // backend unavailable (e.g. browser dev) — skip
   if (rows.some((r) => !r.ok)) {
     await renderRepairList();
-    document.getElementById('repair-overlay')?.classList.remove('hidden');
+    showRepairDialog();
     invoke('push_log', {
       level: 'warn',
       message: `مكونات ناقصة: ${rows.filter((r) => !r.ok).map((r) => r.key).join(', ')}`,
@@ -2641,11 +2900,17 @@ function wireTelegram(): void {
   });
 
   const isOpen = (): boolean => !overlay.classList.contains('hidden');
-  const closePanel = (): void => { overlay.classList.add('hidden'); };
+  let release: (() => void) | null = null;
+  const closePanel = (): void => {
+    overlay.classList.add('hidden');
+    release?.();
+    release = null;
+  };
   openBtn.addEventListener('click', () => {
     // The settings dropdown is a narrow strip — get it out of the way.
     document.getElementById('settings-menu')?.classList.add('hidden');
     overlay.classList.remove('hidden');
+    if (release === null) release = trapFocus(overlay);
     void refresh(true);
   });
   document.getElementById('tg-close')?.addEventListener('click', closePanel);
@@ -2744,7 +3009,7 @@ function wireBridge(): void {
     const cardText = document.getElementById('bridge-card-text');
     if (card && cardText) {
       cardText.textContent = p.ok
-        ? `${p.name} — تم في ${p.seconds?.toFixed(1)}s`
+        ? `${p.name} — ${t('bridge_done_in', { secs: p.seconds?.toFixed(1) ?? '0' })}`
         : `${p.name} — ${String(p.error ?? '').slice(0, 120)}`;
       cardText.className = p.ok
         ? 'font-body-sm text-sm text-cream-text'
@@ -2832,11 +3097,17 @@ async function applyAutostart(on: boolean): Promise<void> {
     // in sync so a later unrelated push cannot resurrect the question.
     autostartAsked = true;
   } catch (e) {
-    showToast(lang === 'ar'
-      ? `تعذر تغيير التشغيل مع النظام: ${String(e)}`
-      : `Could not change startup: ${String(e)}`);
+    showToast(`${t('autostart_failed')} ${String(e)}`);
     await refreshAutostart();
   }
+}
+
+/** Release handle for the autostart dialog's focus trap; the dialog can be opened
+ *  from wireAutostart's own buttons or by askAutostartOnce at startup. */
+let autostartTrap: (() => void) | null = null;
+function releaseAutostartTrap(): void {
+  autostartTrap?.();
+  autostartTrap = null;
 }
 
 function wireAutostart(): void {
@@ -2846,6 +3117,7 @@ function wireAutostart(): void {
   const overlay = document.getElementById('autostart-overlay');
   const closeAsk = async (enable: boolean | null): Promise<void> => {
     overlay?.classList.add('hidden');
+    releaseAutostartTrap();
     if (enable !== null) await applyAutostart(enable);
     try {
       // set_settings reads `value` (lib.rs), not `patch` — and Settings is
@@ -2858,6 +3130,9 @@ function wireAutostart(): void {
   };
   document.getElementById('autostart-yes')?.addEventListener('click', () => { void closeAsk(true); });
   document.getElementById('autostart-no')?.addEventListener('click', () => { void closeAsk(false); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && overlay && !overlay.classList.contains('hidden')) void closeAsk(null);
+  });
 }
 
 /** يُسأل مرة واحدة فقط: إن لم يُسأل بعد ولم يكن الخيار مفعّلاً. */
@@ -2865,6 +3140,7 @@ function askAutostartOnce(asked: boolean, alreadyOn: boolean): void {
   const overlay = document.getElementById('autostart-overlay');
   if (!overlay || asked || alreadyOn) return;
   overlay.classList.remove('hidden');
+  if (autostartTrap === null) autostartTrap = trapFocus(overlay);
 }
 
 function wire(): void {
