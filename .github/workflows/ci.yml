@@ -11,6 +11,11 @@ name: Quality gate
 
 on:
   workflow_dispatch:
+    inputs:
+      run_release_e2e:
+        description: 'أضف بوابة E2E الكاملة (تنزيل ffmpeg/ffprobe ~434MB، +2-4 دقائق)'
+        type: boolean
+        default: false
   push:
   # 2026-09-15: بلا هذا المشغّل لا يفحص شيءٌ طلبات Dependabot (فُتحت تسعة مرة
   # واحدة) — كان الفحص يقع بعد الدمج لا قبله. معه تصير كل طلبات السحب مُبوَّبة.
@@ -106,3 +111,65 @@ jobs:
 
       - name: Site guards
         run: pnpm site:check
+
+  # ── Release gate (ROADMAP §٧.ب بند ٥ · §6) — workflow_dispatch ONLY ───────
+  #
+  # Why a separate job instead of a step above: this is the one gate that needs
+  # BOTH the model (63.7MB) and ffmpeg+ffprobe (~434MB). Fetching the tools on
+  # every push would slow every commit for a check whose verdict only matters
+  # before a release — the "gate" job above already runs the same engine E2E
+  # assertions (`e2e_separation_is_measurable_on_generated_sample`) on every
+  # push, because that one needs the model alone.
+  #
+  # Cost when triggered: ~2-4 min of a windows-latest runner (2× billed) plus
+  # ~500MB of downloads. Cost when not triggered: zero — `push` does not run it.
+  #
+  # Manual run: Actions → "Quality gate" → Run workflow. The explicit `if`
+  # below keeps a *plain* dispatch (no inputs) behaving exactly like `push`.
+  e2e-release-gate:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_release_e2e == 'true' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # tauri-build validates bundle.resources before compiling (see the gate job).
+      - name: Stub bundle resources
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bin, models | Out-Null
+          New-Item -ItemType File -Force -Path bin/.stub, models/.stub | Out-Null
+          New-Item -ItemType File -Force -Path src-tauri/vc_redist.x64.exe | Out-Null
+
+      # The published tool assets are LGPL-named (ffmpeg-lgpl.exe/ffprobe-lgpl.exe);
+      # they are staged under the names `media::resolve_tool` looks for.
+      - name: Fetch model + ffmpeg/ffprobe
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh release download assets-v1 -R $env:GITHUB_REPOSITORY -p UVR-MDX-NET-Voc_FT.onnx -D models
+          $tools = Join-Path $env:RUNNER_TEMP 'e2e-tools'
+          New-Item -ItemType Directory -Force -Path $tools | Out-Null
+          gh release download assets-v1 -R $env:GITHUB_REPOSITORY -p ffmpeg-lgpl.exe  -O (Join-Path $tools 'ffmpeg.exe')
+          gh release download assets-v1 -R $env:GITHUB_REPOSITORY -p ffprobe-lgpl.exe -O (Join-Path $tools 'ffprobe.exe')
+          Get-ChildItem $tools | ForEach-Object { "$($_.Name): $($_.Length) bytes" }
+
+      # Runs BOTH E2E tests: the every-push one (no tools needed) and the
+      # ffmpeg-driven full-pipeline one. `--ignored` runs only the ignored set,
+      # so the engine test is selected by name explicitly.
+      - name: Release E2E (generated sample through the real pipeline)
+        working-directory: src-tauri
+        env:
+          HARAMLITE_TOOLS_DIR: ${{ runner.temp }}\e2e-tools
+        run: |
+          cargo test --lib e2e_separation_is_measurable_on_generated_sample -- --nocapture
+          cargo test --lib e2e_full_pipeline_through_ffmpeg -- --ignored --nocapture
