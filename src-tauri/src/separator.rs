@@ -350,9 +350,19 @@ impl MdxSession {
         // ROADMAP §٧.ب بند ٩: the single `is_available()` gate conflated three
         // different causes (no NVIDIA card / no driver / incomplete or
         // mismatched libraries) into one line that named none of them. The
-        // diagnosis below names the actual cause; the CHAIN ITSELF IS
-        // UNCHANGED (CUDA → DirectML → CPU, or DirectML → CPU when CUDA cannot
-        // be attempted) — this is reporting, not behaviour.
+        // diagnosis below names the actual cause; the CHAIN ITSELF IS UNCHANGED
+        // (CUDA → DirectML → CPU, or DirectML → CPU when CUDA cannot be
+        // attempted).
+        //
+        // ONE deliberate behaviour delta, pinned by
+        // `complete_runtime_attempts_cuda_and_defers_failure_to_the_chain`: the
+        // old gate looked at the sixteen files ONLY, so a machine with a
+        // complete runtime and no NVIDIA driver (`nvcuda.dll` absent from
+        // System32) still built a CUDA provider that could never register, then
+        // fell back. That doomed build is no longer attempted. The final
+        // provider is the same (DirectML), one wasted build is saved, and the
+        // log now names the real cause. AUDIT.md records this delta as the only
+        // behaviour change of item ٩.
         let diag = crate::cuda_runtime::current_diagnosis(use_cuda);
         let cuda_plan = crate::cuda_runtime::plan(&diag);
         let try_cuda = cuda_plan.attempt_cuda;
