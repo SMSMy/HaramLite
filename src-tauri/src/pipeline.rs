@@ -165,6 +165,29 @@ pub struct PipelineOutput {
     pub seconds: f32,
 }
 
+/// Audit 2026-09-15 (٤.ب.١٠): the final cancel checkpoint used to discard its
+/// result — a cancel that arrived during the encode still returned Ok, so the
+/// app reported success and the caller went on to delete the downloaded source
+/// (lib.rs:358-365).
+///
+/// Removing the outputs HERE is safe and must NOT be copied to the earlier
+/// checkpoints (:359 · :380): by the time this runs the encode has already
+/// overwritten those paths, so removing them destroys nothing that was still
+/// intact. Before the encode starts they may still hold a previous successful
+/// run's output, and cancelling must not destroy it.
+fn finish_run(
+    progress: &dyn Fn(f32) -> bool,
+    outputs: [Option<&Path>; 3],
+) -> Result<(), PipelineError> {
+    if progress(1.0) {
+        return Ok(());
+    }
+    for p in outputs.into_iter().flatten() {
+        let _ = std::fs::remove_file(p);
+    }
+    Err(err("تم إلغاء المعالجة من قبل المستخدم."))
+}
+
 /// Process one media file end-to-end.
 ///
 /// Stages (per approved plan):
@@ -415,7 +438,14 @@ pub fn process_file(
     }
 
     let seconds = started.elapsed().as_secs_f32();
-    progress(1.0);
+    finish_run(
+        progress,
+        [
+            video_out.as_deref(),
+            final_vocals.as_deref(),
+            instrumental_path.as_deref(),
+        ],
+    )?;
     let out = PipelineOutput {
         vocals: final_vocals,
         instrumental: instrumental_path,
@@ -500,5 +530,33 @@ mod tests {
             "scratch dir must be cleaned on failure"
         );
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// Negative test for ٤.ب.١٠: a cancel that lands on the final checkpoint
+    /// must fail the run **and** remove what the run just wrote — before the
+    /// fix the value was dropped, the run returned Ok, and the caller then
+    /// deleted the downloaded source of a "successful" job.
+    #[test]
+    fn a_final_cancel_fails_the_run_and_removes_the_output() {
+        let dir = std::env::temp_dir().join(format!("hl_cancel_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let out = dir.join("out.mp4");
+        std::fs::write(&out, b"x").unwrap();
+
+        let cancelled = finish_run(&|_| false, [Some(out.as_path()), None, None]);
+        assert!(cancelled.is_err(), "a cancelled run must never report success");
+        assert!(!out.exists(), "the cancelled run's output must be removed");
+
+        std::fs::write(&out, b"y").unwrap();
+        let finished = finish_run(&|_| true, [Some(out.as_path()), None, None]);
+        assert!(finished.is_ok(), "a normal finish must stay Ok");
+        assert!(out.exists(), "a completed run must keep its output");
+
+        // A missing file must not panic (best-effort removal, like the rest).
+        let gone = dir.join("never_written.mp4");
+        let r = finish_run(&|_| false, [Some(gone.as_path()), None, None]);
+        assert!(r.is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
