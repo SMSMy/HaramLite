@@ -392,37 +392,48 @@ pub fn page_audio_dir() -> PathBuf {
 
 /// Keep only `keep` inside the page-audio dir (best-effort): temp listens
 /// vanish as soon as the next one completes (field #3).
-fn sweep_page_audio_dir(keep: Option<&Path>) {
-    let dir = page_audio_dir();
-    let Ok(entries) = std::fs::read_dir(&dir) else {
+fn sweep_page_audio_dir(dir: &Path, keep: Option<&Path>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
     for e in entries.flatten() {
         let p = e.path();
-        if Some(p.as_path()) != keep {
-            let _ = std::fs::remove_file(&p);
+        // Audit 2026-09-15 (٤.ب.٤): the sweep may only ever touch entries that
+        // sit directly inside the page-audio dir. Unreachable by construction
+        // (read_dir hands us nothing else) — kept so that it stays true.
+        if !sweep_deletable(&p, dir, keep) {
+            if p.parent() != Some(dir) {
+                tracing::warn!(target: "bridge", "تخطي حذف خارج مجلد صوت الصفحة: {}", p.display());
+            }
+            continue;
         }
+        let _ = std::fs::remove_file(&p);
     }
+}
+
+/// Pure predicate (unit-tested): an entry may be swept only when it sits
+/// DIRECTLY inside `dir` and is not the file we are keeping.
+fn sweep_deletable(entry: &Path, dir: &Path, keep: Option<&Path>) -> bool {
+    entry.parent() == Some(dir) && Some(entry) != keep
 }
 
 /// Page-audio for in-page watching: the vocals mp3 reused for audio jobs;
 /// a compact mp3 extracted beside it for video jobs (the Clean MP4 is far
 /// too heavy for 1MB native messages). None ⇒ watching unavailable — the
 /// file pipeline itself is unaffected (graceful, warned).
-fn ensure_page_audio(o: &crate::pipeline::PipelineOutput) -> Option<PathBuf> {
+fn ensure_page_audio(o: &crate::pipeline::PipelineOutput, dir: &Path) -> Option<PathBuf> {
     if o.video.is_none() {
         return o.vocals.clone();
     }
     let video = o.video.as_ref()?;
-    let dir = page_audio_dir();
-    // Sweep older page-audio first (best-effort — the folder holds one file).
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        for e in entries.flatten() {
-            let _ = std::fs::remove_file(e.path());
+    // Audit 2026-09-15 (٤.ب.٤): extract FIRST, sweep after. The old order
+    // emptied the folder and only then produced the file, so a failed
+    // extraction destroyed the page-audio it was about to need.
+    match crate::media::extract_audio(video, "mp3", dir) {
+        Ok(p) => {
+            sweep_page_audio_dir(dir, Some(&p));
+            Some(p)
         }
-    }
-    match crate::media::extract_audio(video, "mp3", &dir) {
-        Ok(p) => Some(p),
         Err(e) => {
             tracing::warn!(target: "bridge", "تعذر استخراج صوت الصفحة ({e}) — المشاهدة داخل الصفحة غير متاحة");
             None
@@ -898,10 +909,10 @@ fn handle_request(
                     // In-page watching surface: compact page-audio + kept
                     // ranges (the page maps its clock through them so song
                     // outputs with mirrored silence cuts stay in sync).
-                    let page_audio = ensure_page_audio(&o);
+                    let page_audio = ensure_page_audio(&o, &page_audio_dir());
                     if watch {
                         // Temp listens must not accumulate: keep only this job's file.
-                        sweep_page_audio_dir(page_audio.as_deref());
+                        sweep_page_audio_dir(&page_audio_dir(), page_audio.as_deref());
                     }
                     write_state(&serde_json::json!({
                         "running": null,
@@ -1591,7 +1602,58 @@ mod tests {
             kept_ranges: Vec::new(),
             seconds: 0.0,
         };
-        assert!(ensure_page_audio(&o).is_none());
+        assert!(ensure_page_audio(&o, &page_audio_dir()).is_none());
+    }
+
+    /// Negative test for ٤.ب.٤ (a): the sweep must be unable to delete anything
+    /// outside the page-audio dir — an entry that merely lives somewhere else,
+    /// or one level deeper, is not ours to remove.
+    #[test]
+    fn page_audio_sweep_never_reaches_outside_its_dir() {
+        let dir = PathBuf::from("C:\\data").join("page-audio");
+        let inside = dir.join("a.mp3");
+        let other = dir.join("other.mp3");
+        assert!(sweep_deletable(&inside, &dir, None), "a direct child of the dir is sweepable");
+        assert!(sweep_deletable(&inside, &dir, Some(&other)), "…even when another file is kept");
+        assert!(
+            !sweep_deletable(&inside, &dir, Some(&inside)),
+            "the file we keep must survive the sweep"
+        );
+        let outside = PathBuf::from("C:\\elsewhere").join("a.mp3");
+        assert!(!sweep_deletable(&outside, &dir, None), "outside the dir: never");
+        assert!(
+            !sweep_deletable(&dir.join("sub").join("a.mp3"), &dir, None),
+            "a nested entry is not a direct child"
+        );
+        let sibling = PathBuf::from("C:\\data").join("page-audio-old").join("a.mp3");
+        assert!(!sweep_deletable(&sibling, &dir, None), "a sibling sharing the prefix");
+    }
+
+    /// Negative test for ٤.ب.٤ (b): extraction happens BEFORE the sweep, so a
+    /// failed extraction can no longer delete the page-audio it was about to
+    /// need (the old order wiped the folder first and left nothing behind).
+    #[test]
+    fn a_failed_page_audio_extraction_keeps_the_previous_file() {
+        let dir = std::env::temp_dir().join(format!("hl_bridge_pa_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let previous = dir.join("previous.mp3");
+        std::fs::write(&previous, b"old page audio").unwrap();
+
+        // A video that cannot be decoded: ffmpeg (or the missing tool) fails.
+        let o = crate::pipeline::PipelineOutput {
+            vocals: None,
+            instrumental: None,
+            video: Some(dir.join("missing_input.mp4")),
+            kept_ranges: Vec::new(),
+            seconds: 0.0,
+        };
+        assert!(ensure_page_audio(&o, &dir).is_none(), "extraction must fail here");
+        assert!(
+            previous.is_file(),
+            "the previous page-audio must survive a failed extraction"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
