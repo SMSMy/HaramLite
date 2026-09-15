@@ -71,6 +71,20 @@ ok('مقاطع متلاصقة: لا فجوات', g1.gaps === 0 && Math.abs(g1.ke
 const g2 = gapStats([[0, 10], [10.3, 20], [20.2, 30]], 0.5);
 ok('فجوتان (300ms و200ms) تُحسبان', g2.gaps === 2 && Math.abs(g2.smallestGap - 0.2) < 1e-9);
 ok('أكبر فجوة تُرصَد', Math.abs(g2.largestGap - 0.3) < 1e-9);
+// الخطوة ١ (مدرّج القياس): حقولها الجديدة كانت **غير محروسة إطلاقاً** — أثبتَ المشرف
+// الثقب بمُفسَد فعلي: حذف حمولة `hist`/`keptBefore` كاملة من سطر load أبقى الحارس
+// أخضر (131/0). هذه فحوص **سلوكية** على الحقول نفسها لا على وجود نصّها.
+const g3 = gapStats([[0, 10], [10.5, 20], [22, 30], [33, 40], [48, 60], [69, 80]], 0.5);
+ok('hist: خمسة نطاقات نصف مفتوحة [0.5,1) [1,2) [2,4) [4,8) ≥8',
+  JSON.stringify(g3.hist) === JSON.stringify([1, 0, 2, 0, 2]));
+ok('before: أدنى ووسيط المقطع المحفوظ السابق (7 و 9.5)',
+  Math.abs(g3.before.min - 7) < 1e-9 && Math.abs(g3.before.median - 9.5) < 1e-9);
+const g4 = gapStats([[12, 30], [33, 40]], 0.5);
+ok('فجوة أمامية: تُحصى في hist ولا تُدخل صفراً مُصطنعاً في before',
+  g4.hist[4] === 1 && g4.hist[2] === 1 && Math.abs(g4.before.min - 18) < 1e-9 && Math.abs(g4.before.median - 18) < 1e-9);
+const g5 = gapStats([[0, 10], [10.5, 20], [22, 30]], 0.5);
+ok('وسيط العدّ الزوجي = متوسط العنصرين الأوسطين (9.75)',
+  Math.abs(g5.before.median - 9.75) < 1e-9);
 
 console.log('\n=== ٤) بوابة واحدة: كتابتان فقط لموضع الصوت ===');
 const writes = src.match(/audio\.currentTime\s*=/g) || [];
@@ -121,6 +135,8 @@ console.log('\n=== ١٠) طبقة القياس: load · gapStats · عيّنة 4
 ok('العتبة 0.5s (الحدّ من Rust: 800 − 2×150)', /gapStats\(kept, 0\.5\)/.test(src));
 ok('سطر load يطبع smallestGap', /smallestGap=\$\{st\.smallestGap\.toFixed\(3\)\}/.test(src));
 ok('سطر load يطبع diff مقابل مدة الصوت', /diff=\$\{\(st\.keptSum - ad\)\.toFixed\(3\)\}/.test(src));
+ok('سطر load يطبع مدرّج الفجوات hist', /hist=\[\$\{st\.hist\.join\(','\)\}\]/.test(src));
+ok('سطر load يطبع keptBefore (أدنى ووسيط)', /keptBefore=\{min:\$\{st\.before\.min\.toFixed\(3\)\},med:\$\{st\.before\.median\.toFixed\(3\)\}\}/.test(src));
 ok('العيّنة 40ms مبوَّبة بـ slog', /if \(slog\) w\.tracePulse = setInterval\(/.test(src));
 ok('العيّنة تُحرَّر **داخل** stopWatch', has(extractBlock(src, 'function stopWatch('), 'clearInterval(w.tracePulse)'));
 ok('أثر الإيقاف داخل معالج pause', /on\(video, 'pause', \(\) => \{ trace\('pause'\); audio\.pause\(\); \}\)/.test(src));
@@ -276,6 +292,39 @@ ok('ثم مدة صالحة: صفّ load واحد فقط (لم يُهدر)', wait
 ok('والصفّ يحمل audioDur غير صفري (30.000)', waitDur === '30.000', `audioDur=${waitDur}`);
 ok('ووقعت عند أول نداء بعد الجهوزية', waitFirstAt > 0, `index=${waitFirstAt}`);
 ok('ولا تكرار للقياس بعد الجهوزية (تنفيذ واحد)', waitBodies === 1, `تنفيذات=${waitBodies}`);
+
+console.log('\n=== ١٠-ب) الخطوة ١ (مدرّج القياس): مُفسَدات يجب أن تُسقط فحوص حقولها ===');
+// الثقب المُثبَت (قبل هذا القسم): حمولة `hist`/`keptBefore` تُحذف كاملة من سطر load
+// ويبقى الحارس أخضر. فحص السقوط هنا **سلوكي**: يُعاد استخراج gapStats من نصّ المُفسَد
+// ويُشغَّل على ثلاث خرائط معروفة، مع فحص نصّي لحمولة سطر load.
+const stepOneFell = (text) => {
+  const bad = [];
+  if (!/hist=\[\$\{st\.hist\.join\(','\)\}\]/.test(text)) bad.push('سطر load بلا hist');
+  if (!/keptBefore=\{min:/.test(text)) bad.push('سطر load بلا keptBefore');
+  const b = extractBlock(text, 'function gapStats(');
+  if (!b) return bad.concat('تعذّر استخراج gapStats');
+  let f;
+  try { f = new Function(`${b.full} return gapStats;`)(); } catch { return bad.concat('تعذّر بناء gapStats'); }
+  const g = f([[0, 10], [10.5, 20], [22, 30], [33, 40], [48, 60], [69, 80]], 0.5);
+  if (JSON.stringify(g.hist) !== JSON.stringify([1, 0, 2, 0, 2])) bad.push('hist');
+  if (!(Math.abs(g.before.min - 7) < 1e-9 && Math.abs(g.before.median - 9.5) < 1e-9)) bad.push('before');
+  const ge = f([[0, 10], [10.5, 20], [22, 30]], 0.5);
+  if (!(Math.abs(ge.before.median - 9.75) < 1e-9)) bad.push('وسيط زوجي');
+  const gl = f([[12, 30], [33, 40]], 0.5);
+  if (!(Math.abs(gl.before.min - 18) < 1e-9 && Math.abs(gl.before.median - 18) < 1e-9)) bad.push('فجوة أمامية');
+  return bad;
+};
+const stepOneMuts = [
+  ['ح: حذف حمولة hist/keptBefore من سطر load', src.replace(/ hist=\[\$\{st\.hist\.join\(','\)\}\] keptBefore=\{min:\$\{st\.before\.min\.toFixed\(3\)\},med:\$\{st\.before\.median\.toFixed\(3\)\}\}/, '')],
+  ['خ: الوسيط الزوجي يأخذ العنصر الأعلى وحده', src.replace(/\(befores\[mid - 1\] \+ befores\[mid\]\) \/ 2/, 'befores[mid]')],
+  ['ذ: توسيع النطاق الثاني ليبتلع 2–3 ثوان', src.replace(/else if \(g < 2\) out\.hist\[1\]\+\+;/, 'else if (g < 3) out.hist[1]++;')],
+  ['ر: الفجوة الأمامية تُدخل صفراً مُصطنعاً في before', src.replace(/if \(prevLen > 0\) befores\.push\(prevLen\);/, 'befores.push(prevLen);')],
+];
+for (const [label, mutant] of stepOneMuts) {
+  const fell = mutant !== src ? stepOneFell(mutant) : [];
+  ok(`مُفسَد ${label}`, mutant !== src);
+  ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
+}
 
 console.log('\n=== ١١) الاختبارات السلبية: كل مُفسَد يجب أن يُسقط حارسه ===');
 const muts = [
