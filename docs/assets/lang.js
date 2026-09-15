@@ -14,6 +14,21 @@
    الصفحات (إشعار «المتن عربي فقط»): استعمل HaramLiteLang.current(). */
 (function () {
   var KEY = 'hl.lang';
+  /* الرقم الذي يُستبدل به {v}: من العنصر الذي يحمله في الصفحة (js-version-text)
+     أو من كائن الصفحة، وإلا فمن الاحتياطي. بلا هذا كان هذا الملف يكتب نصّ
+     السمة كما هو فيظهر «{v}» حرفياً للزائر — وهو ما حدث فعلاً بعد نشر 0.2.4:
+     كائن الرئيسية يستبدل ثم يطمس هذا الملف نصّه لأنه يعمل بعده. */
+  function version() {
+    var el = document.querySelector('.js-version-text');
+    var fromDom = el && el.textContent ? el.textContent.trim() : '';
+    if (fromDom) return fromDom;
+    var state = window.HaramLiteState;
+    if (state && state.version) return String(state.version);
+    return '0.2.4';
+  }
+  function fill(t) {
+    return String(t).replace(/\{v\}/g, version());
+  }
   function apply(lang) {
     var l = lang === 'en' ? 'en' : 'ar';
     // نسخة إنجليزية للمتن: تُعلَن ولا تُستنتج
@@ -23,12 +38,12 @@
     document.documentElement.dir = doc === 'ar' ? 'rtl' : 'ltr';
     document.querySelectorAll('[data-i18n-ar]').forEach(function (el) {
       var t = el.getAttribute(l === 'ar' ? 'data-i18n-ar' : 'data-i18n-en');
-      if (t) el.textContent = t;
+      if (t) el.textContent = fill(t);
     });
     document.querySelectorAll('[data-i18n-attr]').forEach(function (el) {
       var a = el.getAttribute('data-i18n-attr');
       var v = el.getAttribute(l === 'ar' ? 'data-i18n-ar' : 'data-i18n-en');
-      if (a && v) el.setAttribute(a, v);
+      if (a && v) el.setAttribute(a, fill(v));
     });
     var lab = document.getElementById('lang-btn-label');
     if (lab) lab.textContent = l === 'ar' ? 'English' : 'العربية';
