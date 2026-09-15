@@ -4,6 +4,7 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import * as dialog from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import dingUrl from './assets/ding.wav';
+import { applyLang, currentLang, t, wireLang } from './i18n';
 
 type LogLine = { ts: string; level: string; target: string; message: string };
 type MediaInfo = {
@@ -24,447 +25,6 @@ type SepResult = {
   seconds: number;
 };
 
-const i18n = {
-  ar: {
-    actions_title: 'تشخيص',
-    btn_info: 'INFO تجريبي',
-    btn_error: 'ERROR تجريبي',
-    btn_panic: 'التقاط panic اختباري',
-    btn_clear: 'تفريغ العرض',
-    log_title: 'سجل الأحداث (حي)',
-    autoscroll: 'تلقائي التمرير',
-    media_title: 'الملف',
-    mode_title: 'الوضع',
-    mode_song: 'أغنية',
-    mode_song_desc: 'إذا كنت تعزل الموسيقى عن أغنية، اختر هذا الخيار؛ سيضاف قطع الصمت ويزيل كتمة الصوت.',
-    mode_clip: 'مقطع عادي',
-    mode_clip_desc: 'للمقاطع التي تحتوي على متحدثين: لن يقطع الصمت، وسيزيل الموسيقى فقط.',
-    fmt_label: 'صيغة الإخراج:',
-    btn_probe: 'فحص',
-    btn_sep_song: 'عزل <span class="kashida-text">الموسيقى</span> وإضافة المؤثرات',
-    kind_audio: 'صوت MP3',
-    kind_audio_desc: 'الغناء المعالَج ملفاً صوتياً',
-    kind_video: 'فيديو MP4',
-    kind_video_desc: 'نفس الصورة بصوت معالج',
-    btn_sep_clip: 'إزالة الموسيقى فقط',
-    url_title: 'تحميل من رابط (YouTube ونحوها)',
-    btn_download: 'تنزيل',
-    drop_hint: 'اسحب الملفات وأفلتها هنا — أو',
-    btn_browse: 'اختيار من الجهاز',
-    err_not_found: '✗ المسار غير موجود — تأكد من الصحة',
-    err_is_dir: '✗ هذا مجلد وليس ملفاً — اختر ملفاً داخل المجلد',
-    err_no_audio: '⚠ لا يوجد مسار صوتي في هذا الملف',
-    set_notify: 'إشعارات الانتهاء + صوت خفيف',
-    // مجموعة الإعدادات: عناوين الأقسام الخمسة (الترتيب مقصود: الأداء ← المراقبة ← التكامل ← النظام ← الأدوات)
-    settings_title: 'الإعدادات',
-    set_group_perf: 'الأداء والمعالجة',
-    set_group_watch: 'المراقبة التلقائية',
-    set_group_integration: 'التكامل',
-    set_group_system: 'النظام',
-    set_group_tools: 'الأدوات والمساعدة',
-    set_cuda: 'استخدام تسريع CUDA (NVIDIA)',
-    watch_mode_song: 'أغنية',
-    watch_mode_clip: 'مقطع عادي',
-    watch_cancel: '<span class="material-symbols-outlined text-sm" data-icon="close">close</span> إلغاء الملف الجاري',
-    btn_about: 'حول البرنامج',
-    btn_report: 'الإبلاغ عن مشكلة',
-    about_title: 'حول HaramLite',
-    about_ok: 'حسناً',
-    about_dev: 'التطوير:',
-    about_dev_rest: 'أداة مفتوحة المصدر تعمل محلياً 100% حفاظاً على الخصوصية.',
-    about_credits: 'أهل الفضل',
-    about_ok_modal: 'حسناً',
-    preview_label: 'معاينة سريعة',
-    preview_hint_song: '⚠ عينة جودة الفصل فقط — لا تمثل قصّ الصمت النهائي',
-    preview_hint_clip: 'عينة مطابقة للمخرج النهائي',
-    notify_done: 'اكتملت المعالجة',
-    notify_fail: 'فشلت المعالجة',
-    notify_batch_done: 'اكتملت الدفعة',
-    btn_repair: 'فحص وإصلاح المكونات',
-    repair_title: 'مكوّنات ناقصة',
-    repair_desc: 'بعض مكوّنات التشغيل مفقودة (حذف يدوي أو نسخة محمولة). سيتم تنزيلها تلقائياً من GitHub والتحقق من بصمتها قبل التثبيت.',
-    repair_all: 'إصلاح الكل',
-    repair_later: 'لاحقاً',
-    repair_one: 'إصلاح',
-    repair_done: 'تم الإصلاح بنجاح',
-    repair_all_ok: 'كل المكونات موجودة ✓',
-    // Audit 2026-09-15 (٤.ب.٣): the manual updater button and its strings are
-    // gone — no latest.json is published (createUpdaterArtifacts:false), so the
-    // button could only ever fail. silentUpdateCheck still uses this one.
-    upd_avail: 'يتوفر تحديث جديد:',
-    // هـ) نظام التحديث (الخيار ١) — صفّ الإعدادات. الفحص من `releases/latest`
-    // عبر أمر Rust واحد، وكل مسار فشل ينتهي بنصّ ظاهر في #update-status
-    // (وسلسلة الخطأ العربية تأتي من الرست) فلا زرّ يفشل بصمت.
-    upd_check: 'التحقق من التحديثات',
-    upd_checking: 'جارٍ التحقق من التحديثات…',
-    upd_uptodate: 'أنت على الأحدث (v{v})',
-    upd_found: 'يتوفّر v{v}',
-    upd_download: '<span class="material-symbols-outlined text-sm" data-icon="download">download</span> فتح صفحة التنزيل',
-    upd_failed: 'تعذّر التحقق من التحديثات',
-    upd_open_failed: 'تعذّر فتح صفحة التنزيل في المتصفح',
-    watch_enable: 'تفعيل مجلد المراقبة',
-    watch_pick: 'اختيار المجلد',
-    watch_mode_label: 'وضع المعالجة:',
-    watch_size_label: 'حجم أقصى للمراقبة (MB):',
-    watch_rescan_label: 'فاصل المسح الدوري (ثانية):',
-    watch_status_on: 'نشطة',
-    watch_status_off: 'غير مفعّلة',
-    watch_no_folder: 'اختر مجلداً أولاً',
-    watch_toast_done: 'اكتملت معالجة ملف مراقَب',
-    watch_toast_fail: 'فشلت معالجة ملف مراقَب',
-    btn_bridge: 'تفعيل التكامل مع المتصفح',
-  bridge_page_link: 'صفحة إضافة المتصفح — التثبيت والشرح',
-  autostart_label: 'التشغيل مع بدء تشغيل ويندوز',
-  autostart_hint: 'يقلع في الخلفية بلا نافذة، ليبقى بوت تيليجرام وتكامل المتصفح جاهزين — وتفتح النافذة متى شئت من أيقونة الشريط.',
-  autostart_ask_title: 'تشغيل HaramLite مع بدء تشغيل ويندوز؟',
-  autostart_ask_body: 'سيعمل البرنامج في الخلفية بلا فتح نافذة، فيبقى بوت تيليجرام وتكامل المتصفح جاهزين بعد كل إقلاع. يمكنك تغيير هذا في أي وقت من الإعدادات.',
-  autostart_yes: 'نعم، شغّله مع النظام',
-  autostart_no: 'لا، لاحقاً',
-    tg_title: 'بوت تيليجرام',
-    tg_enable: 'تفعيل بوت تيليجرام',
-    tg_token: 'توكن البوت (من BotFather)',
-    tg_owner: 'معرّف المستخدم المسموح (اختياري)',
-    tg_audio_only: 'إرسال الصوت فقط (MP3) دائماً',
-    tg_paircode: 'رمز الاقتران',
-    tg_pair_hint: 'أرسل هذا الرمز إلى بوتك في تيليجرام لربط حسابك (صالح 10 دقائق).',
-    tg_advanced: 'إعدادات متقدمة: خادم Bot API محلي (حتى 2GB وبالجودة الأصلية)',
-    tg_local_note: 'يُشغَّل الخادم من حسابك في my.telegram.org؛ اتركه فارغاً لاستخدام السحابة (حد 50MB إرسال / 20MB استلام).',
-    tg_off: 'البوت متوقف',
-    tg_on: 'البوت يعمل',
-    tg_paired: 'مقترن',
-    tg_pairing: 'بانتظار الاقتران',
-    tg_code_copied: 'نُسخ الرمز',
-    tg_need_token: 'أدخل توكن البوت أولاً',
-    pl_title: 'المعالجة المباشرة',
-    pl_pick: 'اختيار ملف',
-    pl_prepare: 'بناء الخريطة',
-    pl_preparing: 'جارٍ بناء الخريطة…',
-    pl_seek: 'الموضع',
-    pl_ready: 'جاهزة',
-    pl_pending: 'بالانتظار',
-    pl_consumed: 'مسموعة',
-    pl_frozen: 'مجمّد: بانتظار المقاطع',
-    pl_nomap: 'ابنِ الخريطة أولاً',
-    pl_chunks: 'مقاطع',
-    pl_muted: 'مكتومة',
-    pl_detail_title: 'تفاصيل المقطع',
-    pl_detail_pick: 'اختر مقطعاً لعرض نطاقاته وحالته وتكلفته',
-    pl_chunk: 'المقطع',
-    pl_state: 'الحالة',
-    pl_mute_ranges: 'نطاقات الكتم',
-    pl_duck_ranges: 'نطاقات الخفض',
-    pl_cost: 'التكلفة',
-    pl_none: 'لا يوجد',
-    pl_seek_note: 'المنزلق للفحص فقط — لا يوجد تشغيل صوتي بعد',
-    pl_in_mute: 'داخل كتم',
-    pl_in_duck: 'داخل خفض',
-    pl_in_pass: 'خارج الكتم',
-    pl_ready_inspect: 'جاهز للفحص',
-    pl_play: 'تشغيل',
-    pl_pause: 'إيقاف مؤقت',
-    pl_audio_err: 'تعذر تشغيل الصوت',
-    cuda_missing_text: 'كرت NVIDIA لديك مدعوم، لكن مكتبات تسريع CUDA غير منزّلة. فعّل الخيار وسينزّلها التطبيق تلقائياً.',
-    cuda_ready: '✓ بيئة CUDA جاهزة — المعالجة ستكون أسرع على الكرت',
-    cuda_downloading: 'جارٍ تنزيل مكتبات تسريع CUDA…',
-    cuda_download_failed: 'تعذر تنزيل مكتبات CUDA — سيبقى DirectML نشطاً. أعد المحاولة لاحقاً',
-    cuda_banner_enable: 'كرت NVIDIA لديك مدعوم! فعّل تسريع CUDA من الإعدادات — سيُنزّل التطبيق المكتبات تلقائياً (تنزيل لمرة واحدة).',
-    // Audit 2026-09-15: every string still hard-coded in index.html got a key so
-    // the English UI is no longer half-Arabic. `tagline_pre`/`tagline_hl` keep the
-    // same two-span markup in both languages because applyLang() writes innerHTML.
-    tagline_pre: 'الموسيقى لا تليق بقلبٍ يريد',
-    tagline_hl: 'الطمأنينة',
-    dlg_advanced: 'إعدادات متقدمة',
-    keep_inst: 'الاحتفاظ بالموسيقى (Keep Instrumental)',
-    audio_format: 'صيغة الصوت:',
-    dropzone_label: 'اسحب وأفلت الملفات هنا أو اختر ملفاً من الجهاز',
-    drop_hint_plain: 'اسحب وأفلت الملفات هنا أو',
-    btn_browse_plain: 'تصفح الملفات',
-    out_type_label: 'نوع الإخراج:',
-    out_video: 'فيديو',
-    out_audio: 'صوت',
-    dl_url_title: 'تحميل من رابط',
-    dl_btn: 'تحميل',
-    ytdlp_uptodate: 'yt-dlp محدث لآخر إصدار',
-    queue_title: 'طابور المعالجة',
-    open_out_folder: 'فتح مجلد الإخراج',
-    queue_processing_3: '1/3 جاري المعالجة...',
-    queue_processing: 'جاري المعالجة...',
-    queue_pending: 'في الانتظار',
-    ext_title: 'وظائف خارجية',
-    ext_empty: 'لا وظائف خارجية جارية',
-    log_toggle: 'سجل الأحداث / Activity Log',
-    log_demo_info: 'yt-dlp update check: already up to date.',
-    log_demo_warn: 'Track 2 audio format might cause slight degradation.',
-    log_demo_error: 'Failed to locate model weights in ./models directory.',
-    log_demo_ready: 'Initialization complete. Ready.',
-    dlg_close: 'إغلاق',
-    tg_pair_new: 'رمز جديد',
-    tg_pair_copy: 'نسخ',
-    sep_need_file: 'أفلت ملفاً أو اختره أولاً — سيُفحص تلقائياً',
-    sep_done_secs: 'تم الفصل خلال {secs}s',
-    sep_out_audio: 'صوت:',
-    sep_out_music: 'موسيقى:',
-    sep_out_video: 'فيديو:',
-    sep_cancelled: 'أُلغيت المعالجة.',
-    sep_failed: 'فشل الفصل:',
-    dl_done: 'تم التنزيل:',
-    dl_failed: 'فشل التنزيل:',
-    batch_label: '📦 الدفعة:',
-    batch_done: 'اكتملت الدفعة:',
-    batch_failed_list: 'فشل:',
-    batch_restored: '⏸ دفعة منقطعة ({count}{skipped}) — اضغط فصل للاستئناف',
-    batch_restored_skipped: '، تخطي {skipped} منجزة',
-    cancel_processing: 'إلغاء المعالجة',
-    open_file: 'فتح الملف',
-    open_folder: 'فتح المجلد',
-    retry: 'إعادة المحاولة',
-    open_folder_output: 'فتح مجلد الإخراج',
-    ext_cancel: 'إلغاء',
-    ext_bridge_detail: 'تنزيل/فصل عبر المتصفح…',
-    ext_bridge_queued: ' (في الطابور: {n})',
-    ext_watch_detail: 'معالجة ملف مراقب…',
-    sep_done_short: '✓ مكتمل',
-    sep_done_preview: '✓ مكتمل (عينة)',
-    sep_failed_short: '✗ فشل',
-    probe_flag_disguised: '⚠ صوت متنكّر في حاوية فيديو — سنعالجه كصوت',
-    probe_flag_cover: 'ℹ الفيديو مجرد صورة غلاف',
-    quality_same: 'نفس الجودة ({h}p)',
-    bridge_done_in: 'تم في {secs}s',
-    bridge_card_title: '🎵 اكتمل طلب المتصفح',
-    bridge_card_open: '📂 فتح مجلد النتائج',
-    autostart_failed: 'تعذر تغيير التشغيل مع النظام:',
-    toggle_pause: '⏸ إيقاف',
-    toggle_cancel: '⏹ إلغاء',
-  },
-  en: {
-    actions_title: 'Diagnostics',
-    btn_info: 'Test INFO log',
-    btn_error: 'Test ERROR log',
-    btn_panic: 'Trigger test panic',
-    btn_clear: 'Clear view',
-    log_title: 'Live event log',
-    autoscroll: 'Auto-scroll',
-    media_title: 'File',
-    mode_title: 'Mode',
-    mode_song: 'Song',
-    mode_song_desc: 'separate + revival FX + silence cut',
-    mode_clip: 'Normal clip',
-    mode_clip_desc: 'music removal only — faster',
-    fmt_label: 'Output format:',
-    btn_probe: 'Probe',
-    btn_sep_song: 'Isolate music & add FX',
-    kind_audio: 'MP3 Audio',
-    kind_audio_desc: 'processed vocals as an audio file',
-    kind_video: 'MP4 Video',
-    kind_video_desc: 'same picture with processed audio',
-    btn_sep_clip: 'Remove music only',
-    url_title: 'Download from link (YouTube etc.)',
-    btn_download: 'Download',
-    drop_hint: 'Drag & drop files here — or',
-    btn_browse: 'Browse files',
-    err_not_found: '✗ Path not found — please verify',
-    err_is_dir: '✗ That is a folder — pick a file inside it',
-    err_no_audio: '⚠ No audio track in this file',
-    set_notify: 'Completion notifications + sound',
-    settings_title: 'Settings',
-    set_group_perf: 'Performance & processing',
-    set_group_watch: 'Automatic watching',
-    set_group_integration: 'Integration',
-    set_group_system: 'System',
-    set_group_tools: 'Tools & help',
-    set_cuda: 'Use CUDA acceleration (NVIDIA)',
-    watch_mode_song: 'Song',
-    watch_mode_clip: 'Plain clip',
-    watch_cancel: '<span class="material-symbols-outlined text-sm" data-icon="close">close</span> Cancel the running file',
-    btn_about: 'About',
-    btn_report: 'Report an issue',
-    about_title: 'About HaramLite',
-    about_ok: 'OK',
-    about_dev: 'Developed by:',
-    about_dev_rest: 'A fully local open-source tool built for privacy.',
-    about_credits: 'Credits',
-    about_ok_modal: 'OK',
-    preview_label: 'Quick preview',
-    preview_hint_song: '⚠ Separation quality sample only — not the final silence cut',
-    preview_hint_clip: 'Sample identical to the final output',
-    notify_done: 'Processing complete',
-    notify_fail: 'Processing failed',
-    notify_batch_done: 'Batch complete',
-    btn_repair: 'Check & repair components',
-    repair_title: 'Missing components',
-    repair_desc: 'Some runtime components are missing (manual deletion or a portable copy). They will be downloaded from GitHub and hash-verified before installation.',
-    repair_all: 'Repair all',
-    repair_later: 'Later',
-    repair_one: 'Repair',
-    repair_done: 'Repaired successfully',
-    repair_all_ok: 'All components present ✓',
-    upd_avail: 'Update available:',
-    upd_check: 'Check for updates',
-    upd_checking: 'Checking for updates…',
-    upd_uptodate: 'You are up to date (v{v})',
-    upd_found: 'v{v} is available',
-    upd_download: '<span class="material-symbols-outlined text-sm" data-icon="download">download</span> Open the download page',
-    upd_failed: 'Could not check for updates',
-    upd_open_failed: 'Could not open the download page in the browser',
-    watch_enable: 'Enable watch folder',
-    watch_pick: 'Choose folder',
-    watch_mode_label: 'Processing mode:',
-    watch_size_label: 'Max watch file size (MB):',
-    watch_rescan_label: 'Periodic rescan (seconds):',
-    watch_status_on: 'Active',
-    watch_status_off: 'Disabled',
-    watch_no_folder: 'Pick a folder first',
-    watch_toast_done: 'Watched file processed',
-    watch_toast_fail: 'Watched file failed',
-    btn_bridge: 'Enable browser integration',
-  bridge_page_link: 'Browser extension page — install and guide',
-  autostart_label: 'Start with Windows',
-  autostart_hint: 'Boots in the background with no window so the Telegram bot and browser integration stay ready — open the window any time from the tray icon.',
-  autostart_ask_title: 'Start HaramLite with Windows?',
-  autostart_ask_body: 'The app will run in the background without opening a window, so the Telegram bot and browser integration stay ready after every boot. You can change this any time in the settings.',
-  autostart_yes: 'Yes, start with Windows',
-  autostart_no: 'Not now',
-    tg_title: 'Telegram bot',
-    tg_enable: 'Enable Telegram bot',
-    tg_token: 'Bot token (from BotFather)',
-    tg_owner: 'Allowed user id (optional)',
-    tg_audio_only: 'Always send audio only (MP3)',
-    tg_paircode: 'Pairing code',
-    tg_pair_hint: 'Send this code to your bot on Telegram to link your account (valid 10 minutes).',
-    tg_advanced: 'Advanced: local Bot API server (up to 2GB, original quality)',
-    tg_local_note: 'Run the server with your own credentials from my.telegram.org; leave empty to use the cloud (50MB send / 20MB receive).',
-    tg_off: 'Bot stopped',
-    tg_on: 'Bot running',
-    tg_paired: 'Paired',
-    tg_pairing: 'Waiting for pairing',
-    tg_code_copied: 'Code copied',
-    tg_need_token: 'Enter the bot token first',
-    pl_title: 'Live processing',
-    pl_pick: 'Choose file',
-    pl_prepare: 'Build map',
-    pl_preparing: 'Building map…',
-    pl_seek: 'Position',
-    pl_ready: 'Ready',
-    pl_pending: 'Pending',
-    pl_consumed: 'Heard',
-    pl_frozen: 'Frozen: waiting for chunks',
-    pl_nomap: 'Build the map first',
-    pl_chunks: 'chunks',
-    pl_muted: 'muted',
-    pl_detail_title: 'Chunk details',
-    pl_detail_pick: 'Pick a chunk to see its ranges, state and cost',
-    pl_chunk: 'Chunk',
-    pl_state: 'State',
-    pl_mute_ranges: 'Mute ranges',
-    pl_duck_ranges: 'Duck ranges',
-    pl_cost: 'Cost',
-    pl_none: 'none',
-    pl_seek_note: 'Slider is for inspection only — no audio playback yet',
-    pl_in_mute: 'inside mute',
-    pl_in_duck: 'inside duck',
-    pl_in_pass: 'outside mute',
-    pl_ready_inspect: 'Ready to inspect',
-    pl_play: 'Play',
-    pl_pause: 'Pause',
-    pl_audio_err: 'Audio playback failed',
-    cuda_missing_text: 'Your NVIDIA GPU is supported, but the CUDA acceleration libraries are not downloaded yet. Enable the option and the app will download them automatically.',
-    cuda_ready: '✓ CUDA is ready — processing will be faster on the GPU',
-    cuda_downloading: 'Downloading CUDA acceleration libraries…',
-    cuda_download_failed: 'Could not download the CUDA libraries — DirectML stays active. Try again later',
-    cuda_banner_enable: 'Your NVIDIA GPU is supported! Enable CUDA acceleration in Settings — the app downloads the libraries automatically (one-time download).',
-    tagline_pre: 'Music does not suit a heart that seeks',
-    tagline_hl: 'tranquility',
-    dlg_advanced: 'Advanced settings',
-    keep_inst: 'Keep instrumental',
-    audio_format: 'Audio format:',
-    dropzone_label: 'Drag and drop files here, or browse files',
-    drop_hint_plain: 'Drag and drop files here or',
-    btn_browse_plain: 'Browse files',
-    out_type_label: 'Output type:',
-    out_video: 'video',
-    out_audio: 'audio',
-    dl_url_title: 'Download from a link',
-    dl_btn: 'Download',
-    ytdlp_uptodate: 'yt-dlp is up to date',
-    queue_title: 'Processing queue',
-    open_out_folder: 'Open the output folder',
-    queue_processing_3: '1/3 processing...',
-    queue_processing: 'Processing...',
-    queue_pending: 'Waiting',
-    ext_title: 'External jobs',
-    ext_empty: 'No external jobs running',
-    log_toggle: 'Activity Log',
-    log_demo_info: 'yt-dlp update check: already up to date.',
-    log_demo_warn: 'Track 2 audio format might cause slight degradation.',
-    log_demo_error: 'Failed to locate model weights in ./models directory.',
-    log_demo_ready: 'Initialization complete. Ready.',
-    dlg_close: 'Close',
-    tg_pair_new: 'New code',
-    tg_pair_copy: 'Copy',
-    sep_need_file: 'Drop or pick a file first — it will be probed automatically',
-    sep_done_secs: 'Separation finished in {secs}s',
-    sep_out_audio: 'audio:',
-    sep_out_music: 'music:',
-    sep_out_video: 'video:',
-    sep_cancelled: 'Processing cancelled.',
-    sep_failed: 'Separation failed:',
-    dl_done: 'Downloaded:',
-    dl_failed: 'Download failed:',
-    batch_label: '📦 Batch:',
-    batch_done: 'Batch complete:',
-    batch_failed_list: 'Failed:',
-    batch_restored: '⏸ Interrupted batch ({count}{skipped}) — press Separate to resume',
-    batch_restored_skipped: ', {skipped} finished skipped',
-    cancel_processing: 'Cancel processing',
-    open_file: 'Open file',
-    open_folder: 'Open folder',
-    retry: 'Retry',
-    open_folder_output: 'Open output folder',
-    ext_cancel: 'Cancel',
-    ext_bridge_detail: 'Downloading/separating through the browser…',
-    ext_bridge_queued: ' (queued: {n})',
-    ext_watch_detail: 'Processing a watched file…',
-    sep_done_short: '✓ Done',
-    sep_done_preview: '✓ Done (preview)',
-    sep_failed_short: '✗ Failed',
-    probe_flag_disguised: '⚠ Audio disguised inside a video container — we will treat it as audio',
-    probe_flag_cover: 'ℹ The video is only cover art',
-    quality_same: 'Same quality ({h}p)',
-    bridge_done_in: 'done in {secs}s',
-    bridge_card_title: '🎵 Browser request finished',
-    bridge_card_open: '📂 Open the results folder',
-    autostart_failed: 'Could not change startup:',
-    toggle_pause: '⏸ Stop',
-    toggle_cancel: '⏹ Cancel',
-  },
-} as const;
-
-let lang: 'ar' | 'en' = localStorage.getItem('hl.lang') === 'en' ? 'en' : 'ar';
-
-function t(key: keyof (typeof i18n)['ar'], vars?: Record<string, string | number>): string {
-  const s = i18n[lang][key];
-  if (!vars) return s;
-  return s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
-}
-
-function applyLang(): void {
-  document.documentElement.lang = lang;
-  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
-  document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
-    const key = el.dataset.i18n as keyof (typeof i18n)['ar'];
-    el.innerHTML = i18n[lang][key];
-  });
-  // Accessible names for icon-only controls / regions, kept symmetric with the
-  // visible label (WCAG 2.5.3 label in name).
-  document.querySelectorAll<HTMLElement>('[data-i18n-aria]').forEach((el) => {
-    const key = el.dataset.i18nAria as keyof (typeof i18n)['ar'];
-    if (i18n[lang][key] !== undefined) el.setAttribute('aria-label', i18n[lang][key]);
-  });
-  document.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach((el) => {
-    const key = el.dataset.i18nTitle as keyof (typeof i18n)['ar'];
-    if (i18n[lang][key] !== undefined) el.setAttribute('title', i18n[lang][key]);
-  });
-}
 
 /* ── modal focus containment (WCAG 2.4.3 / 2.1.2) ──────────────────────
  * The dialogs were reachable but focus could walk out of them with Tab, and
@@ -832,7 +392,7 @@ let settingsSyncTimer: number | undefined;
 let refreshWatchUi: (() => void) | null = null;
 function collectSettings(): RustSettings {
   return {
-    lang,
+    lang: currentLang(),
     cuda: localStorage.getItem('hl.cuda') === '1',
     notify: localStorage.getItem('hl.notify') === '1',
     preview: localStorage.getItem('hl.preview') === '1',
@@ -1139,16 +699,6 @@ function wireContextMenu(): void {
 }
 
 /* ── wiring ─────────────────────────────────────────────────────────── */
-
-function wireLang(): void {
-  document.getElementById('lang-toggle')?.addEventListener('click', () => {
-    lang = lang === 'ar' ? 'en' : 'ar';
-    localStorage.setItem('hl.lang', lang);
-    document.documentElement.lang = lang;
-    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
-    location.reload(); // simplest reliable full relabel
-  });
-}
 
 function wireSecretSettings(): void {
   const badge = document.getElementById('version-badge');
@@ -1645,7 +1195,7 @@ function wireSeparate(): void {
     if (!line || !name || !bar || !pctEl) return;
     line.classList.remove('hidden');
     const pct = Math.round(lastStage.pct * 100);
-    name.textContent = STAGE_NAMES[lastStage.stage]?.[lang] ?? lastStage.stage;
+    name.textContent = STAGE_NAMES[lastStage.stage]?.[currentLang()] ?? lastStage.stage;
     bar.style.inlineSize = `${pct}%`;
     pctEl.textContent = `${pct}%`;
   };
@@ -2129,7 +1679,7 @@ function fillAbout(): void {
     { name: 'Material Symbols', ar: 'الأيقونات', en: 'icons' },
     { name: 'HaramMute', url: 'https://github.com/alganzory', ar: 'الملهم الأول', en: 'The first inspiration' },
   ];
-  const desc = (c: Credit): string => (lang === 'ar' ? c.ar : c.en);
+  const desc = (c: Credit): string => (currentLang() === 'ar' ? c.ar : c.en);
   const link = (text: string, url: string): string =>
     `<span class="about-link" data-open-url="${url}">${text}</span>`;
   body.innerHTML = `
@@ -2489,7 +2039,7 @@ function plAppendRanges(parent: HTMLElement, ranges: [number, number][]): void {
     parent.appendChild(document.createTextNode(t('pl_none')));
     return;
   }
-  const sep = lang === 'ar' ? '، ' : ', ';
+  const sep = currentLang() === 'ar' ? '، ' : ', ';
   ranges.forEach(([a, b], i) => {
     if (i > 0) parent.appendChild(document.createTextNode(sep));
     plBdiRange(parent, a, b);
@@ -3161,12 +2711,12 @@ function renderBridgeExt(info: BridgeExt | null): void {
       status.textContent = '';
     } else if (info.extension_seen) {
       const d = info.extension_days_ago ?? 0;
-      status.textContent = lang === 'ar'
+      status.textContent = currentLang() === 'ar'
         ? (d <= 0 ? '✓ الإضافة متصلة الآن' : `✓ الإضافة متصلة — آخر اتصال قبل ${d} يوم`)
         : (d <= 0 ? '✓ Extension connected now' : `✓ Extension connected — last call ${d} day(s) ago`);
       status.className = 'font-label-sm text-label-sm text-tertiary leading-relaxed px-unit';
     } else {
-      status.textContent = lang === 'ar'
+      status.textContent = currentLang() === 'ar'
         ? 'لم يتصل أي متصفح بعد. إن لم تكن الإضافة مثبَّتة فثبّتها من هنا:'
         : 'No browser has called yet. If the extension is not installed, get it here:';
       status.className = 'font-label-sm text-label-sm text-on-surface-variant leading-relaxed px-unit';
