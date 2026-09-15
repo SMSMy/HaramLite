@@ -30,6 +30,22 @@ mod v1proto;
 mod watch_service;
 mod yt_dlp;
 
+// Audit 2026-09-15 (٨): مانيفست comctl32 **v6** لثنائي اختبار المكتبة وحده.
+//
+// أي اختبار يلمس `watch_service::apply_settings` يسحب `run_watch` → الـpipeline
+// → `rfd` (‏`comctl32!TaskDialogIndirect`) إلى هذا الثنائي؛ وبلا مانيفست يطلب
+// v6 يُحمَّل v5 الافتراضي فلا يجد الدالة ⇒ الثنائي **لا يُقلع** أصلاً
+// (‏`STATUS_ENTRYPOINT_NOT_FOUND / 0xc0000139`) ويسقط `cargo test` كله.
+//
+// tauri-build يمنح المانيفست لـ bins وحدها (`rustc-link-arg-bins`)، وcargo لا
+// يملك تعليمة ربط تخصّ ثنائي اختبار المكتبة وحده (التفصيل والدليل في `build.rs`)
+// — فالثنائي يربط هنا مكتبة الموارد التي ولّدها `build.rs` في OUT_DIR، وهي
+// تحمل مانيفست v6 نفسه (متحقَّق منه مقابل `test-comctl32.manifest`).
+// `#[cfg(test)]` تعني أن الإنتاج وbins لا يتغيّران.
+#[cfg(test)]
+#[link(name = "resource", kind = "static")]
+extern "C" {}
+
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
@@ -94,7 +110,32 @@ fn take_single_instance() -> Option<std::sync::mpsc::Receiver<()>> {
         Ok(listener) => {
             let (tx, rx) = mpsc::channel::<()>();
             std::thread::spawn(move || {
-                for mut stream in listener.incoming().flatten() {
+                // Audit 2026-09-15 (٤.ج): كان `incoming().flatten()` يُسقط أخطاء
+                // `accept` بصمت — وعند فشل دائم (استنفاد مقابض مثلاً) تدور الحلقة
+                // بلا نوم فتلهب نواة كاملة إلى الأبد. الآن يُعدّ الخطأ المتتابع:
+                // الخطأ الأول يمر فوراً (عابر لا يستحق تأخيراً)، ومن الثاني نوم
+                // 250ms × عدد الأخطاء بسقف 20 خطأ ⇒ 5 ثوانٍ. الحدّ 20 محاولة
+                // يجعل أسوأ حالة 12 محاولة في الدقيقة بدل دوران مشغول، ويبقى
+                // الاستئناف فورياً (لا تضخيم أسّي) فالاتصال الشرعي التالي يُقبل
+                // بلا تأخير ملموس. العدّاد يُصفَّر عند أول اتصال ناجح، فالبروتوكول
+                // لم يتغيّر: بايت واحد 0x01 = «أظهر النافذة»، وأي شيء آخر نبضة جسر.
+                let mut consec_err: u32 = 0;
+                loop {
+                    let mut stream = match listener.accept() {
+                        Ok((s, _)) => {
+                            consec_err = 0;
+                            s
+                        }
+                        Err(_) => {
+                            consec_err = consec_err.saturating_add(1);
+                            if consec_err > 1 {
+                                let backoff =
+                                    Duration::from_millis(250 * u64::from(consec_err.min(20)));
+                                std::thread::sleep(backoff);
+                            }
+                            continue;
+                        }
+                    };
                     // A connection carrying a single 0x01 byte = "show the
                     // window" (a second GUI launch). Data-less connections are
                     // the bridge's liveness probes — ignore those.
@@ -835,35 +876,6 @@ fn open_file(path: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Demonstrates the panic hook safely: the panic is captured, logged with its
-/// exact source location, and converted into a normal error for the UI.
-/// Dev builds only: `generate_handler!` takes bare paths (no `#[cfg]` on
-/// entries), so the registration stays and the release body refuses instead —
-/// no panic path ships in release builds.
-#[tauri::command]
-fn cause_test_panic() -> Result<String, String> {
-    #[cfg(not(debug_assertions))]
-    {
-        return Err("متاح في بناء التطوير فقط".into());
-    }
-    #[cfg(debug_assertions)]
-    {
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            panic!("رسالة اختبار: هذا panic مقصود لاختبار نافذة السجل");
-        })) {
-            Ok(_) => Ok("لم يقع panic؟".into()),
-            Err(payload) => {
-                let msg = payload
-                    .downcast_ref::<String>()
-                    .cloned()
-                    .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
-                    .unwrap_or_else(|| "unknown".into());
-                Err(format!("تم التقاط panic وإثباته في السجل: {msg}"))
-            }
-        }
-    }
-}
-
 /// Crash forensics: a marker written at boot and removed on graceful exit.
 /// If it survives to the NEXT boot, the previous session was killed without
 /// a clean shutdown (the user reported random silent crashes — this turns
@@ -1084,7 +1096,6 @@ pub fn run() {
             cancel_process,
             cancel_bridge_job,
             cancel_watch_file,
-            cause_test_panic,
             probe_media,
             path_exists,
             path_is_dir,
@@ -1211,5 +1222,34 @@ mod p2_tests {
         let failed = read_normalized_mix(&missing);
         assert!(failed.is_err(), "an undecodable input must fail the decode");
         assert!(!work.exists(), "the scratch dir must be removed on the early return");
+    }
+
+    /// Audit 2026-09-15 (٨): حارس اللغم الذي كان يمنع `cargo test` من العمل
+    /// أصلاً. استدعاء `watch_service::apply_settings` يجعل `run_watch` →
+    /// الـpipeline → `rfd` (‏`comctl32!TaskDialogIndirect`) قابلاً للوصول من
+    /// ثنائي الاختبار، فيُصدَّر `comctl32.dll` في جدول الاستيراد. وبلا مانيفست
+    /// يطلب comctl32 **v6** في الثنائي نفسه، تُحمَّل النسخة v5 الافتراضية ولا
+    /// تجد `TaskDialogIndirect` ⇒ **الثنائي لا يُقلع إطلاقاً**
+    /// (‏`STATUS_ENTRYPOINT_NOT_FOUND / 0xc0000139`) ويسقط `cargo test` كله.
+    ///
+    /// أي أن هذا الاختبار يفشل **بالتحميل** لا بالتنفيذ حين يغيب المانيفست:
+    /// المانيفست يأتي من مكتبة الموارد التي يجهّزها `build.rs`، ويربطها هذا
+    /// الملف عبر `#[cfg(test)] #[link(name = "resource", …)]` أعلاه — وهو ما
+    /// صُوِّر فعلاً: بلا ذلك يخرج الثنائي بـ 0xc0000139 قبل أي اختبار.
+    ///
+    /// الإعدادات الافتراضية تُبقي المراقبة معطّلة (`watch_enabled=false`)
+    /// فيعود الاستدعاء بعد مسار الإيقاف وحده — بلا خيط، وبلا قراءة/كتابة
+    /// ملفات، وبلا أي أثر جانبي على بقية الاختبارات.
+    #[test]
+    fn watch_settings_apply_keeps_the_test_binary_loadable() {
+        let s = settings::Settings::default();
+        assert!(
+            !s.watch_enabled,
+            "fixture: الإعداد الافتراضي يجب أن يُبقي المراقبة معطّلة"
+        );
+        // النداء الذي يحمل العطل: بدونه لا يُسحب rfd إلى ثنائي الاختبار.
+        watch_service::apply_settings(&s);
+        // والنداء الثاني بنفس البصمة يغطي مسار «لا شيء تغيّر» أيضاً.
+        watch_service::apply_settings(&s);
     }
 }

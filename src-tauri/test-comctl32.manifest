@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Audit 2026-09-15 (٨): مانيفست side-by-side لثنائيات الاختبار وحدها.
+
+  لماذا: أي اختبار يلمس `watch_service::apply_settings` يسحب `run_watch` →
+  الـpipeline → `rfd` (‏`comctl32!TaskDialogIndirect`) إلى ثنائي اختبار المكتبة.
+  وبلا هذا المانيفست تُحمَّل comctl32 **v5** الافتراضية فلا تجد `TaskDialogIndirect`
+  ويفشل الثنائي في الإقلاع بـ `STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139)` —
+  أي أن `cargo test` لا يعمل من أصله، لا أن اختباراً واحداً يسقط.
+
+  يُربط في `build.rs` عبر `cargo:rustc-link-arg-tests` فقط — لا يمسّ ثنائي
+  الإنتاج (‏tauri-build يولّد مانيفست التطبيق بنفسه).
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+</assembly>
