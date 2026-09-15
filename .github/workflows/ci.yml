@@ -56,5 +56,8 @@ jobs:
       - name: TypeScript check
         run: pnpm exec tsc --noEmit
 
+      - name: Settings parity guard
+        run: pnpm settings:parity
+
       - name: Site guards
         run: pnpm site:check

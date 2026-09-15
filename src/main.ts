@@ -615,6 +615,11 @@ type RustSettings = Record<string, unknown>;
  *  `null` = "unknown" and tells the backend to keep what it already has. */
 let tgToken: string | null = null;
 let tgApiHash: string | null = null;
+/** Mirror of the backend's `autostart_asked` (1.10): it lives in Rust only
+ *  (no localStorage copy, like the autostart truth itself), so every
+ *  unrelated pushSettings() keeps resending the known value instead of
+ *  letting #[serde(default)] silently reset it to false. */
+let autostartAsked = false;
 let settingsSyncTimer: number | undefined;
 /** Hook filled by wireWatchSettings so external settings changes can repaint. */
 let refreshWatchUi: (() => void) | null = null;
@@ -639,6 +644,9 @@ function collectSettings(): RustSettings {
     telegram_api_id: localStorage.getItem('hl.tg_api_id') || '',
     telegram_api_hash: tgApiHash,
     log_open: logOpen,
+    // 1.10: the only field with no localStorage copy — the module mirror above
+    // keeps unrelated pushes from resetting it to false via #[serde(default)].
+    autostart_asked: autostartAsked,
     watch_enabled: localStorage.getItem('hl.watch') === '1',
     watch_path: localStorage.getItem('hl.watch_path') || null,
     watch_mode: localStorage.getItem('hl.watch_mode') || 'song',
@@ -660,6 +668,8 @@ async function seedSettings(): Promise<void> {
   try {
     const s = await invoke<RustSettings>('get_settings');
     if (!s || typeof s !== 'object') return;
+    // 1.10: seed the autostart_asked mirror from backend truth (Rust-only field).
+    if (typeof s.autostart_asked === 'boolean') autostartAsked = s.autostart_asked;
     const bools: [keyof RustSettings, string][] = [
       ['cuda', 'hl.cuda'], ['notify', 'hl.notify'], ['preview', 'hl.preview'],
       ['keep_instrumental', 'hl.keep_inst'], ['watch_enabled', 'hl.watch'],
@@ -2841,6 +2851,9 @@ async function applyAutostart(on: boolean): Promise<void> {
   try {
     const r = await invoke<{ enabled: boolean }>('set_autostart', { on });
     if (cb) cb.checked = !!r.enabled; // نعكس الريجستري لا ما طلبناه
+    // 1.10: an explicit user decision fulfills "ask once" — keep the mirror
+    // in sync so a later unrelated push cannot resurrect the question.
+    autostartAsked = true;
   } catch (e) {
     showToast(lang === 'ar'
       ? `تعذر تغيير التشغيل مع النظام: ${String(e)}`
@@ -2863,6 +2876,7 @@ function wireAutostart(): void {
       // read-modify-write the full object instead (same pattern as pushSettings).
       const cur: any = await invoke('get_settings');
       await invoke('set_settings', { value: { ...cur, autostart_asked: true } });
+      autostartAsked = true; // 1.10: the backend now holds true — mirror it.
     } catch { /* ignore */ }
   };
   document.getElementById('autostart-yes')?.addEventListener('click', () => { void closeAsk(true); });
