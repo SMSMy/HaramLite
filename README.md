@@ -16,6 +16,10 @@
 </p>
 
 <p align="center">
+  <strong>العربية</strong> · <a href="README.en.md">English</a>
+</p>
+
+<p align="center">
   <a href="https://haramlite.com/"><img src="https://img.shields.io/badge/Website-haramlite.com-0F766E?style=for-the-badge" alt="Website — haramlite.com"></a>
   <a href="https://haramlite.com/#download"><img src="https://img.shields.io/badge/Download-Windows_x64-111827?style=for-the-badge" alt="Download — Windows x64"></a>
   <a href="https://github.com/SMSMy/HaramLite/releases/latest"><img src="https://img.shields.io/github/v/release/SMSMy/HaramLite?style=for-the-badge&label=Release" alt="Latest release"></a>
@@ -32,7 +36,7 @@
 </p>
 
 <p align="center">
-  <img src="IMG/Screenshot.png" alt="واجهة HaramLite 0.2.5" width="840">
+  <img src="IMG/0.2.6-AR.png" alt="واجهة HaramLite 0.2.6 بالعربية" width="840">
 </p>
 
 ---
@@ -148,17 +152,4 @@ docs/                دليل المساهمة
 
 ## English
 
-**HaramLite** removes background music from video and audio with on-device AI. Nothing is uploaded. There is no cloud and no account.
-
-This repository is the source. **Users should start at [haramlite.com](https://haramlite.com/)** — download, install, privacy policy, and product docs all live there.
-
-- **Clip mode** — remove the music, keep speech natural
-- **Song mode** — isolate vocals, polish presence, trim silence
-- Paste a YouTube (or other) URL, batch files, or a watch folder
-- Browser extension (local native messaging) and an optional paired Telegram bot you link yourself — **[Chrome Web Store](https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg)** (requires the Windows desktop app)
-- Windows 10/11 x64 · GPU via CUDA or DirectML when enabled
-
-Download: **[haramlite.com/#download](https://haramlite.com/#download)** — verify your download against the [`SHA256SUMS.txt`](https://github.com/SMSMy/HaramLite/releases/latest/download/SHA256SUMS.txt) attached to every release (code signing is not available yet).  
-Privacy: **[haramlite.com/PRIVACY.html](https://haramlite.com/PRIVACY.html)**  
-Build from source: [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)  
-License: [MIT](LICENSE)
+الوثيقة الإنجليزية صارت **ملفاً مستقلاً**: **[README.en.md](README.en.md)** — الترجمة الكاملة هناك.
