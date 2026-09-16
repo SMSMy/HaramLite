@@ -80,6 +80,13 @@ jobs:
         working-directory: src-tauri
         run: cargo test --quiet
 
+      # التنسيق بوابة لا نصيحة (سبرنت 0.2.7 · هـ-٥ جزء ١): الشجرة كانت **410 كتل فرق**
+      # حتى أغلقها التزام تنسيق واحد لا يمسّ المنطق، وهذا السطر يمنع عودتها. (و«صفر
+      # تحذيرات» و`-D warnings` موجة تالية — 10 تحذيرات قائمة لا تُصلَح في إصدار فيه منتج.)
+      - name: Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt --check
+
       - name: Clippy (errors only)
         working-directory: src-tauri
         run: cargo clippy --all-targets
