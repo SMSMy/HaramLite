@@ -1,7 +1,7 @@
 name: Quality gate
 
 # Wave 1 (1.5) — one workflow that runs the four checks from the release gate
-# (ROADMAP §6.1): cargo test, cargo clippy (errors only), tsc, and the five
+# (ARCHIVE/ROADMAP.md §6.1): cargo test, cargo clippy (errors only), tsc, and the five
 # site guards. No `-D warnings`: 11 clippy warnings remain, each a documented
 # exception in docs/AUDIT.md (NaN-deliberate comparisons and two deferred refactors);
 #
@@ -111,7 +111,7 @@ jobs:
       - name: Extension mutant gate (negative tests)
         run: pnpm ext:mutants
 
-      # بوابة الإصدار (ROADMAP §6.2): الإصدار مكتوب في أربعة ملفات، وأي انحراف
+      # بوابة الإصدار (ARCHIVE/ROADMAP.md §6.2): الإصدار مكتوب في أربعة ملفات، وأي انحراف
       # بينها يُنتج مثبّتاً يقول شيئاً ويحمل غيره. يفشل هذا الحارس عند أول اختلاف.
       - name: Version consistency guard
         run: pnpm versions:check
@@ -119,7 +119,7 @@ jobs:
       - name: Site guards
         run: pnpm site:check
 
-  # ── Release gate (ROADMAP §٧.ب بند ٥ · §6) — workflow_dispatch ONLY ───────
+  # ── Release gate (ARCHIVE/ROADMAP.md §٧.ب بند ٥ · §6) — workflow_dispatch ONLY ──
   #
   # Why a separate job instead of a step above: this is the one gate that needs
   # BOTH the model (63.7MB) and ffmpeg+ffprobe (~434MB). Fetching the tools on
