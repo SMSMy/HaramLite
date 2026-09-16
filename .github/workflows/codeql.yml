@@ -1,0 +1,116 @@
+name: CodeQL
+
+# ---------------------------------------------------------------------------
+# Approved scope (sprint 0.2.7, item د-٣ in the security gates batch)
+#
+#   * WEEKLY, on a schedule, plus manual dispatch.
+#   * NOT on pull requests. That decision was taken deliberately and the
+#     per-PR variant is deferred to 0.3 -- CodeQL on a repo of this size is far
+#     slower than the existing `Quality gate` workflow, and running it on every
+#     PR would put a multi-minute scan in front of every commit. The repository
+#     is public, so Actions minutes are free here; the constraint is developer
+#     feedback time, not quota.
+#
+# Languages: `rust` and `javascript-typescript`. Both are first-class CodeQL
+# languages. The Rust source lives in src-tauri/ and the TypeScript/JavaScript
+# source in src/, index.html and browser-extension/.
+#
+# Permissions are the minimum this workflow can work with:
+#   contents: read         -- to check the repository out
+#   security-events: write -- to upload the SARIF results to code scanning
+# Nothing else is granted, so a compromised step cannot push, publish, or touch
+# releases.
+# ---------------------------------------------------------------------------
+
+on:
+  schedule:
+    # 03:30 UTC every Monday. Weekly rather than daily because nothing in this
+    # repository changes fast enough for a daily scan to be informative, and a
+    # scheduled scan is about catching newly published queries and advisories.
+    - cron: '30 3 * * 1'
+  workflow_dispatch:
+
+# Least privilege, declared at workflow level so it applies to every job.
+permissions:
+  contents: read
+  security-events: write
+
+# A manual dispatch during a scheduled run would otherwise queue a second full
+# analysis; cancel the older one instead.
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      # Let one language finish and report even if the other fails -- a Rust
+      # build problem must not hide the TypeScript results.
+      fail-fast: false
+      matrix:
+        include:
+          # Rust is a compiled language: the extractor observes real rustc
+          # invocations, so it needs a build. `manual` rather than `autobuild`
+          # because the build cannot succeed without the resource stubs below,
+          # and autobuild has no way to know that.
+          - language: rust
+            build-mode: manual
+            runner: windows-latest
+          # TypeScript/JavaScript is interpreted: CodeQL extracts from source and
+          # needs no build step. `none` is the correct mode.
+          - language: javascript-typescript
+            build-mode: none
+            runner: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---- Rust-only setup -------------------------------------------------
+      # Stable toolchain only. CodeQL's Rust support does not cover nightly-only
+      # features, and this project builds on stable (rust-toolchain is `stable`),
+      # so the two agree.
+      - name: Setup Rust
+        if: matrix.language == 'rust'
+        uses: dtolnay/rust-toolchain@stable
+
+      # tauri-build validates the bundle.resources paths in tauri.conf.json
+      # BEFORE compiling anything, and bin/, models/ and vc_redist.x64.exe are
+      # gitignored -- a clean runner otherwise dies with
+      # "resource path `..\bin` doesn't exist". These stubs are copied verbatim
+      # from the `Quality gate` workflow, where this exact sequence is known to
+      # work; do not diverge from it.
+      - name: Stub bundle resources
+        if: matrix.language == 'rust'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path bin, models | Out-Null
+          New-Item -ItemType File -Force -Path bin/.stub, models/.stub | Out-Null
+          New-Item -ItemType File -Force -Path src-tauri/vc_redist.x64.exe | Out-Null
+
+      # ---- Analysis --------------------------------------------------------
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      # No build cache is configured here on purpose. The Rust extractor works by
+      # observing compilation: if target/ were restored warm, cargo would finish
+      # without invoking rustc, nothing would be extracted, and the scan would
+      # come back green having looked at almost nothing. A cold build every week
+      # is the price of a scan that actually sees the code.
+      - name: Build Rust (the extractor observes this compilation)
+        if: matrix.build-mode == 'manual'
+        working-directory: src-tauri
+        run: cargo build --locked
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          # Distinguishes the two analyses in the Security tab so one language's
+          # results cannot overwrite the other's.
+          category: /language:${{ matrix.language }}
