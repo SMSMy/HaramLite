@@ -2161,7 +2161,7 @@
 | حرّاس مفقودة | `deny.toml` · `.cargo/audit.toml` · CodeQL workflow · ISSUE_TEMPLATE · PR template · `docs/adr/` — **كلها غائبة** |
 | حماية `main` | فحص **`gate` مطلوب** · `allow_force=false` · `allow_delete=false` · `enforce_admins=false` |
 | **حماية الوسوم** | **غير مفعَّلة** (‏API: 404) ⇒ تحريك وسم ممكن تقنياً، وحماية الفرع **لا تشمله** |
-| محتوى `assets-v1` | **24 أصلاً**: النموذج + `ffmpeg`/`ffprobe` (باسمَي LGPL وGPL) + `yt-dlp` + **CUDA كاملة** (‏cudart · cublas · cublasLt · cufft · cuDNN ×10 · مزوّدا ORT) + `cuda-runtime-manifest.json` |
+| محتوى `assets-v1` | **23 أصلاً** (مقيس: `gh release view assets-v1 --json assets` ⇒ 23 اسماً): النموذج + `ffmpeg`/`ffprobe` (باسمَي LGPL وGPL) + `yt-dlp` + **CUDA كاملة** (‏cudart · cublas · cublasLt · cufft · cuDNN ×10 · مزوّدا ORT) + `cuda-runtime-manifest.json`. **وتصحيح مُعلَن**: كنت كتبتُ **24** في أول هذه الجولة، وكشفه وكيل جلب الموارد بقياس مستقل ⇒ الرقم الصحيح **23**، والفرق سببه عدّي لا وجود أصلٍ رابع وعشرين |
 | محتوى المثبّت المحزَم | `ffmpeg` · `ffprobe` · `yt-dlp` · مكتبات MSVC · `vc_redist.x64.exe` — و**لا مكتبات CUDA** (تُنزَّل زمن التشغيل) |
 | مفتاح تحديث Tauri | `updater.key` **موجود محلياً** · المفتاح العام مُثبَّت في `tauri.conf.json` · `active:false` · `createUpdaterArtifacts:false` ⇒ **العائق ليس شهادة** بل الحقول الثلاثة |
 | مصارف `innerHTML` | `media.ts:21-39` يفصل `setVerdict` (‏`textContent` لبيانات الخلف والمسارات) عن `setVerdictHtml` (وسم ساكن) — وكل مستدعيها يمرّر `verdictHtml(outKind)`؛ و`queue.ts:242/259/285` نصوص ترجمة فقط ⇒ **لا ثغرة قائمة من هذا الباب، والناقص اختبار** |
