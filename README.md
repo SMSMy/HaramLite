@@ -7,16 +7,12 @@
 <h1 align="center">HaramLite</h1>
 
 <p align="center">
-  <strong>إزالة الموسيقى من الفيديو والصوت بالذكاء الاصطناعي — محلياً 100% على جهازك</strong><br>
-  لا رفع لأي ملف. لا سحابة. لا حسابات.
+  <strong>Remove music from video and audio with on-device AI — 100% local</strong><br>
+  No file uploads. No cloud. No accounts.
 </p>
 
 <p align="center">
-  <em>«الموسيقى لا تليق بقلبٍ يريد الطمأنينة»</em>
-</p>
-
-<p align="center">
-  <strong>العربية</strong> · <a href="README.en.md">English</a>
+  <strong>English</strong> · <a href="README.ar.md">العربية</a>
 </p>
 
 <p align="center">
@@ -28,128 +24,122 @@
 </p>
 
 <p align="center">
-  <a href="https://haramlite.com/">الموقع الرسمي</a> ·
-  <a href="https://haramlite.com/#download">التحميل</a> ·
-  <a href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg">إضافة المتصفح</a> ·
-  <a href="https://haramlite.com/PRIVACY.html">سياسة الخصوصية</a> ·
-  <a href="https://github.com/SMSMy/HaramLite/releases/latest">الإصدارات</a>
+  <a href="https://haramlite.com/">Website</a> ·
+  <a href="https://haramlite.com/#download">Download</a> ·
+  <a href="https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg">Browser extension</a> ·
+  <a href="https://haramlite.com/PRIVACY.html">Privacy policy</a> ·
+  <a href="https://github.com/SMSMy/HaramLite/releases/latest">Releases</a>
 </p>
 
 <p align="center">
-  <img src="IMG/0.2.6-AR.png" alt="واجهة HaramLite 0.2.6 بالعربية" width="840">
+  <img src="IMG/0.2.6-en.png" alt="HaramLite 0.2.6 — English interface" width="840">
 </p>
 
 ---
 
-> **هذا المستودع هو الشيفرة المصدرية.**  
-> للمستخدمين: كل شيء — التحميل، التثبيت، والإرشادات — على **[haramlite.com](https://haramlite.com/)**.
+> **This repository is the source code.**
+> If you are a user: everything — download, install and guides — is at **[haramlite.com](https://haramlite.com/)**.
 
-## ماذا يفعل؟
+## What it does
 
-HaramLite تطبيق ويندوز يفصل الموسيقى عن الكلام **على جهازك** بنموذج ذكاء اصطناعي محلي (ONNX). لا يغادر الملف جهازك في أي خطوة.
+HaramLite is a Windows app that separates music from speech **on your own machine** with a local AI model (ONNX). Your file does not leave the device at any step.
 
-| الوضع | النتيجة |
+| Mode | Result |
 |---|---|
-| **مقطع عادي** | يزيل الموسيقى ويبقي الكلام طبيعياً — مناسب للبودكاست والدروس والمقابلات. |
-| **أغنية** | يعزل الصوت البشري، يحسّن الحضور، ويتخطّى فترات الصمت تلقائياً. |
+| **Normal clip** | Removes the music and keeps speech natural — for podcasts, lectures and interviews. |
+| **Song** | Isolates the vocal, improves presence, and skips silent stretches automatically. |
 
-**أيضاً:**
+**Also:**
 
-- لصق رابط يوتيوب أو غيره — التنزيل والمعالجة في خطوة واحدة
-- سحب عدة ملفات دفعة واحدة، أو مجلد مراقبة يعالج كل ما يُضاف إليه
-- إضافة متصفح: إرسال الرابط بنقرة، والمشاهدة بعد إزالة الموسيقى داخل الصفحة مع تخطي فترات الصمت
-- روبوت تيليجرام اختياري مربوط بحسابك فقط (رمز اقتران من 6 أرقام)
-- يعمل في صينية النظام، مع إشعار عند اكتمال المعالجة
+- Paste a YouTube (or other) link — download and processing in one step
+- Drop in several files at once, or use a watch folder that processes whatever is added to it
+- Browser extension: send a link with one click, then watch it in the page with the music removed and silent gaps skipped
+- Optional Telegram bot paired to your account only (6-digit pairing code)
+- Runs in the system tray and notifies you when processing finishes
 
-التفاصيل والاستخدام: **[haramlite.com](https://haramlite.com/)**
+Details and usage: **[haramlite.com](https://haramlite.com/)**
 
-## التحميل
+## Download
 
-**حمّل من الموقع الرسمي** — هناك المثبت الموصى به ونسخة MSI:
+**Download from the official site** — the recommended installer and an MSI build are there:
 
 ### [haramlite.com/#download](https://haramlite.com/#download)
 
-| الملف | لمن؟ |
+| File | Who it is for |
 |---|---|
-| `HaramLite_*_x64-setup.exe` | الجميع — يثبّت VC++ وأدوات المعالجة والنموذج تلقائياً |
-| `HaramLite_*_x64_en-US.msi` | البيئات المُدارة (تثبيت صامت / GPO / MDM) |
+| `HaramLite_*_x64-setup.exe` | Everyone — installs the VC++ runtime, the media tools and the model |
+| `HaramLite_*_x64_en-US.msi` | Managed environments (silent install / GPO / MDM) |
 
-النسخ الثنائية نفسها منشورة أيضاً في [GitHub Releases](https://github.com/SMSMy/HaramLite/releases/latest).
+The same binaries are also published on [GitHub Releases](https://github.com/SMSMy/HaramLite/releases/latest).
 
-**التحقّق من سلامة ما نزّلت:** كل إصدار يُرفَق معه ملف [`SHA256SUMS.txt`](https://github.com/SMSMy/HaramLite/releases/latest/download/SHA256SUMS.txt) يحمل بصمة SHA-256 لكل ملف. للتأكد أن ما نزّلته لم يتغيّر بعد التنزيل:
+**Verify what you downloaded:** every release carries a [`SHA256SUMS.txt`](https://github.com/SMSMy/HaramLite/releases/latest/download/SHA256SUMS.txt) with a SHA-256 digest for each file. To confirm the file was not altered after download:
 
 ```powershell
-# يُطابق البصمة الظاهرة في SHA256SUMS.txt
+# must match the digest printed in SHA256SUMS.txt
 Get-FileHash .\HaramLite_*_x64-setup.exe -Algorithm SHA256
 ```
 
-> التوقيع الرقمي غير متوفّر بعد (يحتاج شهادة توقيع كود)، والبصمات هي وسيلة التحقّق المتاحة حالياً.
+> Code signing is not available yet (it needs a code-signing certificate), so the published digests are the verification method available today.
 
-> التحديث الذاتي داخل التطبيق متوقف حالياً (مفتاح توقيع الإصدارات غير مضبوط بعد). للترقية: نزّل المثبت الجديد من الموقع أو من صفحة الإصدارات.  
-> إن نُقص أي مكوّن (نموذج / أدوات) يظهر **معالج إصلاح ذاتي** يعيد تنزيله ويتحقق من بصمة SHA-256.
+> In-app self-update is currently disabled (the release signing key is not set up yet). To upgrade, download the new installer from the site or the releases page.  
+> If a component (model / tools) is missing, a **self-repair wizard** re-downloads it and checks its SHA-256.
 
-**المتطلبات:** Windows 10/11 (x64). لا شيء آخر — المثبت يتولى الباقي.  
-للسرعة: كرت NVIDIA (CUDA) أو أي كرت DX12 (DirectML) يُستخدم تلقائياً عند تفعيله من الإعدادات.
+**Requirements:** Windows 10/11 (x64). Nothing else — the installer handles the rest.  
+For speed: an NVIDIA GPU (CUDA) or any DX12 GPU (DirectML), used automatically once enabled in Settings.
 
-## الاستخدام السريع
+## Quick start
 
-1. ثبّت التطبيق من [صفحة التحميل](https://haramlite.com/#download) وشغّله.
-2. أفلت ملفاً (فيديو أو صوت) أو الصق رابطاً.
-3. اختر الوضع: **أغنية** أو **مقطع عادي**، والناتج MP3 أو MP4.
-4. اضغط المعالجة — النتيجة تُحفظ بجانب الملف الأصلي.
+1. Install the app from the [download page](https://haramlite.com/#download) and launch it.
+2. Drop a file (video or audio) or paste a link.
+3. Choose a mode — **Song** or **Normal clip** — and an output: MP3 or MP4.
+4. Press process. The result is saved next to the original file.
 
-الواجهة عربية/إنجليزية من زر في الأعلى. زر الإغلاق يخفي البرنامج إلى صينية النظام؛ الإغلاق الكامل من قائمة الأيقونة.
+The interface switches between Arabic and English from a button at the top. The close button hides the app to the system tray; quit fully from the tray icon menu.
 
-## الخصوصية
+## Privacy
 
-كل خطوة — الفحص، الفصل، المؤثرات، والترميز — تتم **على جهازك**.
+Every step — probing, separation, effects and encoding — runs **on your machine**.
 
-- لا رفع للملفات، لا حسابات، لا تحليلات، لا إعلانات
-- الإنترنت اختياري: لتنزيل رابط طلبتَه، أو تحديث yt-dlp، أو روبوت تيليجرام إن فعّلته
-- رمز البوت و`api_hash` يُخزَّنان مشفّرين بـ DPAPI داخل `%LOCALAPPDATA%`
-- إضافة المتصفح لا ترسل أي طلب شبكة: تتحدث مع التطبيق المحلي عبر Native Messaging فقط
+- No file uploads, no accounts, no analytics, no ads
+- The network is optional: to download a link you asked for, to update yt-dlp, or for the Telegram bot if you enable it
+- The bot token and `api_hash` are stored encrypted with DPAPI under `%LOCALAPPDATA%`
+- The browser extension sends no network request: it talks to the local app over Native Messaging only
 
-السياسة الكاملة: **[haramlite.com/PRIVACY.html](https://haramlite.com/PRIVACY.html)**
+Full policy: **[haramlite.com/PRIVACY.html](https://haramlite.com/PRIVACY.html)**
 
-## إضافة المتصفح
+## Browser extension
 
-إضافة مجانية لمتصفح كروم: إرسال الرابط إلى التطبيق بنقرة، والمشاهدة بعد إزالة الموسيقى **داخل الصفحة** مع تخطي فترات الصمت. الإضافة **لا ترسل أي طلب شبكة**: تتحدّث مع التطبيق على جهازك عبر Native Messaging فقط.
+A free Chrome extension: send the current link to the app with one click, then watch it **in the page** with the music removed and silent gaps skipped. The extension **sends no network request**: it talks to the app on your machine over Native Messaging only.
 
-**تتطلّب تطبيق HaramLite لسطح المكتب** (ويندوز 10/11) — بدونه لا تعمل.
+**It requires the HaramLite desktop app** (Windows 10/11) — it does not work without it.
 
-**[التثبيت من متجر كروم](https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg)** · صلاحياتها الثلاث (`contextMenus` · `nativeMessaging` · `activeTab`) ونطاق عملها (`youtube.com`) موثّقة في [`docs/STORE.md`](docs/STORE.md).
+**[Install from the Chrome Web Store](https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg)** · Its three permissions (`contextMenus` · `nativeMessaging` · `activeTab`) and its single host scope (`youtube.com`) are documented in [`docs/STORE.md`](docs/STORE.md) *(in Arabic)*.
 
-## للمطورين
+## For developers
 
-البناء من المصدر موثّق في [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
+Building from source is documented in [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) *(in Arabic)*.
 
-**المكدس:** Tauri v2 · Rust · ONNX Runtime (UVR-MDX-NET-Voc_FT) · FFmpeg · yt-dlp · TypeScript / Vite · Tailwind CSS
+**Stack:** Tauri v2 · Rust · ONNX Runtime (UVR-MDX-NET-Voc_FT) · FFmpeg · yt-dlp · TypeScript / Vite · Tailwind CSS
 
 ```text
-src/                 الواجهة
-src-tauri/src/       خط المعالجة (GUI + CLI)
-browser-extension/   إضافة MV3 — جسر محلي بلا تتبع
-docs/                دليل المساهمة
+src/                 frontend
+src-tauri/src/       processing pipeline (GUI + CLI)
+browser-extension/   MV3 extension — a local bridge with no tracking
+docs/                contributing guide
 ```
 
-مشاكل أو اقتراحات: [GitHub Issues](https://github.com/SMSMy/HaramLite/issues/new) — أو من داخل التطبيق: الإعدادات ← **الإبلاغ عن مشكلة**.
+Bugs or suggestions: [GitHub Issues](https://github.com/SMSMy/HaramLite/issues/new) — or from inside the app: Settings → **Report a problem**.
 
-## الرخصة
+## License
 
 [MIT](LICENSE) © 2026 HaramLite Contributors
 
-إشعارات الطرف الثالث — رخص كل ما يُوزَّع مع البرنامج ومصادره وإسناداته (FFmpeg · نموذج الفصل · yt-dlp · ONNX Runtime · الخطوط · مكتبات Rust): [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
+Third-party notices — the licence, source and attribution of everything distributed with the app (FFmpeg · separation model · yt-dlp · ONNX Runtime · fonts · Rust crates): [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
-المشروع مستقل وغير مرتبط بجوجل أو يوتيوب. المستخدم مسؤول عن احترام حقوق المحتوى الذي يعالجه.
+This project is independent and not affiliated with Google or YouTube. You are responsible for respecting the rights of the content you process.
 
 ---
 
 <p align="center">
   <a href="https://haramlite.com/"><strong>haramlite.com</strong></a>
 </p>
-
----
-
-## English
-
-الوثيقة الإنجليزية صارت **ملفاً مستقلاً**: **[README.en.md](README.en.md)** — الترجمة الكاملة هناك.
