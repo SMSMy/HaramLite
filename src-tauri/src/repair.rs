@@ -27,7 +27,21 @@ pub struct Component {
     /// for inside `bin/`. Renaming this breaks repair silently: the download
     /// succeeds, the hash matches, and nothing ever finds the file.
     pub local: &'static str,
-    /// expected SHA-256 (hex, lowercase)
+    /// Expected SHA-256 (hex, lowercase) — **و-٣: مرساة الثقة المثبَّتة في
+    /// التنفيذي.**
+    ///
+    /// This constant is the ONLY integrity source for the `assets-v1` channel:
+    /// the value is compiled in, never read from the release, never from an
+    /// HTTP header, never from a sibling file the same host serves. A version
+    /// of the release whose bytes differ from this digest is refused by name
+    /// (`download_and_verify`) however legitimate its manifest or URL looks.
+    ///
+    /// Bound that remains (stated in the threat model §٥/و-٣): a hash pins the
+    /// BYTES, not the AUTHOR. Authenticode signing — the real fix — is deferred
+    /// by the owner (no certificate), and the self-updater is active: false; so
+    /// the chain still rests on "the GitHub account and the CI were not
+    /// compromised". Changing these digests is a release decision, not a
+    /// refactor.
     pub sha256: &'static str,
     /// install subdirectory relative to the executable (bin | models)
     pub subdir: &'static str,
@@ -116,8 +130,13 @@ pub fn health_rows() -> Vec<HealthRow> {
         .collect()
 }
 
-/// Download one component from the assets-v1 release and verify its SHA-256
+/// Download one component from the `assets-v1` release and verify its SHA-256
 /// BEFORE promoting it into place (atomic rename on the same volume).
+///
+/// و-٣: the digest compared here is `c.sha256` — a **compile-time constant**
+/// (`COMPONENTS`). Nothing in the HTTP response feeds the comparison: no
+/// manifest field, no header, no sibling checksum file on the same host. That
+/// is the whole trust anchor for this channel today.
 pub fn repair(
     key: &str,
     progress: &dyn Fn(f32),
@@ -193,7 +212,6 @@ fn download_and_verify(
             dest.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
         ));
     }
-
     std::fs::rename(&tmp, dest).map_err(|e| format!("تعذر التثبيت في {}: {e}", dest.display()))?;
     Ok(())
 }
@@ -282,5 +300,87 @@ mod tests {
         assert_eq!(std::fs::read(&dest).unwrap(), payload);
         assert!(!tmp.exists(), "the temporary name must not survive the rename");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// و-٣ سلبي: تعبئة البصمة **المثبَّتة** ⇒ فشل يسمّي الملف، ولا يُرقّى شيء.
+    ///
+    /// هذا هو الاختبار الذي يقابل «بصمة مُعبَّثة ⇒ فشل يسمّي الملف» في تقرير
+    /// الفجوة. وهو يثبت أيضاً أن المرجع ثابت في الكود: الدالة تقارن بالوسيط
+    /// القادم من `COMPONENTS`، ولو صار المصدر ملفاً/مانيفست تنزيل لما استطاع
+    /// اختبار بلا شبكة أن يجعلها تفشل بهذه الدقّة.
+    #[test]
+    fn one_tampered_pinned_hash_fails_and_names_the_file() {
+        let dir = std::env::temp_dir().join(format!("hl_repair_pin_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let progress = |_p: f32| {};
+
+        let ytdlp = COMPONENTS
+            .iter()
+            .find(|c| c.key == "yt-dlp")
+            .expect("yt-dlp component");
+        let dest = dir.join(ytdlp.local);
+
+        // البصمة المثبَّتة معبَّثة ببايت واحد ⇒ الفشل، والرسالة تسمّي الملف.
+        let tampered = {
+            let mut v = ytdlp.sha256.to_string().into_bytes();
+            v[0] = if v[0] == b'a' { b'b' } else { b'a' };
+            String::from_utf8(v).unwrap()
+        };
+        assert_ne!(tampered, ytdlp.sha256);
+        let payload = b"the bytes a hostile release would serve".to_vec();
+        let err = download_and_verify(
+            std::io::Cursor::new(payload.clone()),
+            &dest,
+            0,
+            &tampered,
+            &progress,
+        )
+        .expect_err("بصمة مُعبَّثة يجب أن تفشل");
+        assert!(
+            err.contains(ytdlp.local),
+            "رسالة الفشل يجب أن تسمّي الملف «{}»: {err}",
+            ytdlp.local
+        );
+        assert!(!dest.exists(), "لا يُرقّى ملف ببصمة منحرفة");
+        assert!(
+            !dest.with_extension("download").exists(),
+            "ولا يبقى مؤقت بعد الفشل"
+        );
+
+        // وبصمة حقيقية مطابقة ⇒ التثبيت ينجح (سلوك المسار السليم سليم).
+        let good = {
+            use sha2::{Digest, Sha256};
+            format!("{:x}", Sha256::digest(&payload))
+        };
+        download_and_verify(std::io::Cursor::new(payload), &dest, 0, &good, &progress)
+            .expect("البصمة المطابقة تُثبّت");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// و-٣: الثوابت المثبَّتة سليمة الشكل ومتمايزة — تكرار بصمة بين مكوّنين
+    /// يعني أن أحدهما يحمل بصمة الآخر (وهو خطأ صامت لا يكشفه أي فشل تنزيل).
+    #[test]
+    fn pinned_component_hashes_are_well_formed_and_distinct() {
+        assert_eq!(COMPONENTS.len(), 4);
+        for c in COMPONENTS {
+            assert_eq!(c.sha256.len(), 64, "بصمة {} ليست 64 محرفاً", c.key);
+            assert!(
+                c.sha256.bytes().all(|b| b.is_ascii_hexdigit()),
+                "بصمة {} ليست hex",
+                c.key
+            );
+            assert_eq!(
+                c.sha256,
+                c.sha256.to_ascii_lowercase(),
+                "بصمة {} يجب أن تكون صغيرة",
+                c.key
+            );
+        }
+        for (i, a) in COMPONENTS.iter().enumerate() {
+            for b in COMPONENTS.iter().skip(i + 1) {
+                assert_ne!(a.sha256, b.sha256, "بصمة مكرَّرة بين {} و{}", a.key, b.key);
+            }
+        }
     }
 }
