@@ -109,6 +109,128 @@ fn session_nonce(base: &Path) -> Vec<u8> {
     ipc_guard::effective_nonce(base, &n)
 }
 
+/// المنفذ المحلي الذي يحجز به حارس الإقلاع الواحد.
+const SINGLE_INSTANCE_PORT: u16 = 48765;
+
+/// ماذا أجاب من يحجز المنفذ حين سألناه أن يُظهر نافذته؟
+///
+/// التمييز مقصود: **«لم يجب» ليست «وافقت»**. الخلط بينهما هو العطل المُصلَح
+/// هنا: النسخة الجديدة كانت تقرأ الجواب ثم تخرج **بصمت** على كل حال، فيظن
+/// المستخدم أن البرنامج لم يقلع (والنسخة القديمة تحتلّ المنفذ).
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum Answer {
+    /// نسخة من هذه العائلة أقرّت الطلب: نافذتها ستظهر، فنخرج صامتين.
+    Acknowledged,
+    /// لا ملف رمز في مجلد البيانات ⇒ لا نسخة من عائلة 0.2.6 تعمل (بل أقدم).
+    NoNonce,
+    /// ملف رمز موجود ولم يصل إقرار: النسخة العاملة لا تعرف البروتوكول المصادَق.
+    Unanswered,
+}
+
+/// قرار الإقلاع من جواب النسخة القائمة — دالة **نقية**، وهي موضع الاختبار
+/// السلبي: جدولٌ يقول «متجاهَل ⇒ صمت» هو بالضبط ما يمنعه هذا الجدول.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum Boot {
+    Silent,
+    Warn,
+}
+
+fn boot_decision(answer: Answer) -> Boot {
+    match answer {
+        Answer::Acknowledged => Boot::Silent,
+        Answer::NoNonce | Answer::Unanswered => Boot::Warn,
+    }
+}
+
+/// بايت الجواب على حمولة سلك: إقرارٌ للمصادَق وحده.
+///
+/// مستخرجٌ من حلقة المستمع كي يقيسه الاختبار على مقبس حقيقي — فيثبت أن
+/// الطرفين (المستمع والسائل) يتفقان على البروتوكول فعلاً لا في التعليق.
+fn probe_answer(nonce: &[u8], wire: &[u8]) -> u8 {
+    if ipc_guard::authentic_request(nonce, wire) {
+        ipc_guard::ACCEPT_BYTE
+    } else {
+        ipc_guard::REJECT_BYTE
+    }
+}
+
+/// اسأل النسخة التي تحجز المنفذ أن تُظهر نافذتها، وأعِد **ما أجابت**.
+///
+/// المنفذ مُمرَّر لا ثابتاً: هذا ما يجعل القرار قابلاً للقياس على منفذ عابر في
+/// الاختبار، فلا يُنازع نسخة حقيقية تعمل على المنفذ الحقيقي.
+fn ask_running_instance(port: u16, data_dir: &Path) -> Answer {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    // بلا رمز على القرص لا شيء نُصادق به — وهذه بالضبط حالة الانتقال من نسخة
+    // أقدم: لا ملف رمز لها أصلاً. لا اتصال هنا (والاختبار يقيس ذلك).
+    let Some(nonce) = ipc_guard::load_nonce(data_dir) else {
+        return Answer::NoNonce;
+    };
+    let Ok(mut s) = TcpStream::connect(("127.0.0.1", port)) else {
+        return Answer::Unanswered;
+    };
+    let _ = s.set_write_timeout(Some(Duration::from_millis(500)));
+    let _ = s.set_read_timeout(Some(Duration::from_millis(500)));
+    if s.write_all(&ipc_guard::request_bytes(&nonce)).is_err() {
+        return Answer::Unanswered;
+    }
+    let mut ack = [0u8; 1];
+    match s.read(&mut ack) {
+        // إقرار صريح وحده يُعدّ إظهاراً. بايت الرفض، أو إغلاق بلا جواب، أو
+        // انتهاء المهلة (نسخة قديمة تتجاهل ما لا تعرفه) — كلها «لم تُظهر».
+        Ok(1) if ack[0] == ipc_guard::ACCEPT_BYTE => Answer::Acknowledged,
+        _ => Answer::Unanswered,
+    }
+}
+
+/// صندوق رسالة أصلي: هذه اللحظة **تسبق بناء تطبيق Tauri كله** (`logging::init`
+/// لا يعمل إلا في `setup`)، فلا نافذة ولا سجل بعد — والقناة المضمونة الوحيدة
+/// هي `user32!MessageBoxW`. (`rfd` لا يصلح هنا: يسحب `comctl32` ومانيفست v6.)
+#[cfg(windows)]
+fn show_boot_alert(title: &str, body: &str) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        MessageBoxW, MB_ICONWARNING, MB_OK, MB_SETFOREGROUND, MB_TOPMOST,
+    };
+    let wide = |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
+    let (t, b) = (wide(title), wide(body));
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            b.as_ptr(),
+            t.as_ptr(),
+            MB_OK | MB_ICONWARNING | MB_SETFOREGROUND | MB_TOPMOST,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+fn show_boot_alert(title: &str, body: &str) {
+    eprintln!("{title}\n{body}");
+}
+
+/// النسخة التي تحجز المنفذ لم تُظهر نافذتها: قُل ذلك صراحةً بدل الخروج الصامت.
+///
+/// الرسالة تسمّي السبب (و-٢: لا فشل صامت)، وتذكر المنفذ ليُشخَّص بها الحالة
+/// النادرة التي يحجز فيها المنفذَ برنامجٌ آخر لا HaramLite.
+fn alert_unanswered_instance(answer: Answer) {
+    let cause = match answer {
+        Answer::NoNonce => "النسخة العاملة أقدم من 0.2.6، فهي لا تعرف طلب الإظهار المصادَق.",
+        _ => "النسخة العاملة لم تستجب لطلب الإظهار — أو أن ما يحجز المنفذ ليس HaramLite.",
+    };
+    let body = format!(
+        "هناك نسخة من HaramLite تعمل الآن، فلم تُفتح هذه النسخة.\n\n\
+         السبب: {cause}\n\n\
+         للمتابعة: أغلِق النسخة العاملة إغلاقاً كاملاً — أيقونة الشريط في صندوق \
+         النظام ← «خروج كامل» — ثم شغّل هذه النسخة مرة أخرى.\n\n\
+         (منفذ الحلقة المحلية: {SINGLE_INSTANCE_PORT})"
+    );
+    // لا مشترك سجل في هذه اللحظة؛ السطر يبقى ليظهر لو رُكّب واحد قبل الحارس يوماً.
+    tracing::error!(target: "app", "نسخة أخرى تحجز المنفذ ولم تُؤكّد الإظهار — أُبلغ المستخدم صراحةً");
+    show_boot_alert("HaramLite — نسخة أخرى تعمل", &body);
+}
+
 /// Single-instance guard: bind a loopback TCP listener as an OS-level mutex.
 /// A second instance asks the RUNNING one to show its window (important when
 /// the running instance was started hidden by the browser bridge), then exits.
@@ -117,12 +239,16 @@ fn session_nonce(base: &Path) -> Vec<u8> {
 /// `paths::data_dir()`. الاتصال بغير الرمز **يُرفض بصمت** (بايت الرفض بلا
 /// إظهار نافذة). الحدّ المتبقّي منصوص في `ipc_guard`: من يقرأ الملف بنفس
 /// صلاحية المستخدم يعرف الرمز، والأثر الأقصى يبقى «إظهار نافذة».
+///
+/// وتكملة و-٤ (0.2.6): الرفض صار **مقروءاً للمستخدم**. كان الفرع كله يخرج
+/// بصمت، فمن شغّل نسخة جديدة ونسخة أقدم في الشريط لا يرى شيئاً أبداً؛ الآن
+/// عدم الإقرار يُقال صراحةً في صندوق نظام ويُخرج برمز 1.
 fn take_single_instance() -> Option<std::sync::mpsc::Receiver<()>> {
     use std::io::{Read, Write};
-    use std::net::{TcpListener, TcpStream};
+    use std::net::TcpListener;
     use std::sync::mpsc;
     use std::time::Duration;
-    match TcpListener::bind("127.0.0.1:48765") {
+    match TcpListener::bind(("127.0.0.1", SINGLE_INSTANCE_PORT)) {
         Ok(listener) => {
             let (tx, rx) = mpsc::channel::<()>();
             // الرمز قبل أول اتصال ممكن؛ فشل الكتابة لا يمنع الجلسة.
@@ -163,13 +289,9 @@ fn take_single_instance() -> Option<std::sync::mpsc::Receiver<()>> {
                     let _ = stream.set_write_timeout(Some(Duration::from_millis(300)));
                     let mut buf = [0u8; ipc_guard::WIRE_MAGIC.len() + ipc_guard::NONCE_BYTES];
                     let n = stream.read(&mut buf).unwrap_or(0);
-                    let accepted = ipc_guard::authentic_request(&nonce, &buf[..n]);
-                    let _ = stream.write_all(&[if accepted {
-                        ipc_guard::ACCEPT_BYTE
-                    } else {
-                        ipc_guard::REJECT_BYTE
-                    }]);
-                    if accepted {
+                    let answer = probe_answer(&nonce, &buf[..n]);
+                    let _ = stream.write_all(&[answer]);
+                    if answer == ipc_guard::ACCEPT_BYTE {
                         let _ = tx.send(());
                     }
                 }
@@ -177,18 +299,16 @@ fn take_single_instance() -> Option<std::sync::mpsc::Receiver<()>> {
             Some(rx)
         }
         Err(_) => {
-            // already running → ask it to show its window, then exit quietly
-            if let Some(nonce) = ipc_guard::load_nonce(&paths::data_dir()) {
-                if let Ok(mut s) = TcpStream::connect("127.0.0.1:48765") {
-                    let _ = s.set_write_timeout(Some(Duration::from_millis(500)));
-                    let _ = s.set_read_timeout(Some(Duration::from_millis(500)));
-                    // غير مصادَق ⇒ لا شيء في الجلسة القائمة، ونحن نخرج كما كنا.
-                    let _ = s.write_all(&ipc_guard::request_bytes(&nonce));
-                    let mut ack = [0u8; 1];
-                    let _ = s.read(&mut ack);
+            // نسخة تعمل بالفعل: اطلب منها أن تُظهر نافذتها. الإقرار وحده يعني
+            // أن نافذة ستظهر (فنخرج صامتين)؛ وأي شيء آخر **يُقال** ثم نخرج.
+            let answer = ask_running_instance(SINGLE_INSTANCE_PORT, &paths::data_dir());
+            match boot_decision(answer) {
+                Boot::Silent => std::process::exit(0),
+                Boot::Warn => {
+                    alert_unanswered_instance(answer);
+                    std::process::exit(1);
                 }
             }
-            std::process::exit(0);
         }
     }
 }
@@ -1325,5 +1445,179 @@ mod p2_tests {
         watch_service::apply_settings(&s);
         // والنداء الثاني بنفس البصمة يغطي مسار «لا شيء تغيّر» أيضاً.
         watch_service::apply_settings(&s);
+    }
+}
+
+/// تكملة و-٤ (0.2.6): «نسخة أقدم تتجاهل الطلب» تُقال، ولا تُسكَت.
+///
+/// كل قياس هنا على **مقبس حقيقي** بمنفذ عابر، ويمرّ عبر دالتي الإنتاج نفسيهما:
+/// `probe_answer` (جانب المستمع) و`ask_running_instance` (جانب السائل).
+#[cfg(test)]
+mod single_instance_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    /// سلوك الطرف الذي يحجز المنفذ.
+    #[derive(Clone, Copy)]
+    enum Peer {
+        /// نسخة من هذه العائلة: تُصادق بالبروتوكول نفسه وتُقرّ.
+        Current,
+        /// نسخة برمز جلسة آخر (أو غريبة): تردّ رفضاً صريحاً.
+        ForeignNonce,
+        /// نسخة أقدم لا تعرف البروتوكول: تقرأ الطلب ولا تردّ أبداً.
+        Mute,
+        /// نسخة تُغلق الاتصال بلا جواب.
+        HangsUp,
+    }
+
+    fn tmpdir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("hl_si_{}_{}", std::process::id(), tag));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// طرفٌ على منفذ عابر (لا 48765: اختبارٌ لا يُنازع نسخة تعمل عند المطوّر).
+    fn spawn_peer(peer: Peer, nonce: &[u8]) -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("ephemeral port");
+        let port = listener.local_addr().unwrap().port();
+        let nonce = nonce.to_vec();
+        std::thread::spawn(move || {
+            let Ok((mut s, _)) = listener.accept() else { return };
+            let mut buf = [0u8; ipc_guard::WIRE_MAGIC.len() + ipc_guard::NONCE_BYTES];
+            let n = s.read(&mut buf).unwrap_or(0);
+            match peer {
+                Peer::Current => {
+                    let _ = s.write_all(&[probe_answer(&nonce, &buf[..n])]);
+                }
+                Peer::ForeignNonce => {
+                    // رمز آخر يعرفه من يحجز المنفذ ⇒ طلبنا لا يُصادَق.
+                    let other = ipc_guard::new_nonce().unwrap();
+                    let _ = s.write_all(&[probe_answer(&other, &buf[..n])]);
+                }
+                Peer::Mute => {
+                    // الاتصال يبقى مفتوحاً بلا بايت واحد حتى تنتهي مهلة السائل.
+                    std::thread::sleep(std::time::Duration::from_millis(900));
+                }
+                Peer::HangsUp => drop(s),
+            }
+        });
+        port
+    }
+
+    /// الاختبار السلبي المباشر: جدول القرار الذي كان العطل يسكنه.
+    ///
+    /// لو عاد أحدهم إلى «اقرأ الجواب ثم اخرج صامتاً على كل حال» (سلوك ما قبل
+    /// الإصلاح)، سقط هذا عند السطر الثاني.
+    #[test]
+    fn an_unanswered_probe_is_never_treated_as_a_shown_window() {
+        assert_eq!(boot_decision(Answer::Acknowledged), Boot::Silent);
+        assert_eq!(
+            boot_decision(Answer::Unanswered),
+            Boot::Warn,
+            "نسخة لم تُقرّ ليست نسخة أظهرت نافذتها — الصمت هنا هو العطل"
+        );
+        assert_eq!(
+            boot_decision(Answer::NoNonce),
+            Boot::Warn,
+            "نسخة أقدم بلا ملف رمز ليست إظهاراً"
+        );
+    }
+
+    /// الحالة الوحيدة التي يجوز فيها الخروج صامتاً: إقرار حقيقي على السلك.
+    #[test]
+    fn a_current_instance_acknowledges_over_the_real_wire() {
+        let dir = tmpdir("current");
+        let nonce = ipc_guard::new_nonce().unwrap();
+        ipc_guard::save_nonce(&dir, &nonce).unwrap();
+        let port = spawn_peer(Peer::Current, &nonce);
+        assert_eq!(
+            ask_running_instance(port, &dir),
+            Answer::Acknowledged,
+            "النسخة المصادَقة تُقرّ — نافذتها ستظهر"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// حالة الترقية نفسها: نسخة أقدم تقرأ ولا تفهم فلا تردّ.
+    #[test]
+    fn an_older_instance_that_ignores_the_request_is_not_acknowledged() {
+        let dir = tmpdir("mute");
+        let nonce = ipc_guard::new_nonce().unwrap();
+        ipc_guard::save_nonce(&dir, &nonce).unwrap();
+        let port = spawn_peer(Peer::Mute, &nonce);
+        let answer = ask_running_instance(port, &dir);
+        assert_eq!(answer, Answer::Unanswered, "الصمت ليس إقراراً");
+        assert_eq!(boot_decision(answer), Boot::Warn, "وعلى المستخدم أن يقرأ السبب");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// رفض صريح (رمز جلسة آخر) ليس إقراراً كذلك.
+    #[test]
+    fn a_foreign_nonce_is_not_acknowledged() {
+        let dir = tmpdir("foreign");
+        let nonce = ipc_guard::new_nonce().unwrap();
+        ipc_guard::save_nonce(&dir, &nonce).unwrap();
+        let port = spawn_peer(Peer::ForeignNonce, &nonce);
+        let answer = ask_running_instance(port, &dir);
+        assert_eq!(answer, Answer::Unanswered, "بايت الرفض ليس إقراراً");
+        assert_eq!(boot_decision(answer), Boot::Warn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// وإغلاق بلا بايت (صفر بايتات) ليس إقراراً.
+    #[test]
+    fn a_peer_that_hangs_up_is_not_acknowledged() {
+        let dir = tmpdir("hangup");
+        let nonce = ipc_guard::new_nonce().unwrap();
+        ipc_guard::save_nonce(&dir, &nonce).unwrap();
+        let port = spawn_peer(Peer::HangsUp, &nonce);
+        let answer = ask_running_instance(port, &dir);
+        assert_eq!(answer, Answer::Unanswered, "قراءة صفر بايتات ليست إقراراً");
+        assert_eq!(boot_decision(answer), Boot::Warn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// بلا ملف رمز لا اتصال أصلاً — والاختبار **يقيس** عدم الاتصال لا يستنتجه:
+    /// مستمع حيّ على المنفذ، وبعد النداء يجب ألا يكون قد استقبل شيئاً.
+    #[test]
+    fn without_a_nonce_file_nothing_is_even_asked() {
+        let dir = tmpdir("nononce");
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert_eq!(ask_running_instance(port, &dir), Answer::NoNonce);
+        listener.set_nonblocking(true).unwrap();
+        assert!(
+            matches!(
+                listener.accept(),
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock
+            ),
+            "بلا رمز لا يُفتح اتصال — الطرف الآخر لم يرَ طلباً"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// عقد السلك: الإقرار للمصادَق وحده، والبايَت القديم (`0x01`) لا يُقرّ.
+    #[test]
+    fn only_the_authentic_wire_request_earns_the_accept_byte() {
+        let nonce = ipc_guard::new_nonce().unwrap();
+        assert_eq!(
+            probe_answer(&nonce, &ipc_guard::request_bytes(&nonce)),
+            ipc_guard::ACCEPT_BYTE
+        );
+        assert_eq!(
+            probe_answer(&nonce, &[ipc_guard::ACCEPT_BYTE]),
+            ipc_guard::REJECT_BYTE,
+            "البايت الواحد القديم لم يبقَ إقراراً"
+        );
+        assert_eq!(probe_answer(&nonce, &[]), ipc_guard::REJECT_BYTE, "نبضة فارغة");
+        let mut wrong = nonce;
+        wrong[0] ^= 0xFF;
+        assert_eq!(
+            probe_answer(&nonce, &ipc_guard::request_bytes(&wrong)),
+            ipc_guard::REJECT_BYTE,
+            "رمز ببايت مبدَّل"
+        );
     }
 }

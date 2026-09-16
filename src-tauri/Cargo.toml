@@ -48,7 +48,9 @@ name = "HaramLite"
 path = "src/main.rs"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_Foundation", "Win32_Storage_FileSystem", "Win32_UI_Shell", "Win32_System_Threading", "Win32_System_LibraryLoader", "Win32_Security_Cryptography"] }
+# Win32_UI_WindowsAndMessaging (0.2.6، تكملة و-٤): صندوق `MessageBoxW` الذي
+# يقول «نسخة أخرى تعمل» في لحظة تسبق بناء تطبيق Tauri كله — لا نافذة ولا سجل.
+windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_Foundation", "Win32_Storage_FileSystem", "Win32_UI_Shell", "Win32_System_Threading", "Win32_System_LibraryLoader", "Win32_Security_Cryptography", "Win32_UI_WindowsAndMessaging"] }
 winreg = "0.52"
 
 [profile.release]
