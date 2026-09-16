@@ -17,6 +17,7 @@ import { trapFocus } from './util';
 import { notifyWatchUiChanged, pushSettings, type RustSettings } from './settings';
 import { showCudaHint, updateCudaBanner } from './cuda';
 import { askAutostartOnce, refreshAutostart, refreshBridgeExt } from './integration';
+import { refreshYtdlpUpdateUi } from './ytdlpUi';
 
 export function wireSettings(): void {
   const btnSettings = document.getElementById('btn-settings');
@@ -94,6 +95,20 @@ export function wireSettings(): void {
       localStorage.setItem('hl.notify', (e.target as HTMLInputElement).checked ? '1' : '0');
       pushSettings();
     });
+  }
+
+  // ق-١: يقرّر هذا المفتاح هل يفحص الإقلاع تحديث yt-dlp أصلاً (lib.rs)، فإن
+  // أُطفئ لم يُنادَ ensure_updated ولا مرة — والصفّ يشرح الثمن بدل أن يمرّ صامتاً.
+  // السجل يحمل '1' عند التشغيل و'0' عند الإطفاء (لا شيء ⇐ تشغيل، كالافتراضي).
+  const ytdlpAuto = document.getElementById('setting-ytdlp-auto') as HTMLInputElement | null;
+  if (ytdlpAuto) {
+    ytdlpAuto.checked = localStorage.getItem('hl.ytdlp_auto') !== '0';
+    ytdlpAuto.addEventListener('change', (e) => {
+      localStorage.setItem('hl.ytdlp_auto', (e.target as HTMLInputElement).checked ? '1' : '0');
+      refreshYtdlpUpdateUi();
+      pushSettings();
+    });
+    refreshYtdlpUpdateUi();
   }
 
   if (btnSettings && menu) {

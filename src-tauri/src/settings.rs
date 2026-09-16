@@ -190,6 +190,26 @@ mod tests {
     }
 
     #[test]
+    fn ytdlp_auto_update_is_on_by_default_and_survives_an_old_file() {
+        // ق-١: الإقلاع لا يفحص تحديث yt-dlp إلا إذا كان هذا الحقل true، فأي
+        // مسار يجعل «الغياب» يعني false يوقف الفحص بصمت عن كل مستخدم قديم.
+        assert!(Settings::default().ytdlp_auto_update, "الافتراضي يجب أن يكون التشغيل");
+
+        // ملف قديم كتبه بناء لا يعرف الحقل أصلاً (لا مفتاح في JSON).
+        let dir = tmp("ytdlp_auto_legacy");
+        std::fs::write(path(&dir), r#"{"lang":"ar","cuda":true}"#).unwrap();
+        assert!(
+            load(&dir).ytdlp_auto_update,
+            "غياب المفتاح في ملف قديم يجب أن يعني التشغيل، لا الإطفاء"
+        );
+
+        // وإطفاء صريح يبقى مُطفأً (الاختبار السلبي: الحقل ليس ثابتاً على true).
+        std::fs::write(path(&dir), r#"{"ytdlp_auto_update":false}"#).unwrap();
+        assert!(!load(&dir).ytdlp_auto_update, "الإطفاء المكتوب يجب أن يُقرأ");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn a_plaintext_file_from_an_older_build_still_loads() {
         let dir = tmp("legacy");
         std::fs::write(

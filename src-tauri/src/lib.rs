@@ -239,6 +239,15 @@ async fn update_ytdlp(app: tauri::AppHandle) -> Result<serde_json::Value, String
     .map_err(|e| format!("update worker failed: {e}"))?
 }
 
+/// ق-١: إصدار yt-dlp المحلي، من `local_version()` نفسها التي يحكم بها
+/// `ensure_updated` على «محدّث بالفعل» — فلا يظهر في الإعدادات رقم يخالف ما
+/// يقرّره المحدِّث. `None` تعني: لا نسخة محلية (تُشرح في الواجهة) أو تعذّر
+/// تشغيل `--version`؛ والواجهة لا تدّعي إصداراً في الحالتين.
+#[tauri::command]
+fn ytdlp_local_version() -> Option<String> {
+    yt_dlp::local_version()
+}
+
 /// هـ.١/هـ.٤: فحص الإصدار من `releases/latest` على GitHub (بلا توقيع وبلا
 /// `latest.json`). إصدار التطبيق الحالي يُقرأ من الحزمة نفسها —
 /// `package_info().version`، أي `tauri.conf.json` — لا من سلسلة مكتوبة بيد،
@@ -1127,6 +1136,7 @@ pub fn run() {
             separate_file,
             download_media_cmd,
             update_ytdlp,
+            ytdlp_local_version,
             check_update,
             notify_done,
             health_check_cmd,

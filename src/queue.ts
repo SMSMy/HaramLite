@@ -25,6 +25,7 @@ import { fileBaseName, notify, showToast } from './util';
 import type { SepResult } from './types';
 import { outDirOf, pathInputEl, probeEl, runProbe, sepBtnEl, sepResultEl, setVerdict, setVerdictHtml, verdictHtml } from './media';
 import * as session from './session';
+import { refreshYtdlpUpdateUi } from './ytdlpUi';
 
 /** Handle one or many files: single → fill+probe; many → queue for batch. */
 export async function ingestFiles(files: string[]): Promise<void> {
@@ -542,11 +543,15 @@ export function wireUrlDownload(): void {
   upd?.addEventListener('click', async () => {
     upd.disabled = true;
     try {
+      // force=true (الأمر نفسه منذ M5): يعمل حتى مع إطفاء التحديث التلقائي،
+      // فهو طلب صريح من المستخدم لا فحصاً خلفياً. وبعد النجاح يُعاد قراءة
+      // الإصدار المعروض في الإعدادات (ق-١) فلا يبقى الرقم قديماً.
       const r = await invoke<{ updated: boolean; message: string }>('update_ytdlp');
       if (res) {
         res.textContent = r.message;
         res.classList.remove('hidden');
       }
+      refreshYtdlpUpdateUi();
     } finally {
       upd.disabled = false;
     }

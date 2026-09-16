@@ -114,6 +114,27 @@
     <!-- 🧰 الأدوات والمساعدة -->
     <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
         <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_tools">الأدوات والمساعدة</h4>
+        <!-- البند ق-١: المفتاح الحقيقي لفحص تحديث yt-dlp. كان الفحص التلقائي وحده
+             في lib.rs يقرأ الإعدادات ولا يسألها؛ صار هذا الصفّ يقرّر. -->
+        <label class="flex items-center gap-stack-sm cursor-pointer group">
+            <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-ytdlp-auto" type="checkbox"/>
+            <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="set_ytdlp_auto">تحديث yt-dlp تلقائياً</span>
+            <!-- الزرّ يحمل التلميح: يفتح ما ليس ظاهراً لكل المستخدمين (ما yt-dlp؟) -->
+            <button id="btn-upd-ytdlp" class="ms-auto flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer disabled:opacity-50 disabled:cursor-wait" data-i18n-title="ytdlp_about" data-i18n-aria="ytdlp_about">
+                <span class="material-symbols-outlined text-sm" data-icon="refresh">refresh</span>
+                <span data-i18n="ytdlp_uptodate">yt-dlp محدث لآخر إصدار</span>
+            </button>
+        </label>
+        <!-- ق-١: تخفيف الضرر. عند الإطفاء يشرح الصفّ الثمن (نسخة محلية تتقادم
+             فيفشل التنزيل) ويعرض إصدار النسخة المحلية فعلاً — لا نصّ ثابت.
+             البنية نفسها بنية #cuda-hint، والألوان دلالية: error عند الإطفاء. -->
+        <div id="ytdlp-auto-status" class="hidden flex items-start gap-unit bg-error/10 border border-error/30 rounded p-unit mt-1">
+            <span class="material-symbols-outlined text-sm text-error shrink-0" data-icon="warning">warning</span>
+            <span class="font-label-sm text-label-sm text-error leading-relaxed">
+                <span data-i18n="ytdlp_off_warn">التحديث التلقائي مُطفأ: قد تبقى yt-dlp قديمة فيفشل تنزيل الروابط حتى تحدّثها يدوياً.</span>
+                <span id="ytdlp-local-version" class="block"></span>
+            </span>
+        </div>
         <button id="btn-repair-open" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
             <span class="material-symbols-outlined text-sm" data-icon="build">build</span>
             <span class="font-body-sm" data-i18n="btn_repair">فحص وإصلاح المكونات</span>
@@ -216,7 +237,7 @@
 </div>
 <div class="flex items-center gap-unit text-on-surface-variant opacity-70 transition-opacity duration-300 hover:opacity-100">
 <span class="material-symbols-outlined text-sm" data-icon="info" aria-hidden="true">info</span>
-<button id="btn-upd-ytdlp" class="font-label-sm text-label-sm hover:text-clay-accent cursor-pointer transition-colors duration-200" data-i18n="ytdlp_uptodate">yt-dlp محدث لآخر إصدار</button>
+<span class="font-label-sm text-label-sm" data-i18n="ytdlp_hint_dl">إن فشل التنزيل، حدّث yt-dlp من الإعدادات ← الأدوات والمساعدة</span>
 </div>
 
     <div id="dl-progress-wrap" class="hidden w-full h-1.5 bg-border-muted rounded-full overflow-hidden mt-2">

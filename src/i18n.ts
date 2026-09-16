@@ -166,6 +166,15 @@ const i18n = {
     dl_url_title: 'تحميل من رابط',
     dl_btn: 'تحميل',
     ytdlp_uptodate: 'yt-dlp محدث لآخر إصدار',
+    // ق-١: كشف تحديث yt-dlp. كانت الخصوصية والموقع يقولان «ويمكن تعطيله» بلا
+    // مفتاح؛ صار المفتاح حقيقياً ويحرسه فحص الإقلاع نفسه.
+    set_ytdlp_auto: 'تحديث yt-dlp تلقائياً',
+    ytdlp_about:
+      'yt-dlp أداة مجانية مفتوحة المصدر تجلب الفيديو من يوتيوب وبقية المواقع؛ والتطبيق يحدّثها تلقائياً كل ٢٤ ساعة لتبقى متوافقة مع تغييرات المواقع.',
+    ytdlp_hint_dl: 'إن فشل التنزيل، حدّث yt-dlp من الإعدادات ← الأدوات والمساعدة',
+    ytdlp_off_warn: 'التحديث التلقائي مُطفأ: قد تبقى yt-dlp قديمة فيفشل تنزيل الروابط حتى تحدّثها يدوياً.',
+    ytdlp_local_version: 'النسخة المحلية: yt-dlp {version}',
+    ytdlp_local_missing: 'لا توجد نسخة محلية من yt-dlp على هذا الجهاز بعد.',
     queue_title: 'طابور المعالجة',
     open_out_folder: 'فتح مجلد الإخراج',
     queue_processing_3: '1/3 جاري المعالجة...',
@@ -367,6 +376,15 @@ const i18n = {
     dl_url_title: 'Download from a link',
     dl_btn: 'Download',
     ytdlp_uptodate: 'yt-dlp is up to date',
+    // ق-١: same key set as `ar` — the title attribute carries the explanation
+    // for readers who do not know what yt-dlp is.
+    set_ytdlp_auto: 'Update yt-dlp automatically',
+    ytdlp_about:
+      'yt-dlp is a free, open-source tool that fetches video from YouTube and other sites; the app updates it automatically every 24 hours so it keeps working when those sites change.',
+    ytdlp_hint_dl: 'If a download fails, update yt-dlp from Settings → Tools & Help',
+    ytdlp_off_warn: 'Automatic updates are off: yt-dlp can go stale, so downloading links may fail until you update it by hand.',
+    ytdlp_local_version: 'Local version: yt-dlp {version}',
+    ytdlp_local_missing: 'No local copy of yt-dlp on this machine yet.',
     queue_title: 'Processing queue',
     open_out_folder: 'Open the output folder',
     queue_processing_3: '1/3 processing...',
