@@ -1,7 +1,7 @@
 {
   "name": "haramlite-rs",
   "private": true,
-  "version": "0.2.5",
+  "version": "0.2.6",
   "type": "module",
   "scripts": {
     "predev": "tailwindcss -c ./tailwind.config.cjs -i ./src/input.css -o ./src/tailwind.css --minify",
