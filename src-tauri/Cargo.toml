@@ -3,6 +3,7 @@ name = "haramlite-rs"
 version = "0.2.6"
 description = "HaramLite — lightweight AI music removal (Rust/Tauri)"
 authors = ["HaramMute"]
+license = "MIT"
 edition = "2021"
 
 [lib]

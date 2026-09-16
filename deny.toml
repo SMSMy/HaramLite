@@ -105,43 +105,18 @@ allow = [
 # this reasoning on record or to fail the gate permanently.
 
 [licenses.private]
-# This repository's own crate (`haramlite-rs`) declares no `license` field in
-# src-tauri/Cargo.toml, so cargo-deny reports it as unlicensed. `private.ignore`
-# is NOT the fix here and is left at its default: it only covers workspace
-# members that are marked `publish = false`, which this manifest does not do --
-# verified by measurement, the unlicensed error persists with ignore = true.
-# The actual mechanism used is the clarification below.
+# Left at its default (`false`). It is NOT the mechanism that handles this
+# repository's own crate: `private.ignore` only covers workspace members marked
+# `publish = false`, which this manifest is not -- verified by measurement, the
+# `unlicensed` error persisted with `ignore = true`. What resolves it is the
+# crate's own `license = "MIT"` in src-tauri/Cargo.toml (added 2026-09-16, the
+# one-line fix the gate report asked for), so the `[[licenses.clarify]]`
+# workaround that stood in for it has been deleted rather than left behind.
 ignore = false
 
-# Clarification for this repository's own first-party crate.
-#
-# Why this exists: `haramlite-rs` has no `license` field in src-tauri/Cargo.toml,
-# so cargo-deny cannot retrieve an SPDX expression and fails with
-# `error[unlicensed]`. The upstream documentation for the removed `unlicensed`
-# field prescribes exactly this: fix the manifest, "and in the meantime, you may
-# add a clarification". The one-line manifest fix (`license = "MIT"` in
-# src-tauri/Cargo.toml) is outside the file scope this change is allowed to
-# touch, so the clarification stands in for it. REPORTED, NOT HIDDEN: this is a
-# real gap in the repository, it is listed in the gate report, and the
-# clarification should be deleted once the manifest field is added.
-#
-# `path` is crate-relative, so `../LICENSE` resolves to the repository-root
-# LICENSE, which is the MIT text this project actually distributes. That path is
-# enforced: pointing it at a file that does not exist makes the check fail with
-# error[unlicensed] plus a missing-clarification-file diagnostic.
-#
-# The hash is the genuine one, computed with the same code path cargo-deny uses
-# (`twox_hash::XxHash32::default()` over the CRLF-normalised file bytes, per
-# src/lib.rs:439 and src/licenses/gather.rs:60-90 of cargo-deny 0.20.2):
-# 0x c30197f9 over 1079 normalised bytes. Note the honest caveat, measured on
-# cargo-deny 0.20.2: the hash is NOT currently enforced here -- 0xc30197f9,
-# 0x00000000 and 0xdeadbeef all produce an identical `licenses ok` result, so
-# the effective guard today is the path, not the hash. The correct value is
-# recorded anyway so the entry stays truthful if enforcement is restored.
-[[licenses.clarify]]
-crate = "haramlite-rs"
-expression = "MIT"
-license-files = [{ path = "../LICENSE", hash = 0xc30197f9 }]
+# (No `[[licenses.clarify]]` section: it existed only because the crate declared
+# no licence, and now it does. A clarification for a first-party crate whose
+# SPDX expression cargo-deny can read directly would be dead configuration.)
 
 [bans]
 # Deliberate warning, not an error. Measured: 45 crate names are present at
