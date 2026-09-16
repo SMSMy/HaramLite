@@ -94,6 +94,14 @@ jobs:
       - name: Frontend build (tailwind + vite)
         run: pnpm build:web
 
+      # اختبارات الواجهة (سبرنت 0.2.7 · د-٩ + ج-١٠): عقد مصارف HTML (بيانات الخلف
+      # والمسارات لا تمرّ كوسم) + وحدتان نقيتان (sanitizePath · outDirOf) + تكافؤ
+      # مفاتيح الترجمة مع `index.html`. ٦٥ حالة في ٤ ملفات، وبلا اعتماديات نظام.
+      # وهي بوابة الانحدار الوحيدة التي تلمس **سلوك** الواجهة: `tsc` يفحص الأنواع
+      # و`build:web` يبني، ولا أحدهما يرى عطلاً سلوكياً في `src/`.
+      - name: Frontend regression tests (vitest)
+        run: pnpm test:web
+
       - name: Settings parity guard
         run: pnpm settings:parity
 
