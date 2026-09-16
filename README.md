@@ -85,6 +85,7 @@ Get-FileHash .\HaramLite_*_x64-setup.exe -Algorithm SHA256
 > If a component (model / tools) is missing, a **self-repair wizard** re-downloads it and checks its SHA-256.
 
 **Requirements:** Windows 10/11 (x64). Nothing else — the installer handles the rest.  
+**Windows only until 1.0** — there is no macOS or Linux build.  
 For speed: an NVIDIA GPU (CUDA) or any DX12 GPU (DirectML), used automatically once enabled in Settings.
 
 ## Quick start
