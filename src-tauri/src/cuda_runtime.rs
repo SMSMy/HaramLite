@@ -43,6 +43,52 @@ pub const CUDA_FILES: &[&str] = &[
 const MANIFEST_ASSET: &str = "cuda-runtime-manifest.json";
 const USER_AGENT: &str = "HaramLite-Repair/0.2";
 
+/// و-٢ — بصمات SHA-256 الست عشرة **مثبَّتة في التنفيذي**.
+///
+/// كان المانيفست ذاتي الوصف: تُنزَّل البصمات **منه** ثم يُقارَن المحتوى بها،
+/// فمن يكتب في إصدار `assets-v1` (أو وسيط يملك شهادة مقبولة) يضع مانيفستاً
+/// بأي محتوى — والاسم شرعي والهاش مطابق لمحتواه، فيُثبَّت. الربط الآن
+/// بالثنائي نفسه لا بالشبكة: المانيفست يبقى لـ**الأسماء والروابط** فقط.
+///
+/// الترتيب مطابق لـ[`CUDA_FILES`] حرفياً، والاختبار `pinned_hashes_cover_the_file_list`
+/// يثبّت ذلك. المصدر والتحقّق منه موثّقان في تقرير الفجوة (و-٢): بصمات
+/// الإصدار `assets-v1` مقروءة من `cuda-runtime-manifest.json` ومن
+/// `sha256:` في واجهة إصدارات GitHub، ثم أعيد حسابها على الملفات المنزَّلة
+/// فعلاً (`Get-FileHash -Algorithm SHA256`).
+pub const CUDA_FILE_SHA256: &[(&str, &str)] = &[
+    ("cudart64_12.dll", "c2c9a9c22a9bcba90e261825968836787b331038047a26770cffb7a583c28344"),
+    ("cublas64_12.dll", "f3ca341456ca00d8780ce40bcec9fc8a61a6b0dfd799cba5bdc59adaaa82cab4"),
+    ("cublasLt64_12.dll", "6f7cb6c15cc81b5a18ac2d42bc20f2955c498e909dd87ab4bfdb73977e2c4d47"),
+    ("cufft64_11.dll", "f4fea9227b14843894ad5436725f9638b172171142c95291fc6ae7a493248221"),
+    ("cudnn64_9.dll", "2ea14732f39b7f0d571de6fd14cb7c0c08652c6633d673ad9d179743c8083cd3"),
+    ("cudnn_ops64_9.dll", "c390e070b0ac214fa1ae0a40241776a291f90e5f07d46899f2d15fcec831a404"),
+    ("cudnn_cnn64_9.dll", "6ffe5484b61d94ab42ebc7b5737fa0ee3e3c2dd043825966253118fe2456a2d1"),
+    ("cudnn_adv64_9.dll", "04be9f67c2f92c3172b065ea68fa8b6271bb13d31264ac225fa9751f7d6d9484"),
+    ("cudnn_graph64_9.dll", "3c9fc4d73c41e66b93a8fc9c56536579ac36c1e87937728f3f1a24b4615202f4"),
+    ("cudnn_heuristic64_9.dll", "eddd4556da1292bc329399aceabe327b5b9e965f19cbfcafd6c60fbd9e566346"),
+    ("cudnn_engines_precompiled64_9.dll", "58093341a7474968be624de49dd171772bac6c1ba16c6e6acfd5a1edc406db66"),
+    ("cudnn_engines_runtime_compiled64_9.dll", "52d244ccd54a98c6f372fbf773fc592eea0d0a85d16ea7eea1fb7f9bfd71f0e2"),
+    ("cudnn_engines_tensor_ir64_9.dll", "27002dae30705f0f310b05e492c72f197e1d00e45dc735682412c7e6e274ef41"),
+    ("cudnn_ext64_9.dll", "f82ad629d2299aeacd044b9d5e265ea163bbceb753e1409bb34ba27868bd844f"),
+    ("onnxruntime_providers_shared.dll", "3b53c353cd52a7be926beb289277b79de1e659a1dc3bb74b24c99a6a7296d9d9"),
+    ("onnxruntime_providers_cuda.dll", "0f32c09da925ec58c650a0d72ccc950a73db570cae0adeffb3d07165419b8bd1"),
+];
+
+/// البصمة المثبَّتة لاسمنا، أو `None` إن لم يكن الاسم من مجموعتنا.
+/// (الاسم من عندنا دائماً في مسار التنزيل — لكن دالة نقية تُختبر مباشرة.)
+pub(crate) fn pinned_sha(name: &str) -> Option<&'static str> {
+    CUDA_FILE_SHA256
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, s)| *s)
+}
+
+/// خطأ بصمة يسمّي **الملف** — لا رسالة عامة تُخفي أيّها انحرف.
+pub(crate) fn sha_mismatch_message(name: &str, expected: &str, actual: &str) -> String {
+    format!("بصمة {name} لا تطابق المثبَّت في التطبيق (متوقع {expected}، المقروء {actual}) — أُلغي التثبيت حمايةً لك")
+}
+
+
 /// Manifest asset names must be bare filenames (`^[A-Za-z0-9_.-]+$`), never
 /// paths: the manifest is fetched from a remote release, and each name is
 /// joined onto `bin/` then renamed — so `..`, separators, or absolute paths
@@ -64,12 +110,10 @@ pub(crate) fn asset_name_ok(name: &str) -> bool {
         .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.' || b == b'-')
 }
 
-/// The manifest hash must be a 64-char hex SHA-256 (compared case-insensitively
-/// after trimming in `file_matches`). Pure function, unit-tested.
-pub(crate) fn asset_sha_ok(sha: &str) -> bool {
-    let s = sha.trim();
-    s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
-}
+// و-٢: حُذفت `asset_sha_ok` — كانت تتحقّق من **شكل** بصمة المانيفست قبل
+// مقارنتها. لم يبق في المانيفست بصمة تُقرأ أصلاً: المرجع ثوابت
+// `CUDA_FILE_SHA256`، و`download_verified` يقارن بها مباشرة، فتلك الدالة
+// صارت بلا مستخدم — وحُذفت بدل كتم التحذير عنها.
 
 /// مجلد التثبيت: `<مجلد التنفيذي>\bin` (بجوار ffmpeg/ffprobe).
 fn bin_dir() -> PathBuf {
@@ -369,15 +413,104 @@ mod tests {
         assert!(asset_name_ok("cudnn_ops64_9.dll"));
     }
 
-    /// Manifest hashes: 64 hex chars (case-insensitive, surrounding
-    /// whitespace tolerated).
+    /// و-٢: عدد الثوابت = 16، وأسماؤها = `CUDA_FILES` **حرفياً** وبالترتيب.
+    /// يسقط هذا الاختبار لو نقص ثابت أو زاد أو تغيّر اسم أو رُتّب خطأً.
     #[test]
-    fn manifest_asset_shas_are_validated() {
-        assert!(asset_sha_ok(
-            "fb04eb6c6592db00df19e5554e889117874b77afb485eb0326276200ce7c2c33"
-        ));
-        assert!(!asset_sha_ok("xyz"));
-        assert!(!asset_sha_ok(""));
+    fn pinned_hashes_cover_the_file_list_exactly() {
+        assert_eq!(CUDA_FILE_SHA256.len(), 16, "عدد الثوابت المثبَّتة يجب أن يكون 16");
+        assert_eq!(
+            CUDA_FILE_SHA256.len(),
+            CUDA_FILES.len(),
+            "عدد الثوابت يجب أن يساوي عدد CUDA_FILES"
+        );
+        for (i, name) in CUDA_FILES.iter().enumerate() {
+            assert_eq!(
+                CUDA_FILE_SHA256[i].0, *name,
+                "ترتيب/اسم الثابت {i} لا يطابق CUDA_FILES"
+            );
+        }
+        // وكل بصمة 64 محرفاً سداسياً عشرياً (شكل صالح).
+        for (name, sha) in CUDA_FILE_SHA256 {
+            assert_eq!(sha.len(), 64, "بصمة {name} ليست 64 محرفاً");
+            assert!(sha.bytes().all(|b| b.is_ascii_hexdigit()), "بصمة {name} ليست hex");
+            assert_eq!(*sha, sha.to_ascii_lowercase(), "بصمة {name} يجب أن تكون صغيرة");
+            assert_eq!(pinned_sha(name), Some(*sha), "البحث بالاسم يجب أن يجد البصمة");
+        }
+        // اسم غريب لا بصمة له — ولا سقوط إلى «لا فحص».
+        assert_eq!(pinned_sha("cudnn_unknown64_9.dll"), None);
+    }
+
+    /// و-٢ سلبي: تعبئة بصمة ثابتة واحدة ⇒ التحقّق يفشل **ويسمّي الملف**.
+    /// وهذا يثبت أيضاً أن المرجع هو الثابت لا المانيفست: الملف هنا سليم
+    /// ومحتواه ثابت، والذي عُبِّث هو البصمة المثبَّتة.
+    #[test]
+    fn one_tampered_pinned_hash_fails_and_names_the_file() {
+        let base = std::env::temp_dir().join(format!("hl_cuda_pin_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+
+        // ملف محتواه معروف ⇒ بصمته الحقيقية معروفة.
+        let name = "cudart64_12.dll";
+        let payload = b"verified runtime bytes";
+        std::fs::write(base.join(name), payload).unwrap();
+        let good = {
+            use sha2::{Digest, Sha256};
+            format!("{:x}", Sha256::digest(payload))
+        };
+        assert!(file_matches(&base.join(name), &good), "البصمة الصحيحة يجب أن تُقبل");
+
+        // بصمة مُعبَّثة (بايت واحد) ⇒ فشل، والرسالة تسمّي الملف.
+        let tampered = {
+            let mut v = good.clone().into_bytes();
+            v[0] = if v[0] == b'a' { b'b' } else { b'a' };
+            String::from_utf8(v).unwrap()
+        };
+        assert_ne!(tampered, good);
+        assert!(
+            !file_matches(&base.join(name), &tampered),
+            "البصمة المُعبَّثة يجب أن تفشل"
+        );
+        let msg = sha_mismatch_message(name, &tampered, &good);
+        assert!(msg.contains(name), "رسالة الفشل يجب أن تسمّي الملف: {msg}");
+        assert!(msg.contains("لا تطابق"), "الرسالة عربية صريحة: {msg}");
+
+        // وتعبئة **ثابت** من الجدول نفسه تُكتشف بنفس الطريقة لو انحرف الملف.
+        let pinned = pinned_sha("cudart64_12.dll").unwrap();
+        assert!(!file_matches(&base.join(name), pinned), "المحتوى المزروع ≠ بصمة CUDA الحقيقية");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// و-٢: مسار الفشل في التنزيل يعيد رسالة تسمّي الملف (لا «فشل التحقق»
+    /// العام)، ولا يُرقّى الملف ولا يبقى مؤقت.
+    #[test]
+    fn a_rejected_download_names_the_offending_file() {
+        let root = std::env::temp_dir().join(format!("hl_cuda_dl_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let dest = root.join("cufft64_11.dll");
+        let tmp = dest.with_extension("download");
+        let body = std::io::Cursor::new(b"not the real cufft".to_vec());
+        let wrong = "00".repeat(32);
+
+        let err = write_verified(body, &tmp, &dest, 0, &wrong, &|_| {})
+            .expect_err("بصمة مخالفة يجب أن تفشل");
+        assert!(err.contains("cufft64_11.dll"), "الرسالة تسمّي الملف: {err}");
+        assert!(!dest.exists(), "لا يُرقّى ملف فاشل");
+        assert!(!tmp.exists(), "ولا يبقى المؤقت");
+
+        // وبصمة صحيحة ⇒ يُرقّى فعلاً (المسار السليم لم يتغيّر سلوكه).
+        let payload = b"real bytes".to_vec();
+        let good = {
+            use sha2::{Digest, Sha256};
+            format!("{:x}", Sha256::digest(&payload))
+        };
+        write_verified(std::io::Cursor::new(payload.clone()), &tmp, &dest, 0, &good, &|_| {})
+            .expect("بصمة مطابقة يجب أن تُثبّت");
+        assert_eq!(std::fs::read(&dest).unwrap(), payload);
+        assert!(!tmp.exists());
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
 
@@ -440,16 +573,20 @@ pub fn install(progress: &dyn Fn(&str, f32)) -> Result<(), String> {
     struct Manifest {
         files: Vec<Entry>,
     }
+    /// و-٢: **لا `sha256` هنا عن قصد.** حقل البصمة في المانيفست لم يبق
+    /// مقروءاً إطلاقاً — لا يُقارَن ولا يُخزَّن ولا يُقرأ؛ فمانيفست مُلغَّم
+    /// بحقل بصمة لا يجد له مستخدماً في هذا التنفيذي.
     #[derive(Deserialize)]
     struct Entry {
         name: String,
-        sha256: String,
     }
 
     let dir = bin_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
-    // 1) المنفست (يولّده CI مع الملفات — ذاتي الوصف، لا بصمات مضمّنة هنا)
+    // 1) المنفست (يولّده CI مع الملفات) — **للأسماء والروابط فقط**.
+    //    البصمات لم تعد تُقرأ منه (و-٢): الربط بثوابت `CUDA_FILE_SHA256`
+    //    داخل التنفيذي، فلا يفيد مهاجم الإصدارَ أن يضع مانيفستاً بمحتوى آخر.
     let manifest_url = format!("{}/{}", crate::repair::ASSET_BASE, MANIFEST_ASSET);
     let resp = ureq::get(&manifest_url)
         .timeout(std::time::Duration::from_secs(30))
@@ -469,14 +606,11 @@ pub fn install(progress: &dyn Fn(&str, f32)) -> Result<(), String> {
     // Forward-compatible: the manifest may carry MORE files than this build
     // knows (newer runtime revision) — require only our own set, ignore extras.
     // (A strict count check once bricked every top-up during the 7→16 migration.)
-    // Security first: validate EVERY entry name/hash BEFORE touching the disk —
-    // a hostile manifest must not get a single join/rename/hash-compare.
+    // Security first: every entry NAME is validated BEFORE touching the disk —
+    // a hostile manifest must not get a single join/rename.
     for entry in &manifest.files {
         if !asset_name_ok(&entry.name) {
             return Err(format!("اسم ملف مرفوض في المنفست: {}", entry.name));
-        }
-        if !asset_sha_ok(&entry.sha256) {
-            return Err(format!("بصمة مرفوضة في المنفست: {}", entry.name));
         }
     }
     for expected in CUDA_FILES {
@@ -485,21 +619,24 @@ pub fn install(progress: &dyn Fn(&str, f32)) -> Result<(), String> {
         }
     }
 
-    // 2) كل ملف: إن كان موجوداً وبصمته سليمة → تخطَّه (لا إعادة تنزيل بعد
-    //    انهيار مفاجئ)؛ وإلا تنزيل مؤقت → SHA-256 → نقل ذري.
+    // 2) كل ملف: البصمة المثبَّتة في الكود هي المرجع. إن كان موجوداً وبصمته
+    //    سليمة → تخطَّه (لا إعادة تنزيل بعد انهيار مفاجئ)؛ وإلا تنزيل مؤقت →
+    //    SHA-256 → نقل ذري.
     let total = manifest.files.len();
     for (idx, entry) in manifest.files.iter().enumerate() {
         let base = idx as f32 / total as f32;
         let span = 1.0 / total as f32;
+        let pinned = pinned_sha(&entry.name)
+            .ok_or_else(|| format!("ملف في المنفست بلا بصمة مثبَّتة في التطبيق: {}", entry.name))?;
         let dest = dir.join(&entry.name);
-        if file_matches(&dest, &entry.sha256) {
+        if file_matches(&dest, pinned) {
             progress(&entry.name, base + span);
             continue;
         }
         download_verified(
             &format!("{}/{}", crate::repair::ASSET_BASE, entry.name),
             &dest,
-            &entry.sha256,
+            pinned,
             &|p| progress(&entry.name, base + p * span),
         )?;
     }
@@ -532,9 +669,6 @@ fn download_verified(
     expected_sha: &str,
     progress: &dyn Fn(f32),
 ) -> Result<(), String> {
-    use sha2::{Digest, Sha256};
-    use std::io::Write;
-
     let tmp = dest.with_extension("download");
     let resp = ureq::get(url)
         .timeout(std::time::Duration::from_secs(600))
@@ -545,9 +679,25 @@ fn download_verified(
         .header("Content-Length")
         .and_then(|h| h.parse::<u64>().ok())
         .unwrap_or(0);
-    let mut file = std::fs::File::create(&tmp).map_err(|e| format!("{}: {e}", tmp.display()))?;
+    let reader = resp.into_reader();
+    write_verified(reader, &tmp, dest, total, expected_sha, progress)
+}
+
+/// جسم التنزيل نفسه بلا شبكة: اكتب إلى `tmp` مع التجزئة، ثم تحقّق مقابل
+/// البصمة المثبَّتة، ثم انقل ذرّياً. مفصولة لتُختبَر بلا اتصال (و-٢).
+fn write_verified(
+    mut reader: impl std::io::Read,
+    tmp: &Path,
+    dest: &Path,
+    total: u64,
+    expected_sha: &str,
+    progress: &dyn Fn(f32),
+) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Write;
+
+    let mut file = std::fs::File::create(tmp).map_err(|e| format!("{}: {e}", tmp.display()))?;
     let mut hasher = Sha256::new();
-    let mut reader = resp.into_reader();
     let mut gotten: u64 = 0;
     let mut chunk = [0u8; 256 * 1024];
     loop {
@@ -568,14 +718,15 @@ fn download_verified(
 
     let actual = format!("{:x}", hasher.finalize());
     if !actual.eq_ignore_ascii_case(expected_sha.trim()) {
-        let _ = std::fs::remove_file(&tmp);
+        let _ = std::fs::remove_file(tmp);
         let name = dest
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        return Err(format!("بصمة {name} لا تطابق — أُلغي التثبيت حمايةً لك"));
+        // الرسالة تسمّي الملف وتُظهر المتوقع والمقروء (و-٢: لا فشل صامت).
+        return Err(sha_mismatch_message(&name, expected_sha.trim(), &actual));
     }
-    std::fs::rename(&tmp, dest).map_err(|e| format!("تعذر التثبيت: {e}"))?;
+    std::fs::rename(tmp, dest).map_err(|e| format!("تعذر التثبيت: {e}"))?;
     Ok(())
 }
 
