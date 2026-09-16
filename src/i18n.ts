@@ -170,7 +170,7 @@ const i18n = {
     // مفتاح؛ صار المفتاح حقيقياً ويحرسه فحص الإقلاع نفسه.
     set_ytdlp_auto: 'تحديث yt-dlp تلقائياً',
     ytdlp_about:
-      'yt-dlp أداة مجانية مفتوحة المصدر تجلب الفيديو من يوتيوب وبقية المواقع؛ والتطبيق يحدّثها تلقائياً كل ٢٤ ساعة لتبقى متوافقة مع تغييرات المواقع.',
+      'yt-dlp أداة مجانية مفتوحة المصدر تجلب الفيديو من يوتيوب وبقية المواقع؛ ويجلبها التطبيق تلقائياً ويحدّثها كل ٢٤ ساعة لتبقى متوافقة مع تغييرات المواقع.',
     ytdlp_hint_dl: 'إن فشل التنزيل، حدّث yt-dlp من الإعدادات ← الأدوات والمساعدة',
     ytdlp_off_warn: 'التحديث التلقائي مُطفأ: قد تبقى yt-dlp قديمة فيفشل تنزيل الروابط حتى تحدّثها يدوياً.',
     ytdlp_local_version: 'النسخة المحلية: yt-dlp {version}',
@@ -380,7 +380,7 @@ const i18n = {
     // for readers who do not know what yt-dlp is.
     set_ytdlp_auto: 'Update yt-dlp automatically',
     ytdlp_about:
-      'yt-dlp is a free, open-source tool that fetches video from YouTube and other sites; the app updates it automatically every 24 hours so it keeps working when those sites change.',
+      'yt-dlp is a free, open-source tool that fetches video from YouTube and other sites; the app fetches it for you and updates it every 24 hours so it keeps working when those sites change.',
     ytdlp_hint_dl: 'If a download fails, update yt-dlp from Settings → Tools & Help',
     ytdlp_off_warn: 'Automatic updates are off: yt-dlp can go stale, so downloading links may fail until you update it by hand.',
     ytdlp_local_version: 'Local version: yt-dlp {version}',
