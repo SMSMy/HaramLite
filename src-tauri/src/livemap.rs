@@ -100,13 +100,7 @@ fn window_rms(l: &[f32], r: &[f32], win: usize) -> Vec<f32> {
             let sum: f32 = l[s..s + win]
                 .iter()
                 .chain(r[s..s + win].iter())
-                .map(|v| {
-                    if v.is_finite() {
-                        v * v
-                    } else {
-                        f32::INFINITY
-                    }
-                })
+                .map(|v| if v.is_finite() { v * v } else { f32::INFINITY })
                 .sum();
             if sum.is_finite() {
                 (sum / (win * 2) as f32).sqrt()
@@ -143,7 +137,11 @@ pub fn map_chunk_silence(
     };
     if n == 0 || sr == 0 {
         let ms = t0.elapsed().as_secs_f32() * 1000.0;
-        return empty(MapTiming { envelope_ms: 0.0, detect_ms: 0.0, total_ms: ms });
+        return empty(MapTiming {
+            envelope_ms: 0.0,
+            detect_ms: 0.0,
+            total_ms: ms,
+        });
     }
 
     // Phase 1 — RMS envelope.
@@ -216,7 +214,10 @@ pub fn map_chunk_silence(
     let kept_ranges_sec: Vec<(f64, f64)> = kept
         .iter()
         .map(|(a, b)| {
-            (chunk_start_sec + *a as f64 / sr as f64, chunk_start_sec + *b as f64 / sr as f64)
+            (
+                chunk_start_sec + *a as f64 / sr as f64,
+                chunk_start_sec + *b as f64 / sr as f64,
+            )
         })
         .collect();
 
@@ -237,7 +238,11 @@ pub fn map_chunk_silence(
         silence_fraction,
         silence_runs: cuts.len(),
         trailing_open_sec,
-        timing: MapTiming { envelope_ms, detect_ms, total_ms },
+        timing: MapTiming {
+            envelope_ms,
+            detect_ms,
+            total_ms,
+        },
     }
 }
 
@@ -270,15 +275,31 @@ mod tests {
     #[test]
     fn middle_gap_maps_to_two_kept_ranges() {
         // 2s tone / 2s silence / 2s tone — the canonical map shape.
-        let l = concat(&[tone(2.0, 0.5, 440.0), vec![0.0; SR as usize * 2], tone(2.0, 0.5, 440.0)]);
+        let l = concat(&[
+            tone(2.0, 0.5, 440.0),
+            vec![0.0; SR as usize * 2],
+            tone(2.0, 0.5, 440.0),
+        ]);
         let r = l.clone();
         let m = map_chunk_silence(&l, &r, SR, 0, 0.0, &MapConfig::default());
         assert_eq!(m.silence_runs, 1, "one silence run expected");
         assert_eq!(m.kept_ranges_sec.len(), 2, "two kept ranges expected");
         assert!((m.kept_ranges_sec[0].0 - 0.0).abs() < 0.01);
-        assert!((m.kept_ranges_sec[0].1 - 2.15).abs() < 0.25, "first kept ends ≈2.0+keep: {:?}", m.kept_ranges_sec);
-        assert!((m.kept_ranges_sec[1].0 - 3.85).abs() < 0.25, "second kept starts ≈4.0-keep: {:?}", m.kept_ranges_sec);
-        assert!((m.silence_fraction - 1.0 / 3.0).abs() < 0.06, "fraction={}", m.silence_fraction);
+        assert!(
+            (m.kept_ranges_sec[0].1 - 2.15).abs() < 0.25,
+            "first kept ends ≈2.0+keep: {:?}",
+            m.kept_ranges_sec
+        );
+        assert!(
+            (m.kept_ranges_sec[1].0 - 3.85).abs() < 0.25,
+            "second kept starts ≈4.0-keep: {:?}",
+            m.kept_ranges_sec
+        );
+        assert!(
+            (m.silence_fraction - 1.0 / 3.0).abs() < 0.06,
+            "fraction={}",
+            m.silence_fraction
+        );
         assert_eq!(m.trailing_open_sec, 0.0, "ends loud");
         assert!(m.timing.total_ms >= m.timing.envelope_ms + m.timing.detect_ms);
     }
@@ -287,7 +308,11 @@ mod tests {
     fn hysteresis_holds_borderline_plateau_after_loud() {
         // loud 1s → mid 1s (inside the hi/lo band) → loud 1s: NO new run.
         // mid sine A=0.02 → rms≈0.0141; hi≈0.0212, lo≈0.0106 → inside band.
-        let l = concat(&[tone(1.0, 0.5, 440.0), tone(1.0, 0.02, 440.0), tone(1.0, 0.5, 440.0)]);
+        let l = concat(&[
+            tone(1.0, 0.5, 440.0),
+            tone(1.0, 0.02, 440.0),
+            tone(1.0, 0.5, 440.0),
+        ]);
         let r = l.clone();
         let m = map_chunk_silence(&l, &r, SR, 0, 0.0, &MapConfig::default());
         assert_eq!(m.silence_runs, 0, "hysteresis must hold the plateau loud");
@@ -366,7 +391,10 @@ mod tests {
         l.extend(tone(25.0, 0.4, 440.0));
         let r = l.clone();
         let total_secs = l.len() as f64 / SR as f64;
-        assert!(total_secs > 265.0 && total_secs <= 300.0, "clip must be ≤5min: {total_secs}");
+        assert!(
+            total_secs > 265.0 && total_secs <= 300.0,
+            "clip must be ≤5min: {total_secs}"
+        );
 
         let cfg = MapConfig::default();
         let plan = split_plan(total_secs, 60.0);

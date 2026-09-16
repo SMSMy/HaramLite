@@ -104,7 +104,9 @@ pub fn load_or_create_nonce(base: &Path) -> Vec<u8> {
 /// هل هذه حمولة سلك مطابقة للرمز؟ يقبل حمولة أطول (تحمّل بايتات زائدة) لكن
 /// يقارن **كل** بايتات الرمز.
 pub fn accepts(actual_nonce: &[u8], payload: &[u8]) -> bool {
-    !actual_nonce.is_empty() && payload.len() >= actual_nonce.len() && payload[..actual_nonce.len()] == *actual_nonce
+    !actual_nonce.is_empty()
+        && payload.len() >= actual_nonce.len()
+        && payload[..actual_nonce.len()] == *actual_nonce
 }
 
 /// طلب سلك كامل: البادئة `HLSI` ثم الرمز. دالة نقية — وهذا ما يفحصه الاختبار
@@ -171,7 +173,9 @@ pub fn allow_asset_for_frontend(app: &tauri::AppHandle, path: &Path) {
     };
     let scope = app.asset_protocol_scope();
     match scope.allow_file(&canonical) {
-        Ok(()) => tracing::debug!(target: "app", "سُمح لمسار واحد في نطاق الأصول: {}", canonical.display()),
+        Ok(()) => {
+            tracing::debug!(target: "app", "سُمح لمسار واحد في نطاق الأصول: {}", canonical.display())
+        }
         Err(e) => tracing::warn!(target: "app", "تعذر السماح بالمسار في نطاق الأصول: {e}"),
     }
 }
@@ -237,7 +241,8 @@ mod tests {
     #[test]
     fn the_asset_scope_config_grants_no_wildcard() {
         let raw = include_str!("../tauri.conf.json");
-        let v: serde_json::Value = serde_json::from_str(raw).expect("tauri.conf.json is valid JSON");
+        let v: serde_json::Value =
+            serde_json::from_str(raw).expect("tauri.conf.json is valid JSON");
         let scope = &v["app"]["security"]["assetProtocol"]["scope"];
         let allow = scope["allow"].as_array().expect("scope.allow is an array");
         assert!(
@@ -253,7 +258,10 @@ mod tests {
             "البروتوكول نفسه يبقى مفعَّلاً — الضيق في النطاق لا في التعطيل"
         );
         assert!(
-            scope["deny"].as_array().map(|d| d.is_empty()).unwrap_or(false),
+            scope["deny"]
+                .as_array()
+                .map(|d| d.is_empty())
+                .unwrap_or(false),
             "deny فارغ كما كان (لا سلوك جديد)"
         );
     }

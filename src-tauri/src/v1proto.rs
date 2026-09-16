@@ -45,11 +45,7 @@ pub struct ProtoReport {
 /// Merge consecutive same-verdict verdict points into absolute ranges.
 /// A Mute span runs from the first Mute point until the next non-Mute point
 /// (or `span_end`); same for Duck. Adjacent spans closer than 0.1s fuse.
-fn collect_ranges(
-    verdicts: &[(f64, Verdict)],
-    want: Verdict,
-    span_end: f64,
-) -> Vec<(f64, f64)> {
+fn collect_ranges(verdicts: &[(f64, Verdict)], want: Verdict, span_end: f64) -> Vec<(f64, f64)> {
     let mut ranges: Vec<(f64, f64)> = Vec::new();
     let mut open: Option<f64> = None;
     let mut ordered: Vec<(f64, Verdict)> = verdicts.to_vec();
@@ -128,7 +124,11 @@ pub fn build_position_map(
     dcfg: &DecideConfig,
 ) -> ProtoReport {
     let t0 = Instant::now();
-    let total_audio_secs = if sr > 0 { l.len().min(r.len()) as f64 / sr as f64 } else { 0.0 };
+    let total_audio_secs = if sr > 0 {
+        l.len().min(r.len()) as f64 / sr as f64
+    } else {
+        0.0
+    };
     let mut chunks = Vec::new();
     let mut muted_len = 0.0f64;
     let mut ducked_len = 0.0f64;
@@ -203,8 +203,10 @@ mod tests {
         for c in &rep.chunks {
             for (a, b) in c.muted_ranges_sec.iter().chain(c.ducked_ranges_sec.iter()) {
                 assert!(b > a, "range must be positive");
-                assert!(*a >= c.start_sec - 1e-6 && *b <= c.start_sec + c.len_sec + 1e-6,
-                    "range must stay inside its chunk");
+                assert!(
+                    *a >= c.start_sec - 1e-6 && *b <= c.start_sec + c.len_sec + 1e-6,
+                    "range must stay inside its chunk"
+                );
             }
             for w in c.muted_ranges_sec.windows(2) {
                 assert!(w[1].0 >= w[0].1, "ranges must not overlap");

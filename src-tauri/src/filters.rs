@@ -3,17 +3,25 @@
 /// Transposed-direct-form-II biquad. Processes one channel in place.
 #[derive(Clone)]
 pub struct Biquad {
-    b0: f32, b1: f32, b2: f32,
-    a1: f32, a2: f32,
-    z1: f32, z2: f32,
+    b0: f32,
+    b1: f32,
+    b2: f32,
+    a1: f32,
+    a2: f32,
+    z1: f32,
+    z2: f32,
 }
 
 impl Biquad {
     fn from_coeffs(b0: f64, b1: f64, b2: f64, a0: f64, a1: f64, a2: f64) -> Self {
         Self {
-            b0: (b0 / a0) as f32, b1: (b1 / a0) as f32, b2: (b2 / a0) as f32,
-            a1: (a1 / a0) as f32, a2: (a2 / a0) as f32,
-            z1: 0.0, z2: 0.0,
+            b0: (b0 / a0) as f32,
+            b1: (b1 / a0) as f32,
+            b2: (b2 / a0) as f32,
+            a1: (a1 / a0) as f32,
+            a2: (a2 / a0) as f32,
+            z1: 0.0,
+            z2: 0.0,
         }
     }
 
@@ -23,8 +31,12 @@ impl Biquad {
         let (s, c) = w0.sin_cos();
         let alpha = s / (2.0 * 0.7071135624381276);
         Self::from_coeffs(
-            (1.0 + c) / 2.0, -(1.0 + c), (1.0 + c) / 2.0,
-            1.0 + alpha, -2.0 * c, 1.0 - alpha,
+            (1.0 + c) / 2.0,
+            -(1.0 + c),
+            (1.0 + c) / 2.0,
+            1.0 + alpha,
+            -2.0 * c,
+            1.0 - alpha,
         )
     }
 
@@ -65,9 +77,9 @@ impl Biquad {
 /// Harmonic exciter: HP the signal, soft-clip it, blend back.
 /// Removes the "muffled" post-separation feel without harshness.
 pub struct Exciter {
-    hp: Biquad,          // band we generate harmonics from
-    hp2: Biquad,         // second-order for steeper focus
-    amount: f32,         // wet blend 0..1
+    hp: Biquad,  // band we generate harmonics from
+    hp2: Biquad, // second-order for steeper focus
+    amount: f32, // wet blend 0..1
 }
 
 impl Exciter {

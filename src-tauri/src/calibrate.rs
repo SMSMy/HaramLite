@@ -68,7 +68,12 @@ pub struct CalibReport {
 
 fn stats(confs: &[f32]) -> ClassStats {
     if confs.is_empty() {
-        return ClassStats { windows: 0, mean_conf: 0.0, min_conf: 0.0, max_conf: 0.0 };
+        return ClassStats {
+            windows: 0,
+            mean_conf: 0.0,
+            min_conf: 0.0,
+            max_conf: 0.0,
+        };
     }
     ClassStats {
         windows: confs.len(),
@@ -104,7 +109,12 @@ pub fn run_calibration(samples: &[Sample], sr: u32, dcfg: &DecideConfig) -> Cali
             .iter()
             .find(|(x, _)| *x == t)
             .map(|(_, v)| stats(v))
-            .unwrap_or(ClassStats { windows: 0, mean_conf: 0.0, min_conf: 0.0, max_conf: 0.0 })
+            .unwrap_or(ClassStats {
+                windows: 0,
+                mean_conf: 0.0,
+                min_conf: 0.0,
+                max_conf: 0.0,
+            })
     };
     let music = get(Truth::MusicLike);
     let speech = get(Truth::SpeechLike);
@@ -120,7 +130,11 @@ pub fn run_calibration(samples: &[Sample], sr: u32, dcfg: &DecideConfig) -> Cali
 
     // Confusion needs the raw pools again for threshold sweeps.
     let pool_of = |t: Truth| -> Vec<f32> {
-        pooled.iter().find(|(x, _)| *x == t).map(|(_, v)| v.clone()).unwrap_or_default()
+        pooled
+            .iter()
+            .find(|(x, _)| *x == t)
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default()
     };
     let pm = pool_of(Truth::MusicLike);
     let pn: Vec<f32> = pool_of(Truth::SpeechLike)
@@ -168,7 +182,9 @@ mod tests {
         let mut x = seed | 1;
         (0..(SR as f32 * secs) as usize)
             .map(|_| {
-                x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                x = x
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 (((x >> 32) as f32) / (u32::MAX as f32) - 0.5) * 2.0 * amp
             })
             .collect()
@@ -216,15 +232,27 @@ mod tests {
         let mut out = Vec::new();
         for root in [220.0, 277.0, 330.0] {
             let (l, r) = stereo(music_like(9.0, root));
-            out.push(Sample { label: Truth::MusicLike, l, r });
+            out.push(Sample {
+                label: Truth::MusicLike,
+                l,
+                r,
+            });
         }
         for f0 in [120.0, 150.0, 190.0] {
             let (l, r) = stereo(speech_like(9.0, f0));
-            out.push(Sample { label: Truth::SpeechLike, l, r });
+            out.push(Sample {
+                label: Truth::SpeechLike,
+                l,
+                r,
+            });
         }
         for seed in [0x1111, 0x2222] {
             let (l, r) = stereo(noise(9.0, 0.35, seed));
-            out.push(Sample { label: Truth::Noise, l, r });
+            out.push(Sample {
+                label: Truth::Noise,
+                l,
+                r,
+            });
         }
         // Robustness curve: tonal mix at +10 dB and 0 dB SNR (still music).
         let tone = music_like(9.0, 262.0);
@@ -234,10 +262,18 @@ mod tests {
             let g = rms(&tone) / (rms(&nz) * 10f32.powf(snr_db / 20.0));
             let m: Vec<f32> = mix(&tone, &nz.iter().map(|x| x * g).collect::<Vec<_>>());
             let (l, r) = stereo(m);
-            out.push(Sample { label: Truth::MusicLike, l, r });
+            out.push(Sample {
+                label: Truth::MusicLike,
+                l,
+                r,
+            });
         }
         let (l, r) = stereo(vec![0.0f32; SR as usize * 9]);
-        out.push(Sample { label: Truth::Silence, l, r });
+        out.push(Sample {
+            label: Truth::Silence,
+            l,
+            r,
+        });
         out
     }
 
@@ -245,11 +281,21 @@ mod tests {
     fn silence_class_scores_nothing() {
         let (l, r) = stereo(vec![0.0f32; SR as usize * 6]);
         let rep = run_calibration(
-            &[Sample { label: Truth::Silence, l, r }],
+            &[Sample {
+                label: Truth::Silence,
+                l,
+                r,
+            }],
             SR,
             &DecideConfig::default(),
         );
-        let sil = rep.per_class.iter().find(|(t, _)| *t == Truth::Silence).unwrap().1.windows;
+        let sil = rep
+            .per_class
+            .iter()
+            .find(|(t, _)| *t == Truth::Silence)
+            .unwrap()
+            .1
+            .windows;
         assert_eq!(sil, 0, "silence must be fully gated");
     }
 
@@ -263,7 +309,10 @@ mod tests {
             assert!(s.windows > 10, "{t:?} needs windows, got {}", s.windows);
             s.mean_conf
         };
-        assert!(mean(Truth::MusicLike) > mean(Truth::Noise) + 0.15, "tonal must beat noise clearly");
+        assert!(
+            mean(Truth::MusicLike) > mean(Truth::Noise) + 0.15,
+            "tonal must beat noise clearly"
+        );
     }
 
     /// Slice 3 acceptance vehicle: print the CALIBRATE-REPORT.
@@ -283,7 +332,10 @@ mod tests {
                 s.max_conf
             );
         }
-        println!("CALIBRATE-MARGIN music_vs_rest={:.3}", rep.margin_music_vs_rest);
+        println!(
+            "CALIBRATE-MARGIN music_vs_rest={:.3}",
+            rep.margin_music_vs_rest
+        );
         for (thr, tpr, fpr) in &rep.confusion {
             println!("CALIBRATE-CONFUSION thr={thr} tpr={tpr:.2} fpr_nonsilence={fpr:.2}");
         }

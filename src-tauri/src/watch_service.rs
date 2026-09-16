@@ -79,7 +79,10 @@ fn load_done_keys_at(path: &Path, fp: &str) -> HashSet<String> {
 }
 
 fn save_done_keys_at(path: &Path, fp: &str, keys: &HashSet<String>) {
-    let d = DoneSet { fp: fp.into(), keys: keys.clone() };
+    let d = DoneSet {
+        fp: fp.into(),
+        keys: keys.clone(),
+    };
     if let Ok(bytes) = serde_json::to_vec(&d) {
         let tmp = path.with_extension("tmp");
         if std::fs::write(&tmp, bytes).is_ok() {
@@ -114,7 +117,10 @@ fn candidate_ok(p: &Path) -> bool {
         return false;
     }
     if matches!(
-        p.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref(),
+        p.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .as_deref(),
         Some("partial") | Some("download") | Some("crdownload") | Some("tmp")
     ) {
         return false;
@@ -163,14 +169,7 @@ fn free_bytes(dir: &Path) -> Option<u64> {
     let mut free = 0u64;
     let mut total = 0u64;
     let mut total_free = 0u64;
-    let ok = unsafe {
-        GetDiskFreeSpaceExW(
-            wide.as_ptr(),
-            &mut free,
-            &mut total,
-            &mut total_free,
-        )
-    };
+    let ok = unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut free, &mut total, &mut total_free) };
     if ok != 0 {
         Some(free)
     } else {
@@ -475,8 +474,7 @@ fn fingerprint(s: &Settings) -> String {
 /// Start / stop / restart the watch thread to match the given settings.
 pub fn apply_settings(s: &Settings) {
     let should_run = s.watch_enabled
-        && s
-            .watch_path
+        && s.watch_path
             .as_deref()
             .map(|p| Path::new(p).is_dir())
             .unwrap_or(false);
@@ -510,9 +508,15 @@ pub fn apply_settings(s: &Settings) {
     }
 
     let opts = WatchOpts {
-        mode: if s.watch_mode == "clip" { Mode::Clip } else { Mode::Song },
+        mode: if s.watch_mode == "clip" {
+            Mode::Clip
+        } else {
+            Mode::Song
+        },
         kind: match s.watch_out_kind.as_str() {
-            "audio" => OutKind::Audio { fmt: OutFormat::Mp3 },
+            "audio" => OutKind::Audio {
+                fmt: OutFormat::Mp3,
+            },
             // "auto"|"video": pipeline smart-falls back to mp3 for audio-only inputs
             _ => OutKind::Video { max_height: None },
         },
@@ -595,7 +599,10 @@ mod tests {
         assert!(handle.lock().is_err(), "fixture: the lock must be poisoned");
 
         // The acquisition every site uses must still hand out the data…
-        assert!(handle_lock().is_none(), "a poisoned lock still holds valid data");
+        assert!(
+            handle_lock().is_none(),
+            "a poisoned lock still holds valid data"
+        );
         // …and the cancel path must still work through it.
         let cancel_file = Arc::new(AtomicBool::new(false));
         let _ = handle_lock().replace(WatchHandle {

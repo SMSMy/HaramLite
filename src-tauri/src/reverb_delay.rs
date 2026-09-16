@@ -12,7 +12,14 @@ struct Comb {
 
 impl Comb {
     fn new(size: usize, feedback: f32, damp: f32) -> Self {
-        Self { buf: vec![0.0; size], idx: 0, feedback, damp1: damp, damp2: 1.0 - damp, store: 0.0 }
+        Self {
+            buf: vec![0.0; size],
+            idx: 0,
+            feedback,
+            damp1: damp,
+            damp2: 1.0 - damp,
+            store: 0.0,
+        }
     }
 
     #[inline]
@@ -37,7 +44,11 @@ struct Allpass {
 
 impl Allpass {
     fn new(size: usize, feedback: f32) -> Self {
-        Self { buf: vec![0.0; size], idx: 0, feedback }
+        Self {
+            buf: vec![0.0; size],
+            idx: 0,
+            feedback,
+        }
     }
 
     #[inline]
@@ -77,10 +88,14 @@ impl Freeverb {
         let damp = 0.35 - room * 0.25;
 
         let mk_combs = || {
-            COMB_TUNING.iter().map(|&t| Comb::new(scaled(t), fb, damp)).collect::<Vec<_>>()
+            COMB_TUNING
+                .iter()
+                .map(|&t| Comb::new(scaled(t), fb, damp))
+                .collect::<Vec<_>>()
         };
         let mk_combs_r = || {
-            COMB_TUNING.iter()
+            COMB_TUNING
+                .iter()
                 .map(|&t| Comb::new(scaled(t + STEREO_SPREAD), fb, damp))
                 .collect::<Vec<_>>()
         };
@@ -88,8 +103,14 @@ impl Freeverb {
         Self {
             combs_l: mk_combs(),
             combs_r: mk_combs_r(),
-            allps_l: ALLP_TUNING.iter().map(|&t| Allpass::new(scaled(t), 0.5)).collect(),
-            allps_r: ALLP_TUNING.iter().map(|&t| Allpass::new(scaled(t + STEREO_SPREAD), 0.5)).collect(),
+            allps_l: ALLP_TUNING
+                .iter()
+                .map(|&t| Allpass::new(scaled(t), 0.5))
+                .collect(),
+            allps_r: ALLP_TUNING
+                .iter()
+                .map(|&t| Allpass::new(scaled(t + STEREO_SPREAD), 0.5))
+                .collect(),
             wet: mix,
             dry: 1.0 - mix * 0.6,
         }
@@ -101,10 +122,18 @@ impl Freeverb {
             let (xl, xr) = (l[i], r[i]);
             let mut outl = 0.0f32;
             let mut outr = 0.0f32;
-            for c in self.combs_l.iter_mut() { outl += c.process(xl); }
-            for c in self.combs_r.iter_mut() { outr += c.process(xr); }
-            for a in self.allps_l.iter_mut() { outl = a.process(outl); }
-            for a in self.allps_r.iter_mut() { outr = a.process(outr); }
+            for c in self.combs_l.iter_mut() {
+                outl += c.process(xl);
+            }
+            for c in self.combs_r.iter_mut() {
+                outr += c.process(xr);
+            }
+            for a in self.allps_l.iter_mut() {
+                outl = a.process(outl);
+            }
+            for a in self.allps_r.iter_mut() {
+                outr = a.process(outr);
+            }
             l[i] = xl * self.dry + outl * self.wet * 0.02;
             r[i] = xr * self.dry + outr * self.wet * 0.02;
         }
@@ -125,7 +154,15 @@ pub struct PingpongDelay {
 impl PingpongDelay {
     pub fn new(sr: u32, time_ms: f32, feedback: f32, mix: f32) -> Self {
         let size = ((sr as f32 * time_ms / 1000.0) as usize).max(4);
-        Self { buf_l: vec![0.0; size], buf_r: vec![0.0; size], idx: 0, time_ms, sr, mix, feedback }
+        Self {
+            buf_l: vec![0.0; size],
+            buf_r: vec![0.0; size],
+            idx: 0,
+            time_ms,
+            sr,
+            mix,
+            feedback,
+        }
     }
 
     pub fn process(&mut self, l: &mut [f32], r: &mut [f32]) {

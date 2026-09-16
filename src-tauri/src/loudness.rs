@@ -30,7 +30,10 @@ fn block_ms(channel_filtered: &[f32]) -> f64 {
     if channel_filtered.is_empty() {
         return 0.0;
     }
-    channel_filtered.iter().map(|v| (*v as f64) * (*v as f64)).sum::<f64>()
+    channel_filtered
+        .iter()
+        .map(|v| (*v as f64) * (*v as f64))
+        .sum::<f64>()
         / channel_filtered.len() as f64
 }
 
@@ -77,8 +80,11 @@ pub fn integrated_lufs(l: &[f32], r: &[f32], sr: u32) -> f32 {
     // relative gate −10 LU below ungated-mean ⇔ z > mean_z / 10
     // (−10 LU ⇔ power/10, since LUFS = −0.691 + 10·log10(z))
     let rel_threshold_z = mean_z / 10.0;
-    let rel_gated: Vec<f64> =
-        abs_gated.iter().cloned().filter(|z| *z > rel_threshold_z).collect();
+    let rel_gated: Vec<f64> = abs_gated
+        .iter()
+        .cloned()
+        .filter(|z| *z > rel_threshold_z)
+        .collect();
     let final_z = rel_gated.iter().sum::<f64>() / rel_gated.len().max(1) as f64;
 
     (-0.691 + 10.0 * final_z.log10()) as f32
@@ -178,8 +184,11 @@ mod tests {
         let abs_gate_z = 10f64.powf((-70.0 + 0.691) / 10.0);
         let abs_gated: Vec<f64> = blocks.iter().cloned().filter(|z| *z > abs_gate_z).collect();
         let mean_z = abs_gated.iter().sum::<f64>() / abs_gated.len().max(1) as f64;
-        let rel_gated: Vec<f64> =
-            abs_gated.iter().cloned().filter(|z| *z > mean_z / 10.0).collect();
+        let rel_gated: Vec<f64> = abs_gated
+            .iter()
+            .cloned()
+            .filter(|z| *z > mean_z / 10.0)
+            .collect();
         let expected = -0.691
             + 10.0
                 * (rel_gated.iter().sum::<f64>() / rel_gated.len().max(1) as f64)

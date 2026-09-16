@@ -18,7 +18,9 @@ pub struct ScratchGuard {
 impl ScratchGuard {
     /// Take ownership of one scratch path (it need not exist yet).
     pub fn new(p: &Path) -> Self {
-        Self { paths: vec![p.to_path_buf()] }
+        Self {
+            paths: vec![p.to_path_buf()],
+        }
     }
 }
 
@@ -69,7 +71,10 @@ mod tests {
             Ok(())
         }
         assert!(work(&dir, &file).is_err(), "the fixture must fail early");
-        assert!(!dir.exists(), "the scratch dir must be gone after the early return");
+        assert!(
+            !dir.exists(),
+            "the scratch dir must be gone after the early return"
+        );
         assert!(!file.exists(), "the partial download must be gone too");
         let _ = std::fs::remove_dir_all(&root);
     }

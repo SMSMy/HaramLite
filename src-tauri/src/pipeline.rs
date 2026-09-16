@@ -118,7 +118,11 @@ fn claim_processing(input: &Path) -> Result<ProcessingClaim, PipelineError> {
     let dir = locks_dir();
     std::fs::create_dir_all(&dir).map_err(|e| PipelineError(format!("تعذر مجلد الأقفال: {e}")))?;
     let lock = lock_name_for(input);
-    match std::fs::OpenOptions::new().write(true).create_new(true).open(&lock) {
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock)
+    {
         Ok(mut f) => {
             use std::io::Write;
             let _ = writeln!(
@@ -142,7 +146,11 @@ fn claim_processing(input: &Path) -> Result<ProcessingClaim, PipelineError> {
             if stale {
                 let _ = std::fs::remove_file(&lock);
                 // One retry only: a second collision is a live owner.
-                return match std::fs::OpenOptions::new().write(true).create_new(true).open(&lock) {
+                return match std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&lock)
+                {
                     Ok(_) => Ok(ProcessingClaim { path: lock }),
                     Err(_) => Err(PipelineError("الملف قيد المعالجة حالياً — تخطي".into())),
                 };
@@ -230,15 +238,21 @@ pub fn process_file(
     // Sprint B1: preview = quality sample of the first N seconds; every
     // output file carries the `_preview` tag so it can never be mistaken
     // for the final artifact.
-    let name_tag = if preview_seconds.is_some() { "_preview" } else { "" };
+    let name_tag = if preview_seconds.is_some() {
+        "_preview"
+    } else {
+        ""
+    };
 
     // Stage 1 — repair & normalize whatever came in (Sprint C2: visible stages)
     stage("normalize", 0.0);
-    if !progress(0.02) { return Err(err("تم إلغاء المعالجة من قبل المستخدم.")); }
+    if !progress(0.02) {
+        return Err(err("تم إلغاء المعالجة من قبل المستخدم."));
+    }
     // Audit 2026-09-03: scratch must not outlive a failed run (tens of MB
     // per failure used to accumulate in the user's output folder).
-    let normalized =
-        media::normalize_for_engine_limited(input, &work_dir, preview_seconds).map_err(|e| {
+    let normalized = media::normalize_for_engine_limited(input, &work_dir, preview_seconds)
+        .map_err(|e| {
             let _ = std::fs::remove_dir_all(&work_dir);
             err(e)
         })?;
@@ -270,7 +284,8 @@ pub fn process_file(
         );
         if !analysis.dense {
             tracing::info!(target: "pipe", "sparse clip — detect-then-mute, MDX skipped");
-            let rep = v1proto::build_position_map(&dl, &dr, dsr, 60.0, &decide::DecideConfig::default());
+            let rep =
+                v1proto::build_position_map(&dl, &dr, dsr, 60.0, &decide::DecideConfig::default());
             let mut mute: Vec<(f64, f64)> = Vec::new();
             let mut duck: Vec<(f64, f64)> = Vec::new();
             for c in &rep.chunks {
@@ -304,19 +319,27 @@ pub fn process_file(
         stage("separate", p);
         progress(0.05 + p * 0.85)
     };
-    let (vocals_raw, instrumental_raw): (PathBuf, Option<PathBuf>) =
-        if let Some(v) = clip_direct_vocals {
-            if keep_instrumental {
-                tracing::warn!(target: "pipe", "sparse clip has no instrumental (MDX skipped) — vocals only");
-            }
-            (v, None)
-        } else {
-            let stems = separator::separate(&normalized, out_dir, use_cuda, &sep_progress, clip_analysis.as_ref()).map_err(|e| {
-                let _ = std::fs::remove_dir_all(&work_dir);
-                err(e)
-            })?;
-            (stems.vocals, Some(stems.instrumental))
-        };
+    let (vocals_raw, instrumental_raw): (PathBuf, Option<PathBuf>) = if let Some(v) =
+        clip_direct_vocals
+    {
+        if keep_instrumental {
+            tracing::warn!(target: "pipe", "sparse clip has no instrumental (MDX skipped) — vocals only");
+        }
+        (v, None)
+    } else {
+        let stems = separator::separate(
+            &normalized,
+            out_dir,
+            use_cuda,
+            &sep_progress,
+            clip_analysis.as_ref(),
+        )
+        .map_err(|e| {
+            let _ = std::fs::remove_dir_all(&work_dir);
+            err(e)
+        })?;
+        (stems.vocals, Some(stems.instrumental))
+    };
     stage("separate", 1.0);
     let _ = std::fs::remove_dir_all(&work_dir);
 
@@ -324,7 +347,9 @@ pub fn process_file(
     let mut vocals_path = vocals_raw;
     let mut kept_ranges: Vec<(f64, f64)> = Vec::new();
     if matches!(mode, Mode::Song) {
-        if !progress(0.92) { return Err(err("تم إلغاء المعالجة من قبل المستخدم.")); }
+        if !progress(0.92) {
+            return Err(err("تم إلغاء المعالجة من قبل المستخدم."));
+        }
         stage("effects", 0.0);
         tracing::info!(target: "pipe", "Starting DSP phase (CPU bound) for audio enhancement...");
         let tmp_enhanced = out_dir.join("_haramlite_enhanced.wav");
@@ -334,8 +359,13 @@ pub fn process_file(
             stage("effects", p);
             progress(0.90 + p * 0.06)
         };
-        kept_ranges = crate::effects::enhance_song_file(&vocals_path, &tmp_enhanced, &Default::default(), &dsp_progress)
-            .map_err(err)?;
+        kept_ranges = crate::effects::enhance_song_file(
+            &vocals_path,
+            &tmp_enhanced,
+            &Default::default(),
+            &dsp_progress,
+        )
+        .map_err(err)?;
         // replace raw vocals with the enhanced version
         std::fs::rename(&tmp_enhanced, &vocals_path).map_err(err)?;
         stage("effects", 1.0);
@@ -362,13 +392,16 @@ pub fn process_file(
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "audio".into());
     {
-        let new_vocals = vocals_path.with_file_name(format!("{orig_stem}_(Vocals)_haramlite{name_tag}.wav"));
+        let new_vocals =
+            vocals_path.with_file_name(format!("{orig_stem}_(Vocals)_haramlite{name_tag}.wav"));
         if new_vocals != vocals_path {
             std::fs::rename(&vocals_path, &new_vocals).map_err(err)?;
             vocals_path = new_vocals;
         }
         if let Some(ip) = &mut instrumental_path {
-            let new_i = ip.with_file_name(format!("{orig_stem}_(Instrumental)_haramlite{name_tag}.wav"));
+            let new_i = ip.with_file_name(format!(
+                "{orig_stem}_(Instrumental)_haramlite{name_tag}.wav"
+            ));
             if new_i != *ip {
                 std::fs::rename(&*ip, &new_i).map_err(err)?;
                 *ip = new_i;
@@ -378,20 +411,33 @@ pub fn process_file(
 
     // Stage 5/6 — delivery per simplified OutKind (فيديو / صوت)
     let mut actual_kind = kind;
-    if matches!(kind, OutKind::Video { .. }) && (!has_video || input_info.as_ref().map(|i| i.video_is_cover_art).unwrap_or(false)) {
+    if matches!(kind, OutKind::Video { .. })
+        && (!has_video
+            || input_info
+                .as_ref()
+                .map(|i| i.video_is_cover_art)
+                .unwrap_or(false))
+    {
         tracing::info!(target: "pipe", "Smart fallback: input lacks video, switching to Audio (mp3)");
-        actual_kind = OutKind::Audio { fmt: OutFormat::Mp3 };
+        actual_kind = OutKind::Audio {
+            fmt: OutFormat::Mp3,
+        };
     }
 
     let mut video_out: Option<PathBuf> = None;
     let mut final_vocals: Option<PathBuf> = Some(vocals_path.clone());
     match actual_kind {
         OutKind::Video { max_height } => {
-            if !progress(0.97) { return Err(err("تم إلغاء المعالجة من قبل المستخدم.")); }
+            if !progress(0.97) {
+                return Err(err("تم إلغاء المعالجة من قبل المستخدم."));
+            }
             stage("encode", 0.0);
             let vid_target = out_dir.join(format!("{orig_stem}_(Clean)_haramlite{name_tag}.mp4"));
-            let ranges_for_video: &[(f64, f64)] =
-                if matches!(mode, Mode::Song) { &kept_ranges } else { &[] };
+            let ranges_for_video: &[(f64, f64)] = if matches!(mode, Mode::Song) {
+                &kept_ranges
+            } else {
+                &[]
+            };
             media::export_video_with_cuts(
                 input,
                 &vocals_path,
@@ -408,7 +454,9 @@ pub fn process_file(
         }
         OutKind::Audio { fmt } => {
             if fmt != OutFormat::Wav {
-                if !progress(0.96) { return Err(err("تم إلغاء المعالجة من قبل المستخدم.")); }
+                if !progress(0.96) {
+                    return Err(err("تم إلغاء المعالجة من قبل المستخدم."));
+                }
                 stage("encode", 0.0);
                 let encode_one = |p: &mut PathBuf| -> Result<(), PipelineError> {
                     let encoded = media::extract_audio(p, fmt.as_str(), out_dir).map_err(err)?;
@@ -422,7 +470,7 @@ pub fn process_file(
                     }
                     Ok(())
                 };
-                
+
                 if keep_vocals {
                     encode_one(&mut vocals_path)?;
                     final_vocals = Some(vocals_path);
@@ -430,7 +478,7 @@ pub fn process_file(
                     let _ = std::fs::remove_file(&vocals_path);
                     final_vocals = None;
                 }
-                
+
                 if let Some(ip) = &mut instrumental_path {
                     encode_one(ip)?;
                 }
@@ -535,7 +583,9 @@ mod tests {
             &missing,
             &out,
             Mode::Song,
-            OutKind::Audio { fmt: OutFormat::Mp3 },
+            OutKind::Audio {
+                fmt: OutFormat::Mp3,
+            },
             false,
             true,
             false,
@@ -564,7 +614,10 @@ mod tests {
         std::fs::write(&out, b"x").unwrap();
 
         let cancelled = finish_run(&|_| false, [Some(out.as_path()), None, None]);
-        assert!(cancelled.is_err(), "a cancelled run must never report success");
+        assert!(
+            cancelled.is_err(),
+            "a cancelled run must never report success"
+        );
         assert!(!out.exists(), "the cancelled run's output must be removed");
 
         std::fs::write(&out, b"y").unwrap();

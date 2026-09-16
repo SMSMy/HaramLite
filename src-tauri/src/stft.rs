@@ -104,7 +104,11 @@ impl StftPlan {
         // IDFT of the one-sided spectrum needs the same weighting explicitly,
         // otherwise every stem comes out at exactly half amplitude.
         let bin_weight = |f: usize| -> f32 {
-            if f == 0 || f == N_BINS - 1 { 1.0 } else { 2.0 }
+            if f == 0 || f == N_BINS - 1 {
+                1.0
+            } else {
+                2.0
+            }
         };
 
         for t in 0..frames {
@@ -180,7 +184,10 @@ mod tests {
         }
         // Error profile: sample three bands (start/middle/end of interior)
         let band = |a: usize, b: usize| -> f32 {
-            (a..b).step_by(11).map(|i| (x[i] - y[i]).abs()).fold(0.0f32, f32::max)
+            (a..b)
+                .step_by(11)
+                .map(|i| (x[i] - y[i]).abs())
+                .fold(0.0f32, f32::max)
         };
         assert!(
             max_err < 2e-3,
@@ -200,8 +207,9 @@ mod tests {
             .collect();
 
         for t in 0..40usize {
-            let input: Vec<f32> =
-                (0..N_FFT).map(|n| ((t * HOP + n) as f32 * 0.01).sin() * win[n]).collect();
+            let input: Vec<f32> = (0..N_FFT)
+                .map(|n| ((t * HOP + n) as f32 * 0.01).sin() * win[n])
+                .collect();
             let (re, im) = plan.forward(&input);
             let frames = input.len() / HOP + 1;
             let y = plan.inverse(&re, &im, frames);
@@ -237,8 +245,10 @@ mod spectral_purity {
             "PURE TONE top bins: {:?} {:?} {:?} (expect dominant near k={k})",
             peaks[0], peaks[1], peaks[2]
         );
-        assert!(peaks[0].0.abs_diff(k) <= 1 || peaks[0].0.abs_diff(N_FFT - k) <= 1,
-            "energy leaked: dominant bin {}", peaks[0].0);
+        assert!(
+            peaks[0].0.abs_diff(k) <= 1 || peaks[0].0.abs_diff(N_FFT - k) <= 1,
+            "energy leaked: dominant bin {}",
+            peaks[0].0
+        );
     }
 }
-

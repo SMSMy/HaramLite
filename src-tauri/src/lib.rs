@@ -1,5 +1,5 @@
-mod autostart;
 mod atomic;
+mod autostart;
 mod bridge;
 mod calibrate;
 mod cli;
@@ -62,13 +62,16 @@ use pipeline::Mode;
 fn attach_parent_console() {
     unsafe {
         use windows_sys::Win32::System::Console::{
-            AttachConsole, ATTACH_PARENT_PROCESS, SetStdHandle, STD_ERROR_HANDLE,
-            STD_OUTPUT_HANDLE,
+            AttachConsole, SetStdHandle, ATTACH_PARENT_PROCESS, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE,
         };
 
         if AttachConsole(ATTACH_PARENT_PROCESS) != 0 {
             // reopen CONOUT$ as our std handles (safe: no CRT involved)
-            if let Ok(f) = std::fs::OpenOptions::new().write(true).read(true).open("CONOUT$") {
+            if let Ok(f) = std::fs::OpenOptions::new()
+                .write(true)
+                .read(true)
+                .open("CONOUT$")
+            {
                 use std::os::windows::io::AsRawHandle;
                 let h = f.as_raw_handle();
                 let _ = SetStdHandle(STD_OUTPUT_HANDLE, h);
@@ -409,7 +412,10 @@ fn ytdlp_local_version() -> Option<String> {
 /// يقرأ كاش ٢٤ ساعة أولاً فلا نداء لكل إقلاع. Async + spawn_blocking كبقية
 /// أوامر الشبكة (P1: نداء الشبكة لا يجلس على خيط الحلقة الرئيسية).
 #[tauri::command]
-async fn check_update(app: tauri::AppHandle, force: bool) -> Result<update_check::UpdateStatus, String> {
+async fn check_update(
+    app: tauri::AppHandle,
+    force: bool,
+) -> Result<update_check::UpdateStatus, String> {
     let current = app.package_info().version.to_string();
     tauri::async_runtime::spawn_blocking(move || update_check::check(&current, force))
         .await
@@ -488,7 +494,11 @@ async fn extract_audio(path: String, format: String, out_dir: String) -> Result<
 }
 
 #[tauri::command]
-async fn remux_to_mp4(video: String, audio_wav: String, out_path: String) -> Result<String, String> {
+async fn remux_to_mp4(
+    video: String,
+    audio_wav: String,
+    out_path: String,
+) -> Result<String, String> {
     // P1: ffmpeg subprocess wait leaves the main loop thread.
     tauri::async_runtime::spawn_blocking(move || {
         let out = media::remux_video_with_audio(
@@ -612,7 +622,9 @@ fn player_status(
     pos: f64,
 ) -> Result<serde_json::Value, String> {
     let sessions = state.player_sessions.lock().map_err(|e| e.to_string())?;
-    let e = sessions.get(id).ok_or_else(|| "unknown player session".to_string())?;
+    let e = sessions
+        .get(id)
+        .ok_or_else(|| "unknown player session".to_string())?;
     Ok(serde_json::json!({
         "chunks": e.chunk_count(),
         "chunk": e.chunk_of(pos),
@@ -626,7 +638,9 @@ fn player_status(
 #[tauri::command]
 fn player_advance(state: tauri::State<'_, AppState>, id: u64, pos: f64) -> Result<usize, String> {
     let mut sessions = state.player_sessions.lock().map_err(|e| e.to_string())?;
-    let e = sessions.get_mut(id).ok_or_else(|| "unknown player session".to_string())?;
+    let e = sessions
+        .get_mut(id)
+        .ok_or_else(|| "unknown player session".to_string())?;
     Ok(e.consume_through(pos))
 }
 
@@ -637,13 +651,19 @@ fn player_seek(
     pos: f64,
 ) -> Result<player::SeekAction, String> {
     let sessions = state.player_sessions.lock().map_err(|e| e.to_string())?;
-    let e = sessions.get(id).ok_or_else(|| "unknown player session".to_string())?;
+    let e = sessions
+        .get(id)
+        .ok_or_else(|| "unknown player session".to_string())?;
     Ok(e.seek(pos))
 }
 
 #[tauri::command]
 fn player_close(state: tauri::State<'_, AppState>, id: u64) -> bool {
-    state.player_sessions.lock().map(|mut s| s.close(id)).unwrap_or(false)
+    state
+        .player_sessions
+        .lock()
+        .map(|mut s| s.close(id))
+        .unwrap_or(false)
 }
 
 /// Decode `input` into the per-process scratch dir and read the stereo mix.
@@ -685,7 +705,8 @@ async fn player_prepare(
     let rep = tauri::async_runtime::spawn_blocking(move || {
         let input = PathBuf::from(&path);
         let (l, r, sr) = read_normalized_mix(&input)?;
-        let rep = v1proto::build_position_map(&l, &r, sr, chunk_secs, &decide::DecideConfig::default());
+        let rep =
+            v1proto::build_position_map(&l, &r, sr, chunk_secs, &decide::DecideConfig::default());
         Ok::<_, String>(serde_json::json!({
             "total_secs": rep.total_audio_secs,
             "chunks": rep.chunks,
@@ -730,7 +751,9 @@ fn ping() -> serde_json::Value {
 
 fn rustc_version() -> String {
     // Compile-time stamp of the toolchain that built us.
-    option_env!("RUSTC_VERSION").unwrap_or(env!("CARGO_PKG_RUST_VERSION")).to_string()
+    option_env!("RUSTC_VERSION")
+        .unwrap_or(env!("CARGO_PKG_RUST_VERSION"))
+        .to_string()
 }
 
 #[tauri::command]
@@ -745,7 +768,9 @@ fn push_log(level: String, message: String) {
 
 /// Where the app writes its results (downloads + processed outputs).
 pub(crate) fn results_dir() -> PathBuf {
-    dirs::video_dir().unwrap_or_else(|| PathBuf::from(".")).join("HaramLite")
+    dirs::video_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("HaramLite")
 }
 
 /// Reveal a folder in the OS file manager. Shared by the `open_folder` command
@@ -821,7 +846,9 @@ fn remember_downloaded(set: &Mutex<HashSet<PathBuf>>, path: &Path) {
 /// Take-once: true only for a tracked auto-download (removes it so a later
 /// manual re-process of the same path is treated as a user file).
 fn take_tracked_download(set: &Mutex<HashSet<PathBuf>>, path: &Path) -> bool {
-    set.lock().map(|mut s| s.remove(&download_key(path))).unwrap_or(false)
+    set.lock()
+        .map(|mut s| s.remove(&download_key(path)))
+        .unwrap_or(false)
 }
 
 /// Sprint D1: read the unified settings (Rust-backed single source of truth).
@@ -862,11 +889,7 @@ fn set_settings(
     if !value.is_object() {
         return Err("settings payload must be an object".into());
     }
-    let current = state
-        .settings
-        .lock()
-        .map_err(|e| e.to_string())?
-        .clone();
+    let current = state.settings.lock().map_err(|e| e.to_string())?.clone();
     for (key, existing) in [
         ("telegram_token", current.telegram_token),
         ("telegram_api_hash", current.telegram_api_hash),
@@ -1031,7 +1054,7 @@ fn open_file(path: String) -> Result<(), String> {
     if !target.exists() {
         return Err("الملف غير موجود".into());
     }
-    
+
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
@@ -1103,7 +1126,11 @@ fn cleanup_crash_leftovers() {
         }
     }
     if let Ok(local) = std::env::var("LOCALAPPDATA") {
-        roots.push(PathBuf::from(local).join("com.harammute.haramlite").join("tools"));
+        roots.push(
+            PathBuf::from(local)
+                .join("com.harammute.haramlite")
+                .join("tools"),
+        );
     }
     // NOTE: per-file work dirs (`_haramlite_work/`) live next to user media
     // in unknown folders, so they cannot be swept globally — instead their
@@ -1346,10 +1373,16 @@ mod p2_tests {
         let dir = tmpdir("once");
         let f = dir.join("video.mp4");
         std::fs::write(&f, b"x").unwrap();
-        assert!(!take_tracked_download(&set, &f), "untracked must never match");
+        assert!(
+            !take_tracked_download(&set, &f),
+            "untracked must never match"
+        );
         remember_downloaded(&set, &f);
         assert!(take_tracked_download(&set, &f), "first take hits");
-        assert!(!take_tracked_download(&set, &f), "second take misses (one-shot)");
+        assert!(
+            !take_tracked_download(&set, &f),
+            "second take misses (one-shot)"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1364,11 +1397,19 @@ mod p2_tests {
         remember_downloaded(&set, &src);
         // success path: tracked + same folder + live output -> delete allowed
         assert!(take_tracked_download(&set, &src));
-        assert!(bridge::should_remove_bridge_source(&src, &dir, std::slice::from_ref(&out)));
+        assert!(bridge::should_remove_bridge_source(
+            &src,
+            &dir,
+            std::slice::from_ref(&out)
+        ));
         // output IS the source -> forbidden even if tracked
         remember_downloaded(&set, &src);
         assert!(take_tracked_download(&set, &src));
-        assert!(!bridge::should_remove_bridge_source(&src, &dir, std::slice::from_ref(&src)));
+        assert!(!bridge::should_remove_bridge_source(
+            &src,
+            &dir,
+            std::slice::from_ref(&src)
+        ));
         // user file (never tracked) -> take fails first, nothing proceeds
         let user = dir.join("mine.mp4");
         std::fs::write(&user, b"z").unwrap();
@@ -1382,12 +1423,22 @@ mod p2_tests {
     #[test]
     fn a_failed_settings_write_never_reaches_memory() {
         let mem = Mutex::new(settings::Settings::default());
-        assert_eq!(mem.lock().unwrap().lang, "ar", "fixture starts on the default");
+        assert_eq!(
+            mem.lock().unwrap().lang,
+            "ar",
+            "fixture starts on the default"
+        );
 
-        let next = settings::Settings { lang: "en".into(), ..Default::default() };
+        let next = settings::Settings {
+            lang: "en".into(),
+            ..Default::default()
+        };
 
         let failed = persist_then_publish(&mem, &next, |_| Err("disk full".into()));
-        assert!(failed.is_err(), "the write error must surface, not be swallowed");
+        assert!(
+            failed.is_err(),
+            "the write error must surface, not be swallowed"
+        );
         assert_eq!(
             mem.lock().unwrap().lang,
             "ar",
@@ -1415,7 +1466,10 @@ mod p2_tests {
         let missing = work.join("does_not_exist.mp4");
         let failed = read_normalized_mix(&missing);
         assert!(failed.is_err(), "an undecodable input must fail the decode");
-        assert!(!work.exists(), "the scratch dir must be removed on the early return");
+        assert!(
+            !work.exists(),
+            "the scratch dir must be removed on the early return"
+        );
     }
 
     /// Audit 2026-09-15 (٨): حارس اللغم الذي كان يمنع `cargo test` من العمل
@@ -1484,7 +1538,9 @@ mod single_instance_tests {
         let port = listener.local_addr().unwrap().port();
         let nonce = nonce.to_vec();
         std::thread::spawn(move || {
-            let Ok((mut s, _)) = listener.accept() else { return };
+            let Ok((mut s, _)) = listener.accept() else {
+                return;
+            };
             let mut buf = [0u8; ipc_guard::WIRE_MAGIC.len() + ipc_guard::NONCE_BYTES];
             let n = s.read(&mut buf).unwrap_or(0);
             match peer {
@@ -1549,7 +1605,11 @@ mod single_instance_tests {
         let port = spawn_peer(Peer::Mute, &nonce);
         let answer = ask_running_instance(port, &dir);
         assert_eq!(answer, Answer::Unanswered, "الصمت ليس إقراراً");
-        assert_eq!(boot_decision(answer), Boot::Warn, "وعلى المستخدم أن يقرأ السبب");
+        assert_eq!(
+            boot_decision(answer),
+            Boot::Warn,
+            "وعلى المستخدم أن يقرأ السبب"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1611,7 +1671,11 @@ mod single_instance_tests {
             ipc_guard::REJECT_BYTE,
             "البايت الواحد القديم لم يبقَ إقراراً"
         );
-        assert_eq!(probe_answer(&nonce, &[]), ipc_guard::REJECT_BYTE, "نبضة فارغة");
+        assert_eq!(
+            probe_answer(&nonce, &[]),
+            ipc_guard::REJECT_BYTE,
+            "نبضة فارغة"
+        );
         let mut wrong = nonce;
         wrong[0] ^= 0xFF;
         assert_eq!(

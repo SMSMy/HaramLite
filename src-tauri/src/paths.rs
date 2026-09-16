@@ -29,7 +29,11 @@ pub fn data_dir() -> PathBuf {
 /// process-wide env var — a test that sets `HARAMLITE_DATA_DIR` races with every
 /// parallel test that resolves a path through here (observed as a one-off
 /// failure of the pipeline lock test, 2026-09-11).
-fn resolve_data_dir(override_dir: Option<&str>, local: Option<PathBuf>, roaming: Option<PathBuf>) -> PathBuf {
+fn resolve_data_dir(
+    override_dir: Option<&str>,
+    local: Option<PathBuf>,
+    roaming: Option<PathBuf>,
+) -> PathBuf {
     if let Some(dir) = override_dir {
         if !dir.trim().is_empty() {
             return PathBuf::from(dir);
@@ -53,7 +57,9 @@ pub fn legacy_dir() -> PathBuf {
 pub enum Migration {
     /// Nothing to do: already migrated, or no legacy data at all.
     Nothing,
-    Moved { files: usize },
+    Moved {
+        files: usize,
+    },
     Failed(String),
 }
 
@@ -190,7 +196,10 @@ mod tests {
         // target already owns settings.json ⇒ the old copy is left alone
         std::fs::write(new.join("settings.json"), b"new").unwrap();
         assert_eq!(migrate_legacy(&old, &new), Migration::Nothing);
-        assert!(old.join("settings.json").is_file(), "must not delete the old tree");
+        assert!(
+            old.join("settings.json").is_file(),
+            "must not delete the old tree"
+        );
         assert_eq!(std::fs::read(new.join("settings.json")).unwrap(), b"new");
         // fresh install: no legacy at all
         let empty = root.join("empty_legacy");
@@ -211,7 +220,10 @@ mod tests {
             Migration::Failed(_) => {}
             other => panic!("expected Failed, got {other:?}"),
         }
-        assert!(old.join("settings.json").is_file(), "the original must survive a failure");
+        assert!(
+            old.join("settings.json").is_file(),
+            "the original must survive a failure"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -221,7 +233,11 @@ mod tests {
         let roaming = PathBuf::from("C:\\Users\\x\\AppData\\Roaming");
         // An explicit override always wins (this is the test hook).
         assert_eq!(
-            resolve_data_dir(Some("C:\\tmp\\hl"), Some(local.clone()), Some(roaming.clone())),
+            resolve_data_dir(
+                Some("C:\\tmp\\hl"),
+                Some(local.clone()),
+                Some(roaming.clone())
+            ),
             PathBuf::from("C:\\tmp\\hl")
         );
         // A blank override is not an override.

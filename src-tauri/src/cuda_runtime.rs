@@ -56,22 +56,70 @@ const USER_AGENT: &str = "HaramLite-Repair/0.2";
 /// `sha256:` في واجهة إصدارات GitHub، ثم أعيد حسابها على الملفات المنزَّلة
 /// فعلاً (`Get-FileHash -Algorithm SHA256`).
 pub const CUDA_FILE_SHA256: &[(&str, &str)] = &[
-    ("cudart64_12.dll", "c2c9a9c22a9bcba90e261825968836787b331038047a26770cffb7a583c28344"),
-    ("cublas64_12.dll", "f3ca341456ca00d8780ce40bcec9fc8a61a6b0dfd799cba5bdc59adaaa82cab4"),
-    ("cublasLt64_12.dll", "6f7cb6c15cc81b5a18ac2d42bc20f2955c498e909dd87ab4bfdb73977e2c4d47"),
-    ("cufft64_11.dll", "f4fea9227b14843894ad5436725f9638b172171142c95291fc6ae7a493248221"),
-    ("cudnn64_9.dll", "2ea14732f39b7f0d571de6fd14cb7c0c08652c6633d673ad9d179743c8083cd3"),
-    ("cudnn_ops64_9.dll", "c390e070b0ac214fa1ae0a40241776a291f90e5f07d46899f2d15fcec831a404"),
-    ("cudnn_cnn64_9.dll", "6ffe5484b61d94ab42ebc7b5737fa0ee3e3c2dd043825966253118fe2456a2d1"),
-    ("cudnn_adv64_9.dll", "04be9f67c2f92c3172b065ea68fa8b6271bb13d31264ac225fa9751f7d6d9484"),
-    ("cudnn_graph64_9.dll", "3c9fc4d73c41e66b93a8fc9c56536579ac36c1e87937728f3f1a24b4615202f4"),
-    ("cudnn_heuristic64_9.dll", "eddd4556da1292bc329399aceabe327b5b9e965f19cbfcafd6c60fbd9e566346"),
-    ("cudnn_engines_precompiled64_9.dll", "58093341a7474968be624de49dd171772bac6c1ba16c6e6acfd5a1edc406db66"),
-    ("cudnn_engines_runtime_compiled64_9.dll", "52d244ccd54a98c6f372fbf773fc592eea0d0a85d16ea7eea1fb7f9bfd71f0e2"),
-    ("cudnn_engines_tensor_ir64_9.dll", "27002dae30705f0f310b05e492c72f197e1d00e45dc735682412c7e6e274ef41"),
-    ("cudnn_ext64_9.dll", "f82ad629d2299aeacd044b9d5e265ea163bbceb753e1409bb34ba27868bd844f"),
-    ("onnxruntime_providers_shared.dll", "3b53c353cd52a7be926beb289277b79de1e659a1dc3bb74b24c99a6a7296d9d9"),
-    ("onnxruntime_providers_cuda.dll", "0f32c09da925ec58c650a0d72ccc950a73db570cae0adeffb3d07165419b8bd1"),
+    (
+        "cudart64_12.dll",
+        "c2c9a9c22a9bcba90e261825968836787b331038047a26770cffb7a583c28344",
+    ),
+    (
+        "cublas64_12.dll",
+        "f3ca341456ca00d8780ce40bcec9fc8a61a6b0dfd799cba5bdc59adaaa82cab4",
+    ),
+    (
+        "cublasLt64_12.dll",
+        "6f7cb6c15cc81b5a18ac2d42bc20f2955c498e909dd87ab4bfdb73977e2c4d47",
+    ),
+    (
+        "cufft64_11.dll",
+        "f4fea9227b14843894ad5436725f9638b172171142c95291fc6ae7a493248221",
+    ),
+    (
+        "cudnn64_9.dll",
+        "2ea14732f39b7f0d571de6fd14cb7c0c08652c6633d673ad9d179743c8083cd3",
+    ),
+    (
+        "cudnn_ops64_9.dll",
+        "c390e070b0ac214fa1ae0a40241776a291f90e5f07d46899f2d15fcec831a404",
+    ),
+    (
+        "cudnn_cnn64_9.dll",
+        "6ffe5484b61d94ab42ebc7b5737fa0ee3e3c2dd043825966253118fe2456a2d1",
+    ),
+    (
+        "cudnn_adv64_9.dll",
+        "04be9f67c2f92c3172b065ea68fa8b6271bb13d31264ac225fa9751f7d6d9484",
+    ),
+    (
+        "cudnn_graph64_9.dll",
+        "3c9fc4d73c41e66b93a8fc9c56536579ac36c1e87937728f3f1a24b4615202f4",
+    ),
+    (
+        "cudnn_heuristic64_9.dll",
+        "eddd4556da1292bc329399aceabe327b5b9e965f19cbfcafd6c60fbd9e566346",
+    ),
+    (
+        "cudnn_engines_precompiled64_9.dll",
+        "58093341a7474968be624de49dd171772bac6c1ba16c6e6acfd5a1edc406db66",
+    ),
+    (
+        "cudnn_engines_runtime_compiled64_9.dll",
+        "52d244ccd54a98c6f372fbf773fc592eea0d0a85d16ea7eea1fb7f9bfd71f0e2",
+    ),
+    (
+        "cudnn_engines_tensor_ir64_9.dll",
+        "27002dae30705f0f310b05e492c72f197e1d00e45dc735682412c7e6e274ef41",
+    ),
+    (
+        "cudnn_ext64_9.dll",
+        "f82ad629d2299aeacd044b9d5e265ea163bbceb753e1409bb34ba27868bd844f",
+    ),
+    (
+        "onnxruntime_providers_shared.dll",
+        "3b53c353cd52a7be926beb289277b79de1e659a1dc3bb74b24c99a6a7296d9d9",
+    ),
+    (
+        "onnxruntime_providers_cuda.dll",
+        "0f32c09da925ec58c650a0d72ccc950a73db570cae0adeffb3d07165419b8bd1",
+    ),
 ];
 
 /// البصمة المثبَّتة لاسمنا، أو `None` إن لم يكن الاسم من مجموعتنا.
@@ -87,7 +135,6 @@ pub(crate) fn pinned_sha(name: &str) -> Option<&'static str> {
 pub(crate) fn sha_mismatch_message(name: &str, expected: &str, actual: &str) -> String {
     format!("بصمة {name} لا تطابق المثبَّت في التطبيق (متوقع {expected}، المقروء {actual}) — أُلغي التثبيت حمايةً لك")
 }
-
 
 /// Manifest asset names must be bare filenames (`^[A-Za-z0-9_.-]+$`), never
 /// paths: the manifest is fetched from a remote release, and each name is
@@ -315,7 +362,12 @@ pub(crate) fn diagnose(use_cuda: bool, gpu_present: bool, gap: RuntimeGap) -> Cu
     let present = CUDA_FILES.len() - missing.len();
     // Not asking = no warning, whatever the machine looks like.
     if !use_cuda {
-        return CudaDiagnosis { state: CudaState::NotRequested, present, missing, gpu_present };
+        return CudaDiagnosis {
+            state: CudaState::NotRequested,
+            present,
+            missing,
+            gpu_present,
+        };
     }
     let state = match &gap {
         // Complete set AND a device: the only state where CUDA is attempted.
@@ -330,7 +382,12 @@ pub(crate) fn diagnose(use_cuda: bool, gpu_present: bool, gap: RuntimeGap) -> Cu
         }
         RuntimeGap::Absent | RuntimeGap::Incomplete(_) => CudaState::NoNvidiaGpu,
     };
-    CudaDiagnosis { state, present, missing, gpu_present }
+    CudaDiagnosis {
+        state,
+        present,
+        missing,
+        gpu_present,
+    }
 }
 
 /// القرارات التي تتخذها طبقة التشخيص (فقط) — تُختبر وتُقرأ في السجل.
@@ -344,9 +401,15 @@ pub(crate) struct CudaPlan {
 /// لكن مع تصريح حالة الجهاز التي أُسقطت سابقاً من التقرير.
 pub(crate) fn plan(d: &CudaDiagnosis) -> CudaPlan {
     if d.attempt_cuda() {
-        CudaPlan { attempt_cuda: true, provider_chain: "CUDA -> DirectML -> CPU" }
+        CudaPlan {
+            attempt_cuda: true,
+            provider_chain: "CUDA -> DirectML -> CPU",
+        }
     } else {
-        CudaPlan { attempt_cuda: false, provider_chain: "DirectML -> CPU" }
+        CudaPlan {
+            attempt_cuda: false,
+            provider_chain: "DirectML -> CPU",
+        }
     }
 }
 
@@ -387,7 +450,11 @@ mod tests {
             std::fs::write(bin_dir.join(name), b"dll-bytes").unwrap();
         }
         assert_eq!(heal_provider_dlls_in(&exe_dir, &bin_dir), 2);
-        assert_eq!(heal_provider_dlls_in(&exe_dir, &bin_dir), 0, "second run is a no-op");
+        assert_eq!(
+            heal_provider_dlls_in(&exe_dir, &bin_dir),
+            0,
+            "second run is a no-op"
+        );
         // A real user file at destination must never be overwritten.
         std::fs::write(exe_dir.join(BRIDGE_DLLS[0]), b"user-bytes").unwrap();
         assert_eq!(heal_provider_dlls_in(&exe_dir, &bin_dir), 0);
@@ -417,7 +484,11 @@ mod tests {
     /// يسقط هذا الاختبار لو نقص ثابت أو زاد أو تغيّر اسم أو رُتّب خطأً.
     #[test]
     fn pinned_hashes_cover_the_file_list_exactly() {
-        assert_eq!(CUDA_FILE_SHA256.len(), 16, "عدد الثوابت المثبَّتة يجب أن يكون 16");
+        assert_eq!(
+            CUDA_FILE_SHA256.len(),
+            16,
+            "عدد الثوابت المثبَّتة يجب أن يكون 16"
+        );
         assert_eq!(
             CUDA_FILE_SHA256.len(),
             CUDA_FILES.len(),
@@ -432,9 +503,20 @@ mod tests {
         // وكل بصمة 64 محرفاً سداسياً عشرياً (شكل صالح).
         for (name, sha) in CUDA_FILE_SHA256 {
             assert_eq!(sha.len(), 64, "بصمة {name} ليست 64 محرفاً");
-            assert!(sha.bytes().all(|b| b.is_ascii_hexdigit()), "بصمة {name} ليست hex");
-            assert_eq!(*sha, sha.to_ascii_lowercase(), "بصمة {name} يجب أن تكون صغيرة");
-            assert_eq!(pinned_sha(name), Some(*sha), "البحث بالاسم يجب أن يجد البصمة");
+            assert!(
+                sha.bytes().all(|b| b.is_ascii_hexdigit()),
+                "بصمة {name} ليست hex"
+            );
+            assert_eq!(
+                *sha,
+                sha.to_ascii_lowercase(),
+                "بصمة {name} يجب أن تكون صغيرة"
+            );
+            assert_eq!(
+                pinned_sha(name),
+                Some(*sha),
+                "البحث بالاسم يجب أن يجد البصمة"
+            );
         }
         // اسم غريب لا بصمة له — ولا سقوط إلى «لا فحص».
         assert_eq!(pinned_sha("cudnn_unknown64_9.dll"), None);
@@ -457,7 +539,10 @@ mod tests {
             use sha2::{Digest, Sha256};
             format!("{:x}", Sha256::digest(payload))
         };
-        assert!(file_matches(&base.join(name), &good), "البصمة الصحيحة يجب أن تُقبل");
+        assert!(
+            file_matches(&base.join(name), &good),
+            "البصمة الصحيحة يجب أن تُقبل"
+        );
 
         // بصمة مُعبَّثة (بايت واحد) ⇒ فشل، والرسالة تسمّي الملف.
         let tampered = {
@@ -476,7 +561,10 @@ mod tests {
 
         // وتعبئة **ثابت** من الجدول نفسه تُكتشف بنفس الطريقة لو انحرف الملف.
         let pinned = pinned_sha("cudart64_12.dll").unwrap();
-        assert!(!file_matches(&base.join(name), pinned), "المحتوى المزروع ≠ بصمة CUDA الحقيقية");
+        assert!(
+            !file_matches(&base.join(name), pinned),
+            "المحتوى المزروع ≠ بصمة CUDA الحقيقية"
+        );
 
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -505,8 +593,15 @@ mod tests {
             use sha2::{Digest, Sha256};
             format!("{:x}", Sha256::digest(&payload))
         };
-        write_verified(std::io::Cursor::new(payload.clone()), &tmp, &dest, 0, &good, &|_| {})
-            .expect("بصمة مطابقة يجب أن تُثبّت");
+        write_verified(
+            std::io::Cursor::new(payload.clone()),
+            &tmp,
+            &dest,
+            0,
+            &good,
+            &|_| {},
+        )
+        .expect("بصمة مطابقة يجب أن تُثبّت");
         assert_eq!(std::fs::read(&dest).unwrap(), payload);
         assert!(!tmp.exists());
 
@@ -552,7 +647,9 @@ pub fn ensure_dll_path() {
     {
         use windows_sys::Win32::System::LibraryLoader::SetDllDirectoryW;
         let wide: Vec<u16> = dir_s.encode_utf16().chain(std::iter::once(0)).collect();
-        unsafe { let _ = SetDllDirectoryW(wide.as_ptr()); }
+        unsafe {
+            let _ = SetDllDirectoryW(wide.as_ptr());
+        }
     }
     if let Ok(path) = std::env::var("PATH") {
         if !path.split(';').any(|p| p.eq_ignore_ascii_case(&dir_s)) {
@@ -601,8 +698,7 @@ pub fn install(progress: &dyn Fn(&str, f32)) -> Result<(), String> {
     let body = resp
         .into_string()
         .map_err(|e| format!("منفست غير مقروء: {e}"))?;
-    let manifest: Manifest =
-        serde_json::from_str(&body).map_err(|e| format!("منفست تالف: {e}"))?;
+    let manifest: Manifest = serde_json::from_str(&body).map_err(|e| format!("منفست تالف: {e}"))?;
     // Forward-compatible: the manifest may carry MORE files than this build
     // knows (newer runtime revision) — require only our own set, ignore extras.
     // (A strict count check once bricked every top-up during the 7→16 migration.)
@@ -707,7 +803,8 @@ fn write_verified(
             break;
         }
         hasher.update(&chunk[..read]);
-        file.write_all(&chunk[..read]).map_err(|e| format!("فشل الكتابة: {e}"))?;
+        file.write_all(&chunk[..read])
+            .map_err(|e| format!("فشل الكتابة: {e}"))?;
         gotten += read as u64;
         if total > 0 {
             progress((gotten as f32 / total as f32).clamp(0.0, 1.0));
@@ -749,11 +846,8 @@ mod failure_states {
     }
 
     fn sysroot(with_driver: bool) -> PathBuf {
-        let base = std::env::temp_dir().join(format!(
-            "hl_sysroot_{}_{}",
-            std::process::id(),
-            with_driver
-        ));
+        let base =
+            std::env::temp_dir().join(format!("hl_sysroot_{}_{}", std::process::id(), with_driver));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(base.join("System32")).unwrap();
         if with_driver {
@@ -774,15 +868,26 @@ mod failure_states {
         assert!(!d.attempt_cuda(), "no device means no CUDA attempt");
         let m = d.message();
         assert!(m.contains("NVIDIA"), "message must name the vendor: {m}");
-        assert!(m.contains(DRIVER_DLL), "the missing driver DLL is named: {m}");
+        assert!(
+            m.contains(DRIVER_DLL),
+            "the missing driver DLL is named: {m}"
+        );
         assert!(
             !m.contains("في مجلد bin"),
             "must not ask for a library download when there is no card: {m}"
         );
         assert_eq!(plan(&d).provider_chain, "DirectML -> CPU");
         // Half-downloaded libraries with no driver: the device still decides.
-        let d2 = diagnose(true, false, RuntimeGap::Incomplete(vec!["cudart64_12.dll".into()]));
-        assert_eq!(d2.state, CudaState::NoNvidiaGpu, "no card wins over a partial download");
+        let d2 = diagnose(
+            true,
+            false,
+            RuntimeGap::Incomplete(vec!["cudart64_12.dll".into()]),
+        );
+        assert_eq!(
+            d2.state,
+            CudaState::NoNvidiaGpu,
+            "no card wins over a partial download"
+        );
         assert!(!d2.attempt_cuda());
     }
 
@@ -804,10 +909,19 @@ mod failure_states {
         let d = diagnose(true, true, gap);
         assert_eq!(d.state, CudaState::RuntimeIncomplete);
         assert_eq!(d.present, CUDA_FILES.len() - 2);
-        assert!(!d.attempt_cuda(), "an incomplete runtime must not be attempted");
+        assert!(
+            !d.attempt_cuda(),
+            "an incomplete runtime must not be attempted"
+        );
         let m = d.message();
-        assert!(m.contains("cufft64_11.dll"), "missing file must be named: {m}");
-        assert!(m.contains("cudnn_cnn64_9.dll"), "missing file must be named: {m}");
+        assert!(
+            m.contains("cufft64_11.dll"),
+            "missing file must be named: {m}"
+        );
+        assert!(
+            m.contains("cudnn_cnn64_9.dll"),
+            "missing file must be named: {m}"
+        );
         assert!(m.contains("2 من 16"), "count must be explicit: {m}");
         assert!(m.contains("DirectML"), "the fallback must be stated: {m}");
         let _ = std::fs::remove_dir_all(&base);
@@ -822,9 +936,18 @@ mod failure_states {
         assert_eq!(d.present, 0);
         assert!(!d.attempt_cuda());
         let m = d.message();
-        assert!(m.contains("لم تُنزَّل أي من 16"), "absent is stated as such: {m}");
-        assert!(m.contains("تنزيلها تلقائياً"), "the one-click fix is stated: {m}");
-        assert!(!m.contains(DRIVER_DLL), "the driver is present, not the problem: {m}");
+        assert!(
+            m.contains("لم تُنزَّل أي من 16"),
+            "absent is stated as such: {m}"
+        );
+        assert!(
+            m.contains("تنزيلها تلقائياً"),
+            "the one-click fix is stated: {m}"
+        );
+        assert!(
+            !m.contains(DRIVER_DLL),
+            "the driver is present, not the problem: {m}"
+        );
     }
 
     /// الحالة 5 — الاكتمال: الستة عشر موجودة، فتُجرَّب CUDA فعلاً. وإن فشلت
@@ -897,7 +1020,10 @@ mod failure_states {
         match runtime_gap_in(&base) {
             RuntimeGap::Incomplete(m) => {
                 assert_eq!(m.len(), CUDA_FILES.len() - 1);
-                assert!(!m.contains(&CUDA_FILES[0].to_string()), "present file is not 'missing'");
+                assert!(
+                    !m.contains(&CUDA_FILES[0].to_string()),
+                    "present file is not 'missing'"
+                );
             }
             other => panic!("expected Incomplete, got {other:?}"),
         }
@@ -907,15 +1033,20 @@ mod failure_states {
         let long: Vec<String> = CUDA_FILES.iter().skip(1).map(|s| s.to_string()).collect();
         assert_eq!(long.len(), CUDA_FILES.len() - 1);
         let long = diagnose(true, true, RuntimeGap::Incomplete(long)).message();
-        assert!(long.contains("و12 غيرها"), "long lists are summarised: {long}");
+        assert!(
+            long.contains("و12 غيرها"),
+            "long lists are summarised: {long}"
+        );
         assert!(
             !long.contains(&CUDA_FILES[5].to_string()),
             "only the first few names are listed: {long}"
         );
         // All sixteen missing has its own, shorter wording.
         let absent = diagnose(true, true, RuntimeGap::Absent).message();
-        assert!(absent.contains("لم تُنزَّل أي من 16"), "absent wording: {absent}");
+        assert!(
+            absent.contains("لم تُنزَّل أي من 16"),
+            "absent wording: {absent}"
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 }
-

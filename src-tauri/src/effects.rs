@@ -12,7 +12,13 @@
 
 use std::path::Path;
 
-use crate::{dynamics::{Compressor, Limiter}, filters::{Biquad, Exciter}, loudness::normalize_to_target, reverb_delay::{Freeverb, PingpongDelay}, silence::{cut_silence_with_ranges, SilenceConfig}};
+use crate::{
+    dynamics::{Compressor, Limiter},
+    filters::{Biquad, Exciter},
+    loudness::normalize_to_target,
+    reverb_delay::{Freeverb, PingpongDelay},
+    silence::{cut_silence_with_ranges, SilenceConfig},
+};
 
 pub struct SongEffectsConfig {
     pub highpass_hz: f32,
@@ -105,8 +111,10 @@ pub fn enhance_song(
     let kept_ranges = crate::silence::compute_kept_ranges(l, r, sr, &cfg.silence);
     let removed = cut_silence_with_ranges(l, r, sr, &cfg.silence, &kept_ranges);
     tracing::info!(target: "dsp", "silence cut removed {:.1}%", removed * 100.0);
-    let ranges_sec: Vec<(f64, f64)> =
-        kept_ranges.iter().map(|(a, b)| (*a as f64 / s as f64, *b as f64 / s as f64)).collect();
+    let ranges_sec: Vec<(f64, f64)> = kept_ranges
+        .iter()
+        .map(|(a, b)| (*a as f64 / s as f64, *b as f64 / s as f64))
+        .collect();
     if !progress(0.75) {
         return Err(cancelled);
     }
@@ -138,8 +146,7 @@ pub fn enhance_song_file(
     let (mut l, mut r, sr) =
         crate::separator::read_wav_stereo(wav_path).map_err(|e| e.to_string())?;
     let ranges = enhance_song(&mut l, &mut r, sr, cfg, progress)?;
-    crate::separator::write_wav_stereo_f32_pub(out_path, &l, &r, sr)
-        .map_err(|e| e.to_string())?;
+    crate::separator::write_wav_stereo_f32_pub(out_path, &l, &r, sr).map_err(|e| e.to_string())?;
     Ok(ranges)
 }
 
@@ -173,7 +180,9 @@ mod tests {
     fn enhance_song_honors_cancel() {
         let sr = 44100u32;
         let (mut l, mut r) = stereo_tone(sr, 4.0, 0.5);
-        let r = enhance_song(&mut l, &mut r, sr, &SongEffectsConfig::default(), &|_| false);
+        let r = enhance_song(&mut l, &mut r, sr, &SongEffectsConfig::default(), &|_| {
+            false
+        });
         assert!(r.is_err(), "immediate cancel must abort the chain");
     }
 }

@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use hound::{SampleFormat, WavReader, WavSpec, WavWriter};
 
-use crate::stft::{DIM_F, HOP, StftPlan};
+use crate::stft::{StftPlan, DIM_F, HOP};
 use crate::{decide, livemap, silence};
 
 pub const MODEL_FILENAME: &str = "UVR-MDX-NET-Voc_FT.onnx";
@@ -37,7 +37,9 @@ pub enum SepError {
 impl std::fmt::Display for SepError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ModelMissing => write!(f, "نموذج الفصل {MODEL_FILENAME} غير موجود في مجلد models"),
+            Self::ModelMissing => {
+                write!(f, "نموذج الفصل {MODEL_FILENAME} غير موجود في مجلد models")
+            }
             Self::Io(e) => write!(f, "خطأ ملفات: {e}"),
             Self::Inference(e) => write!(f, "خطأ استدلال النموذج: {e}"),
             Self::InvalidInput(e) => write!(f, "مدخل غير صالح: {e}"),
@@ -73,7 +75,10 @@ fn resolve_model() -> Result<PathBuf, SepError> {
         candidates.push(cwd.join("../models").join(MODEL_FILENAME));
         candidates.push(cwd.join("models").join(MODEL_FILENAME));
     }
-    candidates.into_iter().find(|c| c.is_file()).ok_or(SepError::ModelMissing)
+    candidates
+        .into_iter()
+        .find(|c| c.is_file())
+        .ok_or(SepError::ModelMissing)
 }
 
 /// Public wrapper for health checks (pipeline.rs).
@@ -113,8 +118,8 @@ where
 
 /// Read a PCM WAV into stereo f32 channel buffers.
 pub fn read_wav_stereo(path: &Path) -> Result<(Vec<f32>, Vec<f32>, u32), SepError> {
-    let reader =
-        WavReader::open(path).map_err(|e| SepError::InvalidInput(format!("{}: {e}", path.display())))?;
+    let reader = WavReader::open(path)
+        .map_err(|e| SepError::InvalidInput(format!("{}: {e}", path.display())))?;
     let spec = reader.spec();
     if spec.channels != 2 {
         return Err(SepError::InvalidInput(format!(
@@ -132,7 +137,9 @@ pub fn read_wav_stereo(path: &Path) -> Result<(Vec<f32>, Vec<f32>, u32), SepErro
         SampleFormat::Int => {
             let maxv = (1i64 << (spec.bits_per_sample.saturating_sub(1))) as f32;
             deinterleave(
-                reader.into_samples::<i32>().map(|s| s.map(|v| v as f32 / maxv)),
+                reader
+                    .into_samples::<i32>()
+                    .map(|s| s.map(|v| v as f32 / maxv)),
                 per_channel,
             )?
         }
@@ -151,17 +158,25 @@ fn write_wav_stereo_f32(path: &Path, l: &[f32], r: &[f32], sr: u32) -> Result<()
         bits_per_sample: 32,
         sample_format: SampleFormat::Float,
     };
-    let mut w = WavWriter::create(path, spec).map_err(|e| SepError::Io(format!("{}: {e}", path.display())))?;
+    let mut w = WavWriter::create(path, spec)
+        .map_err(|e| SepError::Io(format!("{}: {e}", path.display())))?;
     for (a, b) in l.iter().zip(r.iter()) {
-        w.write_sample(*a).map_err(|e| SepError::Io(e.to_string()))?;
-        w.write_sample(*b).map_err(|e| SepError::Io(e.to_string()))?;
+        w.write_sample(*a)
+            .map_err(|e| SepError::Io(e.to_string()))?;
+        w.write_sample(*b)
+            .map_err(|e| SepError::Io(e.to_string()))?;
     }
     w.finalize().map_err(|e| SepError::Io(e.to_string()))?;
     Ok(())
 }
 
 /// Public writer for sibling modules (effects.rs).
-pub fn write_wav_stereo_f32_pub(path: &Path, l: &[f32], r: &[f32], sr: u32) -> Result<(), SepError> {
+pub fn write_wav_stereo_f32_pub(
+    path: &Path,
+    l: &[f32],
+    r: &[f32],
+    sr: u32,
+) -> Result<(), SepError> {
     write_wav_stereo_f32(path, l, r, sr)
 }
 
@@ -271,8 +286,7 @@ where
                 if slot.borrow().is_none() {
                     let mut v = EpFieldGrab(String::new());
                     event.record(&mut v);
-                    *slot.borrow_mut() =
-                        Some(format!("{} {}", event.metadata().target(), v.0));
+                    *slot.borrow_mut() = Some(format!("{} {}", event.metadata().target(), v.0));
                 }
             });
         }
@@ -311,11 +325,9 @@ static ORT_ENV_INIT: std::sync::Once = std::sync::Once::new();
 /// Commit the ORT environment once (idempotent). Call at startup BEFORE any
 /// separation — including the watch folder's first sweep.
 pub fn init_ort_env() {
-    ORT_ENV_INIT.call_once(|| {
-        match ort::init().commit() {
-            Ok(_) => tracing::info!(target: "sep", "ORT environment committed"),
-            Err(e) => tracing::error!(target: "sep", "ORT environment commit failed: {e}"),
-        }
+    ORT_ENV_INIT.call_once(|| match ort::init().commit() {
+        Ok(_) => tracing::info!(target: "sep", "ORT environment committed"),
+        Err(e) => tracing::error!(target: "sep", "ORT environment commit failed: {e}"),
     });
 }
 
@@ -397,7 +409,8 @@ impl MdxSession {
 
             if provider_type == "cuda" {
                 use ort::execution_providers::CUDAExecutionProvider;
-                b = b.with_execution_providers([CUDAExecutionProvider::default().build()])
+                b = b
+                    .with_execution_providers([CUDAExecutionProvider::default().build()])
                     .map_err(|e| SepError::Inference(e.to_string()))?;
             } else if provider_type == "dml" {
                 use ort::execution_providers::DirectMLExecutionProvider;
@@ -477,9 +490,8 @@ impl MdxSession {
                 target: "sep",
                 "تعذّر تحميل DirectML — التراجع إلى CPU، والمعالجة تكمل بلا توقف"
             );
-            let s = attempt("cpu").ok_or_else(|| {
-                SepError::Inference("تعذر إنشاء جلسة الاستدلال حتى على CPU".into())
-            })?;
+            let s = attempt("cpu")
+                .ok_or_else(|| SepError::Inference("تعذر إنشاء جلسة الاستدلال حتى على CPU".into()))?;
             ready("CPU");
             s
         };
@@ -487,7 +499,10 @@ impl MdxSession {
         let _ = ACTIVE_PROVIDER.set(provider_name.to_string());
         record_provider(provider_name);
         tracing::info!(target: "sep", "ONNX session ready in {:.1}s: {}", t_session.elapsed().as_secs_f32(), model_path.display());
-        Ok(Self { session, plan: StftPlan::new() })
+        Ok(Self {
+            session,
+            plan: StftPlan::new(),
+        })
     }
 
     /// run_model(): STFT → zero bins<3 → ONNX → ISTFT. Chunk in/out [L,R].
@@ -517,13 +532,12 @@ impl MdxSession {
             .try_extract_tensor::<f32>()
             .map_err(|e| SepError::Inference(e.to_string()))?;
         if shape.as_ref() != [1i64, 4, DIM_F as i64, frames as i64] {
-            return Err(SepError::Inference(format!("unexpected output shape {shape:?}")));
+            return Err(SepError::Inference(format!(
+                "unexpected output shape {shape:?}"
+            )));
         }
 
-        let mut out = [
-            vec![0.0f32; CHUNK_SIZE],
-            vec![0.0f32; CHUNK_SIZE],
-        ];
+        let mut out = [vec![0.0f32; CHUNK_SIZE], vec![0.0f32; CHUNK_SIZE]];
         for (c, out_c) in out.iter_mut().enumerate() {
             let mut re = vec![vec![0.0f32; frames]; DIM_F];
             let mut im = vec![vec![0.0f32; frames]; DIM_F];
@@ -609,7 +623,9 @@ fn demix(
 
         done += 1;
         if !progress(done as f32 / total_steps as f32) {
-            return Err(SepError::Inference("تم إلغاء المعالجة من قبل المستخدم.".into()));
+            return Err(SepError::Inference(
+                "تم إلغاء المعالجة من قبل المستخدم.".into(),
+            ));
         }
         i += step;
     }
@@ -645,7 +661,11 @@ pub const SUSPECT_PAD_SECS: f64 = 2.0;
 
 pub fn analyze_mix(l: &[f32], r: &[f32], sr: u32) -> MixAnalysis {
     let n = l.len().min(r.len());
-    let mut out = MixAnalysis { dense: false, suspect: Vec::new(), scored_windows: 0 };
+    let mut out = MixAnalysis {
+        dense: false,
+        suspect: Vec::new(),
+        scored_windows: 0,
+    };
     if n == 0 || sr == 0 {
         return out;
     }
@@ -775,7 +795,10 @@ pub fn separate(
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "audio".into());
 
-    let mut vocals = [vec![0.0f32; vocals_src[0].len()], vec![0.0f32; vocals_src[1].len()]];
+    let mut vocals = [
+        vec![0.0f32; vocals_src[0].len()],
+        vec![0.0f32; vocals_src[1].len()],
+    ];
     for c in 0..2 {
         for (v, s) in vocals[c].iter_mut().zip(vocals_src[c].iter()) {
             *v = s * peak;
@@ -799,7 +822,10 @@ pub fn separate(
     write_wav_stereo_f32(&instr_path, &instrumental[0], &instrumental[1], sample_rate)?;
 
     tracing::info!(target: "sep", "stems written:\n  {}\n  {}", vocals_path.display(), instr_path.display());
-    Ok(StemPaths { vocals: vocals_path, instrumental: instr_path })
+    Ok(StemPaths {
+        vocals: vocals_path,
+        instrumental: instr_path,
+    })
 }
 
 #[cfg(test)]
@@ -977,17 +1003,24 @@ mod tests {
         let stems = separate(&mix_path, &tmp.join("out"), false, &|_| true, None)
             .expect("separation must succeed on a generated 44.1k stereo WAV");
         let (vl, vr, vsr) = read_wav_stereo(&stems.vocals).expect("vocals stem must be readable");
-        let (il, ir, isr) = read_wav_stereo(&stems.instrumental)
-            .expect("instrumental stem must be readable");
+        let (il, ir, isr) =
+            read_wav_stereo(&stems.instrumental).expect("instrumental stem must be readable");
 
         // (ب) output contract, read back from the files the engine wrote.
         for (name, sr) in [("vocals", vsr), ("instrumental", isr)] {
             assert_eq!(sr, E2E_SR, "{name}: sample rate must be preserved");
-            let spec = WavReader::open(if name == "vocals" { &stems.vocals } else { &stems.instrumental })
-                .unwrap()
-                .spec();
+            let spec = WavReader::open(if name == "vocals" {
+                &stems.vocals
+            } else {
+                &stems.instrumental
+            })
+            .unwrap()
+            .spec();
             assert_eq!(spec.channels, E2E_CHANNELS, "{name}: must stay stereo");
-            assert_eq!(spec.bits_per_sample, E2E_BITS, "{name}: must stay 32-bit float");
+            assert_eq!(
+                spec.bits_per_sample, E2E_BITS,
+                "{name}: must stay 32-bit float"
+            );
             assert_eq!(
                 spec.sample_format,
                 SampleFormat::Float,
@@ -995,7 +1028,11 @@ mod tests {
             );
         }
         assert_eq!(vl.len(), l.len(), "vocals must be sample-exact in length");
-        assert_eq!(il.len(), l.len(), "instrumental must be sample-exact in length");
+        assert_eq!(
+            il.len(),
+            l.len(),
+            "instrumental must be sample-exact in length"
+        );
 
         // (ج) no NaN/Inf, no clipping.
         assert_finite_and_unclipped("vocals", &vl, &vr);
@@ -1008,7 +1045,10 @@ mod tests {
         let v_voice = band_db(&vl, &vr, E2E_SR, E2E_VOICE_BAND.0, E2E_VOICE_BAND.1);
         let music_drop = in_music - v_music;
         let voice_drop = in_voice - v_voice;
-        let v_peak = vl.iter().chain(vr.iter()).fold(0.0f32, |m, v| m.max(v.abs()));
+        let v_peak = vl
+            .iter()
+            .chain(vr.iter())
+            .fold(0.0f32, |m, v| m.max(v.abs()));
         println!(
             "E2E-BANDS music_drop={music_drop:.2} dB voice_drop={voice_drop:.2} dB \
              voice_peak={v_peak:.4} (thresholds: music≥{E2E_MUSIC_DROP_DB} voice≤{E2E_VOICE_KEEP_DB})"
@@ -1050,8 +1090,12 @@ mod tests {
     #[test]
     #[ignore = "needs ffmpeg/ffprobe — run before a release via `pnpm e2e:release`"]
     fn e2e_full_pipeline_through_ffmpeg() {
-        if crate::media::resolve_tool("ffmpeg").is_err() || crate::media::resolve_tool("ffprobe").is_err() {
-            eprintln!("skipping full-pipeline E2E: ffmpeg/ffprobe not found (set HARAMLITE_TOOLS_DIR)");
+        if crate::media::resolve_tool("ffmpeg").is_err()
+            || crate::media::resolve_tool("ffprobe").is_err()
+        {
+            eprintln!(
+                "skipping full-pipeline E2E: ffmpeg/ffprobe not found (set HARAMLITE_TOOLS_DIR)"
+            );
             return;
         }
         if resolve_model().is_err() {
@@ -1070,7 +1114,9 @@ mod tests {
         let src_s = src.to_string_lossy().into_owned();
         let mp4_s = mp4.to_string_lossy().into_owned();
         let st = std::process::Command::new(&ffmpeg)
-            .args(["-y", "-v", "error", "-i", &src_s, "-c:a", "aac", "-b:a", "192k", &mp4_s])
+            .args([
+                "-y", "-v", "error", "-i", &src_s, "-c:a", "aac", "-b:a", "192k", &mp4_s,
+            ])
             .status()
             .expect("ffmpeg spawn");
         assert!(st.success(), "fixture mp4 generation failed");
@@ -1081,7 +1127,9 @@ mod tests {
             &mp4,
             &out_dir,
             crate::pipeline::Mode::Clip,
-            crate::pipeline::OutKind::Audio { fmt: crate::pipeline::OutFormat::Wav },
+            crate::pipeline::OutKind::Audio {
+                fmt: crate::pipeline::OutFormat::Wav,
+            },
             true,  // keep the instrumental too
             true,  // keep vocals
             false, // CPU/DirectML — the GPU paths have their own live tests
@@ -1120,7 +1168,10 @@ mod tests {
         );
         // Duration: AAC priming means a few ms of slack, never a different file.
         let drift = (vl.len() as f32 / E2E_SR as f32 - E2E_SECS).abs();
-        assert!(drift < 0.1, "duration drifted by {drift:.3}s through the media path");
+        assert!(
+            drift < 0.1,
+            "duration drifted by {drift:.3}s through the media path"
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -1161,7 +1212,11 @@ mod tests {
             assert_eq!(sr, 44100);
             assert_eq!(cl.len(), len, "{} length mismatch", stem.display());
             let energy: f32 = cl.iter().map(|v| v * v).sum();
-            assert!(energy.is_finite() && energy > 0.0, "{} silent/non-finite", stem.display());
+            assert!(
+                energy.is_finite() && energy > 0.0,
+                "{} silent/non-finite",
+                stem.display()
+            );
         }
 
         std::fs::remove_dir_all(&tmp).ok();
@@ -1176,13 +1231,20 @@ mod tests {
             let (pad, padded) = demix_padding(n);
             assert_eq!(pad, gen + TRIM - (n % gen), "pad formula for n={n}");
             assert_eq!(padded, TRIM + n + pad, "padded length for n={n}");
-            assert!(pad > TRIM && pad <= gen + TRIM, "pad range for n={n}: {pad}");
+            assert!(
+                pad > TRIM && pad <= gen + TRIM,
+                "pad range for n={n}: {pad}"
+            );
         }
         // 10s @44.1kHz: the concrete tail the old code got wrong.
         let (pad10, padded10) = demix_padding(441000);
         assert_eq!(pad10, 69720);
         assert_eq!(padded10, 514560);
-        assert_ne!(padded10, 441000 + 2 * TRIM, "must differ from the old 2*TRIM tail");
+        assert_ne!(
+            padded10,
+            441000 + 2 * TRIM,
+            "must differ from the old 2*TRIM tail"
+        );
     }
 
     /// Step-1 (A): documents the exact trigger the removed gate used —
@@ -1197,7 +1259,11 @@ mod tests {
             .collect();
         let r = l.clone();
         let a = analyze_mix(&l, &r, sr);
-        assert!(a.suspect.is_empty(), "continuous audio must trip the old gate: {:?}", a.suspect);
+        assert!(
+            a.suspect.is_empty(),
+            "continuous audio must trip the old gate: {:?}",
+            a.suspect
+        );
     }
 
     /// Negative test for ٤.ب.٧: a caller that already scanned the mix must not
@@ -1209,22 +1275,37 @@ mod tests {
         let n = sr as usize;
         let l = vec![0.25f32; n];
         let r = vec![0.25f32; n];
-        let given = MixAnalysis { dense: true, suspect: vec![(0, 11)], scored_windows: 4242 };
+        let given = MixAnalysis {
+            dense: true,
+            suspect: vec![(0, 11)],
+            scored_windows: 4242,
+        };
 
         let mut slot = None;
         let (a, scan_secs) = mix_analysis(Some(&given), &mut slot, &l, &r, sr);
-        assert_eq!(a.scored_windows, 4242, "the caller's scan must be the one logged");
+        assert_eq!(
+            a.scored_windows, 4242,
+            "the caller's scan must be the one logged"
+        );
         assert!(a.dense, "…including its verdict");
         assert_eq!(a.suspect, vec![(0, 11)]);
         assert_eq!(scan_secs, 0.0, "a reused analysis costs no scan");
-        assert!(slot.is_none(), "nothing may be scanned when an analysis was given");
+        assert!(
+            slot.is_none(),
+            "nothing may be scanned when an analysis was given"
+        );
 
         // …and with nothing given it scans exactly once, into the caller's slot.
         let mut slot = None;
         let (b, _) = mix_analysis(None, &mut slot, &l, &r, sr);
-        assert_ne!(b.scored_windows, 4242, "a real scan must replace the fixture's numbers");
+        assert_ne!(
+            b.scored_windows, 4242,
+            "a real scan must replace the fixture's numbers"
+        );
         let scanned_windows = b.scored_windows;
-        let stored = slot.as_ref().expect("no analysis given ⇒ one scan, kept for the log");
+        let stored = slot
+            .as_ref()
+            .expect("no analysis given ⇒ one scan, kept for the log");
         assert_eq!(stored.scored_windows, scanned_windows);
     }
 
@@ -1270,7 +1351,11 @@ mod tests {
                 {
                     use windows_sys::Win32::System::LibraryLoader::SetDllDirectoryW;
                     let bin = exe_dir.join("bin");
-                    let wide: Vec<u16> = bin.to_string_lossy().encode_utf16().chain(std::iter::once(0)).collect();
+                    let wide: Vec<u16> = bin
+                        .to_string_lossy()
+                        .encode_utf16()
+                        .chain(std::iter::once(0))
+                        .collect();
                     unsafe {
                         let _ = SetDllDirectoryW(wide.as_ptr());
                     }
@@ -1343,12 +1428,20 @@ mod tests {
         let wav = tmp.join("mix.wav");
         write_wav_stereo_f32(&wav, &l, &r, sr).unwrap();
         let t0 = std::time::Instant::now();
-        let stems = separate(&wav, &tmp.join("out"), true, &|_| true, None).expect("CUDA separation");
-        eprintln!("SMOKE: 12s audio separated on CUDA in {:.1}s", t0.elapsed().as_secs_f32());
+        let stems =
+            separate(&wav, &tmp.join("out"), true, &|_| true, None).expect("CUDA separation");
+        eprintln!(
+            "SMOKE: 12s audio separated on CUDA in {:.1}s",
+            t0.elapsed().as_secs_f32()
+        );
         for stem in [&stems.vocals, &stems.instrumental] {
             let (cl, _, _) = read_wav_stereo(stem).unwrap();
             let energy: f32 = cl.iter().map(|v| v * v).sum();
-            assert!(energy.is_finite() && energy > 0.0, "{} bad stem", stem.display());
+            assert!(
+                energy.is_finite() && energy > 0.0,
+                "{} bad stem",
+                stem.display()
+            );
         }
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -1394,13 +1487,26 @@ mod tests {
         let a = analyze_mix(&l, &r, sr);
         assert!(a.scored_windows > 0);
         assert!(a.dense, "10s tonal runs must trip the density gate");
-        assert_eq!(a.suspect.len(), 2, "silence must split spans: {:?}", a.suspect);
+        assert_eq!(
+            a.suspect.len(),
+            2,
+            "silence must split spans: {:?}",
+            a.suspect
+        );
         let total = l.len();
         // First span ≈ [0, 12.15s): tone end (10s) + keep (0.15s) + 2s pad.
         assert!(a.suspect[0].0 == 0, "starts at file head");
-        assert!((a.suspect[0].1 as f32 / sr as f32 - 12.15).abs() < 0.6, "pad after tone: {:?}", a.suspect[0]);
+        assert!(
+            (a.suspect[0].1 as f32 / sr as f32 - 12.15).abs() < 0.6,
+            "pad after tone: {:?}",
+            a.suspect[0]
+        );
         // Second span ≈ [15.85s, 28s]: 2s pad before tone, clamped at end.
-        assert!((a.suspect[1].0 as f32 / sr as f32 - 15.85).abs() < 0.6, "pad before tone: {:?}", a.suspect[1]);
+        assert!(
+            (a.suspect[1].0 as f32 / sr as f32 - 15.85).abs() < 0.6,
+            "pad before tone: {:?}",
+            a.suspect[1]
+        );
         assert_eq!(a.suspect[1].1, total);
         // All silence → no suspect, never dense (MDX skipped downstream).
         let s0 = vec![0.0f32; sr as usize * 6];
@@ -1440,7 +1546,12 @@ mod tests {
 
         let (sl, srr, _) = read_wav_stereo(&wav).unwrap();
         let analysis = analyze_mix(&sl, &srr, sr);
-        assert_eq!(analysis.suspect.len(), 1, "one padded span expected: {:?}", analysis.suspect);
+        assert_eq!(
+            analysis.suspect.len(),
+            1,
+            "one padded span expected: {:?}",
+            analysis.suspect
+        );
         let t_inf = std::time::Instant::now();
         for (a, b) in &analysis.suspect {
             let (a, b) = (*a, *b);
@@ -1453,10 +1564,15 @@ mod tests {
             analysis.suspect.len(), analysis.scored_windows);
 
         // Full path keeps the merge sample-exact (silence passes through).
-        let stems = separate(&wav, &tmp.join("out"), false, &|_| true, None).expect("separation failed");
+        let stems =
+            separate(&wav, &tmp.join("out"), false, &|_| true, None).expect("separation failed");
         let (vl, _, _) = read_wav_stereo(&stems.vocals).unwrap();
         let (il, _, _) = read_wav_stereo(&stems.instrumental).unwrap();
-        assert_eq!(vl.len(), len, "vocals length must equal input (sample-exact merge)");
+        assert_eq!(
+            vl.len(),
+            len,
+            "vocals length must equal input (sample-exact merge)"
+        );
         assert_eq!(il.len(), len, "instrumental length must equal input");
         assert!(build_ms > 0.0 && inf_ms > 0.0);
         let _ = std::fs::remove_dir_all(&tmp);
@@ -1468,15 +1584,33 @@ mod tests {
     fn provider_file_roundtrips_isolated() {
         let base = std::env::temp_dir().join(format!("hl_prov_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
-        assert_eq!(read_provider_in(&provider_file_in(&base)), None, "missing → unknown");
+        assert_eq!(
+            read_provider_in(&provider_file_in(&base)),
+            None,
+            "missing → unknown"
+        );
         record_provider_in(&base, "CPU");
-        assert_eq!(read_provider_in(&provider_file_in(&base)), Some("CPU".into()));
+        assert_eq!(
+            read_provider_in(&provider_file_in(&base)),
+            Some("CPU".into())
+        );
         record_provider_in(&base, "DirectML");
-        assert_eq!(read_provider_in(&provider_file_in(&base)), Some("DirectML".into()));
+        assert_eq!(
+            read_provider_in(&provider_file_in(&base)),
+            Some("DirectML".into())
+        );
         std::fs::write(provider_file_in(&base), b"{not json").unwrap();
-        assert_eq!(read_provider_in(&provider_file_in(&base)), None, "corrupt → unknown");
+        assert_eq!(
+            read_provider_in(&provider_file_in(&base)),
+            None,
+            "corrupt → unknown"
+        );
         std::fs::write(provider_file_in(&base), b"{}").unwrap();
-        assert_eq!(read_provider_in(&provider_file_in(&base)), None, "no field → unknown");
+        assert_eq!(
+            read_provider_in(&provider_file_in(&base)),
+            None,
+            "no field → unknown"
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 }

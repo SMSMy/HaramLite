@@ -66,9 +66,7 @@ fn data_dir() -> PathBuf {
 }
 
 fn requests_dir() -> PathBuf {
-    data_dir()
-        .join("com.harammute.haramlite")
-        .join("requests")
+    data_dir().join("com.harammute.haramlite").join("requests")
 }
 
 fn state_path() -> PathBuf {
@@ -144,9 +142,7 @@ static LAST_STATE_WRITE: Mutex<Option<std::time::Instant>> = Mutex::new(None);
 pub fn write_state_throttled(v: &serde_json::Value) {
     let now = std::time::Instant::now();
     {
-        let mut last = LAST_STATE_WRITE
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let mut last = LAST_STATE_WRITE.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(t) = *last {
             if now.duration_since(t).as_millis() < 250 {
                 return;
@@ -300,7 +296,10 @@ fn handle_host_message(msg: &serde_json::Value) {
             // In-page watching: slices of the RECORDED last page-audio only
             // (same rule as open_file — the browser never passes paths).
             let offset = msg.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-            let len = msg.get("len").and_then(|v| v.as_u64()).unwrap_or(PAGE_SLICE_MAX as u64) as usize;
+            let len = msg
+                .get("len")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(PAGE_SLICE_MAX as u64) as usize;
             match serve_page_audio_slice(offset, len) {
                 Ok(v) => reply_ok(serde_json::json!({ "ok": true, "file": v })),
                 Err(e) => reply_err(&e),
@@ -445,7 +444,11 @@ fn ensure_page_audio(o: &crate::pipeline::PipelineOutput, dir: &Path) -> Option<
 /// it lives in our managed download folder AND at least one real output
 /// exists AND no output IS the source.
 /// P2: shared literally with the GUI download path (lib.rs) — one rule.
-pub(crate) fn should_remove_bridge_source(source: &Path, out_dir: &Path, outputs: &[PathBuf]) -> bool {
+pub(crate) fn should_remove_bridge_source(
+    source: &Path,
+    out_dir: &Path,
+    outputs: &[PathBuf],
+) -> bool {
     if source.parent() != Some(out_dir) {
         return false;
     }
@@ -540,7 +543,11 @@ fn clear_stale_requests(dir: &Path, now: std::time::SystemTime, grace_secs: u64)
             .metadata()
             .and_then(|m| m.modified())
             .ok()
-            .map(|t| now.duration_since(t).map(|age| age.as_secs() < grace_secs).unwrap_or(true))
+            .map(|t| {
+                now.duration_since(t)
+                    .map(|age| age.as_secs() < grace_secs)
+                    .unwrap_or(true)
+            })
             .unwrap_or(true);
         if !fresh {
             let _ = std::fs::remove_file(&p);
@@ -627,7 +634,11 @@ fn dispatch_file(path: &Path, ctx: &DispatchCtx) {
             }));
         }
         "link" => {
-            let url = msg.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let url = msg
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             if url.is_empty() {
                 return;
             }
@@ -675,9 +686,9 @@ fn bridge_loop(app: tauri::AppHandle, settings: Arc<Mutex<Settings>>, dir: PathB
     // (the watcher loop below must never block on a 20-minute job, or
     // cancel requests would queue up behind it and never fire)
     let (job_tx, job_rx) = mpsc::channel::<Job>(); // queued requests
-    // Shared receiver so the watcher thread can DRAIN the queue on cancel.
-    // A plain owned Receiver sits blocked inside the worker's recv() and
-    // cannot be drained from anywhere else.
+                                                   // Shared receiver so the watcher thread can DRAIN the queue on cancel.
+                                                   // A plain owned Receiver sits blocked inside the worker's recv() and
+                                                   // cannot be drained from anywhere else.
     let job_rx = Arc::new(Mutex::new(job_rx));
     let pending = Arc::new(AtomicUsize::new(0));
     let ctx = DispatchCtx {
@@ -749,7 +760,10 @@ fn bridge_loop(app: tauri::AppHandle, settings: Arc<Mutex<Settings>>, dir: PathB
         tracing::error!(target: "bridge", "فشل إنشاء مراقب الطلبات");
         return;
     };
-    if watcher.watch(&dir, notify::RecursiveMode::NonRecursive).is_err() {
+    if watcher
+        .watch(&dir, notify::RecursiveMode::NonRecursive)
+        .is_err()
+    {
         return;
     }
 
@@ -852,8 +866,12 @@ fn handle_request(
     match downloaded {
         Ok(file) => {
             // The popup's explicit choice wins; without one the request keeps the old
-    // behaviour (watch-folder setting) so older clients are unaffected.
-    let mode = mode_choice.unwrap_or(if s.watch_mode == "clip" { Mode::Clip } else { Mode::Song });
+            // behaviour (watch-folder setting) so older clients are unaffected.
+            let mode = mode_choice.unwrap_or(if s.watch_mode == "clip" {
+                Mode::Clip
+            } else {
+                Mode::Song
+            });
             let file_label = file
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
@@ -868,7 +886,9 @@ fn handle_request(
                 &out_dir,
                 mode,
                 if watch {
-                    OutKind::Audio { fmt: crate::pipeline::OutFormat::Mp3 }
+                    OutKind::Audio {
+                        fmt: crate::pipeline::OutFormat::Mp3,
+                    }
                 } else {
                     OutKind::Video { max_height: None }
                 },
@@ -949,7 +969,9 @@ fn handle_request(
                     }
                     if should_remove_bridge_source(&file, &out_dir, &outs) {
                         match std::fs::remove_file(&file) {
-                            Ok(()) => tracing::info!(target: "bridge", "حُذف المصدر المؤقت بعد نجاح المعالجة: {}", file.display()),
+                            Ok(()) => {
+                                tracing::info!(target: "bridge", "حُذف المصدر المؤقت بعد نجاح المعالجة: {}", file.display())
+                            }
                             // Watch-temp jobs run the sweep a few lines above, which
                             // already deleted this file (page-audio holds one file
                             // only) — a second delete is not an error, and warning
@@ -958,7 +980,9 @@ fn handle_request(
                             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                                 tracing::debug!(target: "bridge", "المصدر المؤقت مُنظَّف مسبقاً: {}", file.display())
                             }
-                            Err(e) => tracing::warn!(target: "bridge", "تعذر حذف المصدر المؤقت {}: {e}", file.display()),
+                            Err(e) => {
+                                tracing::warn!(target: "bridge", "تعذر حذف المصدر المؤقت {}: {e}", file.display())
+                            }
                         }
                     }
                 }
@@ -1000,7 +1024,9 @@ fn handle_request(
     // Saturating: a cancel zeroes `pending` while the running job is still
     // finishing, so its final decrement must not underflow the counter.
     pending
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| Some(v.saturating_sub(1)))
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
+            Some(v.saturating_sub(1))
+        })
         .ok();
 }
 
@@ -1092,8 +1118,10 @@ pub fn ensure_registered() {
     if let Ok(exe) = std::env::current_exe() {
         let want = host_manifest(&exe);
         if manifest_is_stale(&manifest_path, &want) {
-            match std::fs::write(&manifest_path, serde_json::to_vec_pretty(&want).unwrap_or_default())
-            {
+            match std::fs::write(
+                &manifest_path,
+                serde_json::to_vec_pretty(&want).unwrap_or_default(),
+            ) {
                 Ok(()) => tracing::info!(
                     target: "bridge",
                     "حُدّث ملف مضيف التكامل (معرّفات الإضافة المقبولة)"
@@ -1292,13 +1320,11 @@ pub fn register(app: &tauri::AppHandle, browser: &str) -> Result<String, String>
             key.set_value("", &manifest_str)
                 .map_err(|e| e.to_string())?;
             // verification: read back exactly what we just wrote
-            let read_back: String = key.get_value("").map_err(|e| {
-                format!("كُتب المفتاح لكن تعذر التحقق منه: {e} — أعد المحاولة")
-            })?;
+            let read_back: String = key
+                .get_value("")
+                .map_err(|e| format!("كُتب المفتاح لكن تعذر التحقق منه: {e} — أعد المحاولة"))?;
             if read_back != manifest_str {
-                return Err(format!(
-                    "تحقق التسجيل فشل: القيمة المكتوبة لا تطابق ({t})"
-                ));
+                return Err(format!("تحقق التسجيل فشل: القيمة المكتوبة لا تطابق ({t})"));
             }
         }
     }
@@ -1389,13 +1415,18 @@ mod tests {
             assert_eq!(origins.len(), 1, "unexpected extra origins: {origins:?}");
         }
         assert!(
-            !origins.iter().any(|o| o.contains("bbkbpldbnkoncockinoapcmbiijejgpn")),
+            !origins
+                .iter()
+                .any(|o| o.contains("bbkbpldbnkoncockinoapcmbiijejgpn")),
             "a foreign extension id must never be allowed"
         );
         assert_eq!(m["name"], HOST_NAME);
         assert_eq!(m["type"], "stdio");
         assert_eq!(m["allowed_extensions"][0], FIREFOX_EXT_ID);
-        assert!(m["path"].as_str().unwrap_or_default().ends_with("HaramLite.exe"));
+        assert!(m["path"]
+            .as_str()
+            .unwrap_or_default()
+            .ends_with("HaramLite.exe"));
     }
 
     fn nanos() -> u128 {
@@ -1436,17 +1467,17 @@ mod tests {
                 HostDrift::Different,
                 "مسار منحرف صُنِّف مطابقاً: {tampered}"
             );
-            assert!(
-                HostDrift::Different.needs_repair(),
-                "المنحرف يجب أن يُصلَح"
-            );
+            assert!(HostDrift::Different.needs_repair(), "المنحرف يجب أن يُصلَح");
         }
 
         // كل حالة لها وصف عربي يسمّيها (لا تحذير غامض).
         for d in [HostDrift::Ok, HostDrift::Missing, HostDrift::Different] {
             assert!(!d.describe().is_empty(), "وصف فارغ لـ{d:?}");
         }
-        assert_ne!(HostDrift::Missing.describe(), HostDrift::Different.describe());
+        assert_ne!(
+            HostDrift::Missing.describe(),
+            HostDrift::Different.describe()
+        );
     }
 
     /// و-٥: الأهداف الأربعة هي نفسها التي تُكتب وتُقرأ — لو انحرف أحدها في
@@ -1517,15 +1548,29 @@ mod tests {
             .unwrap_or_else(|p| p.into_inner())
             .try_recv()
             .expect("job must be queued");
-        assert_eq!(got, Job { url: url.clone(), watch: false, mode: None });
+        assert_eq!(
+            got,
+            Job {
+                url: url.clone(),
+                watch: false,
+                mode: None
+            }
+        );
         // re-queue it so the SECOND delivery is genuinely a duplicate
         ctx.pending.fetch_add(1, Ordering::SeqCst);
-        let _ = ctx.job_tx.send(Job { url: url.clone(), watch: false, mode: None });
+        let _ = ctx.job_tx.send(Job {
+            url: url.clone(),
+            watch: false,
+            mode: None,
+        });
 
         // second delivery of the same URL → skipped AND removed (no 5s loop)
         let p2 = write_req("req_2.json", &format!(r#"{{"type":"link","url":"{url}"}}"#));
         dispatch_file(&p2, &ctx);
-        assert!(!p2.exists(), "duplicate request file must be removed, not re-logged forever");
+        assert!(
+            !p2.exists(),
+            "duplicate request file must be removed, not re-logged forever"
+        );
         // drain the re-queued job for a clean slate
         let guard = ctx.job_rx.lock().unwrap_or_else(|p| p.into_inner());
         while guard.try_recv().is_ok() {}
@@ -1565,13 +1610,25 @@ mod tests {
     #[test]
     fn per_request_mode_parses_song_and_clip_only() {
         use serde_json::json;
-        assert_eq!(job_mode_of(&json!({ "type": "link", "mode": "song" })), Some(Mode::Song));
-        assert_eq!(job_mode_of(&json!({ "type": "link", "mode": "clip" })), Some(Mode::Clip));
-        assert_eq!(job_mode_of(&json!({ "type": "link", "mode": "watch" })), None);
+        assert_eq!(
+            job_mode_of(&json!({ "type": "link", "mode": "song" })),
+            Some(Mode::Song)
+        );
+        assert_eq!(
+            job_mode_of(&json!({ "type": "link", "mode": "clip" })),
+            Some(Mode::Clip)
+        );
+        assert_eq!(
+            job_mode_of(&json!({ "type": "link", "mode": "watch" })),
+            None
+        );
         assert_eq!(job_mode_of(&json!({ "type": "link" })), None);
         assert_eq!(job_mode_of(&json!({ "type": "link", "mode": "" })), None);
         assert_eq!(job_mode_of(&json!({ "type": "link", "mode": 2 })), None);
-        assert_eq!(job_mode_of(&json!({ "type": "link", "mode": "Song" })), None);
+        assert_eq!(
+            job_mode_of(&json!({ "type": "link", "mode": "Song" })),
+            None
+        );
         assert_eq!(job_mode_of(&json!({})), None);
     }
 
@@ -1583,7 +1640,10 @@ mod tests {
         let base = isolated_base("watchmode");
         let (ctx, _pending) = ctx_with();
         let url = format!("https://example.invalid/watch_{}", nanos());
-        let p1 = write_req("req_watch.json", &format!(r#"{{"type":"link","url":"{url}","mode":"watch"}}"#));
+        let p1 = write_req(
+            "req_watch.json",
+            &format!(r#"{{"type":"link","url":"{url}","mode":"watch"}}"#),
+        );
         dispatch_file(&p1, &ctx);
         let got = ctx
             .job_rx
@@ -1591,8 +1651,18 @@ mod tests {
             .unwrap_or_else(|p| p.into_inner())
             .try_recv()
             .expect("watch job must be queued");
-        assert_eq!(got, Job { url: url.clone(), watch: true, mode: None });
-        let p2 = write_req("req_full.json", &format!(r#"{{"type":"link","url":"{url}x"}}"#));
+        assert_eq!(
+            got,
+            Job {
+                url: url.clone(),
+                watch: true,
+                mode: None
+            }
+        );
+        let p2 = write_req(
+            "req_full.json",
+            &format!(r#"{{"type":"link","url":"{url}x"}}"#),
+        );
         dispatch_file(&p2, &ctx);
         let got2 = ctx
             .job_rx
@@ -1634,7 +1704,10 @@ mod tests {
 
         for i in 0..2 {
             let url = format!("https://example.invalid/c_{}_{}", nanos(), i);
-            let p = write_req(&format!("req_q{i}.json"), &format!(r#"{{"type":"link","url":"{url}"}}"#));
+            let p = write_req(
+                &format!("req_q{i}.json"),
+                &format!(r#"{{"type":"link","url":"{url}"}}"#),
+            );
             dispatch_file(&p, &ctx);
         }
         assert_eq!(pending.load(Ordering::SeqCst), 2);
@@ -1665,11 +1738,23 @@ mod tests {
         let vid = out_dir.join("song_(Clean)_haramlite.mp4");
         std::fs::write(&vid, b"clean").unwrap();
 
-        assert!(should_remove_bridge_source(&src, &out_dir, std::slice::from_ref(&vid)));
+        assert!(should_remove_bridge_source(
+            &src,
+            &out_dir,
+            std::slice::from_ref(&vid)
+        ));
         // same file / no outputs / missing output → keep
-        assert!(!should_remove_bridge_source(&src, &out_dir, std::slice::from_ref(&src)));
+        assert!(!should_remove_bridge_source(
+            &src,
+            &out_dir,
+            std::slice::from_ref(&src)
+        ));
         assert!(!should_remove_bridge_source(&src, &out_dir, &[]));
-        assert!(!should_remove_bridge_source(&src, &out_dir, &[out_dir.join("gone.mp4")]));
+        assert!(!should_remove_bridge_source(
+            &src,
+            &out_dir,
+            &[out_dir.join("gone.mp4")]
+        ));
         // outside our managed folder → never touch (user files)
         let elsewhere = base.join("other.mp4");
         std::fs::write(&elsewhere, b"x").unwrap();
@@ -1684,14 +1769,21 @@ mod tests {
         let dir = requests_dir();
 
         let fresh = dir.join("req_fresh.json");
-        std::fs::write(&fresh, r#"{"type":"link","url":"https://example.invalid/fresh"}"#).unwrap();
+        std::fs::write(
+            &fresh,
+            r#"{"type":"link","url":"https://example.invalid/fresh"}"#,
+        )
+        .unwrap();
         // `now` AFTER the write: the file must date at-or-before it.
         let now = std::time::SystemTime::now();
         clear_stale_requests(&dir, now, 3600);
         assert!(fresh.exists(), "fresh request must survive startup cleanup");
 
         clear_stale_requests(&dir, now, 0);
-        assert!(!fresh.exists(), "with zero grace the file is stale and must go");
+        assert!(
+            !fresh.exists(),
+            "with zero grace the file is stale and must go"
+        );
         teardown(&base);
     }
 
@@ -1700,15 +1792,27 @@ mod tests {
         // Manifest location composes under any base (production passes the
         // Tauri app-data dir — same dir `register` writes).
         let p = manifest_path_for(Path::new(r"C:\base"));
-        assert_eq!(p.file_name().and_then(|n| n.to_str()), Some("com.harammute.haramlite.json"));
+        assert_eq!(
+            p.file_name().and_then(|n| n.to_str()),
+            Some("com.harammute.haramlite.json")
+        );
         assert!(p.to_string_lossy().contains("native-host"));
         // Four managed locations, stable order for logs.
         assert_eq!(registry_targets().len(), 4);
         // Only an exact match counts — missing/foreign never does.
-        assert!(is_subkey_match(Some(r"C:\a\com.harammute.haramlite.json"), r"C:\a\com.harammute.haramlite.json"));
+        assert!(is_subkey_match(
+            Some(r"C:\a\com.harammute.haramlite.json"),
+            r"C:\a\com.harammute.haramlite.json"
+        ));
         assert!(!is_subkey_match(None, r"C:\a\com.harammute.haramlite.json"));
-        assert!(!is_subkey_match(Some(r"C:\other\host.json"), r"C:\a\com.harammute.haramlite.json"));
-        assert!(!is_subkey_match(Some(""), r"C:\a\com.harammute.haramlite.json"));
+        assert!(!is_subkey_match(
+            Some(r"C:\other\host.json"),
+            r"C:\a\com.harammute.haramlite.json"
+        ));
+        assert!(!is_subkey_match(
+            Some(""),
+            r"C:\a\com.harammute.haramlite.json"
+        ));
     }
 
     /// Decision 3: page-audio slices are offset-clamped, hex-encoded and
@@ -1760,20 +1864,34 @@ mod tests {
         let dir = PathBuf::from("C:\\data").join("page-audio");
         let inside = dir.join("a.mp3");
         let other = dir.join("other.mp3");
-        assert!(sweep_deletable(&inside, &dir, None), "a direct child of the dir is sweepable");
-        assert!(sweep_deletable(&inside, &dir, Some(&other)), "…even when another file is kept");
+        assert!(
+            sweep_deletable(&inside, &dir, None),
+            "a direct child of the dir is sweepable"
+        );
+        assert!(
+            sweep_deletable(&inside, &dir, Some(&other)),
+            "…even when another file is kept"
+        );
         assert!(
             !sweep_deletable(&inside, &dir, Some(&inside)),
             "the file we keep must survive the sweep"
         );
         let outside = PathBuf::from("C:\\elsewhere").join("a.mp3");
-        assert!(!sweep_deletable(&outside, &dir, None), "outside the dir: never");
+        assert!(
+            !sweep_deletable(&outside, &dir, None),
+            "outside the dir: never"
+        );
         assert!(
             !sweep_deletable(&dir.join("sub").join("a.mp3"), &dir, None),
             "a nested entry is not a direct child"
         );
-        let sibling = PathBuf::from("C:\\data").join("page-audio-old").join("a.mp3");
-        assert!(!sweep_deletable(&sibling, &dir, None), "a sibling sharing the prefix");
+        let sibling = PathBuf::from("C:\\data")
+            .join("page-audio-old")
+            .join("a.mp3");
+        assert!(
+            !sweep_deletable(&sibling, &dir, None),
+            "a sibling sharing the prefix"
+        );
     }
 
     /// Negative test for ٤.ب.٤ (b): extraction happens BEFORE the sweep, so a
@@ -1795,7 +1913,10 @@ mod tests {
             kept_ranges: Vec::new(),
             seconds: 0.0,
         };
-        assert!(ensure_page_audio(&o, &dir).is_none(), "extraction must fail here");
+        assert!(
+            ensure_page_audio(&o, &dir).is_none(),
+            "extraction must fail here"
+        );
         assert!(
             previous.is_file(),
             "the previous page-audio must survive a failed extraction"
@@ -1803,4 +1924,3 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
-

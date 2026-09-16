@@ -51,7 +51,9 @@ mod win {
     use winreg::RegKey;
 
     pub fn read_raw(name: &str) -> Option<String> {
-        let key = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(RUN_KEY, KEY_READ).ok()?;
+        let key = RegKey::predef(HKEY_CURRENT_USER)
+            .open_subkey_with_flags(RUN_KEY, KEY_READ)
+            .ok()?;
         key.get_value::<String, _>(name).ok()
     }
 
@@ -69,8 +71,8 @@ mod win {
             .create_subkey(RUN_KEY)
             .map_err(|e| format!("تعذر فتح مفتاح بدء التشغيل: {e}"))?;
         if on {
-            let exe = std::env::current_exe()
-                .map_err(|e| format!("تعذر تحديد مسار البرنامج: {e}"))?;
+            let exe =
+                std::env::current_exe().map_err(|e| format!("تعذر تحديد مسار البرنامج: {e}"))?;
             key.set_value(name, &command_line(&exe))
                 .map_err(|e| format!("تعذر كتابة قيمة بدء التشغيل: {e}"))
         } else {
@@ -116,7 +118,10 @@ mod tests {
     #[test]
     fn command_line_quotes_path_and_hides_window() {
         let cmd = command_line(Path::new(r"C:\Program Files\HaramLite\HaramLite.exe"));
-        assert_eq!(cmd, r#""C:\Program Files\HaramLite\HaramLite.exe" --hidden-start"#);
+        assert_eq!(
+            cmd,
+            r#""C:\Program Files\HaramLite\HaramLite.exe" --hidden-start"#
+        );
         // الغرض من العلَم: النافذة لا تُفتح عند الإقلاع
         assert!(cmd.ends_with("--hidden-start"));
     }
@@ -124,7 +129,10 @@ mod tests {
     #[test]
     fn stale_paths_are_not_treated_as_enabled() {
         let exe = Path::new(r"C:\Apps\HaramLite\HaramLite.exe");
-        assert!(points_at(r#""C:\Apps\HaramLite\HaramLite.exe" --hidden-start"#, exe));
+        assert!(points_at(
+            r#""C:\Apps\HaramLite\HaramLite.exe" --hidden-start"#,
+            exe
+        ));
         assert!(points_at(r"C:\Apps\HaramLite\HaramLite.exe", exe));
         assert!(!points_at(r#""C:\Old\HaramLite.exe" --hidden-start"#, exe));
         assert!(!points_at("", exe));

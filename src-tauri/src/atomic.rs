@@ -117,8 +117,15 @@ mod tests {
         write_atomic_str(&dest, "old", "json").unwrap();
         let as_dir = root.join("occupied");
         std::fs::create_dir_all(&as_dir).unwrap();
-        assert!(write_atomic_str(&as_dir, "new", "json").is_err(), "يجب أن يفشل");
-        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "old", "الملف القديم سليم");
+        assert!(
+            write_atomic_str(&as_dir, "new", "json").is_err(),
+            "يجب أن يفشل"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            "old",
+            "الملف القديم سليم"
+        );
         assert!(!tmp_sibling(&as_dir, "json").exists(), "لا مؤقت بعد الفشل");
         let _ = std::fs::remove_dir_all(&root);
     }

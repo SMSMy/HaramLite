@@ -43,8 +43,11 @@ fn window_rms(l: &[f32], r: &[f32], win: usize) -> Vec<f32> {
             // Audit 2026-09-03: a single NaN/Inf sample (rogue model output
             // or float-WAV oddity) must never poison the whole measurement —
             // treat non-finite as loud (+inf) so it is never cut, never NaN.
-            let sum: f32 = l[s..s + win].iter().chain(r[s..s + win].iter())
-                .map(|v| if v.is_finite() { v * v } else { f32::INFINITY }).sum();
+            let sum: f32 = l[s..s + win]
+                .iter()
+                .chain(r[s..s + win].iter())
+                .map(|v| if v.is_finite() { v * v } else { f32::INFINITY })
+                .sum();
             if sum.is_finite() {
                 (sum / (win * 2) as f32).sqrt()
             } else {
@@ -55,7 +58,12 @@ fn window_rms(l: &[f32], r: &[f32], win: usize) -> Vec<f32> {
 }
 
 /// Returns kept ranges [start,end) of samples after cutting silences.
-pub fn compute_kept_ranges(l: &[f32], r: &[f32], sr: u32, cfg: &SilenceConfig) -> Vec<(usize, usize)> {
+pub fn compute_kept_ranges(
+    l: &[f32],
+    r: &[f32],
+    sr: u32,
+    cfg: &SilenceConfig,
+) -> Vec<(usize, usize)> {
     let n = l.len().min(r.len());
     let win = (sr as usize / 20).max(64); // 50 ms windows
     let rms = window_rms(l, r, win);
@@ -74,7 +82,10 @@ pub fn compute_kept_ranges(l: &[f32], r: &[f32], sr: u32, cfg: &SilenceConfig) -
         return Vec::new();
     }
     sorted.sort_by(|a, b| a.total_cmp(b));
-    let p90 = sorted.get((sorted.len() as f32 * 0.9) as usize).copied().unwrap_or(1.0);
+    let p90 = sorted
+        .get((sorted.len() as f32 * 0.9) as usize)
+        .copied()
+        .unwrap_or(1.0);
     let floor = 10f32.powf(cfg.absolute_floor_db / 20.0);
     let threshold = (p90 * cfg.relative_threshold).max(floor);
 
@@ -114,12 +125,18 @@ pub fn compute_kept_ranges(l: &[f32], r: &[f32], sr: u32, cfg: &SilenceConfig) -
         let cut_start = ((rs * win) + pad).min(n);
         let cut_end = (re_ * win).saturating_sub(pad).max(cut_start);
         if cut_start > cursor {
-            kept.push(Range { start: cursor, end: cut_start });
+            kept.push(Range {
+                start: cursor,
+                end: cut_start,
+            });
         }
         cursor = cut_end.max(cursor);
     }
     if cursor < n {
-        kept.push(Range { start: cursor, end: n });
+        kept.push(Range {
+            start: cursor,
+            end: n,
+        });
     }
     kept.retain(|r| r.end - r.start > sr as usize / 10); // drop slivers <100ms
     kept.into_iter().map(|rg| (rg.start, rg.end)).collect()
@@ -303,7 +320,9 @@ mod tests {
     fn no_silence_means_no_cut() {
         let sr = 44100u32;
         let tone = |a: f32| -> Vec<f32> {
-            (0..sr as usize * 3).map(|i| (i as f32 * 0.01).sin() * a).collect()
+            (0..sr as usize * 3)
+                .map(|i| (i as f32 * 0.01).sin() * a)
+                .collect()
         };
         let mut l = tone(0.5);
         let mut r = tone(0.5);
@@ -324,7 +343,8 @@ mod tests {
         r[200] = f32::NEG_INFINITY;
         // must complete without panicking (the old sort unwrap died here)
         let ranges = compute_kept_ranges(&l, &r, sr, &SilenceConfig::default());
-        let removed = cut_silence_with_ranges(&mut l, &mut r, sr, &SilenceConfig::default(), &ranges);
+        let removed =
+            cut_silence_with_ranges(&mut l, &mut r, sr, &SilenceConfig::default(), &ranges);
         assert!(removed.is_finite() && (0.0..=1.0).contains(&removed));
         // all-loud buffers with spikes: nothing cut
         let mut l2 = vec![0.5f32; sr as usize * 3];
@@ -339,7 +359,7 @@ mod tests {
         // ensure first sample of output is faded toward zero when a cut happened
         let sr = 44100u32;
         let mut l = vec![0.7f32; sr as usize]; // constant DC → "silence" by RMS?
-        // craft: quiet then loud then quiet
+                                               // craft: quiet then loud then quiet
         let mut sig: Vec<f32> = std::iter::repeat_n(0.00001f32, sr as usize).collect();
         sig.extend(std::iter::repeat_n(0.6f32, sr as usize));
         sig.extend(std::iter::repeat_n(0.00001f32, sr as usize));
@@ -379,7 +399,10 @@ mod tests {
         // Post-cut head rises from zero (fade-IN intact after the fix).
         assert!(l[sr as usize * 2].abs() < 0.05, "head must start near zero");
         // Head fade spans exactly the configured width (50ms), not a stub.
-        assert!(fade == sr as usize / 20, "fade width must be 50ms, got {fade}");
+        assert!(
+            fade == sr as usize / 20,
+            "fade width must be 50ms, got {fade}"
+        );
     }
 
     /// Expert D2ج: the seam crossfade is 50ms by default.
@@ -402,7 +425,10 @@ mod tests {
         apply_mute_duck(&mut l, &mut r, sr, &[(1.0, 2.0)], &[(2.5, 3.0)], 50);
         // mute interior is silent
         let mid_mute = &l[(sr as usize * 3 / 2)..(sr as usize * 17 / 10)];
-        assert!(mid_mute.iter().all(|v| v.abs() < 1e-6), "mute interior must be 0");
+        assert!(
+            mid_mute.iter().all(|v| v.abs() < 1e-6),
+            "mute interior must be 0"
+        );
         // duck interior is −12 dB of the tone (peak 0.5 → 0.1255)
         let mid_duck = &l[(sr as usize * 27 / 10)..(sr as usize * 28 / 10)];
         let peak = mid_duck.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
@@ -410,7 +436,10 @@ mod tests {
         // pass regions untouched
         assert!((l[100] - tone[100]).abs() < 1e-6);
         // no clicks: max sample-to-sample step stays small everywhere
-        let max_step = l.windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+        let max_step = l
+            .windows(2)
+            .map(|w| (w[1] - w[0]).abs())
+            .fold(0.0f32, f32::max);
         assert!(max_step < 0.05, "click detected: step={max_step}");
         assert_eq!(l.len(), n, "rendering never changes length");
     }

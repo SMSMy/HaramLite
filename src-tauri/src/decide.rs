@@ -102,7 +102,12 @@ fn zcr_rms(x: &[f32]) -> (f32, f32) {
 }
 
 /// Spectral centroid (Hz) + flatness (0=tonal … 1=white) of one 4096 frame.
-fn centroid_flatness(frame: &[f32], sr: f32, planner: &mut FftPlanner<f32>, win: &[f32]) -> (f32, f32) {
+fn centroid_flatness(
+    frame: &[f32],
+    sr: f32,
+    planner: &mut FftPlanner<f32>,
+    win: &[f32],
+) -> (f32, f32) {
     const N: usize = 4096;
     let mut buf: Vec<Complex<f32>> = (0..N)
         .map(|i| {
@@ -227,7 +232,11 @@ pub fn score_windows(
         let m_rms = mean(&rms_vals);
         let range = rms_vals.iter().cloned().fold(0.0f32, f32::max)
             - rms_vals.iter().cloned().fold(f32::INFINITY, f32::min);
-        let steadiness = if m_rms > 1e-6 { 1.0 - (range / m_rms).min(1.0) } else { 0.0 };
+        let steadiness = if m_rms > 1e-6 {
+            1.0 - (range / m_rms).min(1.0)
+        } else {
+            0.0
+        };
         let conf = if m_rms <= 1e-6 {
             0.0
         } else {
@@ -317,7 +326,9 @@ pub fn smooth_verdicts(
             }
         }
         // Hangover expiry while still Duck with no candidate → Pass.
-        if state == Verdict::Duck && cand.is_none() && s.start_sec >= hangover_until
+        if state == Verdict::Duck
+            && cand.is_none()
+            && s.start_sec >= hangover_until
             && (s.start_sec - state_since) as f32 >= cfg.min_state_secs
             && hangover_until.is_finite()
         {
@@ -380,7 +391,9 @@ mod tests {
         let mut x = seed | 1;
         (0..(SR as f32 * secs) as usize)
             .map(|_| {
-                x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                x = x
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 (((x >> 32) as f32) / (u32::MAX as f32) - 0.5) * 2.0 * amp
             })
             .collect()
@@ -429,35 +442,61 @@ mod tests {
             .collect();
         assert!(!nscores.is_empty());
         let noisy: f32 = nscores.iter().sum::<f32>() / nscores.len() as f32;
-        assert!(tonal > noisy, "ordering must hold: tonal={tonal} noise={noisy}");
+        assert!(
+            tonal > noisy,
+            "ordering must hold: tonal={tonal} noise={noisy}"
+        );
     }
 
     #[test]
     fn smoother_confirms_mute_and_ignores_blip() {
         let cfg = DecideConfig::default();
-        let mk = |t: f64, c: f32| WindowScore { start_sec: t, confidence: c, silent: false, timing_us: 0 };
+        let mk = |t: f64, c: f32| WindowScore {
+            start_sec: t,
+            confidence: c,
+            silent: false,
+            timing_us: 0,
+        };
         // Four strong windows → Mute entered once (3rd confirms).
-        let s: Vec<WindowScore> = (0..6).map(|i| mk(i as f64 * 0.5, if i < 4 { 0.9 } else { 0.1 })).collect();
+        let s: Vec<WindowScore> = (0..6)
+            .map(|i| mk(i as f64 * 0.5, if i < 4 { 0.9 } else { 0.1 }))
+            .collect();
         let v = smooth_verdicts(&s, &cfg, 0.5);
-        assert!(v.iter().any(|(_, x)| *x == Verdict::Mute), "must enter Mute: {v:?}");
+        assert!(
+            v.iter().any(|(_, x)| *x == Verdict::Mute),
+            "must enter Mute: {v:?}"
+        );
         assert_eq!(v.iter().filter(|(_, x)| *x == Verdict::Mute).count(), 1);
         // Single blip → nothing (needs 3 consecutive).
-        let b: Vec<WindowScore> = (0..6).map(|i| mk(i as f64 * 0.5, if i == 2 { 0.95 } else { 0.1 })).collect();
+        let b: Vec<WindowScore> = (0..6)
+            .map(|i| mk(i as f64 * 0.5, if i == 2 { 0.95 } else { 0.1 }))
+            .collect();
         let vb = smooth_verdicts(&b, &cfg, 0.5);
-        assert!(!vb.iter().any(|(_, x)| *x == Verdict::Mute), "blip must not latch: {vb:?}");
+        assert!(
+            !vb.iter().any(|(_, x)| *x == Verdict::Mute),
+            "blip must not latch: {vb:?}"
+        );
     }
 
     #[test]
     fn smoother_hangover_steps_down_through_duck() {
         let cfg = DecideConfig::default();
-        let mk = |t: f64, c: f32| WindowScore { start_sec: t, confidence: c, silent: false, timing_us: 0 };
+        let mk = |t: f64, c: f32| WindowScore {
+            start_sec: t,
+            confidence: c,
+            silent: false,
+            timing_us: 0,
+        };
         // 6 strong (Mute at 3rd, held) then long quiet → Duck hangover, then Pass.
         let mut s: Vec<WindowScore> = (0..6).map(|i| mk(i as f64 * 0.5, 0.9)).collect();
         s.extend((6..16).map(|i| mk(i as f64 * 0.5, 0.05)));
         let v = smooth_verdicts(&s, &cfg, 0.5);
         let kinds: Vec<Verdict> = v.iter().map(|(_, x)| *x).collect();
         assert_eq!(kinds.first(), Some(&Verdict::Mute));
-        assert!(kinds.contains(&Verdict::Duck), "hangover Duck required: {v:?}");
+        assert!(
+            kinds.contains(&Verdict::Duck),
+            "hangover Duck required: {v:?}"
+        );
         assert_eq!(kinds.last(), Some(&Verdict::Pass));
     }
 
@@ -475,13 +514,30 @@ mod tests {
     #[test]
     fn density_gate_routes_by_sustained_run() {
         assert!(sustained_music(&[0.9; 6]), "exactly 6 must pass");
-        assert!(sustained_music(&[0.1, 0.1, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.1]));
-        assert!(!sustained_music(&[0.9; 5]), "5 windows (2.5s) must not pass");
-        assert!(!sustained_music(&[0.9, 0.9, 0.9, 0.4, 0.9, 0.9, 0.9]), "broken run must not pass");
-        assert!(!sustained_music(&[0.9, 0.9, 0.0, 0.0, 0.9, 0.9, 0.9, 0.9]), "silence gap breaks it");
+        assert!(sustained_music(&[
+            0.1, 0.1, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.1
+        ]));
+        assert!(
+            !sustained_music(&[0.9; 5]),
+            "5 windows (2.5s) must not pass"
+        );
+        assert!(
+            !sustained_music(&[0.9, 0.9, 0.9, 0.4, 0.9, 0.9, 0.9]),
+            "broken run must not pass"
+        );
+        assert!(
+            !sustained_music(&[0.9, 0.9, 0.0, 0.0, 0.9, 0.9, 0.9, 0.9]),
+            "silence gap breaks it"
+        );
         assert!(!sustained_music(&[]), "empty never dense");
-        assert!(!sustained_music(&[0.9, 0.9, 0.9, 0.9, f32::NAN, 0.9, 0.9, 0.9, 0.9]), "NaN breaks the run");
-        assert!(!sustained_music(&[0.5, 0.5, 0.5, 0.5, 0.5, 0.5]), "strictly above 0.5 required");
+        assert!(
+            !sustained_music(&[0.9, 0.9, 0.9, 0.9, f32::NAN, 0.9, 0.9, 0.9, 0.9]),
+            "NaN breaks the run"
+        );
+        assert!(
+            !sustained_music(&[0.5, 0.5, 0.5, 0.5, 0.5, 0.5]),
+            "strictly above 0.5 required"
+        );
     }
 
     /// Slice 2 acceptance vehicle: decision cost over the SAME 270s clip as

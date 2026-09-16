@@ -107,8 +107,7 @@ fn parse_args(args: &[String]) -> Result<CliOpts, String> {
             "--video-h" => {
                 i += 1;
                 let v = args.get(i).ok_or("--video-h يحتاج رقماً (مثل 720)")?.clone();
-                o.video_height =
-                    Some(v.parse().map_err(|_| format!("ارتفاع غير صالح: {v}"))?);
+                o.video_height = Some(v.parse().map_err(|_| format!("ارتفاع غير صالح: {v}"))?);
             }
             "--fmt" => {
                 i += 1;
@@ -137,7 +136,11 @@ fn run_probe(path: &str) -> i32 {
         Ok(info) => {
             println!("الحاوية: {}", info.container);
             println!("المدة: {:.2}s", info.duration_secs);
-            println!("صوت: {} ({})", info.has_audio, info.audio_codec.clone().unwrap_or_default());
+            println!(
+                "صوت: {} ({})",
+                info.has_audio,
+                info.audio_codec.clone().unwrap_or_default()
+            );
             println!("فيديو حقيقي: {}", info.has_video);
             if info.audio_disguised_as_video {
                 println!("⚠ صوت متنكّر في حاوية فيديو — سيُعامل كصوت");
@@ -162,7 +165,10 @@ fn run_check() -> i32 {
         if !ok {
             bad = true;
         }
-        println!("{mark} {name} {}", if detail.is_empty() { "" } else { &detail });
+        println!(
+            "{mark} {name} {}",
+            if detail.is_empty() { "" } else { &detail }
+        );
     }
     if bad {
         1
@@ -199,18 +205,31 @@ fn run_files(o: &CliOpts) -> i32 {
         let last_pct = std::cell::Cell::new(0u32);
 
         let kind = if o.video {
-            pipeline::OutKind::Video { max_height: o.video_height }
+            pipeline::OutKind::Video {
+                max_height: o.video_height,
+            }
         } else {
             pipeline::OutKind::Audio { fmt: o.format }
         };
-        match pipeline::process_file(path, &out_dir, o.mode, kind, o.keep_both || o.keep_inst_only, !o.keep_inst_only, o.cuda, None, &|p| {
-            let pct = (p * 100.0) as u32;
-            if pct > last_pct.get() + 4 {
-                last_pct.set(pct);
-                eprint!("\r  [{:>3}%]", pct.min(100));
-            }
-            true
-        }, &|_, _| {}) {
+        match pipeline::process_file(
+            path,
+            &out_dir,
+            o.mode,
+            kind,
+            o.keep_both || o.keep_inst_only,
+            !o.keep_inst_only,
+            o.cuda,
+            None,
+            &|p| {
+                let pct = (p * 100.0) as u32;
+                if pct > last_pct.get() + 4 {
+                    last_pct.set(pct);
+                    eprint!("\r  [{:>3}%]", pct.min(100));
+                }
+                true
+            },
+            &|_, _| {},
+        ) {
             Ok(out) => {
                 eprintln!("\r  [100%] تم في {:.1}s", t0.elapsed().as_secs_f32());
                 if !o.keep_inst_only {
@@ -268,16 +287,25 @@ pub fn entry(args: &[String]) -> i32 {
         });
         eprintln!();
         println!("{msg}");
-        return if updated || msg.contains("محدّث") { 0 } else { 1 };
+        return if updated || msg.contains("محدّث") {
+            0
+        } else {
+            1
+        };
     }
     if let Some(url) = &opts.url {
         let out_dir = opts.out_dir.clone().unwrap_or_else(|| ".".into());
         eprintln!("▶ تنزيل: {url}");
         let never_cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        match crate::yt_dlp::download_media(url, Path::new(&out_dir), &|p| {
-            eprint!("\r  [{:>3}%]", (p * 100.0) as u32);
-            true
-        }, &never_cancel) {
+        match crate::yt_dlp::download_media(
+            url,
+            Path::new(&out_dir),
+            &|p| {
+                eprint!("\r  [{:>3}%]", (p * 100.0) as u32);
+                true
+            },
+            &never_cancel,
+        ) {
             Ok(path) => {
                 eprintln!("\r  [100%]");
                 println!("تم التنزيل: {}", path.display());

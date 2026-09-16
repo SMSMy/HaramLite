@@ -12,11 +12,11 @@ use serde::{Deserialize, Serialize};
 #[serde(default)]
 pub struct Settings {
     // ── existing UI preferences ──
-    pub lang: String,             // "ar" | "en"
+    pub lang: String, // "ar" | "en"
     pub cuda: bool,
     pub notify: bool,
     pub preview: bool,
-    pub preview_seconds: u32,     // 10 | 15 | 30
+    pub preview_seconds: u32, // 10 | 15 | 30
     pub keep_instrumental: bool,
     pub log_open: bool,
     // Switching this off leaves yt-dlp frozen at its current version, so a
@@ -26,25 +26,25 @@ pub struct Settings {
     // ── watch folder (Sprint D2) ──
     pub watch_enabled: bool,
     pub watch_path: Option<String>,
-    pub watch_mode: String,       // "song" | "clip"
-    pub watch_out_kind: String,   // "auto" | "video" | "audio"
-    pub watch_max_size_mb: u64,   // disk guard: reject larger files
-    pub watch_rescan_secs: u64,   // periodic rescan (notify misses events)
-    pub bridge_enabled: bool,     // browser-integration checkbox (Sprint E3)
+    pub watch_mode: String,     // "song" | "clip"
+    pub watch_out_kind: String, // "auto" | "video" | "audio"
+    pub watch_max_size_mb: u64, // disk guard: reject larger files
+    pub watch_rescan_secs: u64, // periodic rescan (notify misses events)
+    pub bridge_enabled: bool,   // browser-integration checkbox (Sprint E3)
     /// هل سُئل المستخدم عن التشغيل مع النظام مرة واحدة؟ (يُسأل مرة واحدة فقط)
     pub autostart_asked: bool,
     // ── Telegram bot (Sprint T1) ──
     pub telegram_enabled: bool,
-    pub telegram_token: String,       // BotFather token "123456:ABC…"
-    pub telegram_user_id: String,     // owner's numeric id; empty ⇒ pairing mode
-    pub telegram_audio_only: bool,    // always deliver mp3 (skips the video render)
+    pub telegram_token: String,    // BotFather token "123456:ABC…"
+    pub telegram_user_id: String,  // owner's numeric id; empty ⇒ pairing mode
+    pub telegram_audio_only: bool, // always deliver mp3 (skips the video render)
     // Advanced: a LOCAL Bot API server lifts the cloud caps (send 50MB /
     // download 20MB → 2000MB) and hands files to us as plain disk paths.
     // api_id/api_hash belong to the server the owner runs, not to our calls —
     // we only keep them to print the exact launch command.
     pub telegram_api_id: String,
     pub telegram_api_hash: String,
-    pub telegram_local_url: String,   // e.g. "http://127.0.0.1:8081" (empty ⇒ cloud)
+    pub telegram_local_url: String, // e.g. "http://127.0.0.1:8081" (empty ⇒ cloud)
 }
 
 impl Default for Settings {
@@ -65,7 +65,7 @@ impl Default for Settings {
             watch_max_size_mb: 2048,
             watch_rescan_secs: 60,
             bridge_enabled: false,
-        autostart_asked: false,
+            autostart_asked: false,
             telegram_enabled: false,
             telegram_token: String::new(),
             telegram_user_id: String::new(),
@@ -180,7 +180,10 @@ mod tests {
                 "1234567890:AA_fixture_token",
                 "the sealed field must still open back to the token"
             );
-            assert!(!needs_sealing(&dir), "a freshly saved file has nothing left to seal");
+            assert!(
+                !needs_sealing(&dir),
+                "a freshly saved file has nothing left to seal"
+            );
         }
         // …and it still comes back whole.
         let back = load(&dir);
@@ -194,7 +197,10 @@ mod tests {
     fn ytdlp_auto_update_is_on_by_default_and_survives_an_old_file() {
         // ق-١: الإقلاع لا يفحص تحديث yt-dlp إلا إذا كان هذا الحقل true، فأي
         // مسار يجعل «الغياب» يعني false يوقف الفحص بصمت عن كل مستخدم قديم.
-        assert!(Settings::default().ytdlp_auto_update, "الافتراضي يجب أن يكون التشغيل");
+        assert!(
+            Settings::default().ytdlp_auto_update,
+            "الافتراضي يجب أن يكون التشغيل"
+        );
 
         // ملف قديم كتبه بناء لا يعرف الحقل أصلاً (لا مفتاح في JSON).
         let dir = tmp("ytdlp_auto_legacy");
@@ -242,7 +248,11 @@ mod tests {
         .unwrap();
         assert!(needs_sealing(&dir));
         // Empty secrets are not secrets.
-        std::fs::write(path(&dir), r#"{"telegram_token":"","telegram_api_hash":""}"#).unwrap();
+        std::fs::write(
+            path(&dir),
+            r#"{"telegram_token":"","telegram_api_hash":""}"#,
+        )
+        .unwrap();
         assert!(!needs_sealing(&dir));
         // Sealed (or a broken file) ⇒ no rewrite.
         std::fs::write(

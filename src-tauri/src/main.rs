@@ -21,10 +21,7 @@ fn main() {
     // GUI launch requested by the browser bridge while no instance is open:
     // start hidden (the in-page mini panel is the UI), but it is NOT a CLI run.
     let hidden_start = args.iter().any(|a| a == "--hidden-start");
-    let cli_args: Vec<&String> = args
-        .iter()
-        .filter(|a| *a != "--hidden-start")
-        .collect();
+    let cli_args: Vec<&String> = args.iter().filter(|a| *a != "--hidden-start").collect();
 
     // CLI mode: any arguments (other than GUI file-open leftovers) → headless.
     // Tauri dev/build may inject its own flags; those never reach here in GUI

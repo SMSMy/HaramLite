@@ -74,7 +74,11 @@ impl std::error::Error for MediaError {}
 
 /// Resolve bundled tools. Order: env override → exe_dir/bin → project bin.
 pub fn resolve_tool(tool: &str) -> Result<PathBuf, MediaError> {
-    let exe_name = if cfg!(windows) { format!("{tool}.exe") } else { tool.to_string() };
+    let exe_name = if cfg!(windows) {
+        format!("{tool}.exe")
+    } else {
+        tool.to_string()
+    };
 
     let mut candidates: Vec<PathBuf> = Vec::new();
 
@@ -144,7 +148,10 @@ fn parse_ffprobe_json(json: &str) -> Result<(String, f64, Vec<StreamLite>), Medi
     let v: Value = serde_json::from_str(json)
         .map_err(|e| MediaError::InvalidOutput(format!("ffprobe json: {e}")))?;
 
-    let format_name = v["format"]["format_name"].as_str().unwrap_or_default().to_string();
+    let format_name = v["format"]["format_name"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
     let duration_secs = v["format"]["duration"]
         .as_str()
         .and_then(|d| d.parse::<f64>().ok())
@@ -178,16 +185,30 @@ pub fn probe(input: &Path) -> Result<MediaInfo, MediaError> {
     let input_str = input.to_string_lossy().into_owned();
     let json = run_tool(
         &ffprobe,
-        &["-v", "error", "-print_format", "json", "-show_format", "-show_streams", &input_str],
+        &[
+            "-v",
+            "error",
+            "-print_format",
+            "json",
+            "-show_format",
+            "-show_streams",
+            &input_str,
+        ],
     )?;
 
     let (container, duration_secs, streams) = parse_ffprobe_json(&json)?;
 
-    let audio = streams.iter().find(|s| s.codec_type.as_deref() == Some("audio"));
-    let videos: Vec<&StreamLite> =
-        streams.iter().filter(|s| s.codec_type.as_deref() == Some("video")).collect();
-    let real_videos: Vec<&&StreamLite> =
-        videos.iter().filter(|v| !v.disposition_attached_pic).collect();
+    let audio = streams
+        .iter()
+        .find(|s| s.codec_type.as_deref() == Some("audio"));
+    let videos: Vec<&StreamLite> = streams
+        .iter()
+        .filter(|s| s.codec_type.as_deref() == Some("video"))
+        .collect();
+    let real_videos: Vec<&&StreamLite> = videos
+        .iter()
+        .filter(|v| !v.disposition_attached_pic)
+        .collect();
 
     // "Weird file": audio-only content inside a *video* container.
     let video_containers = ["mp4", "mkv", "mov", "avi", "webm", "m4v", "ts", "flv"];
@@ -235,7 +256,10 @@ pub fn normalize_for_engine_limited(
 ) -> Result<PathBuf, MediaError> {
     let ffmpeg = resolve_tool("ffmpeg")?;
     std::fs::create_dir_all(work_dir).map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
-    let stem = input.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "input".into());
+    let stem = input
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "input".into());
     // Functional gap: scratch must be recognizable as ours — the old
     // `normalized_*` name passed the watch folder's `candidate_ok` filter,
     // so a killed run's leftovers were reprocessed as fresh inputs.
@@ -244,10 +268,7 @@ pub fn normalize_for_engine_limited(
     let out_str = out.to_string_lossy().into_owned();
 
     let t_arg = max_seconds.map(|s| format!("{s:.3}"));
-    let mut args: Vec<&str> = vec![
-        "-y", "-v", "error",
-        "-i", &input_str,
-    ];
+    let mut args: Vec<&str> = vec!["-y", "-v", "error", "-i", &input_str];
     if let Some(t) = &t_arg {
         args.push("-t");
         args.push(t.as_str());
@@ -257,7 +278,10 @@ pub fn normalize_for_engine_limited(
 
     run_ffmpeg(&ffmpeg, &args)?;
     if !out.is_file() {
-        return Err(MediaError::InvalidOutput(format!("لم يُنتج ffmpeg ملفًا: {}", out.display())));
+        return Err(MediaError::InvalidOutput(format!(
+            "لم يُنتج ffmpeg ملفًا: {}",
+            out.display()
+        )));
     }
     Ok(out)
 }
@@ -266,11 +290,18 @@ pub fn normalize_for_engine_limited(
 pub fn extract_audio(input: &Path, format: &str, out_dir: &Path) -> Result<PathBuf, MediaError> {
     match format.to_ascii_lowercase().as_str() {
         "mp3" | "wav" | "flac" => {}
-        other => return Err(MediaError::InvalidOutput(format!("صيغة غير مدعومة: {other}"))),
+        other => {
+            return Err(MediaError::InvalidOutput(format!(
+                "صيغة غير مدعومة: {other}"
+            )))
+        }
     }
     let ffmpeg = resolve_tool("ffmpeg")?;
     std::fs::create_dir_all(out_dir).map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
-    let stem = input.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "audio".into());
+    let stem = input
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "audio".into());
     let out = out_dir.join(format!("{stem}_haramlite.{format}"));
 
     let codec_args: &[&str] = match format {
@@ -287,13 +318,20 @@ pub fn extract_audio(input: &Path, format: &str, out_dir: &Path) -> Result<PathB
 
     run_ffmpeg(&ffmpeg, &args)?;
     if !out.is_file() {
-        return Err(MediaError::InvalidOutput(format!("لم يُنتج ffmpeg ملفًا: {}", out.display())));
+        return Err(MediaError::InvalidOutput(format!(
+            "لم يُنتج ffmpeg ملفًا: {}",
+            out.display()
+        )));
     }
     Ok(out)
 }
 
 /// Rebuild an MP4 keeping the original video stream and replacing its audio.
-pub fn remux_video_with_audio(input: &Path, audio_wav: &Path, out_path: &Path) -> Result<PathBuf, MediaError> {
+pub fn remux_video_with_audio(
+    input: &Path,
+    audio_wav: &Path,
+    out_path: &Path,
+) -> Result<PathBuf, MediaError> {
     let ffmpeg = resolve_tool("ffmpeg")?;
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
@@ -301,18 +339,32 @@ pub fn remux_video_with_audio(input: &Path, audio_wav: &Path, out_path: &Path) -
     run_ffmpeg(
         &ffmpeg,
         &[
-            "-y", "-v", "error",
-            "-i", &input.to_string_lossy(),
-            "-i", &audio_wav.to_string_lossy(),
-            "-map", "0:v:0", "-map", "1:a:0",
-            "-c:v", "copy",
-            "-c:a", "aac", "-b:a", "256k",
+            "-y",
+            "-v",
+            "error",
+            "-i",
+            &input.to_string_lossy(),
+            "-i",
+            &audio_wav.to_string_lossy(),
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "256k",
             "-shortest",
             &out_path.to_string_lossy(),
         ],
     )?;
     if !out_path.is_file() {
-        return Err(MediaError::InvalidOutput(format!("لم يُنتج ffmpeg ملفًا: {}", out_path.display())));
+        return Err(MediaError::InvalidOutput(format!(
+            "لم يُنتج ffmpeg ملفًا: {}",
+            out_path.display()
+        )));
     }
     Ok(out_path.to_path_buf())
 }
@@ -325,7 +377,9 @@ fn run_ffmpeg(ffmpeg: &Path, args: &[&str]) -> Result<(), MediaError> {
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         tracing::error!(target: "media", "ffmpeg failed: {err}");
-        return Err(MediaError::InvalidOutput(err.lines().last().unwrap_or_default().to_string()));
+        return Err(MediaError::InvalidOutput(
+            err.lines().last().unwrap_or_default().to_string(),
+        ));
     }
     Ok(())
 }
@@ -345,9 +399,16 @@ mod tests {
         let wav = dir.join("tone.wav");
         let status = make_cmd(&ffmpeg)
             .args([
-                "-y", "-v", "error",
-                "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
-                "-ac", "2", &wav.to_string_lossy(),
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=2",
+                "-ac",
+                "2",
+                &wav.to_string_lossy(),
             ])
             .status()
             .unwrap();
@@ -356,9 +417,13 @@ mod tests {
         let mp4_audio_only = dir.join("fake_video.mp4");
         let status = make_cmd(&ffmpeg)
             .args([
-                "-y", "-v", "error",
-                "-i", &wav.to_string_lossy(),
-                "-c:a", "aac",
+                "-y",
+                "-v",
+                "error",
+                "-i",
+                &wav.to_string_lossy(),
+                "-c:a",
+                "aac",
                 &mp4_audio_only.to_string_lossy(),
             ])
             .status()
@@ -383,7 +448,10 @@ mod tests {
         let info = probe(&mp4).expect("probe");
         assert!(info.has_audio, "must see the audio stream");
         assert!(!info.has_video, "no real video stream");
-        assert!(info.audio_disguised_as_video, "weird-file verdict must fire");
+        assert!(
+            info.audio_disguised_as_video,
+            "weird-file verdict must fire"
+        );
         assert!(info.audio_codec.as_deref() == Some("aac"));
 
         std::fs::remove_dir_all(&tmp).ok();
@@ -486,11 +554,25 @@ mod tests {
         let src = tmp.join("src.mp4");
         let st = make_cmd(&ffmpeg)
             .args([
-                "-y", "-v", "error",
-                "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30:duration=10",
-                "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo:d=10",
-                "-c:v", "mpeg4", "-q:v", "3", "-c:a", "aac",
-                "-shortest", &src.to_string_lossy(),
+                "-y",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=1920x1080:rate=30:duration=10",
+                "-f",
+                "lavfi",
+                "-i",
+                "anullsrc=r=44100:cl=stereo:d=10",
+                "-c:v",
+                "mpeg4",
+                "-q:v",
+                "3",
+                "-c:a",
+                "aac",
+                "-shortest",
+                &src.to_string_lossy(),
             ])
             .status()
             .unwrap();
@@ -498,7 +580,15 @@ mod tests {
 
         let wav = tmp.join("a.wav");
         let st = make_cmd(&ffmpeg)
-            .args(["-y", "-v", "error", "-i", &src.to_string_lossy(), "-vn", &wav.to_string_lossy()])
+            .args([
+                "-y",
+                "-v",
+                "error",
+                "-i",
+                &src.to_string_lossy(),
+                "-vn",
+                &wav.to_string_lossy(),
+            ])
             .status()
             .unwrap();
         assert!(st.success(), "audio extraction");
@@ -518,7 +608,10 @@ mod tests {
                     let len = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
                     assert!(len > 50_000, "valid cut mp4 expected: {forced}");
                     let (profile, pix_fmt) = probe_video_profile_pix_fmt(&p);
-                    assert_eq!(pix_fmt, "yuv420p", "exported pixel format must be fixed: {forced}");
+                    assert_eq!(
+                        pix_fmt, "yuv420p",
+                        "exported pixel format must be fixed: {forced}"
+                    );
                     // The cut must actually be APPLIED, not merely "a file came
                     // out". A filtergraph whose output nobody consumes either
                     // errors out or silently keeps the whole timeline, so the
@@ -653,7 +746,11 @@ fn ffprobe_video_encoder_info(path: &Path) -> Option<StreamLite> {
     let json = run_tool(
         &ffprobe,
         &[
-            "-v", "error", "-print_format", "json", "-show_streams",
+            "-v",
+            "error",
+            "-print_format",
+            "json",
+            "-show_streams",
             &path.to_string_lossy(),
         ],
     )
@@ -679,7 +776,9 @@ fn ffprobe_video_encoder_info(path: &Path) -> Option<StreamLite> {
 /// window compositor stays alive on both encode paths (see `export_video_with_cuts`).
 fn encoder_threads_str() -> String {
     crate::separator::inference_threads(
-        std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4),
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4),
     )
     .to_string()
 }
@@ -839,8 +938,7 @@ pub fn export_video_with_cuts(
         .iter()
         .map(|(a, b)| format!("between(t,{:.3},{:.3})", a, b))
         .collect();
-    let mut chain =
-        format!("select='{}',setpts=N/FRAME_RATE/TB", expr_parts.join("+"));
+    let mut chain = format!("select='{}',setpts=N/FRAME_RATE/TB", expr_parts.join("+"));
     if let Some(h) = max_height {
         chain.push_str(&format!(",scale=-2:{h}:flags=lanczos"));
     }
@@ -862,7 +960,14 @@ pub fn export_video_with_cuts(
     };
     let mut last_err = String::new();
     for enc in encoders {
-        let args = export_args(*enc, &video_str, &audio_str, &fc, &out_str, &enc_threads_str);
+        let args = export_args(
+            *enc,
+            &video_str,
+            &audio_str,
+            &fc,
+            &out_str,
+            &enc_threads_str,
+        );
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
         let t0 = std::time::Instant::now();
         let status = make_cmd(&ffmpeg)
@@ -934,7 +1039,10 @@ fn probe_video_profile_pix_fmt(path: &Path) -> (String, String) {
     let Some(encoder) = ffprobe_video_encoder_info(path) else {
         return ("?".into(), "?".into());
     };
-    (encoder.profile.unwrap_or_else(|| "?".into()), encoder.pix_fmt.unwrap_or_else(|| "?".into()))
+    (
+        encoder.profile.unwrap_or_else(|| "?".into()),
+        encoder.pix_fmt.unwrap_or_else(|| "?".into()),
+    )
 }
 
 // ── Sprint T1: fitting a result into a messaging cap (Telegram) ─────────────
@@ -975,7 +1083,13 @@ fn transcode_args(
     scale: Option<&str>,
     threads: &str,
 ) -> Vec<String> {
-    let mut args: Vec<String> = vec!["-y".into(), "-v".into(), "error".into(), "-i".into(), input.into()];
+    let mut args: Vec<String> = vec![
+        "-y".into(),
+        "-v".into(),
+        "error".into(),
+        "-i".into(),
+        input.into(),
+    ];
     if let Some(s) = scale {
         args.extend(["-vf".to_string(), s.to_string()]);
     }
@@ -1164,11 +1278,21 @@ mod video_flag_guard {
         // The whole reason `h264_mf` is usable at all: at its defaults it
         // measured VMAF 53–64, a collapse the file size hides.
         assert_eq!(value_of(&args, "-c:v"), "h264_mf", "{}", args.join(" "));
-        assert_eq!(value_of(&args, "-rate_control"), "quality", "{}", args.join(" "));
+        assert_eq!(
+            value_of(&args, "-rate_control"),
+            "quality",
+            "{}",
+            args.join(" ")
+        );
         assert_eq!(value_of(&args, "-quality"), "85", "{}", args.join(" "));
         assert_eq!(value_of(&args, "-pix_fmt"), "yuv420p", "{}", args.join(" "));
         // ب.٢.ب — `moov` must precede `mdat` for a file that streams.
-        assert_eq!(value_of(&args, "-movflags"), "+faststart", "{}", args.join(" "));
+        assert_eq!(
+            value_of(&args, "-movflags"),
+            "+faststart",
+            "{}",
+            args.join(" ")
+        );
     }
 
     /// The filtergraph must actually be **wired up**. Pinning the *text* of
@@ -1181,7 +1305,10 @@ mod video_flag_guard {
     fn export_path_consumes_the_filtergraph_output() {
         let args = export_args_for(VideoEncoder::Mf);
         let fc = value_of(&args, "-filter_complex");
-        assert!(fc.ends_with("[v]"), "the graph must label its output [v]: {fc}");
+        assert!(
+            fc.ends_with("[v]"),
+            "the graph must label its output [v]: {fc}"
+        );
         let mapped: Vec<&str> = args
             .windows(2)
             .filter(|w| w[0] == "-map")
@@ -1225,7 +1352,10 @@ mod video_flag_guard {
         // surviving reference would fail at run time on every machine.
         for enc in [VideoEncoder::Nvenc, VideoEncoder::Mf] {
             let joined = export_args_for(enc).join(" ");
-            assert!(!joined.contains("libx264"), "{enc:?} still asks for libx264: {joined}");
+            assert!(
+                !joined.contains("libx264"),
+                "{enc:?} still asks for libx264: {joined}"
+            );
         }
     }
 
@@ -1235,11 +1365,36 @@ mod video_flag_guard {
         let budget = BitrateBudget::from_video_kbps(428);
         // Constant quality here would defeat the function's only purpose:
         // landing a file under a byte cap (measured +83.5% on content C).
-        assert_eq!(value_of(&args, "-rate_control"), "cbr", "{}", args.join(" "));
-        assert_eq!(value_of(&args, "-b:v"), budget.bitrate.as_str(), "{}", args.join(" "));
-        assert_eq!(value_of(&args, "-maxrate"), budget.maxrate.as_str(), "{}", args.join(" "));
-        assert_eq!(value_of(&args, "-bufsize"), budget.bufsize.as_str(), "{}", args.join(" "));
-        assert_eq!(value_of(&args, "-pix_fmt"), MP4_PIX_FMT, "{}", args.join(" "));
+        assert_eq!(
+            value_of(&args, "-rate_control"),
+            "cbr",
+            "{}",
+            args.join(" ")
+        );
+        assert_eq!(
+            value_of(&args, "-b:v"),
+            budget.bitrate.as_str(),
+            "{}",
+            args.join(" ")
+        );
+        assert_eq!(
+            value_of(&args, "-maxrate"),
+            budget.maxrate.as_str(),
+            "{}",
+            args.join(" ")
+        );
+        assert_eq!(
+            value_of(&args, "-bufsize"),
+            budget.bufsize.as_str(),
+            "{}",
+            args.join(" ")
+        );
+        assert_eq!(
+            value_of(&args, "-pix_fmt"),
+            MP4_PIX_FMT,
+            "{}",
+            args.join(" ")
+        );
         assert!(
             !args.iter().any(|a| a == "-quality"),
             "the cap path must not fall back to constant quality: {}",
@@ -1252,10 +1407,20 @@ mod video_flag_guard {
         let args = transcode_args_for(VideoEncoder::Mf);
         assert_eq!(value_of(&args, "-vf"), "scale=-2:720", "{}", args.join(" "));
         assert_eq!(value_of(&args, "-b:a"), "96k", "{}", args.join(" "));
-        assert_eq!(value_of(&args, "-movflags"), "+faststart", "{}", args.join(" "));
+        assert_eq!(
+            value_of(&args, "-movflags"),
+            "+faststart",
+            "{}",
+            args.join(" ")
+        );
         // The output path stays the last argument on both paths — ffmpeg reads
         // trailing options as output options, so anything after it is a bug.
-        assert_eq!(args.last().map(String::as_str), Some("out.mp4"), "{}", args.join(" "));
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some("out.mp4"),
+            "{}",
+            args.join(" ")
+        );
     }
 
     #[test]

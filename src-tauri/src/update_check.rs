@@ -57,7 +57,10 @@ pub struct Semver {
 /// ثلاثة أرقام — فلا ندّعي تحديثاً على وسم لا نفهمه (خطأ في اتجاه الأمان).
 pub fn parse_semver(raw: &str) -> Option<Semver> {
     let s = raw.trim();
-    let s = s.strip_prefix('v').or_else(|| s.strip_prefix('V')).unwrap_or(s);
+    let s = s
+        .strip_prefix('v')
+        .or_else(|| s.strip_prefix('V'))
+        .unwrap_or(s);
     let s = s.split('+').next().unwrap_or(s);
     let (core, pre) = match s.split_once('-') {
         Some((core, pre)) => (core, pre.trim()),
@@ -67,7 +70,12 @@ pub fn parse_semver(raw: &str) -> Option<Semver> {
     let major = parts.next()?.trim().parse::<u64>().ok()?;
     let minor = parts.next()?.trim().parse::<u64>().ok()?;
     let patch = parts.next()?.trim().parse::<u64>().ok()?;
-    Some(Semver { major, minor, patch, stability: u8::from(pre.is_empty()) })
+    Some(Semver {
+        major,
+        minor,
+        patch,
+        stability: u8::from(pre.is_empty()),
+    })
 }
 
 /// هل `latest` أحدث من `current`؟ وسم غير مفهوم ⇒ `false` (لا إشعار بلا يقين).
@@ -98,8 +106,16 @@ pub struct UpdateStatus {
 }
 
 impl UpdateStatus {
-    fn from_latest(current: &str, latest: Option<String>, download_url: &str, from_cache: bool) -> Self {
-        let update_available = latest.as_deref().map(|l| is_newer(l, current)).unwrap_or(false);
+    fn from_latest(
+        current: &str,
+        latest: Option<String>,
+        download_url: &str,
+        from_cache: bool,
+    ) -> Self {
+        let update_available = latest
+            .as_deref()
+            .map(|l| is_newer(l, current))
+            .unwrap_or(false);
         Self {
             current: current.to_string(),
             latest,
@@ -128,17 +144,27 @@ pub fn status_from_payload(current: &str, body: &str) -> Result<UpdateStatus, St
     let v: serde_json::Value = serde_json::from_str(body)
         .map_err(|e| format!("تعذر قراءة ردّ GitHub (JSON غير صالح): {e}"))?;
 
-    let tag = v.get("tag_name").and_then(|t| t.as_str()).unwrap_or("").trim();
+    let tag = v
+        .get("tag_name")
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .trim();
     if tag.is_empty() {
         // GitHub يرد على `releases/latest` في مستودع بلا إصدار بـ404، وجسمُ
         // الرد `{"message":"Not Found"}` — وهذا مسار «بلا إصدارات منشورة».
         if let Some(msg) = v.get("message").and_then(|m| m.as_str()) {
-            return Err(format!("لا توجد إصدارات منشورة على GitHub بعد (ردّ الخادم: {msg})"));
+            return Err(format!(
+                "لا توجد إصدارات منشورة على GitHub بعد (ردّ الخادم: {msg})"
+            ));
         }
         return Err("ردّ غير متوقع من GitHub: لا حقل tag_name فيه".to_string());
     }
 
-    let latest = tag.strip_prefix('v').or_else(|| tag.strip_prefix('V')).unwrap_or(tag).to_string();
+    let latest = tag
+        .strip_prefix('v')
+        .or_else(|| tag.strip_prefix('V'))
+        .unwrap_or(tag)
+        .to_string();
     let download_url = v
         .get("html_url")
         .and_then(|u| u.as_str())
@@ -147,7 +173,12 @@ pub fn status_from_payload(current: &str, body: &str) -> Result<UpdateStatus, St
         .map(str::to_string)
         .unwrap_or_else(|| format!("{TAG_PAGE_BASE}/{tag}"));
 
-    Ok(UpdateStatus::from_latest(current, Some(latest), &download_url, false))
+    Ok(UpdateStatus::from_latest(
+        current,
+        Some(latest),
+        &download_url,
+        false,
+    ))
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -158,8 +189,10 @@ pub fn status_from_payload(current: &str, body: &str) -> Result<UpdateStatus, St
 fn http_status_message(code: u16) -> String {
     match code {
         // 403 و429 هما ردّ GitHub عند استنفاد الحدّ (60 طلباً/الساعة لكل IP).
-        403 | 429 => "تجاوز حدّ الطلبات المسموح من GitHub (60 طلباً في الساعة) — أعد المحاولة بعد قليل"
-            .to_string(),
+        403 | 429 => {
+            "تجاوز حدّ الطلبات المسموح من GitHub (60 طلباً في الساعة) — أعد المحاولة بعد قليل"
+                .to_string()
+        }
         404 => "لا توجد إصدارات منشورة على GitHub بعد".to_string(),
         _ => format!("ردّ GitHub برمز خطأ {code}"),
     }
@@ -168,13 +201,18 @@ fn http_status_message(code: u16) -> String {
 /// نداء واحد إلى `releases/latest` وإعادة جسم الردّ نصّاً (نمط `repair.rs`:
 /// `ureq` بمهلة و`User-Agent`). كل خطأ يعود **رسالة عربية** لا panic.
 fn fetch_body(url: &str, timeout: Duration) -> Result<String, String> {
-    let resp = ureq::get(url).timeout(timeout).set("User-Agent", USER_AGENT).call().map_err(|e| match e {
-        ureq::Error::Status(code, _) => http_status_message(code),
-        ureq::Error::Transport(t) => {
-            format!("تعذر الاتصال بـGitHub — تحقق من اتصالك بالإنترنت ثم أعد المحاولة ({t})")
-        }
-    })?;
-    resp.into_string().map_err(|e| format!("تعذر قراءة ردّ GitHub: {e}"))
+    let resp = ureq::get(url)
+        .timeout(timeout)
+        .set("User-Agent", USER_AGENT)
+        .call()
+        .map_err(|e| match e {
+            ureq::Error::Status(code, _) => http_status_message(code),
+            ureq::Error::Transport(t) => {
+                format!("تعذر الاتصال بـGitHub — تحقق من اتصالك بالإنترنت ثم أعد المحاولة ({t})")
+            }
+        })?;
+    resp.into_string()
+        .map_err(|e| format!("تعذر قراءة ردّ GitHub: {e}"))
 }
 
 fn fetch_latest() -> Result<String, String> {
@@ -251,7 +289,14 @@ fn check_with(
         Ok(body) => match status_from_payload(current, &body) {
             Ok(status) => {
                 if let Some(latest) = status.latest.clone() {
-                    write_cache(root, &Cache { checked_at: now, latest, download_url: status.download_url.clone() });
+                    write_cache(
+                        root,
+                        &Cache {
+                            checked_at: now,
+                            latest,
+                            download_url: status.download_url.clone(),
+                        },
+                    );
                 }
                 status
             }
@@ -265,7 +310,13 @@ fn check_with(
 /// الواجهة الإنتاجية: كاش في مجلد بيانات التطبيق (`%LOCALAPPDATA%\
 /// com.harammute.haramlite\update_check.json`)، ونداء حقيقي عند الحاجة.
 pub fn check(current: &str, force: bool) -> UpdateStatus {
-    check_with(&crate::paths::data_dir(), current, force, now_secs(), &|| fetch_latest())
+    check_with(
+        &crate::paths::data_dir(),
+        current,
+        force,
+        now_secs(),
+        &|| fetch_latest(),
+    )
 }
 
 #[cfg(test)]
@@ -326,27 +377,54 @@ mod tests {
     #[test]
     fn version_comparison_is_numeric_and_puts_prereleases_below_stable() {
         // عددية لا نصّية: «0.2.10» < «0.2.9» نصّاً، وأحدث منها دلالياً.
-        assert!(is_newer("0.2.10", "0.2.9"), "patch must compare numerically, not as text");
+        assert!(
+            is_newer("0.2.10", "0.2.9"),
+            "patch must compare numerically, not as text"
+        );
         assert!(is_newer("0.3.0", "0.2.99"), "minor outranks any patch");
         assert!(is_newer("1.0.0", "0.99.99"), "major outranks everything");
-        assert!(is_newer("v0.2.5", "0.2.4"), "the leading v of the tag is not part of the version");
+        assert!(
+            is_newer("v0.2.5", "0.2.4"),
+            "the leading v of the tag is not part of the version"
+        );
         assert!(!is_newer("0.2.4", "0.2.4"), "the same version is not newer");
-        assert!(!is_newer("0.2.4", "0.2.5"), "an older tag must never look newer");
+        assert!(
+            !is_newer("0.2.4", "0.2.5"),
+            "an older tag must never look newer"
+        );
 
         // SemVer §11: ذو اللاحقة أقدم من نظيره المستقر.
-        assert!(is_newer("0.2.5", "0.2.5-rc1"), "0.2.5 is newer than 0.2.5-rc1");
-        assert!(!is_newer("0.2.5-rc1", "0.2.5"), "0.2.5-rc1 is NOT newer than 0.2.5");
+        assert!(
+            is_newer("0.2.5", "0.2.5-rc1"),
+            "0.2.5 is newer than 0.2.5-rc1"
+        );
+        assert!(
+            !is_newer("0.2.5-rc1", "0.2.5"),
+            "0.2.5-rc1 is NOT newer than 0.2.5"
+        );
         assert!(!is_newer("0.2.5-beta", "0.2.5"), "same rule for -beta");
         assert!(
             !is_newer("0.2.5-rc2", "0.2.5-rc1"),
             "two prereleases of one core compare equal on purpose — rc churn never prompts"
         );
-        assert!(is_newer("0.2.6-rc1", "0.2.5"), "a newer core still wins over an older stable");
+        assert!(
+            is_newer("0.2.6-rc1", "0.2.5"),
+            "a newer core still wins over an older stable"
+        );
 
         // وسم غير مفهوم ⇒ لا ادّعاء تحديث (خطأ في اتجاه الأمان).
-        assert!(!is_newer("nightly", "0.2.4"), "an unparseable tag must not claim an update");
-        assert!(!is_newer("0.2", "0.2.4"), "a two-component version is not a SemVer we trust");
-        assert!(!is_newer("", "0.2.4"), "an empty tag must not claim an update");
+        assert!(
+            !is_newer("nightly", "0.2.4"),
+            "an unparseable tag must not claim an update"
+        );
+        assert!(
+            !is_newer("0.2", "0.2.4"),
+            "a two-component version is not a SemVer we trust"
+        );
+        assert!(
+            !is_newer("", "0.2.4"),
+            "an empty tag must not claim an update"
+        );
         assert!(parse_semver("v0.2.4").is_some() && parse_semver("0.2.4+build.7").is_some());
     }
 
@@ -354,9 +432,18 @@ mod tests {
     /// التنزيل الصحيح المأخوذ من الحمولة نفسها.
     #[test]
     fn a_forged_older_version_detects_the_published_release() {
-        let st = status_from_payload("0.2.3", REAL_LATEST_PAYLOAD).expect("the real payload must parse");
-        assert!(st.error.is_none(), "a good payload has no error: {:?}", st.error);
-        assert_eq!(st.latest.as_deref(), Some("0.2.4"), "latest comes from tag_name");
+        let st =
+            status_from_payload("0.2.3", REAL_LATEST_PAYLOAD).expect("the real payload must parse");
+        assert!(
+            st.error.is_none(),
+            "a good payload has no error: {:?}",
+            st.error
+        );
+        assert_eq!(
+            st.latest.as_deref(),
+            Some("0.2.4"),
+            "latest comes from tag_name"
+        );
         assert!(st.update_available, "0.2.3 must see v0.2.4");
         assert_eq!(
             st.download_url, "https://github.com/SMSMy/HaramLite/releases/tag/v0.2.4",
@@ -368,27 +455,45 @@ mod tests {
     /// هـ.٣ (٢): النسخة الحالية نفسها ⇒ «أنت على الأحدث».
     #[test]
     fn the_current_version_reports_up_to_date() {
-        let st = status_from_payload("0.2.4", REAL_LATEST_PAYLOAD).expect("the real payload must parse");
+        let st =
+            status_from_payload("0.2.4", REAL_LATEST_PAYLOAD).expect("the real payload must parse");
         assert!(st.error.is_none());
-        assert!(!st.update_available, "0.2.4 against a latest of 0.2.4 is up to date");
+        assert!(
+            !st.update_available,
+            "0.2.4 against a latest of 0.2.4 is up to date"
+        );
         assert_eq!(st.latest.as_deref(), Some("0.2.4"));
     }
 
     /// مسار «JSON مشوّه» و«استجابة غير متوقعة»: رسالة عربية لا panic ولا فراغ.
     #[test]
     fn a_broken_payload_is_a_message_not_a_panic() {
-        let bad_json = status_from_payload("0.2.4", "{ this is not json").expect_err("malformed JSON must fail");
-        assert!(has_arabic(&bad_json), "the message must be Arabic: {bad_json}");
-        assert!(bad_json.contains("JSON"), "and must name the cause: {bad_json}");
+        let bad_json = status_from_payload("0.2.4", "{ this is not json")
+            .expect_err("malformed JSON must fail");
+        assert!(
+            has_arabic(&bad_json),
+            "the message must be Arabic: {bad_json}"
+        );
+        assert!(
+            bad_json.contains("JSON"),
+            "and must name the cause: {bad_json}"
+        );
 
         // جسم خطأ GitHub (‏404 بلا إصدار منشور) وصل بحالة 200 من وسيط ما.
         let not_found = status_from_payload("0.2.4", r#"{"message":"Not Found","status":"404"}"#)
             .expect_err("a message-only body is not a release");
-        assert!(not_found.contains("لا توجد إصدارات منشورة"), "the no-releases path: {not_found}");
+        assert!(
+            not_found.contains("لا توجد إصدارات منشورة"),
+            "the no-releases path: {not_found}"
+        );
 
         // JSON صالح بلا حقل إصدار ⇒ «استجابة غير متوقعة».
-        let no_tag = status_from_payload("0.2.4", r#"{"name":"HaramLite"}"#).expect_err("no tag_name must fail");
-        assert!(no_tag.contains("غير متوقع"), "unexpected-shape path: {no_tag}");
+        let no_tag = status_from_payload("0.2.4", r#"{"name":"HaramLite"}"#)
+            .expect_err("no tag_name must fail");
+        assert!(
+            no_tag.contains("غير متوقع"),
+            "unexpected-shape path: {no_tag}"
+        );
 
         // مصفوفة أو نصّ بدل كائن — نفس المصير بلا panic.
         assert!(status_from_payload("0.2.4", "[]").is_err());
@@ -399,12 +504,21 @@ mod tests {
     #[test]
     fn http_status_codes_map_to_comprehensible_arabic() {
         let rate = http_status_message(403);
-        assert!(rate.contains("حدّ الطلبات"), "403 is the rate-limit reply: {rate}");
+        assert!(
+            rate.contains("حدّ الطلبات"),
+            "403 is the rate-limit reply: {rate}"
+        );
         assert_eq!(rate, http_status_message(429), "429 is the same condition");
         assert!(http_status_message(404).contains("لا توجد إصدارات منشورة"));
-        assert!(http_status_message(500).contains("500"), "unknown codes keep their number");
+        assert!(
+            http_status_message(500).contains("500"),
+            "unknown codes keep their number"
+        );
         for code in [403u16, 404, 429, 500, 503] {
-            assert!(has_arabic(&http_status_message(code)), "code {code} must answer in Arabic");
+            assert!(
+                has_arabic(&http_status_message(code)),
+                "code {code} must answer in Arabic"
+            );
         }
     }
 
@@ -421,17 +535,28 @@ mod tests {
             drop(listener);
             format!("http://{addr}/releases/latest")
         };
-        let refused = fetch_body(&closed, Duration::from_secs(2)).expect_err("a closed port must fail");
+        let refused =
+            fetch_body(&closed, Duration::from_secs(2)).expect_err("a closed port must fail");
         assert!(!refused.trim().is_empty(), "no empty error");
-        assert!(refused.contains("GitHub"), "the message names the source: {refused}");
+        assert!(
+            refused.contains("GitHub"),
+            "the message names the source: {refused}"
+        );
         assert!(has_arabic(&refused), "the message is Arabic: {refused}");
 
         // (ب) «بلا شبكة» فعلياً: مستمع حيّ لا يقبل ولا يردّ ⇒ المهلة تضرب.
         let silent = std::net::TcpListener::bind("127.0.0.1:0").expect("bind a silent port");
-        let silent_url = format!("http://{}/releases/latest", silent.local_addr().expect("addr"));
+        let silent_url = format!(
+            "http://{}/releases/latest",
+            silent.local_addr().expect("addr")
+        );
         let started = std::time::Instant::now();
-        let timed_out = fetch_body(&silent_url, Duration::from_secs(2)).expect_err("a silent server must fail");
-        assert!(has_arabic(&timed_out), "the offline message is Arabic: {timed_out}");
+        let timed_out =
+            fetch_body(&silent_url, Duration::from_secs(2)).expect_err("a silent server must fail");
+        assert!(
+            has_arabic(&timed_out),
+            "the offline message is Arabic: {timed_out}"
+        );
         assert!(
             started.elapsed() < Duration::from_secs(15),
             "the request timeout must bound the wait, not the OS retry clock (took {:?})",
@@ -442,10 +567,19 @@ mod tests {
         let root = tmpdir("net");
         let st = check_with(&root, "0.2.4", true, 0, &|| Err(refused.clone()));
         assert!(st.error.is_some(), "the failure reaches the UI as a field");
-        assert!(!st.update_available, "a failed check never claims an update");
+        assert!(
+            !st.update_available,
+            "a failed check never claims an update"
+        );
         assert_eq!(st.current, "0.2.4", "the current version is still reported");
-        assert!(!st.download_url.is_empty(), "the download link is never empty");
-        assert!(!root.join(CACHE_FILE).exists(), "a failed fetch must not write a cache");
+        assert!(
+            !st.download_url.is_empty(),
+            "the download link is never empty"
+        );
+        assert!(
+            !root.join(CACHE_FILE).exists(),
+            "a failed fetch must not write a cache"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -462,16 +596,32 @@ mod tests {
 
         // نداء أول: يبني الكاش (‏0.2.4 أمام 0.2.4 ⇒ لا تحديث، والحمولة الحقيقية).
         let first = check_with(&root, "0.2.4", false, now, &fetch);
-        assert!(!first.update_available, "0.2.4 against a latest of 0.2.4 is up to date");
-        assert!(!first.from_cache, "the first answer comes from the call, not the cache");
+        assert!(
+            !first.update_available,
+            "0.2.4 against a latest of 0.2.4 is up to date"
+        );
+        assert!(
+            !first.from_cache,
+            "the first answer comes from the call, not the cache"
+        );
         assert_eq!(calls.get(), 1, "the first check must call GitHub");
-        assert!(root.join(CACHE_FILE).exists(), "a successful check writes the cache next to the app data");
+        assert!(
+            root.join(CACHE_FILE).exists(),
+            "a successful check writes the cache next to the app data"
+        );
 
         // ٢٣ ساعة لاحقاً: من الكاش، وصفر نداءات — حدّ المعدّل محفوظ.
         let cached = check_with(&root, "0.2.4", false, now + 23 * 3600, &fetch);
-        assert_eq!(calls.get(), 1, "within 24h the silent check must NOT call GitHub again");
+        assert_eq!(
+            calls.get(),
+            1,
+            "within 24h the silent check must NOT call GitHub again"
+        );
         assert!(cached.from_cache, "and it says so");
-        assert!(!cached.update_available, "the cached tag is still compared with the current version");
+        assert!(
+            !cached.update_available,
+            "the cached tag is still compared with the current version"
+        );
 
         // الزرّ ينادي دائماً ولو كان الكاش طازجاً.
         let forced = check_with(&root, "0.2.4", true, now + 23 * 3600, &fetch);
@@ -487,13 +637,31 @@ mod tests {
         let stale_root = tmpdir("stale");
         write_cache(
             &stale_root,
-            &Cache { checked_at: now, latest: "0.2.5".into(), download_url: format!("{TAG_PAGE_BASE}/v0.2.5") },
+            &Cache {
+                checked_at: now,
+                latest: "0.2.5".into(),
+                download_url: format!("{TAG_PAGE_BASE}/v0.2.5"),
+            },
         );
-        let on_old = check_with(&stale_root, "0.2.4", false, now + 60, &|| Err("no network".into()));
-        assert!(on_old.from_cache && on_old.update_available, "0.2.4 sees the cached 0.2.5");
-        assert_eq!(calls.get(), 3, "a fresh cache means the failing fetcher is never used");
-        let updated = check_with(&stale_root, "0.2.5", false, now + 60, &|| Err("no network".into()));
-        assert!(!updated.update_available, "the same cached tag is not an update for 0.2.5");
+        let on_old = check_with(&stale_root, "0.2.4", false, now + 60, &|| {
+            Err("no network".into())
+        });
+        assert!(
+            on_old.from_cache && on_old.update_available,
+            "0.2.4 sees the cached 0.2.5"
+        );
+        assert_eq!(
+            calls.get(),
+            3,
+            "a fresh cache means the failing fetcher is never used"
+        );
+        let updated = check_with(&stale_root, "0.2.5", false, now + 60, &|| {
+            Err("no network".into())
+        });
+        assert!(
+            !updated.update_available,
+            "the same cached tag is not an update for 0.2.5"
+        );
 
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&stale_root);

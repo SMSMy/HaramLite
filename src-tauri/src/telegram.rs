@@ -187,7 +187,9 @@ fn check_pairing_code(text: &str) -> PairTry {
 fn complete_pairing(from_id: i64) -> Result<Settings, String> {
     use tauri::Manager;
     let app = APP.get().ok_or("التطبيق غير مهيأ")?;
-    let state = app.try_state::<crate::AppState>().ok_or("حالة التطبيق غير متاحة")?;
+    let state = app
+        .try_state::<crate::AppState>()
+        .ok_or("حالة التطبيق غير متاحة")?;
     let s = {
         let mut cur = state.settings.lock().unwrap_or_else(|p| p.into_inner());
         cur.telegram_user_id = from_id.to_string();
@@ -314,9 +316,7 @@ pub fn plan_delivery(
     if kbps < MIN_WATCHABLE_VIDEO_KBPS {
         Delivery::Audio
     } else {
-        Delivery::VideoShrunk {
-            target_kbps: kbps,
-        }
+        Delivery::VideoShrunk { target_kbps: kbps }
     }
 }
 
@@ -419,7 +419,12 @@ fn get_updates(cfg: &TgConfig, offset: i64) -> Result<Vec<Value>, String> {
     Ok(v.as_array().cloned().unwrap_or_default())
 }
 
-fn send_message(cfg: &TgConfig, chat_id: i64, text: &str, keyboard: Option<Value>) -> Result<i64, String> {
+fn send_message(
+    cfg: &TgConfig,
+    chat_id: i64,
+    text: &str,
+    keyboard: Option<Value>,
+) -> Result<i64, String> {
     let mut body = json!({ "chat_id": chat_id, "text": text, "disable_web_page_preview": true });
     if let Some(k) = keyboard {
         body["reply_markup"] = k;
@@ -439,24 +444,33 @@ fn answer_callback(cfg: &TgConfig, id: &str, text: &str) {
 }
 
 fn get_file(cfg: &TgConfig, file_id: &str) -> Result<(String, u64), String> {
-    let v = call(cfg, "getFile", &json!({ "file_id": file_id }), Duration::from_secs(30))?;
+    let v = call(
+        cfg,
+        "getFile",
+        &json!({ "file_id": file_id }),
+        Duration::from_secs(30),
+    )?;
     let path = v
         .get("file_path")
         .and_then(Value::as_str)
         .ok_or("لا مسار للملف في رد تيليجرام")?
         .to_string();
-    let size = v
-        .get("file_size")
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
+    let size = v.get("file_size").and_then(Value::as_u64).unwrap_or(0);
     Ok((path, size))
 }
 
 /// Cloud transport: files come over HTTPS and the bot is capped at 20 MB.
-fn download_cloud_file(cfg: &TgConfig, remote_path: &str, dest: &Path, cap: u64) -> Result<u64, String> {
+fn download_cloud_file(
+    cfg: &TgConfig,
+    remote_path: &str,
+    dest: &Path,
+    cap: u64,
+) -> Result<u64, String> {
     let url = format!(
         "{}/file/bot{}/{}",
-        cfg.local_url.clone().unwrap_or_else(|| "https://api.telegram.org".into()),
+        cfg.local_url
+            .clone()
+            .unwrap_or_else(|| "https://api.telegram.org".into()),
         cfg.token,
         remote_path
     );
@@ -493,7 +507,12 @@ struct MultipartBody {
 }
 
 impl MultipartBody {
-    fn build(fields: &[(&str, String)], file_field: &str, filename: &str, content_type: &str) -> Self {
+    fn build(
+        fields: &[(&str, String)],
+        file_field: &str,
+        filename: &str,
+        content_type: &str,
+    ) -> Self {
         let boundary = format!("----HaramLiteBoundary{}", nanos());
         let mut head = Vec::new();
         for (k, v) in fields {
@@ -585,12 +604,7 @@ fn content_type_for(path: &Path) -> (&'static str, &'static str) {
 }
 
 /// Send one media file, choosing the Bot API method by extension.
-fn send_media(
-    cfg: &TgConfig,
-    chat_id: i64,
-    path: &Path,
-    caption: &str,
-) -> Result<(), String> {
+fn send_media(cfg: &TgConfig, chat_id: i64, path: &Path, caption: &str) -> Result<(), String> {
     let (field, ctype) = content_type_for(path);
     let method = match field {
         "video" => "sendVideo",
@@ -805,14 +819,24 @@ pub fn apply_settings(s: &Settings) {
     spawn_poll_thread(want, stop, tx, queue);
 }
 
-fn spawn_poll_thread(cfg: TgConfig, stop: Arc<AtomicBool>, tx: Sender<Job>, queue: Arc<AtomicUsize>) {
+fn spawn_poll_thread(
+    cfg: TgConfig,
+    stop: Arc<AtomicBool>,
+    tx: Sender<Job>,
+    queue: Arc<AtomicUsize>,
+) {
     std::thread::Builder::new()
         .name("telegram-poll".into())
         .spawn(move || {
             use tauri::Emitter;
             // Drop the backlog: links sent while the app was closed are stale,
             // and processing them unasked would burn the machine at startup.
-            let mut offset = match call(&cfg, "getUpdates", &json!({ "offset": -1 }), Duration::from_secs(20)) {
+            let mut offset = match call(
+                &cfg,
+                "getUpdates",
+                &json!({ "offset": -1 }),
+                Duration::from_secs(20),
+            ) {
                 Ok(v) => v
                     .as_array()
                     .and_then(|a| a.last())
@@ -866,7 +890,11 @@ fn handle_update(
     queue: &Arc<AtomicUsize>,
 ) {
     if let Some(cb) = u.get("callback_query") {
-        let from_id = cb.get("from").and_then(|f| f.get("id")).and_then(Value::as_i64).unwrap_or(0);
+        let from_id = cb
+            .get("from")
+            .and_then(|f| f.get("id"))
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
         let data = cb.get("data").and_then(Value::as_str).unwrap_or("");
         let cb_id = cb.get("id").and_then(Value::as_str).unwrap_or("");
         let chat_id = cb
@@ -896,13 +924,24 @@ fn handle_update(
             answer_callback(cfg, cb_id, "طلب قديم");
             return;
         }
-        let label = if mode == Mode::Song { "أغنية" } else { "مقطع عادي" };
+        let label = if mode == Mode::Song {
+            "أغنية"
+        } else {
+            "مقطع عادي"
+        };
         answer_callback(cfg, cb_id, &format!("اخترت: {label}"));
         let queued = queue.fetch_add(1, Ordering::SeqCst) + 1;
         if let Ok(mut st) = status().lock() {
             st.queue = queued;
         }
-        if tx.send(Job { chat_id, source: p.source, mode }).is_err() {
+        if tx
+            .send(Job {
+                chat_id,
+                source: p.source,
+                mode,
+            })
+            .is_err()
+        {
             queue.fetch_sub(1, Ordering::SeqCst);
             let _ = send_message(cfg, chat_id, "⚠ تعذر جدولة المهمة", None);
             return;
@@ -1002,17 +1041,28 @@ fn handle_update(
             }
         }
         Incoming::Smalltalk(t) => {
-            let help = "أرسل رابط فيديو، أو ارفع ملف صوت/فيديو (حتى 20MB)، وسأزيل الموسيقى وأعيده إليك.";
+            let help =
+                "أرسل رابط فيديو، أو ارفع ملف صوت/فيديو (حتى 20MB)، وسأزيل الموسيقى وأعيده إليك.";
             if t.trim_start().starts_with('/') || t.trim().is_empty() {
                 let _ = send_message(cfg, chat_id, help, None);
             } else {
-                let _ = send_message(cfg, chat_id, &format!("لم أجد رابطاً في رسالتك.\n{help}"), None);
+                let _ = send_message(
+                    cfg,
+                    chat_id,
+                    &format!("لم أجد رابطاً في رسالتك.\n{help}"),
+                    None,
+                );
             }
         }
     }
 }
 
-fn spawn_job_thread(cfg: TgConfig, stop: Arc<AtomicBool>, rx: Receiver<Job>, queue: Arc<AtomicUsize>) {
+fn spawn_job_thread(
+    cfg: TgConfig,
+    stop: Arc<AtomicBool>,
+    rx: Receiver<Job>,
+    queue: Arc<AtomicUsize>,
+) {
     std::thread::Builder::new()
         .name("telegram-jobs".into())
         .spawn(move || {
@@ -1106,7 +1156,9 @@ impl Drop for ScratchGuard {
             match std::fs::remove_file(f) {
                 Ok(()) => tracing::debug!(target: "telegram", "حُذف مؤقت: {}", f.display()),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => tracing::warn!(target: "telegram", "تعذر حذف المؤقت {}: {e}", f.display()),
+                Err(e) => {
+                    tracing::warn!(target: "telegram", "تعذر حذف المؤقت {}: {e}", f.display())
+                }
             }
         }
     }
@@ -1154,7 +1206,11 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
     // holds only our copy of a sent file and compression intermediates.
     let results = out_dir();
     let _ = std::fs::create_dir_all(&results);
-    let Job { chat_id, source, mode } = job;
+    let Job {
+        chat_id,
+        source,
+        mode,
+    } = job;
 
     let msg_id = send_message(cfg, chat_id, "📥 جارٍ التجهيز…", None).unwrap_or(0);
     // RefCell: the progress closure AND the stage closure both report through
@@ -1167,17 +1223,25 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
     let mut scratch_files = ScratchGuard::default();
     let input: PathBuf = match &source {
         Source::Link(url) => {
-            status.borrow_mut().set(cfg, "📥 جارٍ التنزيل… 0%".into(), true);
+            status
+                .borrow_mut()
+                .set(cfg, "📥 جارٍ التنزيل… 0%".into(), true);
             let dir = out_dir();
             let _ = std::fs::create_dir_all(&dir);
             let dl = |p: f32| {
-                status.borrow_mut().set(cfg, format!("📥 جارٍ التنزيل… {}%", (p * 100.0).round()), false);
+                status.borrow_mut().set(
+                    cfg,
+                    format!("📥 جارٍ التنزيل… {}%", (p * 100.0).round()),
+                    false,
+                );
                 !stop.load(Ordering::SeqCst)
             };
             match crate::yt_dlp::download_media(url, &dir, &dl, &cancel) {
                 Ok(p) => p,
                 Err(e) => {
-                    status.borrow_mut().set(cfg, format!("✗ فشل التنزيل: {e}"), true);
+                    status
+                        .borrow_mut()
+                        .set(cfg, format!("✗ فشل التنزيل: {e}"), true);
                     return;
                 }
             }
@@ -1201,11 +1265,15 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
                 );
                 return;
             }
-            status.borrow_mut().set(cfg, "📥 جارٍ استلام الملف…".into(), true);
+            status
+                .borrow_mut()
+                .set(cfg, "📥 جارٍ استلام الملف…".into(), true);
             let (remote, _sz) = match get_file(cfg, file_id) {
                 Ok(v) => v,
                 Err(e) => {
-                    status.borrow_mut().set(cfg, format!("✗ تعذر استلام الملف: {e}"), true);
+                    status
+                        .borrow_mut()
+                        .set(cfg, format!("✗ تعذر استلام الملف: {e}"), true);
                     return;
                 }
             };
@@ -1221,12 +1289,16 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
                             dest
                         }
                         Err(e) => {
-                            status.borrow_mut().set(cfg, format!("✗ تعذر نسخ الملف: {e}"), true);
+                            status
+                                .borrow_mut()
+                                .set(cfg, format!("✗ تعذر نسخ الملف: {e}"), true);
                             return;
                         }
                     }
                 } else {
-                    status.borrow_mut().set(cfg, "✗ مسار الملف المحلي غير موجود".into(), true);
+                    status
+                        .borrow_mut()
+                        .set(cfg, "✗ مسار الملف المحلي غير موجود".into(), true);
                     return;
                 }
             } else {
@@ -1251,9 +1323,8 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
         .as_ref()
         .map(|i| i.has_video && !i.video_is_cover_art)
         .unwrap_or(false);
-    let render_video = source_has_video
-        && !cfg.audio_only
-        && video_worth_rendering(duration, cfg.is_local());
+    let render_video =
+        source_has_video && !cfg.audio_only && video_worth_rendering(duration, cfg.is_local());
     if source_has_video && !render_video && !cfg.audio_only {
         status.borrow_mut().set(
             cfg,
@@ -1271,8 +1342,12 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
         .get()
         .and_then(|a| {
             use tauri::Manager;
-            a.try_state::<crate::AppState>()
-                .map(|st| st.settings.lock().unwrap_or_else(|p| p.into_inner()).clone())
+            a.try_state::<crate::AppState>().map(|st| {
+                st.settings
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .clone()
+            })
         })
         .unwrap_or_default();
     let kind = if render_video {
@@ -1283,7 +1358,11 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
         }
     };
     let prog = |p: f32| {
-        status.borrow_mut().set(cfg, format!("🎛️ فصل الصوت… {}%", (p * 100.0).round()), false);
+        status.borrow_mut().set(
+            cfg,
+            format!("🎛️ فصل الصوت… {}%", (p * 100.0).round()),
+            false,
+        );
         !stop.load(Ordering::SeqCst)
     };
     let stage = |name: &str, _p: f32| {
@@ -1302,21 +1381,14 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
         // behind the 150MB of "temporary" files the owner found in AppData:
         // the delivered artefact was being written to the scratch folder and
         // never cleaned (2026-09-11).
-        &input,
-        &results,
-        mode,
-        kind,
-        false,
-        true,
-        s.cuda,
-        None,
-        &prog,
-        &stage,
+        &input, &results, mode, kind, false, true, s.cuda, None, &prog, &stage,
     );
     let out = match processed {
         Ok(o) => o,
         Err(e) => {
-            status.borrow_mut().set(cfg, format!("✗ فشلت المعالجة: {e}"), true);
+            status
+                .borrow_mut()
+                .set(cfg, format!("✗ فشلت المعالجة: {e}"), true);
             // A Telegram-sent copy is ours (the guard removes it); a link
             // download is kept for inspection, exactly like the bridge does.
             if matches!(source, Source::Link(_)) {
@@ -1357,12 +1429,14 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
             );
             let shrunk = scratch.join(format!("tg_{}_small.mp4", nanos()));
             scratch_files.track(&shrunk);
-            let height = info
-                .as_ref()
-                .and_then(|i| i.height)
-                .map(|h| h.min(720));
-            match crate::media::transcode_to_bitrate(&produced, &shrunk, target_kbps, AUDIO_KBPS, height)
-            {
+            let height = info.as_ref().and_then(|i| i.height).map(|h| h.min(720));
+            match crate::media::transcode_to_bitrate(
+                &produced,
+                &shrunk,
+                target_kbps,
+                AUDIO_KBPS,
+                height,
+            ) {
                 Ok(p) => {
                     let small = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
                     if small > CLOUD_SEND_MAX_BYTES {
@@ -1370,7 +1444,11 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
                         match audio_fallback(cfg, &produced, &scratch, &mut scratch_files) {
                             Some(a) => a,
                             None => {
-                                status.borrow_mut().set(cfg, "✗ تعذر تصغير الناتج ليدخل في حد تيليجرام".into(), true);
+                                status.borrow_mut().set(
+                                    cfg,
+                                    "✗ تعذر تصغير الناتج ليدخل في حد تيليجرام".into(),
+                                    true,
+                                );
                                 return;
                             }
                         }
@@ -1383,7 +1461,9 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
                     match audio_fallback(cfg, &produced, &scratch, &mut scratch_files) {
                         Some(a) => a,
                         None => {
-                            status.borrow_mut().set(cfg, format!("✗ تعذر ضغط الناتج: {e}"), true);
+                            status
+                                .borrow_mut()
+                                .set(cfg, format!("✗ تعذر ضغط الناتج: {e}"), true);
                             return;
                         }
                     }
@@ -1395,7 +1475,9 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
                 match audio_fallback(cfg, &produced, &scratch, &mut scratch_files) {
                     Some(a) => a,
                     None => {
-                        status.borrow_mut().set(cfg, "✗ تعذر استخراج الصوت".into(), true);
+                        status
+                            .borrow_mut()
+                            .set(cfg, "✗ تعذر استخراج الصوت".into(), true);
                         return;
                     }
                 }
@@ -1423,18 +1505,28 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
     let caption = format!(
         "🎧 HaramLite — أُزيلت الموسيقى ({})\nالوضع: {}",
         human_mb(bytes_out),
-        if mode == Mode::Song { "أغنية" } else { "مقطع عادي" }
+        if mode == Mode::Song {
+            "أغنية"
+        } else {
+            "مقطع عادي"
+        }
     );
     match send_media(cfg, chat_id, &to_send, &caption) {
         Ok(()) => {
             status.borrow_mut().set(
                 cfg,
-                format!("✅ تم — {} في {:.0} ثانية", human_mb(bytes_out), out.seconds),
+                format!(
+                    "✅ تم — {} في {:.0} ثانية",
+                    human_mb(bytes_out),
+                    out.seconds
+                ),
                 true,
             );
         }
         Err(e) => {
-            status.borrow_mut().set(cfg, format!("✗ فشل الإرسال: {e}"), true);
+            status
+                .borrow_mut()
+                .set(cfg, format!("✗ فشل الإرسال: {e}"), true);
         }
     }
     // Housekeeping: a downloaded link source is ours, not the user's, and the
@@ -1477,7 +1569,13 @@ fn sanitize_name(name: &str) -> String {
     let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
     let cleaned: String = base
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let trimmed = cleaned.trim_matches('.').to_string();
     if trimmed.is_empty() {
@@ -1537,18 +1635,35 @@ mod tests {
     fn delivery_only_shrinks_when_the_file_really_does_not_fit() {
         let small = 20 * 1024 * 1024;
         let big = 120 * 1024 * 1024;
-        assert_eq!(plan_delivery(small, 180.0, true, false, false), Delivery::Video);
+        assert_eq!(
+            plan_delivery(small, 180.0, true, false, false),
+            Delivery::Video
+        );
         assert_eq!(
             plan_delivery(big, 180.0, true, false, false),
-            Delivery::VideoShrunk { target_kbps: crate::media::target_video_kbps(180.0, CLOUD_TARGET_MB, AUDIO_KBPS) }
+            Delivery::VideoShrunk {
+                target_kbps: crate::media::target_video_kbps(180.0, CLOUD_TARGET_MB, AUDIO_KBPS)
+            }
         );
         // An hour cannot fit ⇒ audio, and the same for the audio-only pref.
-        assert_eq!(plan_delivery(big, 3600.0, true, false, false), Delivery::Audio);
-        assert_eq!(plan_delivery(small, 180.0, true, true, false), Delivery::Audio);
+        assert_eq!(
+            plan_delivery(big, 3600.0, true, false, false),
+            Delivery::Audio
+        );
+        assert_eq!(
+            plan_delivery(small, 180.0, true, true, false),
+            Delivery::Audio
+        );
         // No video stream at all ⇒ audio.
-        assert_eq!(plan_delivery(small, 180.0, false, false, false), Delivery::Audio);
+        assert_eq!(
+            plan_delivery(small, 180.0, false, false, false),
+            Delivery::Audio
+        );
         // Local server ⇒ never shrink, never fall back.
-        assert_eq!(plan_delivery(big, 3600.0, true, false, true), Delivery::Video);
+        assert_eq!(
+            plan_delivery(big, 3600.0, true, false, true),
+            Delivery::Video
+        );
         // A zero-byte probe must not be mistaken for "fits".
         assert!(matches!(
             plan_delivery(0, 180.0, true, false, false),
@@ -1579,7 +1694,10 @@ mod tests {
         );
         assert_eq!(find_url("no link here"), None);
         assert_eq!(find_url("https://"), None);
-        assert_eq!(find_url("http://a.io/x?y=1&z=2, ok"), Some("http://a.io/x?y=1&z=2,".to_string()));
+        assert_eq!(
+            find_url("http://a.io/x?y=1&z=2, ok"),
+            Some("http://a.io/x?y=1&z=2,".to_string())
+        );
     }
 
     #[test]
@@ -1594,14 +1712,25 @@ mod tests {
         assert_eq!((from, chat), (7, 7));
         assert_eq!(
             inc,
-            Incoming::Job(Source::File { file_id: "AAA".into(), name: "song.mp4".into(), size: 1234 })
+            Incoming::Job(Source::File {
+                file_id: "AAA".into(),
+                name: "song.mp4".into(),
+                size: 1234
+            })
         );
 
-        let link = json!({ "from": { "id": 5 }, "chat": { "id": 5 }, "text": "https://youtu.be/x" });
-        assert!(matches!(parse_message(&link).unwrap().2, Incoming::Job(Source::Link(_))));
+        let link =
+            json!({ "from": { "id": 5 }, "chat": { "id": 5 }, "text": "https://youtu.be/x" });
+        assert!(matches!(
+            parse_message(&link).unwrap().2,
+            Incoming::Job(Source::Link(_))
+        ));
 
         let hi = json!({ "from": { "id": 5 }, "chat": { "id": 5 }, "text": "/start" });
-        assert!(matches!(parse_message(&hi).unwrap().2, Incoming::Smalltalk(_)));
+        assert!(matches!(
+            parse_message(&hi).unwrap().2,
+            Incoming::Smalltalk(_)
+        ));
     }
 
     #[test]
@@ -1618,9 +1747,15 @@ mod tests {
             cfg.token
         );
         let safe = redact(&cfg.token, leaky);
-        assert!(!safe.contains("AAH_supersecret_part"), "token survived: {safe}");
+        assert!(
+            !safe.contains("AAH_supersecret_part"),
+            "token survived: {safe}"
+        );
         assert!(safe.contains("محجوب"));
-        assert!(safe.starts_with("https://api.telegram.org/bot<"), "context kept: {safe}");
+        assert!(
+            safe.starts_with("https://api.telegram.org/bot<"),
+            "context kept: {safe}"
+        );
         // Text without the token is never touched.
         assert_eq!(redact(&cfg.token, "نص عادي".into()), "نص عادي");
         // An empty token must not panic or swallow the message.
@@ -1639,7 +1774,10 @@ mod tests {
             let mut g = ScratchGuard::default();
             g.track(&mine);
         } // dropped here — every job exit path goes through this
-        assert!(!mine.exists(), "a tracked transient must be gone after the job");
+        assert!(
+            !mine.exists(),
+            "a tracked transient must be gone after the job"
+        );
         assert!(other.exists(), "an untracked file must never be touched");
         let _ = std::fs::remove_file(&other);
         let _ = std::fs::remove_dir(&dir);
@@ -1679,7 +1817,11 @@ mod tests {
         assert!(matches!(check_pairing_code(""), PairTry::NotAnAttempt));
 
         // 3. Guessing is budgeted, and the budget ends the code's life.
-        let wrong = if second == "000000" { "000001" } else { "000000" };
+        let wrong = if second == "000000" {
+            "000001"
+        } else {
+            "000000"
+        };
         for i in 0..(PAIR_MAX_FAILS - 1) {
             let expect = PAIR_MAX_FAILS - 1 - i;
             match check_pairing_code(wrong) {
@@ -1736,7 +1878,10 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for i in 0..200 {
             let code = random_code(PAIR_DIGITS);
-            assert!(seen.insert(code.clone()), "رمز مكرَّر عند المحاولة {i}: {code}");
+            assert!(
+                seen.insert(code.clone()),
+                "رمز مكرَّر عند المحاولة {i}: {code}"
+            );
         }
         // وكل الرمزين المتتاليين مختلفان (الشرط المنصوص في التقرير).
         let a = random_code(PAIR_DIGITS);
@@ -1784,7 +1929,13 @@ mod tests {
         let end = body.find("\n}\n").expect("random_code must end");
         let body = &body[..end];
 
-        for banned in ["RandomState", "SplitMix64", "BuildHasher", "build_hasher", "nanos()"] {
+        for banned in [
+            "RandomState",
+            "SplitMix64",
+            "BuildHasher",
+            "build_hasher",
+            "nanos()",
+        ] {
             assert!(
                 !body.contains(banned),
                 "مولّد الرمز رجع إلى {banned} (و-٧ يمنع ذلك):\n{body}"
@@ -1820,19 +1971,29 @@ mod tests {
             let holds_pair_slot = pair_slot().try_lock().is_err();
             drop(held_status); // let the child through, whatever it did
             let _ = child.join();
-            assert!(finished.load(Ordering::SeqCst), "the child must finish once status is free");
+            assert!(
+                finished.load(Ordering::SeqCst),
+                "the child must finish once status is free"
+            );
             if parked_on_status && holds_pair_slot {
                 pair_slot_taken_first = true;
                 break;
             }
         }
-        assert!(pair_slot_taken_first, "status_json must take pair_slot BEFORE status (٤.ب.٩)");
+        assert!(
+            pair_slot_taken_first,
+            "status_json must take pair_slot BEFORE status (٤.ب.٩)"
+        );
     }
 
     #[test]
-    fn network_filenames_cannot_escape_the_scratch_dir() {        assert_eq!(sanitize_name("../../evil.exe"), "evil.exe");
+    fn network_filenames_cannot_escape_the_scratch_dir() {
+        assert_eq!(sanitize_name("../../evil.exe"), "evil.exe");
         assert_eq!(sanitize_name("C:\\Windows\\system32\\cmd.exe"), "cmd.exe");
-        assert_eq!(sanitize_name("song (official) [4K].mp4"), "song__official___4K_.mp4");
+        assert_eq!(
+            sanitize_name("song (official) [4K].mp4"),
+            "song__official___4K_.mp4"
+        );
         assert!(sanitize_name("...").starts_with("input_"));
         assert!(sanitize_name("").starts_with("input_"));
     }
@@ -1862,10 +2023,7 @@ mod tests {
                     Ok(n) => n,
                 };
                 buf.extend_from_slice(&chunk[..n]);
-                let body_start = buf
-                    .windows(4)
-                    .position(|w| w == b"\r\n\r\n")
-                    .map(|i| i + 4);
+                let body_start = buf.windows(4).position(|w| w == b"\r\n\r\n").map(|i| i + 4);
                 if let Some(p) = body_start {
                     // 128 bytes into the body covers "--<boundary>" + the first
                     // Content-Disposition line, which is what the test asserts on.
@@ -1887,8 +2045,7 @@ mod tests {
         std::fs::write(&tmp, vec![7u8; 1024]).unwrap();
         let fields = vec![("chat_id", "42".to_string()), ("caption", "hi".to_string())];
         let body = MultipartBody::build(&fields, "video", "a.mp4", "video/mp4");
-        let expect_len =
-            body.head.len() as u64 + 1024 + body.tail.len() as u64;
+        let expect_len = body.head.len() as u64 + 1024 + body.tail.len() as u64;
         let f = std::fs::File::open(&tmp).unwrap();
 
         let url = format!("http://{addr}/botTEST/sendVideo");
@@ -1896,7 +2053,10 @@ mod tests {
         let head = server.join().unwrap();
 
         let lower = head.to_ascii_lowercase();
-        assert!(lower.starts_with("post /bottest/sendvideo http/1.1"), "got: {head}");
+        assert!(
+            lower.starts_with("post /bottest/sendvideo http/1.1"),
+            "got: {head}"
+        );
         assert!(
             lower.contains(&format!("content-length: {expect_len}")),
             "exact Content-Length must be declared ({expect_len}): {head}"

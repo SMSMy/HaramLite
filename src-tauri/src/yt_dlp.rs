@@ -112,7 +112,8 @@ pub fn validate_download_url(url: &str) -> Result<(), String> {
 /// إزالة بادئة المخطّط بلا اعتبار لحالة الأحرف (`HTTPS://` رابط صالح).
 fn strip_scheme<'a>(url: &'a str, scheme: &str) -> Option<&'a str> {
     let head = url.get(..scheme.len())?;
-    head.eq_ignore_ascii_case(scheme).then(|| &url[scheme.len()..])
+    head.eq_ignore_ascii_case(scheme)
+        .then(|| &url[scheme.len()..])
 }
 
 /// المضيف محلي أو خاص؟ `Some(وصف عربي)` = مرفوض، و`None` = شبكة عامة.
@@ -126,7 +127,10 @@ pub fn private_scope(host: &str) -> Option<&'static str> {
 
     // العنوان المُغلَّف بـ[] صار مجرّداً قبل النداء، لكن نتحوّط لمَن يستدعي
     // الدالة مباشرة من الاختبار.
-    let h = h.strip_prefix('[').and_then(|s| s.strip_suffix(']')).unwrap_or(&h);
+    let h = h
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .unwrap_or(&h);
 
     // أسماء مطلقة: لا لبس فيها.
     if h == "localhost" || h == "localhost.localdomain" {
@@ -212,7 +216,8 @@ fn is_ipv4_shorthand(parts: &[&str]) -> bool {
         return true;
     }
     // `0x7f` وحدها (بلا نقاط) صيغة مختصرة كذلك.
-    parts.len() == 1 && parts[0].bytes().all(|b| b.is_ascii_alphanumeric())
+    parts.len() == 1
+        && parts[0].bytes().all(|b| b.is_ascii_alphanumeric())
         && parts[0].bytes().any(|b| b.is_ascii_digit())
 }
 
@@ -393,10 +398,11 @@ fn is_valid_hostname(host: &str) -> bool {
             && label.len() <= 63
             && !label.starts_with('-')
             && !label.ends_with('-')
-            && label.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            && label
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
     })
 }
-
 
 #[derive(Debug)]
 pub enum YtError {
@@ -432,7 +438,11 @@ pub fn resolve_ytdlp() -> Option<PathBuf> {
     }
     if let Ok(base) = std::env::var("LOCALAPPDATA") {
         candidates.push(
-            PathBuf::from(base).join("com.harammute.haramlite").join("tools").join("yt-dlp").join(exe),
+            PathBuf::from(base)
+                .join("com.harammute.haramlite")
+                .join("tools")
+                .join("yt-dlp")
+                .join(exe),
         );
     }
     if let Ok(cur) = std::env::current_exe() {
@@ -501,7 +511,10 @@ fn write_state(st: &UpdateState) -> Result<(), YtError> {
 pub fn local_version() -> Option<String> {
     let exe = resolve_ytdlp()?;
     let out = make_cmd(&exe).arg("--version").output().ok()?;
-    String::from_utf8_lossy(&out.stdout).trim().to_string().into()
+    String::from_utf8_lossy(&out.stdout)
+        .trim()
+        .to_string()
+        .into()
 }
 
 /// True when a check is due (24h cadence or forced).
@@ -535,7 +548,10 @@ fn fetch_release() -> Result<Release, YtError> {
         .map_err(|e| YtError::Net(e.to_string()))?;
     let v: serde_json::Value = resp.into_json().map_err(|e| YtError::Net(e.to_string()))?;
 
-    let tag = v["tag_name"].as_str().ok_or_else(|| YtError::Net("release بدون tag_name".into()))?.to_string();
+    let tag = v["tag_name"]
+        .as_str()
+        .ok_or_else(|| YtError::Net("release بدون tag_name".into()))?
+        .to_string();
     let assets = v["assets"].as_array().cloned().unwrap_or_default();
 
     let pick = |name: &str| -> Option<String> {
@@ -550,7 +566,8 @@ fn fetch_release() -> Result<Release, YtError> {
 
     Ok(Release {
         sums_url: format!("https://github.com/yt-dlp/yt-dlp/releases/download/{tag}/SHA2-256SUMS"),
-        exe_url: pick(ASSET_NAME).ok_or_else(|| YtError::Net("أصل yt-dlp.exe مفقود من الإصدار".into()))?,
+        exe_url: pick(ASSET_NAME)
+            .ok_or_else(|| YtError::Net("أصل yt-dlp.exe مفقود من الإصدار".into()))?,
         tag,
     })
 }
@@ -600,18 +617,25 @@ fn download_verified(
         .unwrap_or(0);
 
     let tmp = dest.with_extension("download");
-    let mut file = std::fs::File::create(&tmp).map_err(|e| YtError::Io(format!("{}: {e}", tmp.display())))?;
+    let mut file =
+        std::fs::File::create(&tmp).map_err(|e| YtError::Io(format!("{}: {e}", tmp.display())))?;
     let mut hasher = Sha256::new();
     let mut reader = resp.into_reader();
     let mut gotten: u64 = 0;
     let mut chunk = [0u8; 64 * 1024];
     loop {
-        let read = std::io::Read::read(&mut reader, &mut chunk).map_err(|e| YtError::Net(e.to_string()))?;
-        if read == 0 { break; }
+        let read = std::io::Read::read(&mut reader, &mut chunk)
+            .map_err(|e| YtError::Net(e.to_string()))?;
+        if read == 0 {
+            break;
+        }
         hasher.update(&chunk[..read]);
-        file.write_all(&chunk[..read]).map_err(|e| YtError::Io(e.to_string()))?;
+        file.write_all(&chunk[..read])
+            .map_err(|e| YtError::Io(e.to_string()))?;
         gotten += read as u64;
-        if total > 0 { progress(gotten as f32 / total as f32); }
+        if total > 0 {
+            progress(gotten as f32 / total as f32);
+        }
     }
     file.flush().ok();
     drop(file);
@@ -674,7 +698,13 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
 
     // target path = per-user tools dir (writable even for installed builds)
     let target = std::env::var("LOCALAPPDATA")
-        .map(|b| PathBuf::from(b).join("com.harammute.haramlite").join("tools").join("yt-dlp").join(ASSET_NAME))
+        .map(|b| {
+            PathBuf::from(b)
+                .join("com.harammute.haramlite")
+                .join("tools")
+                .join("yt-dlp")
+                .join(ASSET_NAME)
+        })
         .unwrap_or_else(|_| PathBuf::from("tools").join("yt-dlp").join(ASSET_NAME));
     if let Some(parent) = target.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -694,7 +724,7 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
     if let Some(active_path) = &active {
         let _ = std::fs::copy(active_path, &backup);
     }
-    
+
     if let Err(e) = std::fs::rename(&new_path, &target) {
         let msg = format!("فشل تبديل الملف الجديد: {e}");
         tracing::warn!(target: "ytdlp", "{msg}");
@@ -710,7 +740,11 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
             if let Some(_ap) = &active {
                 let _ = std::fs::remove_file(&backup);
             }
-            write_state(&UpdateState { checked_at: now_secs(), version: ver.clone() }).ok();
+            write_state(&UpdateState {
+                checked_at: now_secs(),
+                version: ver.clone(),
+            })
+            .ok();
             progress(1.0);
             (true, format!("تم تحديث yt-dlp إلى {ver}"))
         }
@@ -721,7 +755,9 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
                     let _ = std::fs::copy(&backup, ap);
                 }
             }
-            let reason = other.map(|o| format!("status={}", o.status)).unwrap_or_else(|e| e.to_string());
+            let reason = other
+                .map(|o| format!("status={}", o.status))
+                .unwrap_or_else(|e| e.to_string());
             let msg = format!("فشل فحص النسخة الجديدة ({reason}) — استرجعنا السابقة");
             tracing::warn!(target: "ytdlp", "{msg}");
             (false, msg)
@@ -812,7 +848,11 @@ fn fetch_meta(exe: &Path, url: &str) -> Result<VideoMeta, YtError> {
         .unwrap_or("")
         .trim()
         .to_string();
-    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+    if id.is_empty()
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
         return Err(YtError::Net("تعذر تحديد معرف الفيديو".into()));
     }
     let title = v
@@ -1005,7 +1045,10 @@ fn download_media_inner(
 
     // 2) fast paths with zero network beyond metadata: a usable slot from an
     // earlier run, or a legacy title-named file from the pre-slot era.
-    if let Some(slot) = find_slots(out_dir, &meta.id).into_iter().find(|p| slot_usable(p)) {
+    if let Some(slot) = find_slots(out_dir, &meta.id)
+        .into_iter()
+        .find(|p| slot_usable(p))
+    {
         return promote_slot(&slot, out_dir, &meta);
     }
     let legacy = out_dir.join(format!("{}.mp4", sanitize_title(&meta.title, &meta.id)));
@@ -1129,9 +1172,7 @@ fn download_media_inner(
                 kill_tree(c.id());
                 let _ = c.wait();
             }
-            return Err(YtError::Io(
-                "stdout غير موصول — راجع stdio في spawn".into(),
-            ));
+            return Err(YtError::Io("stdout غير موصول — راجع stdio في spawn".into()));
         }
     };
     let mut reader = std::io::BufReader::new(stdout);
@@ -1177,7 +1218,10 @@ fn download_media_inner(
         // sanitization drift made every printed name untrustworthy) — only
         // percentage progress is parsed here; the slot file below is proof.
         if let Some(rest) = line.strip_prefix("[download]") {
-            let pct_txt = rest.split_whitespace().find(|t| t.ends_with('%')).unwrap_or("");
+            let pct_txt = rest
+                .split_whitespace()
+                .find(|t| t.ends_with('%'))
+                .unwrap_or("");
             if let Ok(p) = pct_txt.trim_end_matches('%').parse::<f32>() {
                 let p = (p / 100.0).clamp(0.0, 1.0);
                 if !progress(p) {
@@ -1266,7 +1310,10 @@ mod tests {
         let fixture = "aaaabbbbccccdddd0000111122223333aaaabbbbccccdddd000011112222333  yt-dlp_arm64.exe\n\
                        66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a  yt-dlp.exe\n";
         let got = parse_sums_for(fixture, "yt-dlp.exe").expect("digest");
-        assert_eq!(got, "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a");
+        assert_eq!(
+            got,
+            "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a"
+        );
         assert!(parse_sums_for("short  yt-dlp.exe", "yt-dlp.exe").is_none());
     }
 
@@ -1274,8 +1321,14 @@ mod tests {
     fn sanitize_title_kills_forbidden_chars() {
         // The reported killer: ASCII quotes must not survive (yt-dlp would
         // save them as U+FF02 on disk while printing them raw).
-        assert_eq!(sanitize_title("Just \"A\" Dream", "abc123"), "Just _A_ Dream");
-        assert_eq!(sanitize_title("a<b>c:d/e\\f|g?h*i", "x"), "a_b_c_d_e_f_g_h_i");
+        assert_eq!(
+            sanitize_title("Just \"A\" Dream", "abc123"),
+            "Just _A_ Dream"
+        );
+        assert_eq!(
+            sanitize_title("a<b>c:d/e\\f|g?h*i", "x"),
+            "a_b_c_d_e_f_g_h_i"
+        );
         // Windows trailing dots/spaces
         assert_eq!(sanitize_title("song...   ", "x"), "song");
         // empty/blank → deterministic fallback
@@ -1313,7 +1366,11 @@ mod tests {
         std::fs::write(dir.join("hl_abc_2_1.mp4"), b"new").unwrap();
 
         let found = find_slots(&dir, "abc");
-        assert_eq!(found.len(), 2, "partials and foreign files must be excluded");
+        assert_eq!(
+            found.len(),
+            2,
+            "partials and foreign files must be excluded"
+        );
         assert!(found[0].ends_with("hl_abc_2_1.mp4"), "newest first");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1327,7 +1384,11 @@ mod tests {
         std::env::set_var("HARAMLITE_YTDLP_STATE_DIR", &dir);
 
         // fresh state in the future → not due (force=false)
-        write_state(&UpdateState { checked_at: now_secs(), version: "x".into() }).ok();
+        write_state(&UpdateState {
+            checked_at: now_secs(),
+            version: "x".into(),
+        })
+        .ok();
         assert!(!is_check_due(false));
         assert!(is_check_due(true));
         // stale state → due
@@ -1407,10 +1468,7 @@ mod tests {
             "http://2852039166/x",
         ] {
             let got = validate_download_url(url);
-            assert!(
-                got.is_err(),
-                "الرابط يجب أن يُرفض ولم يُرفض: {url} ⇒ {got:?}"
-            );
+            assert!(got.is_err(), "الرابط يجب أن يُرفض ولم يُرفض: {url} ⇒ {got:?}");
             // الرسالة تسمّي السبب — لا رفض صامت.
             let msg = got.unwrap_err();
             assert!(!msg.is_empty(), "رسالة الرفض فارغة لـ{url}");
@@ -1462,7 +1520,14 @@ mod tests {
     /// و-٨ سلبي: المداخل الفارغة/التالفة تُرفض ولا تصل إلى yt-dlp.
     #[test]
     fn malformed_urls_are_rejected_before_any_process_runs() {
-        for url in ["", "   ", "youtube.com/watch?v=x", "https://", "///x", "http://"] {
+        for url in [
+            "",
+            "   ",
+            "youtube.com/watch?v=x",
+            "https://",
+            "///x",
+            "http://",
+        ] {
             assert!(
                 validate_download_url(url).is_err(),
                 "رابط تالف يجب أن يُرفض: {url:?}"
@@ -1475,8 +1540,13 @@ mod tests {
     #[test]
     fn the_guard_sits_before_the_process_is_resolved() {
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let err = download_media("http://169.254.169.254/x", Path::new("."), &|_| true, &cancel)
-            .expect_err("must be rejected");
+        let err = download_media(
+            "http://169.254.169.254/x",
+            Path::new("."),
+            &|_| true,
+            &cancel,
+        )
+        .expect_err("must be rejected");
         assert!(
             matches!(err, YtError::Rejected(_)),
             "الرفض يجب أن يسبق أي عمل شبكي: {err:?}"

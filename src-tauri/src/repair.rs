@@ -114,8 +114,12 @@ pub fn health_rows() -> Vec<HealthRow> {
             let ok = is_ok(c);
             let path = if ok {
                 match c.key {
-                    "model" => crate::separator::resolve_model_pub().ok().map(|p| p.display().to_string()),
-                    _ => crate::media::resolve_tool(c.key).ok().map(|p| p.display().to_string()),
+                    "model" => crate::separator::resolve_model_pub()
+                        .ok()
+                        .map(|p| p.display().to_string()),
+                    _ => crate::media::resolve_tool(c.key)
+                        .ok()
+                        .map(|p| p.display().to_string()),
                 }
             } else {
                 None
@@ -137,10 +141,7 @@ pub fn health_rows() -> Vec<HealthRow> {
 /// (`COMPONENTS`). Nothing in the HTTP response feeds the comparison: no
 /// manifest field, no header, no sibling checksum file on the same host. That
 /// is the whole trust anchor for this channel today.
-pub fn repair(
-    key: &str,
-    progress: &dyn Fn(f32),
-) -> Result<PathBuf, String> {
+pub fn repair(key: &str, progress: &dyn Fn(f32)) -> Result<PathBuf, String> {
     let c = COMPONENTS
         .iter()
         .find(|c| c.key == key)
@@ -148,7 +149,8 @@ pub fn repair(
 
     let dest = component_path(c);
     let parent = dest.parent().ok_or_else(|| "مسار غير صالح".to_string())?;
-    std::fs::create_dir_all(parent).map_err(|e| format!("تعذر إنشاء المجلد {}: {e}", parent.display()))?;
+    std::fs::create_dir_all(parent)
+        .map_err(|e| format!("تعذر إنشاء المجلد {}: {e}", parent.display()))?;
 
     let url = format!("{ASSET_BASE}/{}", c.asset);
     tracing::info!(target: "repair", "repairing {} ← {url}", c.key);
@@ -193,10 +195,14 @@ fn download_and_verify(
     let mut gotten: u64 = 0;
     let mut chunk = [0u8; 256 * 1024];
     loop {
-        let read = std::io::Read::read(&mut reader, &mut chunk).map_err(|e| format!("انقطع التنزيل: {e}"))?;
-        if read == 0 { break; }
+        let read = std::io::Read::read(&mut reader, &mut chunk)
+            .map_err(|e| format!("انقطع التنزيل: {e}"))?;
+        if read == 0 {
+            break;
+        }
         hasher.update(&chunk[..read]);
-        file.write_all(&chunk[..read]).map_err(|e| format!("فشل الكتابة: {e}"))?;
+        file.write_all(&chunk[..read])
+            .map_err(|e| format!("فشل الكتابة: {e}"))?;
         gotten += read as u64;
         if total > 0 {
             progress((gotten as f32 / total as f32).clamp(0.0, 1.0));
@@ -209,7 +215,9 @@ fn download_and_verify(
     if actual != expect_sha256 {
         return Err(format!(
             "بصمة التنزيل لا تطابق المتوقع لـ {} — أُلغي التثبيت حمايةً لك",
-            dest.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+            dest.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
         ));
     }
     std::fs::rename(&tmp, dest).map_err(|e| format!("تعذر التثبيت في {}: {e}", dest.display()))?;
@@ -228,7 +236,11 @@ mod tests {
     #[test]
     fn every_binary_component_installs_under_the_name_the_app_resolves() {
         for c in COMPONENTS.iter().filter(|c| c.key != "model") {
-            let expected = if cfg!(windows) { format!("{}.exe", c.key) } else { c.key.to_string() };
+            let expected = if cfg!(windows) {
+                format!("{}.exe", c.key)
+            } else {
+                c.key.to_string()
+            };
             assert_eq!(
                 c.local,
                 expected.as_str(),
@@ -238,12 +250,19 @@ mod tests {
                 expected
             );
         }
-        let ffmpeg = COMPONENTS.iter().find(|c| c.key == "ffmpeg").expect("ffmpeg component");
+        let ffmpeg = COMPONENTS
+            .iter()
+            .find(|c| c.key == "ffmpeg")
+            .expect("ffmpeg component");
         assert_ne!(
             ffmpeg.asset, ffmpeg.local,
             "the LGPL asset name must differ from the installed name: assets-v1 keeps the 0.2.4 GPL names untouched so published clients still verify"
         );
-        assert!(ffmpeg.asset.contains("lgpl"), "the asset name must state the license variant: {}", ffmpeg.asset);
+        assert!(
+            ffmpeg.asset.contains("lgpl"),
+            "the asset name must state the license variant: {}",
+            ffmpeg.asset
+        );
     }
 
     /// A transfer that yields a little data and then fails — the shape of a
@@ -254,7 +273,10 @@ mod tests {
     impl std::io::Read for BrokenReader {
         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
             if self.0 == 0 {
-                return Err(std::io::Error::new(std::io::ErrorKind::ConnectionReset, "انقطع"));
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::ConnectionReset,
+                    "انقطع",
+                ));
             }
             self.0 -= 1;
             let n = buf.len().min(8);
@@ -276,14 +298,20 @@ mod tests {
 
         let broken = download_and_verify(BrokenReader(2), &dest, 0, "deadbeef", &progress);
         let err = broken.expect_err("a broken transfer must fail");
-        assert!(err.contains("انقطع التنزيل"), "the transfer error must surface: {err}");
+        assert!(
+            err.contains("انقطع التنزيل"),
+            "the transfer error must surface: {err}"
+        );
         assert!(!tmp.exists(), "the partial download must be gone (٤.ب.٦)");
         assert!(!dest.exists(), "and nothing may be promoted");
 
         // Short-but-complete transfer ⇒ hash mismatch ⇒ same cleanup.
         let body = std::io::Cursor::new(b"wrong bytes".to_vec());
         assert!(download_and_verify(body, &dest, 0, "deadbeef", &progress).is_err());
-        assert!(!tmp.exists(), "a hash mismatch must not leave the file either");
+        assert!(
+            !tmp.exists(),
+            "a hash mismatch must not leave the file either"
+        );
 
         // …and the verified path still promotes the file with one rename.
         use sha2::{Digest, Sha256};
@@ -296,9 +324,15 @@ mod tests {
             &sha,
             &progress,
         );
-        assert!(promoted.is_ok(), "a verified transfer must install: {promoted:?}");
+        assert!(
+            promoted.is_ok(),
+            "a verified transfer must install: {promoted:?}"
+        );
         assert_eq!(std::fs::read(&dest).unwrap(), payload);
-        assert!(!tmp.exists(), "the temporary name must not survive the rename");
+        assert!(
+            !tmp.exists(),
+            "the temporary name must not survive the rename"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

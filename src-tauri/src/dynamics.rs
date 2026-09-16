@@ -99,9 +99,17 @@ impl Limiter {
             }
             let peak = self.win.front().map_or(0.0, |&(_, v)| v);
 
-            let need = if peak > self.ceiling { self.ceiling / peak } else { 1.0 };
+            let need = if peak > self.ceiling {
+                self.ceiling / peak
+            } else {
+                1.0
+            };
             // fast attack, slow release on smoothed gain
-            self.gain_smooth = if need < self.gain_smooth { need } else { need + (self.gain_smooth - need) * rel };
+            self.gain_smooth = if need < self.gain_smooth {
+                need
+            } else {
+                need + (self.gain_smooth - need) * rel
+            };
 
             l[i] *= self.gain_smooth;
             r[i] *= self.gain_smooth;
@@ -161,7 +169,11 @@ mod tests {
             }
             peak = peak.max(l[i].abs()).max(r[i].abs());
             let need = if peak > ceiling { ceiling / peak } else { 1.0 };
-            gain_smooth = if need < gain_smooth { need } else { need + (gain_smooth - need) * rel };
+            gain_smooth = if need < gain_smooth {
+                need
+            } else {
+                need + (gain_smooth - need) * rel
+            };
             let wl = l[i];
             let wr = r[i];
             delay_l[pos] = wl;
@@ -200,7 +212,10 @@ mod tests {
 
         for (i, (a, b)) in l1.iter().zip(&l2).enumerate() {
             if a.to_bits() != b.to_bits() {
-                panic!("L first mismatch at {i}: deque={a} naive={b} raw={}", l_raw[i]);
+                panic!(
+                    "L first mismatch at {i}: deque={a} naive={b} raw={}",
+                    l_raw[i]
+                );
             }
         }
         for (i, (a, b)) in r1.iter().zip(&r2).enumerate() {

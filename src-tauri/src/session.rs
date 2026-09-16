@@ -147,9 +147,8 @@ mod tests {
             l.extend(vec![0.0f32; SR as usize * 5]);
         }
         l.extend(
-            (0..SR as usize * 25).map(|i| {
-                (2.0 * std::f32::consts::PI * 440.0 * i as f32 / SR as f32).sin() * 0.4
-            }),
+            (0..SR as usize * 25)
+                .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / SR as f32).sin() * 0.4),
         );
         (l.clone(), l)
     }

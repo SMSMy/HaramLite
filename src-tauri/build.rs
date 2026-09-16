@@ -51,9 +51,12 @@ fn main() {
 
     // الشرط الذي يجعل الحل صحيحاً: المكتبة يجب أن تحمل فعلاً هوية comctl32 v6
     // المعلنة في `test-comctl32.manifest` (نصّها ASCII داخل المكتبة).
-    let declared = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-comctl32.manifest"))
-        .unwrap_or_default();
-    let lib_text = String::from_utf8_lossy(&std::fs::read(&resource).unwrap_or_default()).into_owned();
+    let declared = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("test-comctl32.manifest"),
+    )
+    .unwrap_or_default();
+    let lib_text =
+        String::from_utf8_lossy(&std::fs::read(&resource).unwrap_or_default()).into_owned();
     for attr in ["name", "version", "publicKeyToken"] {
         match manifest_attr(&declared, attr) {
             Some(v) if lib_text.contains(&v) => {}
@@ -67,7 +70,9 @@ fn main() {
     // مسار بحث خاص بالاختبارات: نسخة من المكتبة وحدها، فلا يتعرّض مسار البحث
     // الأصلي لكل ما في OUT_DIR.
     let dir = Path::new(&out_dir).join("test-manifest");
-    if std::fs::create_dir_all(&dir).is_err() || std::fs::copy(&resource, dir.join("resource.lib")).is_err() {
+    if std::fs::create_dir_all(&dir).is_err()
+        || std::fs::copy(&resource, dir.join("resource.lib")).is_err()
+    {
         println!("cargo::warning=تعذّر تجهيز نسخة resource.lib لثنائي الاختبار");
         return;
     }

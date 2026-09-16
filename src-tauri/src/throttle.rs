@@ -70,9 +70,16 @@ impl Throttle {
     /// One-line rate evidence for end-of-run log lines.
     pub fn report(&self, key: &'static str) -> String {
         let get = |m: &Mutex<HashMap<&'static str, u64>>| {
-            m.lock().map(|g| g.get(key).copied().unwrap_or(0)).unwrap_or(0)
+            m.lock()
+                .map(|g| g.get(key).copied().unwrap_or(0))
+                .unwrap_or(0)
         };
-        format!("{}: {} emitted / {} suppressed", key, get(&self.emitted), get(&self.suppressed))
+        format!(
+            "{}: {} emitted / {} suppressed",
+            key,
+            get(&self.emitted),
+            get(&self.suppressed)
+        )
     }
 }
 
@@ -99,8 +106,14 @@ mod tests {
         let t0 = Instant::now();
         assert!(th.allow_at("dl", t0), "first must pass");
         assert!(!th.allow_at("dl", t0), "same instant suppressed");
-        assert!(!th.allow_at("dl", t0 + Duration::from_millis(249)), "under gap");
-        assert!(th.allow_at("dl", t0 + Duration::from_millis(250)), "gap edge passes");
+        assert!(
+            !th.allow_at("dl", t0 + Duration::from_millis(249)),
+            "under gap"
+        );
+        assert!(
+            th.allow_at("dl", t0 + Duration::from_millis(250)),
+            "gap edge passes"
+        );
         // Suppressed calls do not slide the window: +250 from the PASS.
         assert!(!th.allow_at("dl", t0 + Duration::from_millis(499)));
         assert!(th.allow_at("dl", t0 + Duration::from_millis(500)));
@@ -121,6 +134,9 @@ mod tests {
         }
         assert!((4..=5).contains(&n), "100Hz in → ~4Hz out, got {n}");
         let rep = th.report("flood");
-        assert!(rep.contains("suppressed"), "report must carry both sides: {rep}");
+        assert!(
+            rep.contains("suppressed"),
+            "report must carry both sides: {rep}"
+        );
     }
 }

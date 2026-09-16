@@ -133,8 +133,14 @@ impl PlayerEngine {
         let idx = self.chunk_of(pos).unwrap_or(0);
         let offset = pos - idx as f64 * self.chunk_secs;
         match self.states[idx] {
-            ChunkState::Ready => SeekAction::Instant { chunk: idx, offset_sec: offset },
-            _ => SeekAction::MiniInit { chunk: idx, offset_sec: offset },
+            ChunkState::Ready => SeekAction::Instant {
+                chunk: idx,
+                offset_sec: offset,
+            },
+            _ => SeekAction::MiniInit {
+                chunk: idx,
+                offset_sec: offset,
+            },
         }
     }
 
@@ -192,7 +198,8 @@ impl PlayerStore {
         // Approved look-ahead depth (2) lives in exactly one place.
         let id = self.next_id;
         self.next_id += 1;
-        self.docs.insert(id, PlayerEngine::new(total_secs, chunk_secs, 2));
+        self.docs
+            .insert(id, PlayerEngine::new(total_secs, chunk_secs, 2));
         id
     }
 
@@ -260,11 +267,17 @@ mod tests {
         e.mark_ready(2);
         assert_eq!(
             e.seek(130.0),
-            SeekAction::Instant { chunk: 2, offset_sec: 10.0 }
+            SeekAction::Instant {
+                chunk: 2,
+                offset_sec: 10.0
+            }
         );
         assert_eq!(
             e.seek(30.0),
-            SeekAction::MiniInit { chunk: 0, offset_sec: 30.0 }
+            SeekAction::MiniInit {
+                chunk: 0,
+                offset_sec: 30.0
+            }
         );
         assert_eq!(e.seek(250.0), SeekAction::EndOfUnit);
         assert_eq!(e.seek(999.0), SeekAction::EndOfUnit);
@@ -276,7 +289,10 @@ mod tests {
         assert!(e.exhausted(0.0), "nothing ready → frozen with badge");
         e.mark_ready(0);
         assert!(!e.exhausted(10.0));
-        assert!(e.exhausted(70.0), "playhead past frontier → freeze, not gap");
+        assert!(
+            e.exhausted(70.0),
+            "playhead past frontier → freeze, not gap"
+        );
         e.mark_ready(1);
         assert!(!e.exhausted(70.0));
     }
@@ -315,7 +331,10 @@ mod tests {
         assert!(!e.can_start());
         e.mark_all_ready();
         assert!(e.can_start(), "post-map → chunk 0 Ready gates start");
-        assert!(!e.exhausted(0.0), "post-map → pos 0 inside Ready, not frozen");
+        assert!(
+            !e.exhausted(0.0),
+            "post-map → pos 0 inside Ready, not frozen"
+        );
         assert!(!e.exhausted(70.0));
         assert_eq!(e.next_needed(0.0), None, "frontier Ready → worker idles");
         // Idempotent: Consumed history survives a second mark.
@@ -335,7 +354,13 @@ mod tests {
         }
         let (n, act) = e.seek_flush(125.0);
         assert_eq!(n, 2, "chunks 0,1 flushed at the jump");
-        assert_eq!(act, SeekAction::Instant { chunk: 2, offset_sec: 5.0 });
+        assert_eq!(
+            act,
+            SeekAction::Instant {
+                chunk: 2,
+                offset_sec: 5.0
+            }
+        );
         let snap = e.states_snapshot();
         assert_eq!(snap[0], ChunkState::Consumed);
         assert_eq!(snap[1], ChunkState::Consumed);
@@ -346,7 +371,10 @@ mod tests {
         // Past-end jump flushes everything and lands at End.
         let (n3, end) = e.seek_flush(999.0);
         assert_eq!(end, SeekAction::EndOfUnit);
-        assert!(e.states_snapshot().iter().all(|s| *s == ChunkState::Consumed));
+        assert!(e
+            .states_snapshot()
+            .iter()
+            .all(|s| *s == ChunkState::Consumed));
         assert_eq!(n3, 3, "chunks 2,3,4 flushed (0,1 already were)");
     }
 

@@ -187,7 +187,10 @@ mod tests {
         let secret = "88360566:AAH_test_token_value";
         let sealed = seal(secret).expect("DPAPI must be available on Windows");
         assert!(is_sealed(&sealed), "marker expected: {sealed}");
-        assert!(!sealed.contains("AAH_test"), "plaintext must not survive sealing");
+        assert!(
+            !sealed.contains("AAH_test"),
+            "plaintext must not survive sealing"
+        );
         assert_eq!(unseal(&sealed).as_deref(), Some(secret), "round-trip");
         // Sealing is deterministic in shape but not in bytes (DPAPI salts).
         assert_eq!(seal_setting(&sealed), sealed, "already sealed ⇒ untouched");
