@@ -107,11 +107,12 @@ pub fn save(app_data: &Path, s: &Settings) -> std::io::Result<()> {
     let mut on_disk = s.clone();
     on_disk.telegram_token = crate::seal::seal_setting(&s.telegram_token);
     on_disk.telegram_api_hash = crate::seal::seal_setting(&s.telegram_api_hash);
-    // Atomic write: a crash mid-write must never leave a truncated/empty
-    // settings file (the same tmp+rename pattern as yt_dlp.rs/bridge.rs).
-    let tmp = p.with_extension("json.tmp");
-    std::fs::write(&tmp, serde_json::to_string_pretty(&on_disk)?)?;
-    std::fs::rename(&tmp, &p)
+    // و-٦: نفس نمط tmp+rename، لكن عبر المساعد الموحّد الذي يضيف `sync_all`
+    // قبل النقل — الإعدادات أهمّ ملف في التطبيق، وانقطاع التيار في اللحظة
+    // الحرجة كان يفقد آخر كتابة (الملف المقطوع كان محفوظاً أصلاً).
+    // The temp name is unchanged (`.json.tmp`): same path, same recoverability.
+    let body = serde_json::to_string_pretty(&on_disk)?;
+    crate::atomic::write_atomic_str(&p, &body, "json")
 }
 
 /// True when the file still holds a secret in the clear (an install upgraded

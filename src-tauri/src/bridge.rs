@@ -128,9 +128,10 @@ pub fn seen_within(ts: u64, now: u64, max_age_secs: u64) -> bool {
 pub fn write_state(v: &serde_json::Value) {
     if let Ok(bytes) = serde_json::to_vec(v) {
         let path = state_path();
-        let tmp = path.with_extension("tmp");
-        if std::fs::write(&tmp, bytes).is_ok() {
-            let _ = std::fs::rename(&tmp, &path);
+        // و-٦: عبر المساعد الموحّد (tmp + sync_all + rename). لا يزال
+        // best-effort: فشل كتابة الحالة لا يُسقط الجسر.
+        if let Err(e) = crate::atomic::write_atomic(&path, &bytes, "tmp") {
+            tracing::debug!(target: "bridge", "تعذر كتابة حالة الجسر: {e}");
         }
     }
 }
@@ -346,9 +347,8 @@ fn write_request(url: &str, watch: bool, mode: Option<&str>) -> Result<String, S
     // Atomic write (tmp + rename): notify fires on file CREATE — a direct
     // write could be picked up half-written, fail to parse, and linger
     // forever (dispatch bails before remove_file). Same pattern as write_state.
-    let tmp = dir.join(format!("req_{nanos:x}.json.tmp"));
-    std::fs::write(&tmp, body).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    // و-٦: tmp + `sync_all` + rename عبر المساعد الموحّد.
+    crate::atomic::write_atomic(&path, &body, "tmp").map_err(|e| e.to_string())?;
     Ok(path.display().to_string())
 }
 
@@ -473,9 +473,8 @@ pub fn cancel_via_gui() -> Result<(), String> {
         .as_nanos();
     let path = dir.join(format!("cancel_{nanos:x}.json"));
     let body = serde_json::to_vec(&serde_json::json!({ "type": "cancel" })).unwrap_or_default();
-    let tmp = dir.join(format!("cancel_{nanos:x}.json.tmp"));
-    std::fs::write(&tmp, body).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    // و-٦: نفس بروتوكول الكتابة في كل مكان (tmp + sync_all + rename).
+    crate::atomic::write_atomic(&path, &body, "tmp").map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -1009,9 +1008,74 @@ fn handle_request(
 // Registration (Settings → "التكامل مع المتصفح")
 // ─────────────────────────────────────────────────────────────────────
 
+/// و-٥ — نوع انحراف تسجيل مضيف الرسائل الأصلية.
+///
+/// الحماية الفعلية للمضيف تعتمد سلامة `HKCU` وملف المانيفست: من يكتب في
+/// `HKCU` (بلا UAC — مسار المستخدم) يستطيع أن يسجّل مضيفاً بديلاً باسمنا.
+/// الإصلاح الكامل يحتاج تثبيتاً بمسار محمي أو توقيعاً — **مرفوض** (فلسفة
+/// «بلا UAC»)، فالمُنجَز هو **الكشف والاعتراض**: كل إقلاع يقارن المسجَّل
+/// بالمطلوب، ويعيد التسجيل عند الانحراف، **ويقول ذلك في السجل**.
+///
+/// **الحدّ المتبقّي بصراحة:** من يستطيع الكتابة في `HKCU` يستطيع إعادة
+/// العبث بعد إصلاحنا — نحن نُضيّق النافذة ونكشفها، لا نغلقها.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostDrift {
+    /// المسجَّل يطابق ما نتوقّعه — لا شيء يُفعل.
+    Ok,
+    /// لا قيمة أصلاً (أول تفعيل، أو منظّف مسح المفتاح).
+    Missing,
+    /// قيمة موجودة لكنها تشير إلى مسار آخر — العبث المقصود.
+    Different,
+}
+
+impl HostDrift {
+    /// هل يحتاج هذا الانحراف إعادة تسجيل؟
+    pub fn needs_repair(self) -> bool {
+        !matches!(self, HostDrift::Ok)
+    }
+
+    /// وصف عربي للسجل — يسمّي الحالة، فلا تحذير غامض.
+    pub fn describe(self) -> &'static str {
+        match self {
+            HostDrift::Ok => "مطابق",
+            HostDrift::Missing => "مفقود (لا قيمة مسجَّلة)",
+            HostDrift::Different => "مختلف (يشير إلى مسار آخر)",
+        }
+    }
+}
+
+/// مقارنة نقية: «المسجَّل» بـ«المتوقّع» ⇒ نوع الانحراف.
+/// `None` تعني «لا قيمة» لا «قيمة فارغة»: الفرق بين `Missing` و`Different`
+/// هو نفسه الفرق بين «لم يُسجَّل بعد» و«سُجِّل شيء آخر» — وهذا ما يقرؤه
+/// المستخدم في السجل.
+pub fn host_drift(registered: Option<&str>, expected: &str) -> HostDrift {
+    match registered {
+        None => HostDrift::Missing,
+        Some(v) if v == expected => HostDrift::Ok,
+        Some(_) => HostDrift::Different,
+    }
+}
+
+/// نفس المقارنة لكن مع خطأ قراءة صريح (`Unreadable` بدل الخلط مع `Missing`).
+///
+/// الاستعمال الفعلي: `create_subkey` ثم `get_value` — فالخطأ هنا يعني
+/// «لا قيمة» في المفتاح (أُنشئ للتوّ، أو نوع البيانات ليس نصّاً)، وهو أول
+/// تفعيل لا عبث. أما `Different` فهي الحالة الوحيدة التي تعني مضيفاً آخر
+/// مسجَّلاً باسمنا.
+pub fn host_drift_from(read: Result<String, ()>, expected: &str) -> HostDrift {
+    match read {
+        Ok(v) => host_drift(Some(v.as_str()), expected),
+        Err(()) => HostDrift::Missing,
+    }
+}
+
 /// Self-healing: called at every app startup — if the registry key vanished
 /// (cleaner tools, manual reset) but our host manifest still exists, rewrite
 /// the keys silently so the extension keeps working.
+///
+/// و-٥: ولم يبقَ الإصلاح صامتاً في حالة الانحراف **المقصود**: كل هدف يُقارن
+/// أولاً، وكل انحراف يُسجَّل بوصفه قبل أن يُصلَح. المفتاح المفقود (أول
+/// تفعيل) يبقى بلا تحذير — هو ليس عبثاً.
 pub fn ensure_registered() {
     let manifest_path = crate::paths::data_dir()
         .join("native-host")
@@ -1044,12 +1108,7 @@ pub fn ensure_registered() {
         use winreg::enums::HKEY_CURRENT_USER;
         use winreg::RegKey;
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        for t in [
-            r"Software\Google\Chrome\NativeMessagingHosts",
-            r"Software\Chromium\NativeMessagingHosts",
-            r"Software\Microsoft\Edge\NativeMessagingHosts",
-            r"Software\Mozilla\NativeMessagingHosts",
-        ] {
+        for t in registry_targets() {
             // cleanup: older builds wrote a NAMED VALUE under the parent key
             // (Chrome never reads that) — remove it if present.
             if let Ok((parent, _)) = hkcu.create_subkey(t) {
@@ -1059,15 +1118,39 @@ pub fn ensure_registered() {
             // DEFAULT value points at the manifest JSON.
             if let Ok((key, _)) = hkcu.create_subkey(format!("{t}\\{HOST_NAME}")) {
                 let current: Result<String, _> = key.get_value("");
-                let needs_write = match current {
-                    Ok(v) => v != manifest_str,
-                    Err(_) => true, // missing or unreadable → rewrite
-                };
-                if needs_write && key.set_value("", &manifest_str).is_ok() {
-                    tracing::info!(target: "bridge", "أُعيد تسجيل مضيف التكامل في {t}");
+                // و-٥: الانحراف يُقاس قبل الإصلاح لا بعده — القيمة المقروءة
+                // هي الدليل، وتصنيفها هو ما يُسجَّل للمستخدم. الخطأ هنا يعني
+                // «لا قيمة» (المفتاح أُنشئ للتوّ، أو نوع البيانات خاطئ).
+                let drift = host_drift_from(current.map_err(|_| ()), &manifest_str);
+                if drift.needs_repair() {
+                    if key.set_value("", &manifest_str).is_ok() {
+                        // Readable state is not tampering; write it at info.
+                        if drift == HostDrift::Missing {
+                            tracing::info!(target: "bridge", "أُعيد تسجيل مضيف التكامل في {t}");
+                        } else {
+                            // Tampering: the whole point is that the user can
+                            // see it — no silent healing of a redirected host.
+                            tracing::warn!(
+                                target: "bridge",
+                                "تحذير أمني: تسجيل مضيف التكامل في {t} منحرف ({}) — أُعيد ضبطه إلى مسارنا. \
+                                 من يكتب في HKCU يستطيع إعادة العبث؛ فإن تكرّر فالسبب برنامج آخر على هذا الجهاز.",
+                                drift.describe()
+                            );
+                        }
+                    } else {
+                        tracing::warn!(
+                            target: "bridge",
+                            "تحذير أمني: تسجيل مضيف التكامل في {t} منحرف ({}) وتعذر إصلاحه",
+                            drift.describe()
+                        );
+                    }
                 }
             }
         }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = &manifest_str;
     }
 }
 
@@ -1088,8 +1171,11 @@ pub fn manifest_path_for(base: &Path) -> PathBuf {
 
 /// Pure comparison: does a registry default value point at our manifest?
 /// (`None` = missing/unreadable key — never counts as registered.)
+///
+/// و-٥: تعبير رقيق فوق `host_drift` — مصدر حقيقة واحد للمقارنة، فلا
+/// يختلف حكم «التسجيل سليم» بين القراءة (هنا) والإصلاح (`ensure_registered`).
 pub fn is_subkey_match(actual: Option<&str>, expected_manifest: &str) -> bool {
-    matches!(actual, Some(v) if v == expected_manifest)
+    host_drift(actual, expected_manifest) == HostDrift::Ok
 }
 
 /// Is the host manifest on disk different from what we would write now?
@@ -1317,6 +1403,69 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0)
+    }
+
+    /// و-٥ — المقارنة النقية «المسجَّل ↔ المتوقّع» ونوع الانحراف.
+    /// ثلاثة أنواع، ولكل نوع اختبار سلبي خاص به: الطريق الخاطئ الوحيد هو أن
+    /// يُصنَّف انحرافٌ بأنه `Ok` (فيمرّ مضيف بديل بلا إصلاح ولا تحذير).
+    #[test]
+    fn registry_drift_is_classified_and_every_deviation_needs_repair() {
+        let want = r"C:\Users\u\AppData\Local\com.harammute.haramlite\native-host\com.harammute.haramlite.json";
+
+        // 1) مطابق ⇒ لا إصلاح ولا تحذير.
+        assert_eq!(host_drift(Some(want), want), HostDrift::Ok);
+        assert_eq!(host_drift_from(Ok(want.to_string()), want), HostDrift::Ok);
+        assert!(!HostDrift::Ok.needs_repair(), "المطابق لا يُصلَح");
+
+        // 2) مفقود (منظّف مسح المفتاح، أو أول تفعيل) ⇒ إصلاح.
+        assert_eq!(host_drift(None, want), HostDrift::Missing);
+        assert_eq!(host_drift_from(Err(()), want), HostDrift::Missing);
+        assert!(HostDrift::Missing.needs_repair(), "المفقود يُصلَح");
+
+        // 3) مختلف (مضيف بديل مسجَّل باسمنا) ⇒ إصلاح + تحذير. وهنا الاختبار
+        //    السلبي الأهم: أي مسار غير المتوقّع يجب ألا يُصنَّف مطابقاً.
+        for tampered in [
+            r"C:\Users\u\Downloads\evil-haramlite-host.json",
+            r"C:\Users\u\AppData\Local\com.harammute.haramlite\native-host\com.harammute.haramlite.json ",
+            r"C:\Users\u\AppData\Local\COM.HARAMMUTE.HARAMLITE\native-host\com.harammute.haramlite.json",
+            "",
+            "about:blank",
+        ] {
+            assert_eq!(
+                host_drift(Some(tampered), want),
+                HostDrift::Different,
+                "مسار منحرف صُنِّف مطابقاً: {tampered}"
+            );
+            assert!(
+                HostDrift::Different.needs_repair(),
+                "المنحرف يجب أن يُصلَح"
+            );
+        }
+
+        // كل حالة لها وصف عربي يسمّيها (لا تحذير غامض).
+        for d in [HostDrift::Ok, HostDrift::Missing, HostDrift::Different] {
+            assert!(!d.describe().is_empty(), "وصف فارغ لـ{d:?}");
+        }
+        assert_ne!(HostDrift::Missing.describe(), HostDrift::Different.describe());
+    }
+
+    /// و-٥: الأهداف الأربعة هي نفسها التي تُكتب وتُقرأ — لو انحرف أحدها في
+    /// إحدى القائمتين لبقي مضيف مسجَّل بلا فحص (وهو بالضبط ما نمنعه).
+    #[test]
+    fn every_registry_target_is_covered_by_one_list() {
+        let targets = registry_targets();
+        assert_eq!(targets.len(), 4);
+        for t in targets {
+            assert!(t.starts_with(r"Software\"), "هدف خارج HKCU\\Software: {t}");
+            assert!(
+                t.ends_with("NativeMessagingHosts"),
+                "هدف ليس مجلد مضيفين أصليين: {t}"
+            );
+        }
+        assert!(targets.iter().any(|t| t.contains("Chrome")));
+        assert!(targets.iter().any(|t| t.contains("Chromium")));
+        assert!(targets.iter().any(|t| t.contains("Edge")));
+        assert!(targets.iter().any(|t| t.contains("Mozilla")));
     }
 
     fn isolated_base(tag: &str) -> PathBuf {

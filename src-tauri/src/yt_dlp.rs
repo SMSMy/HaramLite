@@ -30,12 +30,267 @@ const ASSET_NAME: &str = "yt-dlp.exe";
 const USER_AGENT: &str = concat!("HaramLite/", env!("CARGO_PKG_VERSION"));
 const CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
 
+// ─────────────────────────────────────────────────────────────────────
+// و-٨ — فحص الرابط قبل تمريره إلى yt-dlp
+// ─────────────────────────────────────────────────────────────────────
+//
+// **قرار هندسي (مرفوض: قائمة مضيفين بيضاء صارمة).** الواجهة وREADME تعد
+// المستخدم بـ«يوتيوب أو أي موقع آخر»، وهي وظيفة قائمة: قائمة بيضاء تُكسر
+// بكل موقع لا نعرفه (Vimeo · SoundCloud · Bandcamp · موقع جامعي…) فتُبطل
+// ميزة معلنة. المرفوض إذن ليس الفحص بل *تضييق قائمة المواقع*.
+//
+// **التهديد المقصود بالمنع** (منصوص في نموذج التهديد و-٨): استعمال تطبيقنا
+// كأداة استطلاع داخل الشبكة. الرابط يأتي من الإضافة/الواجهة/تيليجرام/الـCLI،
+// وyt-dlp يتّصل به؛ فطلبٌ إلى `127.0.0.1:8081` أو `192.168.1.1` أو
+// `169.254.169.254` يجعل العمليّة **نفسها** تكلّم خدمة داخلية — وهو أثر لا
+// علاقة له بتنزيل وسائط. المنع هنا: مخطّطان فقط + رفض كل مضيف محلي/خاص +
+// رفض ما ليس مضيفاً صالحاً. كل ما تبقّى من الشبكة العامة يبقى مسموحاً.
+
+/// فحص الرابط قبل أي اتصال. `Ok` = يُمرَّر إلى yt-dlp، و`Err` = رسالة عربية
+/// تسمّي السبب (لا رفض صامت).
+pub fn validate_download_url(url: &str) -> Result<(), String> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Err("الرابط فارغ — الصق رابط فيديو أو صوت".to_string());
+    }
+
+    // 1) المخطّط: http/https فقط. `file:` يقرأ القرص المحلي، و`data:`/`javascript:`
+    //    لا شبكة لهما أصلاً — وكلها لا تعني «تنزيل وسائط».
+    let rest = if let Some(r) = strip_scheme(url, "https://") {
+        r
+    } else if let Some(r) = strip_scheme(url, "http://") {
+        r
+    } else {
+        let shown = url.split(':').next().unwrap_or(url);
+        return Err(format!(
+            "الرابط يجب أن يبدأ بـ http:// أو https:// — المخطّط «{shown}:» غير مدعوم"
+        ));
+    };
+
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if authority.is_empty() {
+        return Err("الرابط بلا اسم مضيف — تأكد من نسخه كاملاً".to_string());
+    }
+    // إزرار المستخدم: النص قبل @ ليس جزءاً من المضيف.
+    let hostport = authority.rsplit('@').next().unwrap_or(authority);
+
+    let host = if let Some(close) = hostport.find(']') {
+        // IPv6 في صيغة [..]: الرمز ] يغلق العنوان، وما بعده منفذ.
+        if !hostport.starts_with('[') {
+            return Err("عنوان IPv6 غير صالح في الرابط".to_string());
+        }
+        &hostport[1..close]
+    } else {
+        match hostport.find(':') {
+            Some(i) => &hostport[..i], // مضيف:منفذ
+            None => hostport,
+        }
+    };
+
+    let host = host.trim_end_matches('.');
+    if host.is_empty() {
+        return Err("الرابط بلا اسم مضيف — تأكد من نسخه كاملاً".to_string());
+    }
+
+    // 2) رفض المحلي والخاص (loopback · link-local · شبكات داخلية · IPv6 مقابل).
+    if let Some(scope) = private_scope(host) {
+        return Err(format!(
+            "رابط إلى «{host}» مرفوض: عنوان {scope} — \
+             HaramLite ينزّل من مواقع الإنترنت العامة فقط"
+        ));
+    }
+
+    // 3) المضيف نفسه: اسم صالح أو IPv6 صالح. خانة تالفة مثل `[ ::1 ]`
+    //    أو `..` تُرفض هنا لا في yt-dlp.
+    if !is_ipv6_literal(host) && !is_valid_hostname(host) && !is_ipv4(host) {
+        return Err(format!("اسم المضيف «{host}» غير صالح في هذا الرابط"));
+    }
+
+    Ok(())
+}
+
+/// إزالة بادئة المخطّط بلا اعتبار لحالة الأحرف (`HTTPS://` رابط صالح).
+fn strip_scheme<'a>(url: &'a str, scheme: &str) -> Option<&'a str> {
+    let head = url.get(..scheme.len())?;
+    head.eq_ignore_ascii_case(scheme).then(|| &url[scheme.len()..])
+}
+
+/// المضيف محلي أو خاص؟ `Some(وصف عربي)` = مرفوض، و`None` = شبكة عامة.
+///
+/// التغطية مقصودة بالكامل: `127.0.0.0/8` · `10.0.0.0/8` · `172.16.0.0/12` ·
+/// `192.168.0.0/16` · `169.254.0.0/16` (ومنها `169.254.169.254` لبيانات
+/// الميتا) · `0.0.0.0` · `::1` · `fc00::/7` · `fe80::/10`، ثم `localhost`
+/// و`*.local` و`*.localhost` و`*.internal` وأسماء بلا نقطة (مضيف جهاز واحد).
+pub fn private_scope(host: &str) -> Option<&'static str> {
+    let h = host.trim_end_matches('.').to_ascii_lowercase();
+
+    // العنوان المُغلَّف بـ[] صار مجرّداً قبل النداء، لكن نتحوّط لمَن يستدعي
+    // الدالة مباشرة من الاختبار.
+    let h = h.strip_prefix('[').and_then(|s| s.strip_suffix(']')).unwrap_or(&h);
+
+    // أسماء مطلقة: لا لبس فيها.
+    if h == "localhost" || h == "localhost.localdomain" {
+        return Some("محلي (localhost)");
+    }
+
+    let mut labels: Vec<&str> = h.split('.').collect();
+    // IPv4-مُضمَّن في IPv6: `::ffff:127.0.0.1` يصل إلى 127.0.0.1 فعلاً.
+    if h.contains(':') {
+        if let Some(tail) = h.rsplit(':').next() {
+            if is_ipv4(tail) {
+                labels = tail.split('.').collect();
+            }
+        }
+    }
+
+    if let Some(scope) = ipv4_scope(&labels) {
+        return Some(scope);
+    }
+    // صيغة عنوان IPv4 مبسّطة أو غير عشرية (`127.1` · `0x7f.0.0.1` ·
+    // `0177.0.0.1` · `2130706433`): في مترجمات C — ومنها `inet_addr` التي
+    // يبنى عليها curl وPython — كل هذه **تُقرأ عنواناً** يصل إلى الحلقة
+    // المحلية، بينما فحصُنا العشري لا يعرفها. نرفضها هنا بدل أن نثق بأن
+    // yt-dlp سيخطئ، فيسدّ التهريب من أصله.
+    if is_ipv4_shorthand(&labels) {
+        return Some("صيغة عنوان IPv4 غير قياسية (تهريب محتمل إلى عنوان محلي)");
+    }
+    if let Some(scope) = ipv6_scope(h) {
+        return Some(scope);
+    }
+
+    // `*.local` (mDNS — سطح مكتبك) و`*.localhost` و`*.internal` (شبكة داخلية).
+    if labels.len() >= 2 {
+        let tld = labels[labels.len() - 1];
+        if tld == "local" || tld == "localhost" || tld == "internal" {
+            return Some("اسم محلي/داخلي (نطاق .local أو .internal)");
+        }
+    }
+    // اسم بلا نقطة = مضيف على الجهاز نفسه (`http://nas/`).
+    if !h.contains('.') && !h.contains(':') {
+        return Some("اسم جهاز على الشبكة المحلية (بلا نطاق)");
+    }
+    None
+}
+
+/// أربع خانات عشرية كلها أرقام؟ (لا يعتمد على `Ipv4Addr` حتى يبقى الفحص نقياً.)
+fn is_ipv4(host: &str) -> bool {
+    let parts: Vec<&str> = host.split('.').collect();
+    parts.len() == 4
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.len() <= 3 && p.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// كل الخانات أرقام عشرية صرفة (`127` · `127.1` · `2130706433`).
+fn all_labels_decimal(parts: &[&str]) -> bool {
+    parts
+        .iter()
+        .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// شكل عنوان IPv4 غير قياسي: رقم واحد، أو خانة أولى رقمية، أو أربع خانات
+/// إحداها غير عشرية (`0x7f`) — كلها صيغ يقرؤها `inet_addr` عنواناً.
+/// الأسماء الحقيقية لا تبدأ بخانة رقمية صرفة في هذا الاستعمال.
+fn is_ipv4_shorthand(parts: &[&str]) -> bool {
+    if parts.is_empty() {
+        return false;
+    }
+    if all_labels_decimal(parts) {
+        return true; // 127 · 127.1 · 2130706433 · 1.2.3.4
+    }
+    let labels_are_alnum = parts
+        .iter()
+        .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_alphanumeric()));
+    if !labels_are_alnum {
+        return false;
+    }
+    // `0x7f.0.0.1` · `0177.0.0.1` · `1a.b.c.1`: آخر خانة عشرية صرفة وإحداها لا.
+    if parts.len() == 4
+        && parts[3].bytes().all(|b| b.is_ascii_digit())
+        && parts.iter().any(|p| !p.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return true;
+    }
+    // `0x7f` وحدها (بلا نقاط) صيغة مختصرة كذلك.
+    parts.len() == 1 && parts[0].bytes().all(|b| b.is_ascii_alphanumeric())
+        && parts[0].bytes().any(|b| b.is_ascii_digit())
+}
+
+/// وصف النطاق الخاص لـIPv4، أو `None` إن كان عنواناً عاماً.
+fn ipv4_scope(parts: &[&str]) -> Option<&'static str> {
+    if parts.len() != 4 {
+        return None;
+    }
+    let mut octet = [0u8; 4];
+    for (i, p) in parts.iter().enumerate() {
+        octet[i] = p.parse::<u8>().ok()?;
+    }
+    let [a, b, _, _] = octet;
+    match (a, b) {
+        (127, _) => Some("حلقة محلية (127.0.0.0/8)"),
+        (10, _) => Some("شبكة خاصة (10.0.0.0/8)"),
+        (172, 16..=31) => Some("شبكة خاصة (172.16.0.0/12)"),
+        (192, 168) => Some("شبكة خاصة (192.168.0.0/16)"),
+        (169, 254) => Some("عنوان link-local (169.254.0.0/16) — ومنه بيانات الميتا"),
+        (0, _) => Some("عنوان غير محدَّد (0.0.0.0)"),
+        _ => None,
+    }
+}
+
+/// نطاقات IPv6 المحلية بحسب أول مقطع.
+fn ipv6_scope(host: &str) -> Option<&'static str> {
+    if !host.contains(':') {
+        return None;
+    }
+    let first = host.split(':').next().unwrap_or("");
+    // `::1` يبدأ بمقطع فارغ، و`::1:8080` كذلك — كلاهما الحلقة المحلية.
+    if host == "::1" || host.starts_with("::1:") || (first.is_empty() && host.starts_with("::1")) {
+        return Some("حلقة محلية (::1)");
+    }
+    let f = first.to_ascii_lowercase();
+    let mut chars = f.chars();
+    match (chars.next(), chars.next(), chars.next()) {
+        (Some('f'), Some('c'), _) | (Some('f'), Some('d'), _) => {
+            Some("شبكة محلية فريدة (fc00::/7)")
+        }
+        (Some('f'), Some('e'), Some('8' | '9' | 'a' | 'b')) => {
+            Some("عنوان link-local (fe80::/10)")
+        }
+        _ => None,
+    }
+}
+
+/// عنوان IPv6 مكتوب بين قوسين معقوفين — نقبله شكلاً (المحتوى فُحص أعلاه).
+fn is_ipv6_literal(host: &str) -> bool {
+    host.contains(':') && host.chars().all(|c| c.is_ascii_hexdigit() || c == ':')
+}
+
+/// اسم مضيف صالح (RFC 1123 مبسّط): كل لاحقة من [A-Za-z0-9-] ولا تبدأ/تنتهي
+/// بشرطة، والاسم كله بلا فراغ ولا محرف غريب. أسماء يونيكود (IDN) تُرفض هنا
+/// عن قصد: yt-dlp لا يفهمها بلا ترميز Punycode، والفحص لا يخمّن.
+fn is_valid_hostname(host: &str) -> bool {
+    if host.is_empty() || host.len() > 253 {
+        return false;
+    }
+    host.split('.').all(|label| {
+        !label.is_empty()
+            && label.len() <= 63
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    })
+}
+
+
 #[derive(Debug)]
 pub enum YtError {
     NotFound,
     Net(String),
     Verify(String),
     Io(String),
+    /// و-٨: الرابط نفسه مرفوض قبل أي اتصال (مخطّط غير مدعوم، مضيف محلي/خاص،
+    /// أو اسم مضيف غير صالح). نصّه عربي جاهز للعرض كما هو.
+    Rejected(String),
 }
 
 impl std::fmt::Display for YtError {
@@ -45,6 +300,7 @@ impl std::fmt::Display for YtError {
             Self::Net(e) => write!(f, "شبكة: {e}"),
             Self::Verify(e) => write!(f, "فشل التحقق: {e}"),
             Self::Io(e) => write!(f, "ملفات: {e}"),
+            Self::Rejected(e) => write!(f, "{e}"),
         }
     }
 }
@@ -120,14 +376,10 @@ fn read_state() -> UpdateState {
 
 fn write_state(st: &UpdateState) -> Result<(), YtError> {
     let p = state_path();
-    if let Some(parent) = p.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| YtError::Io(e.to_string()))?;
-    }
-    let tmp = p.with_extension("json.tmp");
-    std::fs::write(&tmp, serde_json::to_string_pretty(st).unwrap_or_default())
-        .map_err(|e| YtError::Io(e.to_string()))?;
-    std::fs::rename(&tmp, &p).map_err(|e| YtError::Io(e.to_string()))?;
-    Ok(())
+    // و-٦: tmp + `sync_all` + rename عبر المساعد الموحّد. اسم المؤقت لم
+    // يتغيّر (`update_state.json.tmp`) والسلوك الظاهر واحد.
+    let body = serde_json::to_string_pretty(st).unwrap_or_default();
+    crate::atomic::write_atomic_str(&p, &body, "json").map_err(|e| YtError::Io(e.to_string()))
 }
 
 pub fn local_version() -> Option<String> {
@@ -584,6 +836,9 @@ fn download_media_inner(
     audio_only: bool,
 ) -> Result<PathBuf, YtError> {
     use std::sync::atomic::Ordering;
+    // و-٨: رفض الرابط قبل أي اتصال، برسالته العربية كما هي (بلا غلاف
+    // «فشل التحقق») لأن نصّه يسمّي السبب للمستخدم مباشرة.
+    validate_download_url(url).map_err(YtError::Rejected)?;
     let exe = resolve_ytdlp().ok_or(YtError::NotFound)?;
     std::fs::create_dir_all(out_dir).map_err(|e| YtError::Io(e.to_string()))?;
 
@@ -980,5 +1235,119 @@ mod tests {
         assert_eq!(tail_text(&tail, 2), "line3\nline4");
         assert_eq!(tail_text(&tail, 99).lines().count(), 5);
         assert_eq!(tail_text(&VecDeque::new(), 12), "");
+    }
+
+    /// و-٨ سلبي (الجدول المطلوب حرفياً): **كل** مضيف محلي/خاص يُرفض.
+    /// الاختبار يفشل بمجرد أن يمرّ صفّ واحد — أي إضعاف للفحص يظهر هنا.
+    #[test]
+    fn local_and_private_targets_are_rejected() {
+        for url in [
+            "http://localhost/x",
+            "http://LocalHost:8080/x",
+            "http://127.0.0.1/x",
+            "http://127.0.0.1:48765/",
+            "http://10.0.0.5/x",
+            "http://192.168.1.1:8081/x",
+            "http://172.16.0.1/x",
+            "http://172.31.255.254/x",
+            "http://[::1]/x",
+            "http://[::1]:8081/x",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://0.0.0.0:1420/",
+            "file:///etc/passwd",
+            "file://C:/Windows/win.ini",
+            "ftp://example.com/x",
+            "data:text/html,<script>alert(1)</script>",
+            "javascript:alert(1)",
+            "http://nas/",
+            "http://printer.local/x",
+            "http://router.internal/x",
+            "http://[fd00::1]/x",
+            "http://[fe80::1]/x",
+            // تهريب عبر مرادفات: IPv4 مُضمَّن في IPv6، وأصفار بادئة، ونطاقات
+            // محلية، ومضيف تالف لا يجوز أن يُمرَّر إلى yt-dlp.
+            "http://[::ffff:127.0.0.1]/x",
+            "http://[::ffff:192.168.1.5]/x",
+            "http://0x7f.0.0.1/x",
+            "http://127.1/x",
+            "https://www.youtube.com.evil.local/x",
+            "http://evil_host/x",
+            "https://[fe80::1%25eth0]/x",
+        ] {
+            let got = validate_download_url(url);
+            assert!(
+                got.is_err(),
+                "الرابط يجب أن يُرفض ولم يُرفض: {url} ⇒ {got:?}"
+            );
+            // الرسالة تسمّي السبب — لا رفض صامت.
+            let msg = got.unwrap_err();
+            assert!(!msg.is_empty(), "رسالة الرفض فارغة لـ{url}");
+        }
+
+        // سبب الرفض صريح في كل عائلة من العائلات الثلاث.
+        assert!(validate_download_url("http://127.0.0.1/a")
+            .unwrap_err()
+            .contains("حلقة محلية"));
+        assert!(validate_download_url("http://10.1.2.3/a")
+            .unwrap_err()
+            .contains("شبكة خاصة"));
+        assert!(validate_download_url("http://169.254.169.254/a")
+            .unwrap_err()
+            .contains("link-local"));
+        assert!(validate_download_url("file:///etc/passwd")
+            .unwrap_err()
+            .contains("http"));
+        assert!(validate_download_url("http://localhost/a")
+            .unwrap_err()
+            .contains("localhost"));
+        // IPv4 مُضمَّن في IPv6 يُصنَّف بحلقة محلية لا بخطأ عام.
+        assert!(validate_download_url("http://[::ffff:127.0.0.1]/a")
+            .unwrap_err()
+            .contains("حلقة محلية"));
+    }
+
+    /// و-٨ سلبي (الجدول المطلوب حرفياً): المواقع العامة تُقبل — الوعد المعلن
+    /// «يوتيوب أو أي موقع آخر» يبقى قائماً (لا قائمة بيضاء).
+    #[test]
+    fn public_targets_are_accepted() {
+        for url in [
+            "https://www.youtube.com/watch?v=x",
+            "https://vimeo.com/1",
+            "https://youtu.be/dQw4w9WgXcQ",
+            "http://soundcloud.com/a/b",
+            "https://example.com/path?q=1#frag",
+            "HTTPS://WWW.YouTube.COM/watch?v=x",
+            "https://user:pw@www.youtube.com/watch?v=x",
+            "https://www.youtube.com:443/watch?v=x",
+            " https://www.youtube.com/watch?v=x ",
+            "https://[2606:4700::1111]/x",
+        ] {
+            let got = validate_download_url(url);
+            assert!(got.is_ok(), "الرابط العام يجب أن يُقبل: {url} ⇒ {got:?}");
+        }
+    }
+
+    /// و-٨ سلبي: المداخل الفارغة/التالفة تُرفض ولا تصل إلى yt-dlp.
+    #[test]
+    fn malformed_urls_are_rejected_before_any_process_runs() {
+        for url in ["", "   ", "youtube.com/watch?v=x", "https://", "///x", "http://"] {
+            assert!(
+                validate_download_url(url).is_err(),
+                "رابط تالف يجب أن يُرفض: {url:?}"
+            );
+        }
+    }
+
+    /// الفحص يقع في نقطة العبور الوحيدة: لا `fetch_meta` ولا تشغيل لـyt-dlp
+    /// قبل التحقق (الرابط المرفوض يُعاد قبل `resolve_ytdlp`).
+    #[test]
+    fn the_guard_sits_before_the_process_is_resolved() {
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let err = download_media("http://169.254.169.254/x", Path::new("."), &|_| true, &cancel)
+            .expect_err("must be rejected");
+        assert!(
+            matches!(err, YtError::Rejected(_)),
+            "الرفض يجب أن يسبق أي عمل شبكي: {err:?}"
+        );
     }
 }

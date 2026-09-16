@@ -1560,6 +1560,7 @@ name = "haramlite-rs"
 version = "0.2.5"
 dependencies = [
  "dirs 5.0.1",
+ "getrandom 0.3.4",
  "hound",
  "notify",
  "ort",

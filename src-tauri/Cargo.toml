@@ -12,6 +12,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[dev-dependencies]
+# و-١: يمنح ثنائي اختبار المكتبة وحده `tauri::test::mock_app`، فيُختبر نطاق
+# بروتوكول الأصول فعلياً (`Scope::is_allowed`) بدل الادّعاء. الإنتاج لا يتغيّر:
+# `cfg(any(test, feature = "test"))` في tauri لا تُفعَّل في بناء الإصدار.
+tauri = { version = "2", features = ["test"] }
+
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
 tauri-plugin-opener = "2"
@@ -26,6 +32,11 @@ hound = "3"
 rayon = "1"
 ureq = { version = "2", features = ["json"] }
 sha2 = "0.10"
+# OS entropy for the Telegram pairing code (و-٧): `std`'s `RandomState` is
+# seeded for hash-flooding resistance, NOT as a secret. Already in the tree
+# (0.3.4 pulled by tauri's uuid chain), so this adds no new crate family —
+# the lockfile only gains the direct edge.
+getrandom = "0.3"
 dirs = "5.0"
 notify = "6"
 tauri-plugin-dialog = "2"
