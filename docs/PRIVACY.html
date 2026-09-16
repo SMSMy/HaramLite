@@ -68,7 +68,7 @@
   <p>التطبيق يحتاج الشبكة فقط لهذه الأمور — وبعضها يبدأ تلقائياً عند الإقلاع (مُعلَّم أدناه):</p>
   <ul>
     <li>تنزيل رابط طلبته بنفسك.</li>
-    <li>تحديث <code>yt-dlp</code> (فحص دوري كل 24 ساعة عند الإقلاع — <strong>ولا مفتاح لتعطيله في هذا الإصدار</strong>).</li>
+    <li>تحديث <code>yt-dlp</code> (فحص دوري كل 24 ساعة عند الإقلاع — <strong>ويمكن تعطيله من الإعدادات ← الأدوات والمساعدة</strong>).</li>
     <li>فحص التحديثات (معطّل حالياً في هذا الإصدار).</li>
     <li>إصلاح المكوّنات (تنزيل النموذج/الأدوات عند فقدانها) مع التحقق من بصمة SHA-256.</li>
     <li><strong>روبوت تيليجرام</strong> إن فعّلته أنت (انظر أدناه).</li>
@@ -171,7 +171,7 @@
     <ul>
       <li><strong>Your files</strong> (video/audio): opened when you drop or pick them, processed locally, and the result is written next to the original. Nothing is uploaded to any server.</li>
       <li><strong>A link you download</strong>: fetched from its source (YouTube and others) to your machine with <code>yt-dlp</code>, then processed locally.</li>
-      <li><strong>Internet is optional</strong>: it is used only to download a link you asked for, to update <code>yt-dlp</code> (checked every 24 hours at startup — <strong>no switch disables it in this build</strong>), to check for updates (disabled in this build), to repair missing components (verified against their SHA-256), and for the Telegram bot if you enable it. If you use none of those, the app works with the network unplugged.</li>
+      <li><strong>Internet is optional</strong>: it is used only to download a link you asked for, to update <code>yt-dlp</code> (checked every 24 hours at startup — <strong>and a switch in Settings → Tools &amp; Help turns it off</strong>), to check for updates (disabled in this build), to repair missing components (verified against their SHA-256), and for the Telegram bot if you enable it. If you use none of those, the app works with the network unplugged.</li>
       <li><strong>Telegram bot</strong> (optional, needs a token you supply): it does nothing without your token and ignores every account until you pair yours with the one-time code. Messages you send the bot travel through Telegram's servers like any chat, so Telegram is a third party for that feature; the processing itself happens on your machine. Telegram's limits: a bot may send up to 50MB and download at most 20MB of a file you send it. A local Bot API server raises that to 2GB.</li>
       <li><strong>Stored on your machine</strong>: settings in <code>%LOCALAPPDATA%\com.harammute.haramlite</code>; the bot token and <code>api_hash</code> sealed with <strong>DPAPI</strong> (bound to your Windows account and machine, so they stop working if copied elsewhere); diagnostic logs; temporary working files that are cleaned up automatically.</li>
       <li><strong>Deleting your data</strong>: uninstall the app and delete <code>%LOCALAPPDATA%\com.harammute.haramlite</code>. The developer keeps no copy.</li>
