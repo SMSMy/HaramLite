@@ -225,6 +225,12 @@ fn ipv4_scope(parts: &[&str]) -> Option<&'static str> {
     for (i, p) in parts.iter().enumerate() {
         octet[i] = p.parse::<u8>().ok()?;
     }
+    ipv4_octets_scope(octet)
+}
+
+/// التصنيف من **القيمة** لا من النصّ — نقطة واحدة تخدم IPv4 نصّياً وIPv4
+/// المُضمَّن في IPv6 (`::ffff:127.0.0.1`) والـ6to4/NAT64.
+fn ipv4_octets_scope(octet: [u8; 4]) -> Option<&'static str> {
     let [a, b, _, _] = octet;
     match (a, b) {
         (127, _) => Some("حلقة محلية (127.0.0.0/8)"),
@@ -237,32 +243,142 @@ fn ipv4_scope(parts: &[&str]) -> Option<&'static str> {
     }
 }
 
-/// نطاقات IPv6 المحلية بحسب أول مقطع.
+/// نطاقات IPv6 المحلية — **من القيمة المحلَّلة لا من بادئة النصّ**.
+///
+/// كان الفحص السابق يقارن النصّ (`host == "::1"` وبادئات `fc`/`fd`/`fe8`)،
+/// فمرّت منه **ثلاث صور متكافئة للحلقة المحلية** كشفها هجوم المشرف بعد الدمج:
+/// `[0:0:0:0:0:0:0:1]` (الصيغة الكاملة) · `[::]` (غير محدَّد) ·
+/// `[::ffff:7f00:1]` (‏IPv4 مُضمَّن بالست عشرية — والصيغة المنقوطة وحدها كانت
+/// مغطّاة). الآن يُحلَّل العنوان إلى ثماني مجموعات ثم يُصنَّف، فالصور المتكافئة
+/// تُصنَّف تصنيفاً واحداً.
 fn ipv6_scope(host: &str) -> Option<&'static str> {
-    if !host.contains(':') {
-        return None;
+    let g = parse_ipv6(host)?;
+
+    // `::` غير محدَّد (يقابل 0.0.0.0 في IPv4).
+    if g.iter().all(|x| *x == 0) {
+        return Some("عنوان غير محدَّد (::)");
     }
-    let first = host.split(':').next().unwrap_or("");
-    // `::1` يبدأ بمقطع فارغ، و`::1:8080` كذلك — كلاهما الحلقة المحلية.
-    if host == "::1" || host.starts_with("::1:") || (first.is_empty() && host.starts_with("::1")) {
+    // `::1` الحلقة المحلية، بأي صيغة كُتبت.
+    if g[..7].iter().all(|x| *x == 0) && g[7] == 1 {
         return Some("حلقة محلية (::1)");
     }
-    let f = first.to_ascii_lowercase();
-    let mut chars = f.chars();
-    match (chars.next(), chars.next(), chars.next()) {
-        (Some('f'), Some('c'), _) | (Some('f'), Some('d'), _) => {
-            Some("شبكة محلية فريدة (fc00::/7)")
+    // IPv4 مُضمَّن: `::ffff:a.b.c.d` أو `::ffff:hhhh:hhhh` (الصيغتان متكافئتان).
+    if g[..5].iter().all(|x| *x == 0) && g[5] == 0xffff {
+        let v4 = [(g[6] >> 8) as u8, g[6] as u8, (g[7] >> 8) as u8, g[7] as u8];
+        if let Some(scope) = ipv4_octets_scope(v4) {
+            return Some(scope);
         }
-        (Some('f'), Some('e'), Some('8' | '9' | 'a' | 'b')) => {
-            Some("عنوان link-local (fe80::/10)")
-        }
-        _ => None,
     }
+    // 6to4 (`2002:V4V4::/16`) و NAT64 (`64:ff9b::V4V4/96`): كلاهما يحمل IPv4
+    // داخله، فتُستخرج القيمة وتُصنَّف بدل أن تمرّ باسم «شبكة عامة».
+    if g[0] == 0x2002 {
+        let v4 = [(g[1] >> 8) as u8, g[1] as u8, (g[2] >> 8) as u8, g[2] as u8];
+        if let Some(scope) = ipv4_octets_scope(v4) {
+            return Some(scope);
+        }
+    }
+    if g[0] == 0x0064 && g[1] == 0xff9b && g[2..6].iter().all(|x| *x == 0) {
+        let v4 = [(g[6] >> 8) as u8, g[6] as u8, (g[7] >> 8) as u8, g[7] as u8];
+        if let Some(scope) = ipv4_octets_scope(v4) {
+            return Some(scope);
+        }
+    }
+    let first = g[0];
+    if first & 0xfe00 == 0xfc00 {
+        return Some("شبكة محلية فريدة (fc00::/7)");
+    }
+    if first & 0xffc0 == 0xfe80 {
+        return Some("عنوان link-local (fe80::/10)");
+    }
+    if first & 0xff00 == 0xff00 {
+        return Some("عنوان multicast (ff00::/8)");
+    }
+    None
 }
 
-/// عنوان IPv6 مكتوب بين قوسين معقوفين — نقبله شكلاً (المحتوى فُحص أعلاه).
+/// يحلّل عنوان IPv6 نصّياً إلى ثماني مجموعات: يدعم `::` مرة واحدة، ويقبل
+/// الصيغة العشرية المنقوطة في الموضع الأخير (`::ffff:127.0.0.1`).
+/// `None` = ليس عنوان IPv6 صالحاً (فيُرفض لاحقاً كاسم مضيف غير صالح).
+fn parse_ipv6(text: &str) -> Option<[u16; 8]> {
+    if !text.contains(':') {
+        return None;
+    }
+    let (head, tail, gap) = match text.split_once("::") {
+        Some((h, t)) => (h, t, true),
+        None => (text, "", false),
+    };
+    if gap && tail.contains("::") {
+        return None; // `::` مرتين
+    }
+    let mut groups: Vec<u16> = Vec::new();
+    let mut parts = 0usize;
+    if !head.is_empty() {
+        for p in head.split(':') {
+            push_ipv6_part(p, &mut groups)?;
+            parts += 1;
+        }
+    }
+    let mut tail_groups: Vec<u16> = Vec::new();
+    if gap && !tail.is_empty() {
+        for p in tail.split(':') {
+            push_ipv6_part(p, &mut tail_groups)?;
+            parts += 1;
+        }
+    }
+    if !gap {
+        if parts != 8 {
+            return None;
+        }
+    } else {
+        // `::` يمثّل مجموعة واحدة على الأقل.
+        if groups.len() + tail_groups.len() > 7 {
+            return None;
+        }
+        while groups.len() + tail_groups.len() < 8 {
+            groups.push(0);
+        }
+    }
+    groups.extend(tail_groups);
+    if groups.len() != 8 {
+        return None;
+    }
+    let mut out = [0u16; 8];
+    out.copy_from_slice(&groups);
+    Some(out)
+}
+
+/// يدفع مقطعاً واحداً (ست عشري، أو عنوان IPv4 منقوط يُنتج مجموعتين).
+fn push_ipv6_part(part: &str, groups: &mut Vec<u16>) -> Option<()> {
+    if part.is_empty() {
+        return None;
+    }
+    if part.contains('.') {
+        let oct: Vec<&str> = part.split('.').collect();
+        if oct.len() != 4 {
+            return None;
+        }
+        let mut b = [0u8; 4];
+        for (i, o) in oct.iter().enumerate() {
+            if o.is_empty() || o.len() > 3 || !o.bytes().all(|c| c.is_ascii_digit()) {
+                return None;
+            }
+            b[i] = o.parse::<u8>().ok()?;
+        }
+        groups.push(u16::from_be_bytes([b[0], b[1]]));
+        groups.push(u16::from_be_bytes([b[2], b[3]]));
+        return Some(());
+    }
+    if part.len() > 4 || !part.bytes().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    groups.push(u16::from_str_radix(part, 16).ok()?);
+    Some(())
+}
+
+/// عنوان IPv6 صالح؟ الحكم **بالمحلّل** لا بشكل المحارف، فالصيغة الكاملة
+/// (`0:0:0:0:0:0:0:1`) صالحة كـ`::1` تماماً — وهو ما كان يسقط سابقاً.
 fn is_ipv6_literal(host: &str) -> bool {
-    host.contains(':') && host.chars().all(|c| c.is_ascii_hexdigit() || c == ':')
+    parse_ipv6(host).is_some()
 }
 
 /// اسم مضيف صالح (RFC 1123 مبسّط): كل لاحقة من [A-Za-z0-9-] ولا تبدأ/تنتهي
@@ -1273,6 +1389,22 @@ mod tests {
             "https://www.youtube.com.evil.local/x",
             "http://evil_host/x",
             "https://[fe80::1%25eth0]/x",
+            // صور IPv6 **متكافئة** كشفها هجوم المشرف بعد الدمج: كان الفحص يقارن
+            // بادئة النصّ فمرّت هذه الثلاث — الصيغة الكاملة للحلقة، و`::` غير
+            // المحدَّد، وIPv4 المُضمَّن بالست عشرية بلا نقاط.
+            "http://[0:0:0:0:0:0:0:1]/x",
+            "http://[::]/x",
+            "http://[::ffff:7f00:1]/x",
+            "http://[::ffff:c0a8:105]/x",
+            "http://[0:0:0:0:0:0:0:0]/x",
+            // 6to4 و NAT64 يحملان IPv4 داخلهما، و multicast ليس عنواناً عاماً.
+            "http://[2002:7f00:1::]/x",
+            "http://[64:ff9b::127.0.0.1]/x",
+            "http://[ff02::1]/x",
+            // عدد عشري صرف: `2130706433` = 127.0.0.1 و`2852039166` = 169.254.169.254
+            // عند `inet_addr`.
+            "http://2130706433/x",
+            "http://2852039166/x",
         ] {
             let got = validate_download_url(url);
             assert!(
