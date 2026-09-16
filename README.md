@@ -32,7 +32,7 @@
 </p>
 
 <p align="center">
-  <img src="IMG/Screenshot.png" alt="واجهة HaramLite" width="840">
+  <img src="IMG/Screenshot.png" alt="واجهة HaramLite 0.2.5" width="840">
 </p>
 
 ---
