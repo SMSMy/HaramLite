@@ -9,6 +9,7 @@
     "build": "node ./scripts/fetch_redist.js && tailwindcss -c ./tailwind.config.cjs -i ./src/input.css -o ./src/tailwind.css --minify && tsc && vite build",
     "build:css": "tailwindcss -c ./tailwind.config.cjs -i ./src/input.css -o ./src/tailwind.css --minify",
     "build:web": "pnpm run build:css && vite build",
+    "test:web": "vitest run",
     "site:css": "tailwindcss -c ./site.tailwind.config.cjs -i ./site.input.css -o ./docs/assets/site.css --minify",
     "preview": "vite preview",
     "pack:ext": "node ./scripts/pack-extension.js --target chrome",
@@ -31,8 +32,10 @@
     "@tailwindcss/container-queries": "^0.1.1",
     "@tailwindcss/forms": "^0.5.11",
     "@tauri-apps/cli": "^2",
+    "jsdom": "^30.0.1",
     "tailwindcss": "3.4.19",
     "typescript": "~5.9.3",
-    "vite": "^6.0.3"
+    "vite": "^6.0.3",
+    "vitest": "^5.0.1"
   }
 }
