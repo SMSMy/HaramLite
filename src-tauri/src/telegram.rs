@@ -69,28 +69,40 @@ fn pair_slot() -> &'static Mutex<Option<PairState>> {
     PAIR.get_or_init(|| Mutex::new(None))
 }
 
-/// Entropy with no new dependency: std's `RandomState` is seeded from the OS
-/// per instance, so mixing four fresh instances through SplitMix64 gives a code
-/// that cannot be guessed from the clock or the pid. This is a one-shot code
-/// behind a 5-attempt / 10-minute budget, not a long-term key.
+/// رمز من **عشوائية نظام** — لا من `RandomState`.
+///
+/// و-٧: كان التوليد يبني بذرة من `std::collections::hash_map::RandomState`
+/// ممزوجة بـSplitMix64، وتعليقُه يصرّح «Entropy with no new dependency».
+/// توثيق Rust نفسه يقول إن `RandomState` مُبذَّر لمقاومة تصادم التجزئة،
+/// **لا ليكون سرّاً**. الرمز محميّ فعلاً بحدّ ٥ محاولات/10 دقائق، لكن
+/// الأساس يجب أن يكون صحيحاً لا «كافياً عملياً».
+///
+/// `getrandom` كان موجوداً أصلاً في شجرة الاعتماديات (0.3.4 عبر سلسلة
+/// tauri/uuid)، فأصبح اعتمادية مباشرة: لا عائلة جديدة في `Cargo.lock`.
+/// الشكل لم يتغيّر: `digits` أرقام عشرية كما كان (`PAIR_DIGITS` = ٦)،
+/// والحدّ الأقصى للمحاولات كما هو.
 fn random_code(digits: usize) -> String {
-    use std::collections::hash_map::RandomState;
-    use std::hash::{BuildHasher, Hasher};
-    let mut seed = nanos() as u64;
-    for i in 0..4u64 {
-        let mut h = RandomState::new().build_hasher();
-        h.write_u64(nanos() as u64 ^ i.wrapping_mul(0x9E37_79B9_7F4A_7C15));
-        seed ^= h.finish().rotate_left((i as u32 * 13) % 64);
-    }
-    let mut x = seed;
     let mut out = String::with_capacity(digits);
-    for _ in 0..digits {
-        x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = x;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^= z >> 31;
-        out.push(char::from(b'0' + (z % 10) as u8));
+    // بايتات نظام لا تنضب نظرياً؛ ومع ذلك لا سقوط إلى مصدر أضعف لو فشلت:
+    // يتوقّف التوليد بما جمعه، والمتصل يرى الرمز كما هو (والحدّ الأمني
+    // الحقيقي هو المحاولات لا الطول).
+    let mut buf = [0u8; 64];
+    while out.len() < digits {
+        if getrandom::fill(&mut buf).is_err() {
+            break;
+        }
+        for b in buf {
+            if out.len() == digits {
+                break;
+            }
+            // رفض ما فوق 249: 250 = 25×10، فكل رقم يأخذ 25 قيمة بالضبط ⇒
+            // توزيع متساوٍ تماماً بلا انحياز modulo (كان `% 10` يمنح الأرقام
+            // 0..5 احتمالاً 26/256 و6..9 احتمالاً 25/256).
+            if b >= 250 {
+                continue;
+            }
+            out.push(char::from(b'0' + (b % 10)));
+        }
     }
     out
 }
@@ -1700,6 +1712,88 @@ mod tests {
         assert_eq!(st["cloud_send_max_mb"], json!(50));
         forget_pairing_code();
         assert_eq!(status_json()["pairing_code_active"], json!(false));
+    }
+
+    /// و-٧ — الشكل: الرمز أرقام عشرية فقط، وبالطول المطلوب (`PAIR_DIGITS`).
+    #[test]
+    fn pairing_codes_are_digits_of_the_exact_length() {
+        for digits in [1usize, 4, PAIR_DIGITS, 12] {
+            let code = random_code(digits);
+            assert_eq!(code.chars().count(), digits, "طول الرمز خاطئ: {code}");
+            assert!(
+                code.chars().all(|c| c.is_ascii_digit()),
+                "الرمز يحوي غير رقم: {code}"
+            );
+        }
+        // الطول صفر لا ينفجر (ولا يعلّق في حلقة التوليد).
+        assert_eq!(random_code(0), "");
+    }
+
+    /// و-٧ — عدم التكرار: ٢٠٠ رمز متتالٍ كلها مختلفة. يسقط فوراً لو عاد
+    /// المولّد ثابتاً أو حبيس بذرة ضيقة (كان `RandomState`+SplitMix64 هنا).
+    #[test]
+    fn consecutive_pairing_codes_never_repeat() {
+        let mut seen = std::collections::HashSet::new();
+        for i in 0..200 {
+            let code = random_code(PAIR_DIGITS);
+            assert!(seen.insert(code.clone()), "رمز مكرَّر عند المحاولة {i}: {code}");
+        }
+        // وكل الرمزين المتتاليين مختلفان (الشرط المنصوص في التقرير).
+        let a = random_code(PAIR_DIGITS);
+        let b = random_code(PAIR_DIGITS);
+        assert_ne!(a, b, "رمزان متتاليان متطابقان");
+    }
+
+    /// و-٧ — توزيع الأرقام: ١٢٠٠ رقم مولَّد تستعمل كل الأرقام العشرة. يسقط
+    /// لو رجع المولّد إلى بذرة شبه ثابتة أو انحاز إلى أرقام بعينها.
+    #[test]
+    fn generated_digits_cover_the_whole_alphabet() {
+        let mut counts = [0usize; 10];
+        for _ in 0..200 {
+            for c in random_code(PAIR_DIGITS).chars() {
+                counts[c.to_digit(10).unwrap() as usize] += 1;
+            }
+        }
+        for (digit, n) in counts.iter().enumerate() {
+            assert!(*n > 0, "الرقم {digit} لم يظهر إطلاقاً في 1200 رقم");
+        }
+        let total: usize = counts.iter().sum();
+        assert_eq!(total, 200 * PAIR_DIGITS);
+        // لا رقم يسيطر: أسوأ حالة مسموحة 3× المتوسط (فحص خشن لا chi-square
+        // حتى لا يصير الاختبار متذبذباً — التوزيع الدقيق ليس Claim هنا).
+        let mean = (total / 10) as f64;
+        for (digit, n) in counts.iter().enumerate() {
+            assert!(
+                (*n as f64) < mean * 3.0,
+                "الرقم {digit} منحاز: {n} من {total}"
+            );
+        }
+    }
+
+    /// و-٧ — **فحص نصّي** (لا طريقة سلوكية تميّز مولّداً من `RandomState` عن
+    /// مولّد نظام، فالاثنان يعطيان رقماً يبدو عشوائياً). يحرس ضد رجوع
+    /// `RandomState`/SplitMix64 إلى دالة التوليد.
+    #[test]
+    fn the_pairing_code_generator_no_longer_uses_randomstate() {
+        let src = include_str!("telegram.rs");
+        // نقتصر على جسم `random_code` وحده حتى لا يُحسب استعمالٌ آخر مشروع.
+        let start = src
+            .find("fn random_code(digits: usize) -> String {")
+            .expect("random_code must exist");
+        let body = &src[start..];
+        let end = body.find("\n}\n").expect("random_code must end");
+        let body = &body[..end];
+
+        for banned in ["RandomState", "SplitMix64", "BuildHasher", "build_hasher", "nanos()"] {
+            assert!(
+                !body.contains(banned),
+                "مولّد الرمز رجع إلى {banned} (و-٧ يمنع ذلك):\n{body}"
+            );
+        }
+        assert!(
+            body.contains("getrandom"),
+            "مولّد الرمز يجب أن يستعمل getrandom:\n{body}"
+        );
     }
 
     /// Negative test for ٤.ب.٩: the two sites that take the settings lock PAIR
