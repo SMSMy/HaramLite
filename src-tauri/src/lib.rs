@@ -1,4 +1,5 @@
 mod autostart;
+mod atomic;
 mod bridge;
 mod calibrate;
 mod cli;
@@ -7,6 +8,7 @@ mod decide;
 mod dynamics;
 mod effects;
 mod filters;
+mod ipc_guard;
 mod livemap;
 mod logging;
 mod loudness;
@@ -98,10 +100,23 @@ fn set_explicit_aumid() {
 #[cfg(not(target_os = "windows"))]
 fn set_explicit_aumid() {}
 
+/// و-٤: الرمز الفعلي لهذه الجلسة، مع تطبيع عبر الملف.
+///
+/// التوليد يقع في `load_or_create_nonce`، والكتابة **قبل** ربط المنفذ: لو
+/// رُبط أولاً لتسابق اتصالٌ وصولَ الرمز إلى الملف.
+fn session_nonce(base: &Path) -> Vec<u8> {
+    let n = ipc_guard::load_or_create_nonce(base);
+    ipc_guard::effective_nonce(base, &n)
+}
+
 /// Single-instance guard: bind a loopback TCP listener as an OS-level mutex.
 /// A second instance asks the RUNNING one to show its window (important when
 /// the running instance was started hidden by the browser bridge), then exits.
-/// Returns the "show window" receiver for the winning instance.
+///
+/// و-٤: الطلب لم يبقَ «بايت واحد» — بل بادئة `HLSI` + رمز الجلسة المخزَّن في
+/// `paths::data_dir()`. الاتصال بغير الرمز **يُرفض بصمت** (بايت الرفض بلا
+/// إظهار نافذة). الحدّ المتبقّي منصوص في `ipc_guard`: من يقرأ الملف بنفس
+/// صلاحية المستخدم يعرف الرمز، والأثر الأقصى يبقى «إظهار نافذة».
 fn take_single_instance() -> Option<std::sync::mpsc::Receiver<()>> {
     use std::io::{Read, Write};
     use std::net::{TcpListener, TcpStream};
@@ -110,6 +125,8 @@ fn take_single_instance() -> Option<std::sync::mpsc::Receiver<()>> {
     match TcpListener::bind("127.0.0.1:48765") {
         Ok(listener) => {
             let (tx, rx) = mpsc::channel::<()>();
+            // الرمز قبل أول اتصال ممكن؛ فشل الكتابة لا يمنع الجلسة.
+            let nonce = session_nonce(&paths::data_dir());
             std::thread::spawn(move || {
                 // Audit 2026-09-15 (٤.ج): كان `incoming().flatten()` يُسقط أخطاء
                 // `accept` بصمت — وعند فشل دائم (استنفاد مقابض مثلاً) تدور الحلقة
@@ -118,8 +135,10 @@ fn take_single_instance() -> Option<std::sync::mpsc::Receiver<()>> {
                 // 250ms × عدد الأخطاء بسقف 20 خطأ ⇒ 5 ثوانٍ. الحدّ 20 محاولة
                 // يجعل أسوأ حالة 12 محاولة في الدقيقة بدل دوران مشغول، ويبقى
                 // الاستئناف فورياً (لا تضخيم أسّي) فالاتصال الشرعي التالي يُقبل
-                // بلا تأخير ملموس. العدّاد يُصفَّر عند أول اتصال ناجح، فالبروتوكول
-                // لم يتغيّر: بايت واحد 0x01 = «أظهر النافذة»، وأي شيء آخر نبضة جسر.
+                // بلا تأخير ملموس. العدّاد يُصفَّر عند أول اتصال ناجح.
+                //
+                // و-٤: البروتوكول تغيّر — كان بايتاً واحداً `0x01` يقبله أي
+                // ضيف؛ الآن `HLSI` + الرمز، ولا إظهار إلا للمطابق.
                 let mut consec_err: u32 = 0;
                 loop {
                     let mut stream = match listener.accept() {
@@ -137,12 +156,20 @@ fn take_single_instance() -> Option<std::sync::mpsc::Receiver<()>> {
                             continue;
                         }
                     };
-                    // A connection carrying a single 0x01 byte = "show the
-                    // window" (a second GUI launch). Data-less connections are
-                    // the bridge's liveness probes — ignore those.
+                    // نبضة الجسر (اتصال بلا بيانات) تُقرأ بصفر بايتات؛ الطلب
+                    // الحقيقي يحمل البادئة والرمز. الردّ بايت واحد يخبر
+                    // المرسل هل أُظهرت النافذة — ومن رُفض يخرج بصمت.
                     let _ = stream.set_read_timeout(Some(Duration::from_millis(300)));
-                    let mut b = [0u8; 1];
-                    if stream.read(&mut b).is_ok() && b[0] == 1 {
+                    let _ = stream.set_write_timeout(Some(Duration::from_millis(300)));
+                    let mut buf = [0u8; ipc_guard::WIRE_MAGIC.len() + ipc_guard::NONCE_BYTES];
+                    let n = stream.read(&mut buf).unwrap_or(0);
+                    let accepted = ipc_guard::authentic_request(&nonce, &buf[..n]);
+                    let _ = stream.write_all(&[if accepted {
+                        ipc_guard::ACCEPT_BYTE
+                    } else {
+                        ipc_guard::REJECT_BYTE
+                    }]);
+                    if accepted {
                         let _ = tx.send(());
                     }
                 }
@@ -151,9 +178,15 @@ fn take_single_instance() -> Option<std::sync::mpsc::Receiver<()>> {
         }
         Err(_) => {
             // already running → ask it to show its window, then exit quietly
-            if let Ok(mut s) = TcpStream::connect("127.0.0.1:48765") {
-                let _ = s.set_write_timeout(Some(Duration::from_millis(500)));
-                let _ = s.write_all(&[1]);
+            if let Some(nonce) = ipc_guard::load_nonce(&paths::data_dir()) {
+                if let Ok(mut s) = TcpStream::connect("127.0.0.1:48765") {
+                    let _ = s.set_write_timeout(Some(Duration::from_millis(500)));
+                    let _ = s.set_read_timeout(Some(Duration::from_millis(500)));
+                    // غير مصادَق ⇒ لا شيء في الجلسة القائمة، ونحن نخرج كما كنا.
+                    let _ = s.write_all(&ipc_guard::request_bytes(&nonce));
+                    let mut ack = [0u8; 1];
+                    let _ = s.read(&mut ack);
+                }
             }
             std::process::exit(0);
         }
@@ -514,6 +547,7 @@ fn read_normalized_mix(input: &Path) -> Result<(Vec<f32>, Vec<f32>, u32), String
 /// built (field defect 3: status must reflect reality).
 #[tauri::command]
 async fn player_prepare(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     id: u64,
     path: String,
@@ -527,6 +561,7 @@ async fn player_prepare(
             return Err("unknown player session".to_string());
         }
     }
+    let handed = path.clone();
     let rep = tauri::async_runtime::spawn_blocking(move || {
         let input = PathBuf::from(&path);
         let (l, r, sr) = read_normalized_mix(&input)?;
@@ -541,6 +576,11 @@ async fn player_prepare(
     })
     .await
     .map_err(|e| format!("prepare worker failed: {e}"))??;
+    // و-١: النطاق الثابت في `tauri.conf.json` فارغ، فالسماح هنا **زمني**
+    // ولهذا الملف وحده: الواجهة تستعمل بروتوكول الأصول مرة واحدة
+    // (`src/player.ts:308`) على `plPath` — وهو نفس المسار الذي نجح الخلف
+    // للتوّ في فكّ ترميزه وقراءته. مسار لم ينجح لا يُسمح له بشيء.
+    ipc_guard::allow_asset_for_frontend(&app, Path::new(&handed));
     // The map covers the whole file — every queued chunk is now inspectable.
     let marked = {
         let mut sessions = store.lock().map_err(|e| e.to_string())?;
