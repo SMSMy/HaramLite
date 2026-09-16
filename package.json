@@ -17,6 +17,8 @@
     "tauri": "tauri",
     "e2e:release": "pwsh -NoProfile -Command \"Set-Location src-tauri; cargo test --lib e2e_separation_is_measurable_on_generated_sample -- --nocapture; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; cargo test --lib e2e_full_pipeline_through_ffmpeg -- --ignored --nocapture\"",
     "settings:parity": "node scripts/check-settings-parity.cjs",
+    "fetch:resources": "node scripts/fetch-resources.cjs",
+    "verify:resources": "node scripts/fetch-resources.cjs --verify-only",
     "versions:check": "node scripts/verify-versions.cjs",
     "ext:guard": "node scripts/check-extension-sync.cjs",
     "ext:mutants": "node scripts/check-extension-mutants.cjs",
