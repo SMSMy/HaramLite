@@ -165,7 +165,10 @@ const i18n = {
     out_audio: 'صوت',
     dl_url_title: 'تحميل من رابط',
     dl_btn: 'تحميل',
-    ytdlp_uptodate: 'yt-dlp محدث لآخر إصدار',
+    // تصحيح بعد المراجعة: كانت «yt-dlp محدث لآخر إصدار» (خبر عن حالة) والزرّ
+    // معطَّل معها. النصّ صار **فعل الأمر** والزرّ متاح دائماً: المستخدم يضغط
+    // ليجلب الأحدث الآن (يتجاوز كاش الـ24 ساعة)، لا ليقرأ حالة.
+    ytdlp_update_now: 'تحديث yt-dlp الآن',
     // ق-١: كشف تحديث yt-dlp. كانت الخصوصية والموقع يقولان «ويمكن تعطيله» بلا
     // مفتاح؛ صار المفتاح حقيقياً ويحرسه فحص الإقلاع نفسه.
     set_ytdlp_auto: 'تحديث yt-dlp تلقائياً',
@@ -375,7 +378,7 @@ const i18n = {
     out_audio: 'audio',
     dl_url_title: 'Download from a link',
     dl_btn: 'Download',
-    ytdlp_uptodate: 'yt-dlp is up to date',
+    ytdlp_update_now: 'Update yt-dlp now',
     // ق-١: same key set as `ar` — the title attribute carries the explanation
     // for readers who do not know what yt-dlp is.
     set_ytdlp_auto: 'Update yt-dlp automatically',

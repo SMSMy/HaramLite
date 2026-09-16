@@ -13,16 +13,18 @@ export function ytdlpAutoUpdateOn(): boolean {
 }
 
 /** يحرس صفّ yt-dlp في الإعدادات:
- *  - زرّ التحديث اليدوي معطّل ما دام التلقائي مشتعلاً (فلا معنى لضغطه: النصّ
- *    نفسه يقول «محدّث لآخر إصدار»)، ومتاح فور إطفائه لأن الطريق الوحيد المتبقي.
+ *  - زرّ التحديث اليدوي **يبقى متاحاً في الحالتين** (تصحيح بعد المراجعة): كان
+ *    معطَّلاً ما دام التلقائي مشتعلاً، بينما سطر بطاقة التنزيل يقول للمستخدم
+ *    «إن فشل التنزيل، حدّث yt-dlp من الإعدادات» — فيصل إلى زرّ ميت. والتحديث
+ *    اليدوي ذو معنى في الحالتين: الأمر `update_ytdlp` بـ`force=true` **يتجاوز
+ *    كاش الـ24 ساعة**، فينتفع به من يريد النسخة الأحدث الآن لا بعد يوم. (ولا
+ *    يُعطَّل إلا أثناء التنفيذ نفسه — حماية من النقر المزدوج، في `queue.ts`.)
  *  - عند الإطفاء يُظهر سطر التحذير (ثمن التعطيل) ويعرض **إصدار النسخة
  *    المحلية** من الأمر `ytdlp_local_version` — قراءة حقيقية من `--version`،
  *    لا رقم مكتوب بيد.
  *  - عند التشغيل يُخفي السطر كاملاً: لا تحذير بلا سبب. */
 export function refreshYtdlpUpdateUi(): void {
   const auto = ytdlpAutoUpdateOn();
-  const updBtn = document.getElementById('btn-upd-ytdlp') as HTMLButtonElement | null;
-  if (updBtn) updBtn.disabled = auto;
   const status = document.getElementById('ytdlp-auto-status');
   if (!status) return;
   if (auto) {
