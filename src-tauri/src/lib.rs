@@ -1063,6 +1063,7 @@ pub fn run() {
             // Sprint T1: Telegram bot worker (off unless enabled + token set)
             telegram::init(app.handle().clone());
             telegram::apply_settings(&loaded);
+            let auto_update_ytdlp = loaded.ytdlp_auto_update;
             {
                 let state = app.state::<AppState>();
                 let mut cur = state
@@ -1086,10 +1087,19 @@ pub fn run() {
                 }
             }
 
-            // M5: background yt-dlp update check (24h cadence, never fatal)
+            // M5: background yt-dlp update check (24h cadence, never fatal).
+            // `auto_update_ytdlp` was copied out of `loaded` above, before the
+            // settings value is moved into AppState.
             std::thread::Builder::new()
                 .name("ytdlp-update".into())
-                .spawn(|| {
+                .spawn(move || {
+                    if !auto_update_ytdlp {
+                        tracing::info!(
+                            target: "ytdlp",
+                            "فحص تحديث yt-dlp معطّل من الإعدادات — لا شبكة ولا نداء"
+                        );
+                        return;
+                    }
                     let (updated, msg) = yt_dlp::ensure_updated(false, &|_| {});
                     if updated {
                         tracing::info!(target: "ytdlp", "{msg}");

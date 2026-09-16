@@ -19,6 +19,10 @@ pub struct Settings {
     pub preview_seconds: u32,     // 10 | 15 | 30
     pub keep_instrumental: bool,
     pub log_open: bool,
+    // Switching this off leaves yt-dlp frozen at its current version, so a
+    // site change can break downloads until the user updates by hand — hence
+    // the status line and warning the settings panel shows while it is off.
+    pub ytdlp_auto_update: bool,
     // ── watch folder (Sprint D2) ──
     pub watch_enabled: bool,
     pub watch_path: Option<String>,
@@ -53,6 +57,7 @@ impl Default for Settings {
             preview_seconds: 15,
             keep_instrumental: false,
             log_open: true,
+            ytdlp_auto_update: true,
             watch_enabled: false,
             watch_path: None,
             watch_mode: "song".into(),

@@ -81,6 +81,9 @@ export function collectSettings(): RustSettings {
     telegram_api_id: localStorage.getItem('hl.tg_api_id') || '',
     telegram_api_hash: tgApiHash,
     log_open: logOpenState(),
+    // Defaults to ON: a missing key must not silently stop the 24h yt-dlp
+    // update, which is what keeps downloads working when a site changes.
+    ytdlp_auto_update: localStorage.getItem('hl.ytdlp_auto') !== '0',
     // 1.10: the only field with no localStorage copy — the module mirror above
     // keeps unrelated pushes from resetting it to false via #[serde(default)].
     autostart_asked: autostartAsked,
