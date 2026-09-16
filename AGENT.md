@@ -309,7 +309,10 @@
 | اختبارات Rust | `cargo test --quiet` (من `src-tauri`) | المحرّك والإعدادات والجسر |
 | clippy | `cargo clippy --all-targets` | خطأ = فشل (التحذيرات موثَّقة) |
 | TypeScript | `pnpm exec tsc --noEmit` | أنواع الواجهة |
+| **التنسيق** | `cargo fmt --check` (من `src-tauri`) | الشجرة منسَّقة (كانت 410 كتل فرق) |
 | **بناء الواجهة** | `pnpm build:web` | أن الحزمة **تُبنى فعلاً** (tailwind + vite) |
+| **اختبارات الواجهة** | `pnpm test:web` | 65 حالة: عقد مصارف HTML · وحدتان نقيتان · تكافؤ مفاتيح الترجمة |
+| **حارس الهندسة** | `node scripts/check-layout.cjs` | 18 صندوقاً عائماً في 6 حالات داخل حدود النافذة (**بعد البناء**) |
 | تكافؤ الإعدادات | `pnpm settings:parity` | كل حقل في `Settings` له مقابل في `collectSettings()` |
 | حراسة الإضافة | `pnpm ext:guard` | 473 فحصاً على `content.js` |
 | مُفسَدات الإضافة | `pnpm ext:mutants` | بوابة **سلبية**: كل مُفسَد يجب أن يُسقط الحارس |
