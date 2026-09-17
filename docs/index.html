@@ -51,7 +51,7 @@
       "applicationCategory": "MultimediaApplication",
       "applicationSubCategory": "Audio separation",
       "operatingSystem": "Windows 10, Windows 11",
-      "softwareVersion": "0.2.5",
+      "softwareVersion": "0.2.7",
       "inLanguage": [
         "ar",
         "en"
@@ -109,8 +109,8 @@
     lang: 'ar',
     /* رقم الإصدار يُقرأ من نشرة GitHub، والنسخة الاحتياطية هنا للعمل بلا شبكة.
        {v} في data-i18n-ar/en و data-i18n-alt-v يُستبدلان بهذا الرقم. */
-    version: '0.2.5',
-    releases: { tag: 'v0.2.5', exeUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.5/HaramLite_0.2.5_x64-setup.exe', msiUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.5/HaramLite_0.2.5_x64_en-US.msi' },
+    version: '0.2.7',
+    releases: { tag: 'v0.2.7', exeUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.7/HaramLite_0.2.7_x64-setup.exe', msiUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.7/HaramLite_0.2.7_x64_en-US.msi' },
     /* في وضع en نضع English في data و data-i18n-ar في alt ليصير زرّ اللغة
        بالعربية. والعكس صحيح. */
     applyLang(lang) {
@@ -160,7 +160,7 @@
         var exeAsset = (data.assets || []).find(function (a) { return a.name.endsWith('-setup.exe'); });
         var msiAsset = (data.assets || []).find(function (a) { return a.name.endsWith('.msi'); });
         /* الرقم من النشرة نفسها: شارة الهيرو وأسماء الملفات ونصوص الأزرار كلها
-           تُبنى منه، فلا يبقى «0.2.5» مكتوباً في مكان يخالف النشرة. */
+           تُبنى منه، فلا يبقى «0.2.7» مكتوباً في مكان يخالف النشرة. */
         var tag = data.tag_name;
         var raw = String(tag).replace(/^v/i, '');
         /* لا نستعمل المتغيّر S هنا: فهو محلي داخل DOMContentLoaded وليس في نطاق
@@ -253,7 +253,7 @@
 <div class="inline-flex flex-wrap items-center justify-center gap-stack-sm px-stack-md py-unit rounded-full bg-surface-container-high text-on-surface-variant mb-6 shadow-sm">
 <span class="w-2 h-2 rounded-full bg-clay-accent animate-pulse"></span>
 <span class="font-mono-code text-mono-code tracking-wide">
-<span class="text-clay-accent font-bold js-release-tag">v0.2.5</span> • 
+<span class="text-clay-accent font-bold js-release-tag">v0.2.7</span> • 
             <span data-i18n-ar="ويندوز 10/11 (x64)" data-i18n-en="Windows 10/11 (x64)">ويندوز 10/11 (x64)</span> • 
             <span data-i18n-ar="معالجة محلية 100%" data-i18n-en="100% On-Device AI">معالجة محلية 100%</span>
 </span>
@@ -276,7 +276,7 @@
 <div class="flex flex-wrap items-center justify-center gap-stack-md w-full mb-8">
 <a class="js-exe-link inline-flex items-center gap-stack-sm px-stack-lg py-stack-md rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold shadow-md hover:bg-primary transition-all duration-150 transform hover:-translate-y-0.5" href="https://github.com/SMSMy/HaramLite/releases/latest" rel="noreferrer">
 <span class="material-symbols-outlined text-[20px]">download</span>
-<span class="js-exe-text" data-i18n-ar="تحميل المثبّت الذكي ({v})" data-i18n-en="Download Setup ({v})">تحميل المثبّت الذكي (0.2.5)</span>
+<span class="js-exe-text" data-i18n-ar="تحميل المثبّت الذكي ({v})" data-i18n-en="Download Setup ({v})">تحميل المثبّت الذكي (0.2.7)</span>
 <span class="inline-block font-mono-code text-mono-code opacity-75 js-exe-size" dir="ltr">187.6 MB</span>
 </a>
 <a class="inline-flex items-center gap-stack-sm px-stack-lg py-stack-md rounded bg-surface-container text-cream-text font-label-md text-label-md hover:bg-surface-container-high transition-colors shadow-sm" href="bridge.html" rel="noreferrer" target="_blank">
@@ -368,7 +368,7 @@
 <span class="w-3 h-3 rounded-full bg-warn-yellow inline-block"></span>
 <span class="w-3 h-3 rounded-full bg-tertiary inline-block"></span>
 </div>
-<span class="font-mono-code text-mono-code text-on-surface-variant mx-stack-sm">HaramLite Desktop v<span class="js-version-text">0.2.5</span> • [Tauri v2 + ONNX DirectML/CUDA]</span>
+<span class="font-mono-code text-mono-code text-on-surface-variant mx-stack-sm">HaramLite Desktop v<span class="js-version-text">0.2.7</span> • [Tauri v2 + ONNX DirectML/CUDA]</span>
 </div>
 <div class="flex items-center gap-stack-sm text-on-surface-variant font-mono-code text-mono-code">
 <span class="material-symbols-outlined text-[16px] text-clay-accent">memory</span>
@@ -509,7 +509,7 @@
 <span class="material-symbols-outlined text-[24px]">info</span>
 </div>
 <div class="flex-1">
-<span class="font-label-md text-label-md text-warn-yellow font-bold block mb-0.5" data-i18n-ar="تنبيه شفاف بخصوص التحديث في الإصدار {v}" data-i18n-en="Transparent Notice Regarding v{v} Auto-Updates">تنبيه شفاف بخصوص التحديث في الإصدار 0.2.5</span>
+<span class="font-label-md text-label-md text-warn-yellow font-bold block mb-0.5" data-i18n-ar="تنبيه شفاف بخصوص التحديث في الإصدار {v}" data-i18n-en="Transparent Notice Regarding v{v} Auto-Updates">تنبيه شفاف بخصوص التحديث في الإصدار 0.2.7</span>
 <p class="font-body-md text-body-md text-cream-text/90" data-i18n-ar="التحديث الذاتي التلقائي موقوف حالياً في هذا الإصدار لأن مفتاح توقيع الإصدارات الرقمي غير مضبوط في مسار البناء الآلي بعد. يتم الترقية مستقبلاً بتنزيل المثبّت الجديد مباشرة من صفحة الإصدارات." data-i18n-en="Automatic in-app updates are currently disabled in this build as release signing keys are not yet configured in CI. Future upgrades are performed by running the new installer directly from GitHub Releases.">التحديث الذاتي التلقائي موقوف حالياً في هذا الإصدار لأن مفتاح توقيع الإصدارات الرقمي غير مضبوط في مسار البناء الآلي بعد. يتم الترقية مستقبلاً بتنزيل المثبّت الجديد مباشرة من صفحة الإصدارات.</p>
 </div>
 </div>
@@ -527,13 +527,13 @@
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="مثبّت متكامل يجهّز بيئة العمل تلقائياً: يثبت VC++ Redistributable، ومسارات FFmpeg، ونموذج الذكاء الاصطناعي مع اختصارات سطح المكتب." data-i18n-en="All-in-one setup wizard: installs required VC++ redistributable, FFmpeg binaries, and AI models with desktop shortcuts.">مثبّت متكامل يجهّز بيئة العمل تلقائياً: يثبت VC++ Redistributable، ومسارات FFmpeg، ونموذج الذكاء الاصطناعي مع اختصارات سطح المكتب.</p>
 <div class="font-mono-code text-mono-code text-on-surface-variant/80 bg-surface-container-lowest p-stack-sm rounded mb-6" dir="ltr">
-              HaramLite_<span class="js-version-text">0.2.5</span>_x64-setup.exe
+              HaramLite_<span class="js-version-text">0.2.7</span>_x64-setup.exe
               <!-- المقاس أدناه (وكذلك .js-msi-size) يُستبدل عند التحميل من واجهة GitHub؛
-                   والمكتوب هنا مقاس الأصل المنشور فعلاً في 0.2.5 لا تقدير. -->
+                   والمكتوب هنا مقاس الأصل المنشور فعلاً في 0.2.7 لا تقدير. -->
               <span class="js-exe-size block text-clay-accent font-mono-code text-mono-code">187.6 MB</span>
             </div>
 </div>
-<a class="js-exe-link w-full py-stack-md rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold text-center hover:bg-primary transition-colors flex items-center justify-center gap-stack-sm shadow" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.5/HaramLite_0.2.5_x64-setup.exe">
+<a class="js-exe-link w-full py-stack-md rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold text-center hover:bg-primary transition-colors flex items-center justify-center gap-stack-sm shadow" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.7/HaramLite_0.2.7_x64-setup.exe">
 <span class="material-symbols-outlined text-[20px]">download</span>
 <span data-i18n-ar="تحميل المثبّت (.exe)" data-i18n-en="Download Setup (.exe)">تحميل المثبّت (.exe)</span>
 </a>
@@ -547,11 +547,11 @@
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="حزمة MSI القياسية المخصصة لمسؤولي الأنظمة وبيئات النطاقات (Domain Admins)، تدعم التثبيت الصامت عبر سياسات المجموعات (GPO / Intune)." data-i18n-en="Standard MSI package tailored for system admins, supporting silent deployment, GPO automation, and MDM policies.">حزمة MSI القياسية المخصصة لمسؤولي الأنظمة وبيئات النطاقات (Domain Admins)، تدعم التثبيت الصامت عبر سياسات المجموعات (GPO / Intune).</p>
 <div class="font-mono-code text-mono-code text-on-surface-variant/80 bg-surface-container-lowest p-stack-sm rounded mb-6" dir="ltr">
-              HaramLite_<span class="js-version-text">0.2.5</span>_x64_en-US.msi
+              HaramLite_<span class="js-version-text">0.2.7</span>_x64_en-US.msi
               <span class="js-msi-size block text-clay-accent font-mono-code text-mono-code">364.7 MB</span>
             </div>
 </div>
-<a class="js-msi-link w-full py-stack-md rounded bg-surface-container-high text-cream-text font-label-md text-label-md font-bold text-center hover:bg-surface-bright transition-colors flex items-center justify-center gap-stack-sm" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.5/HaramLite_0.2.5_x64_en-US.msi">
+<a class="js-msi-link w-full py-stack-md rounded bg-surface-container-high text-cream-text font-label-md text-label-md font-bold text-center hover:bg-surface-bright transition-colors flex items-center justify-center gap-stack-sm" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.7/HaramLite_0.2.7_x64_en-US.msi">
 <span class="material-symbols-outlined text-[20px]">folder_zip</span>
 <span data-i18n-ar="تحميل حزمة MSI" data-i18n-en="Download MSI Package">تحميل حزمة MSI</span>
 </a>
@@ -563,7 +563,7 @@
 <span class="material-symbols-outlined text-on-surface-variant text-[28px]">package_2</span>
 <h3 class="font-headline-lg text-headline-lg text-on-surface-variant">النسخة المحمولة</h3>
 </div>
-<p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="تنويه: النسخة المحمولة (Portable) لم تتوفر في الإصدار 0.2.5 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في إصدار لاحق بعد ضغط النماذج." data-i18n-en="Notice: Standalone portable archive is paused in 0.2.5 due to required bin/ and models/ payload constraints (~515MB). Will return in upcoming pruned model updates.">تنويه: النسخة المحمولة (Portable) لم تتوفر في الإصدار 0.2.5 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في إصدار لاحق بعد ضغط النماذج.</p>
+<p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="تنويه: النسخة المحمولة (Portable) لم تتوفر في الإصدار 0.2.7 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في إصدار لاحق بعد ضغط النماذج." data-i18n-en="Notice: Standalone portable archive is paused in 0.2.7 due to required bin/ and models/ payload constraints (~515MB). Will return in upcoming pruned model updates.">تنويه: النسخة المحمولة (Portable) لم تتوفر في الإصدار 0.2.7 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في إصدار لاحق بعد ضغط النماذج.</p>
 </div>
 <div class="p-stack-sm bg-surface-container-lowest rounded text-center font-mono-code text-mono-code text-on-surface-variant">
             الحالة: مؤجّلة إلى 0.3
@@ -571,7 +571,7 @@
 </div>
 </div>
 <!-- Installer Integrity Panel: البصمة تُملأ من واجهة GitHub (asset.digest) عند فتح الصفحة.
-     والمكتوب هنا هو بصمة الأصل المنشور فعلاً في 0.2.5 لا تقدير — مقروءة من SHA256SUMS.txt
+     والمكتوب هنا هو بصمة الأصل المنشور فعلاً في 0.2.7 لا تقدير — مقروءة من SHA256SUMS.txt
      المرفق بالإصدار ومطابقة لـ digest في واجهة GitHub؛ يُحدَّث مع كل إصدار. -->
 <div class="bg-surface-container-low rounded-xl p-stack-lg mb-8 shadow-sm">
 <div class="flex items-start gap-stack-md">
@@ -581,12 +581,12 @@
 <p class="font-body-md text-body-md text-on-surface-variant mb-3" data-i18n-ar="التوقيع الرقمي غير متوفّر بعد (يحتاج شهادة توقيع كود)، فالبصمة هي وسيلة التحقّق المتاحة: قارن بصمة ملفك المنزَّل بهذه القيمة، وهي منشورة كذلك في ملف SHA256SUMS.txt المرفق بالإصدار." data-i18n-en="Code signing is not available yet (it requires a code-signing certificate), so the fingerprint is the available means of verification: compare the hash of the file you downloaded with the value below. It is also published in the SHA256SUMS.txt attached to each release.">التوقيع الرقمي غير متوفّر بعد (يحتاج شهادة توقيع كود)، فالبصمة هي وسيلة التحقّق المتاحة: قارن بصمة ملفك المنزَّل بهذه القيمة، وهي منشورة كذلك في ملف SHA256SUMS.txt المرفق بالإصدار.</p>
 <div class="flex flex-col gap-1 font-mono-code text-mono-code bg-surface-container-lowest p-stack-sm rounded" dir="ltr">
 <div class="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
-<span class="text-on-surface-variant/70 js-exe-name">HaramLite_0.2.5_x64-setup.exe</span>
-<span class="text-clay-accent break-all js-exe-sha">db81868baa4b98d95aeacfc3019ac235b499e3fe3c0f0331ceb706d4e5741354</span>
+<span class="text-on-surface-variant/70 js-exe-name">HaramLite_0.2.7_x64-setup.exe</span>
+<span class="text-clay-accent break-all js-exe-sha">BDF2CBAA2266597980672EF968107E25C0D5FD03724E03417CD96B94E58DD6F8</span>
 </div>
 <div class="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
-<span class="text-on-surface-variant/70 js-msi-name">HaramLite_0.2.5_x64_en-US.msi</span>
-<span class="text-clay-accent break-all js-msi-sha">e5643173cf2e72a74a3bcdeefde1ba2480fca412d440165384d182c3c6ff843d</span>
+<span class="text-on-surface-variant/70 js-msi-name">HaramLite_0.2.7_x64_en-US.msi</span>
+<span class="text-clay-accent break-all js-msi-sha">8022A9FE2BAE2735F5838D5F35404D8970935CC90A1E2F07E329D8D3BF469EAF</span>
 </div>
 </div>
 <a class="inline-flex items-center gap-1 mt-3 font-label-sm text-label-sm text-clay-accent hover:text-primary transition-colors" href="https://github.com/SMSMy/HaramLite/releases/latest/download/SHA256SUMS.txt" rel="noreferrer">
@@ -741,17 +741,17 @@
 </div>
 </div>
 </section>
-<!-- 6. WHAT'S NEW IN 0.2.5 (#whatsnew) -->
+<!-- 6. WHAT'S NEW IN 0.2.7 (#whatsnew) -->
 <section class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop mb-24 scroll-mt-20" id="whatsnew">
 <div class="bg-surface-container-high rounded-xl p-stack-lg sm:p-12 shadow-lg">
 <div class="flex flex-col md:flex-row md:items-center justify-between gap-stack-md mb-8 pb-stack-md border-b border-border-muted">
 <div>
 <div class="inline-flex items-center gap-stack-sm px-stack-sm py-0.5 rounded bg-clay-accent/15 text-clay-accent font-mono-code text-mono-code font-bold mb-2">
-سجل التغييرات • الإصدار <span class="js-version-text">0.2.5</span>
+سجل التغييرات • الإصدار <span class="js-version-text">0.2.7</span>
 </div>
-<h2 class="font-headline-xl text-headline-xl text-cream-text" data-i18n-ar="الجديد في إصدار {v}" data-i18n-en="What&#39;s New in v{v}">الجديد في إصدار 0.2.5</h2>
+<h2 class="font-headline-xl text-headline-xl text-cream-text" data-i18n-ar="الجديد في إصدار {v}" data-i18n-en="What&#39;s New in v{v}">الجديد في إصدار 0.2.7</h2>
 </div>
-<a class="inline-flex items-center gap-stack-sm font-label-md text-label-md text-clay-accent hover:underline" href="https://github.com/SMSMy/HaramLite/releases/tag/v0.2.5" rel="noreferrer" target="_blank">
+<a class="inline-flex items-center gap-stack-sm font-label-md text-label-md text-clay-accent hover:underline" href="https://github.com/SMSMy/HaramLite/releases/tag/v0.2.7" rel="noreferrer" target="_blank">
 <span data-i18n-ar="عرض تقرير الإصدار في GitHub" data-i18n-en="View release on GitHub">عرض تقرير الإصدار في GitHub</span>
 <span class="material-symbols-outlined text-[16px]">arrow_outward</span>
 </a>
@@ -760,50 +760,50 @@
 
 <div class="space-y-stack-sm">
 <div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
-<span class="material-symbols-outlined text-clay-accent">movie</span>
-<span data-i18n-ar="المحرّك صار بناءً متوافقاً مع LGPLv3" data-i18n-en="The media engine is now an LGPLv3 build">المحرّك صار بناءً متوافقاً مع LGPLv3</span>
+<span class="material-symbols-outlined text-clay-accent">verified_user</span>
+<span data-i18n-ar="ثلاث عشرة بوّابة تحرس كل دفعة" data-i18n-en="Thirteen gates guard every push">ثلاث عشرة بوّابة تحرس كل دفعة</span>
 </div>
-<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="لم يبقَ في الكود أي اعتماد على مكتبة بترخيص GPL، فصار المثبّت أصغر: 220.2 ⟶ 187.6 ميجابايت للمثبّت الذكي، و431.2 ⟶ 364.7 للملف MSI." data-i18n-en="No GPL-licensed library remains in the code, and the installer got smaller: 220.2 &rarr; 187.6 MB for the setup and 431.2 &rarr; 364.7 MB for the MSI.">لم يبقَ في الكود أي اعتماد على مكتبة بترخيص GPL، فصار المثبّت أصغر: 220.2 ⟶ 187.6 ميجابايت للمثبّت الذكي، و431.2 ⟶ 364.7 للملف MSI.</p>
-</div>
-
-<div class="space-y-stack-sm">
-<div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
-<span class="material-symbols-outlined text-clay-accent">bolt</span>
-<span data-i18n-ar="الجودة أولاً: المُرمِّز الجديد مكافئ أو أفضل" data-i18n-en="Quality first: the new encoder matches or beats the old one">الجودة أولاً: المُرمِّز الجديد مكافئ أو أفضل</span>
-</div>
-<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="قيس على ثلاثة محتويات حقيقية: الجودة مكافئة أو أفضل قليلاً، لكن حجم الملف قد يكبر على محتوى معيّن — والاختيار كان الجودة على الحجم." data-i18n-en="Measured on three real clips: quality matches or is slightly better, while the output file may grow on some content — quality was chosen over size.">قيس على ثلاثة محتويات حقيقية: الجودة مكافئة أو أفضل قليلاً، لكن حجم الملف قد يكبر على محتوى معيّن — والاختيار كان الجودة على الحجم.</p>
-</div>
-
-<div class="space-y-stack-sm">
-<div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
-<span class="material-symbols-outlined text-clay-accent">download</span>
-<span data-i18n-ar="زرّ التحقق من التحديثات عاد — ويعمل" data-i18n-en="The update check button is back, and it works">زرّ التحقق من التحديثات عاد — ويعمل</span>
-</div>
-<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="من الإعدادات: يقرأ آخر إصدار منشور ويخبرك إن كان أحدث، ويفتح صفحة التنزيل. وكل مسار فشل له رسالة واضحة، بلا زرّ يفشل بصمت." data-i18n-en="From Settings: it reads the latest published version, tells you if one is newer, and opens the download page. Every failure path shows a clear message.">من الإعدادات: يقرأ آخر إصدار منشور ويخبرك إن كان أحدث، ويفتح صفحة التنزيل. وكل مسار فشل له رسالة واضحة، بلا زرّ يفشل بصمت.</p>
-</div>
-
-<div class="space-y-stack-sm">
-<div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
-<span class="material-symbols-outlined text-clay-accent">graphic_eq</span>
-<span data-i18n-ar="قائمة إعدادات أوضح: معتمة وبلا رموز تعبيرية" data-i18n-en="A clearer settings menu: opaque, no emoji">قائمة إعدادات أوضح: معتمة وبلا رموز تعبيرية</span>
-</div>
-<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="كانت زجاجية فيظهر ما خلفها تحت النصوص؛ صارت معتمة مع إبقاء الإطار والظل، وأُزيلت الرموز التعبيرية وحلّت محلها أيقونات موحّدة." data-i18n-en="It used to be glassy, letting content show through the labels; it is now opaque with the border and shadow kept, and the emoji are replaced by consistent icons.">كانت زجاجية فيظهر ما خلفها تحت النصوص؛ صارت معتمة مع إبقاء الإطار والظل، وأُزيلت الرموز التعبيرية وحلّت محلها أيقونات موحّدة.</p>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="من تسع إلى ثلاث عشرة: تنسيق الشيفرة كاملة ومنع الرجوع عنه · حارس هندسة الواجهة (18 صندوقاً في 6 حالات نافذة بالعربية والإنجليزية) · 65 اختبار واجهة · حرّاس الاعتماديات وتنبيهاتها الأمنية مع فحص أسبوعي · إسناد الإصدار وقائمة مكوّنات · وبوّابة سجلّ الاختبار اليدوي. وأي انحراف يُسقط الدفعة." data-i18n-en="Nine gates became thirteen: whole-tree formatting with a check that blocks regressions, a UI geometry guard (18 floating boxes across 6 window states in both directions), 65 frontend tests, dependency and advisory gates with a weekly scan, release metadata plus a component list, and a manual-test-matrix gate. Any drift fails the push.">من تسع إلى ثلاث عشرة: تنسيق الشيفرة كاملة ومنع الرجوع عنه · حارس هندسة الواجهة (18 صندوقاً في 6 حالات نافذة بالعربية والإنجليزية) · 65 اختبار واجهة · حرّاس الاعتماديات وتنبيهاتها الأمنية مع فحص أسبوعي · إسناد الإصدار وقائمة مكوّنات · وبوّابة سجلّ الاختبار اليدوي. وأي انحراف يُسقط الدفعة.</p>
 </div>
 
 <div class="space-y-stack-sm">
 <div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
 <span class="material-symbols-outlined text-clay-accent">check_circle</span>
-<span data-i18n-ar="أول تشغيل لم يكن متجمّداً — بل كان ترتيباً خاطئاً في الملف" data-i18n-en="The frozen first play was a file-layout problem">أول تشغيل لم يكن متجمّداً — بل كان ترتيباً خاطئاً في الملف</span>
+<span data-i18n-ar="فحص الملف لم يبقَ ينجح على ملف تالف" data-i18n-en="The file probe no longer passes a corrupt file">فحص الملف لم يبقَ ينجح على ملف تالف</span>
 </div>
-<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="كان فهرس الملف في آخره، فالمشغّل الذي يقرأ تدريجياً (تيليجرام أو المتصفح) لا يبدأ حتى يكتمل التنزيل. الآن الفهرس في المقدمة." data-i18n-en="The file index sat at the end, so a progressively-reading player (Telegram, a browser) could not start until the download finished. The index now comes first.">كان فهرس الملف في آخره، فالمشغّل الذي يقرأ تدريجياً (تيليجرام أو المتصفح) لا يبدأ حتى يكتمل التنزيل. الآن الفهرس في المقدمة.</p>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="أمر الفحص في سطر الأوامر كان يخرج برمز نجاح ويطبع تصنيفاً فارغاً على ملف مفقود أو صفر بايت. الآن يفشل برسالة تسمّي الملف، واختبار دائم يمنع عودته. وقد كشفته مصفوفة الاختبار اليدوي — لا التخمين." data-i18n-en="The command-line probe used to exit with a success code and print an empty classification for a missing or zero-byte file. It now fails with a message naming the file, and a permanent test keeps it that way. The manual test matrix found it, not a guess.">أمر الفحص في سطر الأوامر كان يخرج برمز نجاح ويطبع تصنيفاً فارغاً على ملف مفقود أو صفر بايت. الآن يفشل برسالة تسمّي الملف، واختبار دائم يمنع عودته. وقد كشفته مصفوفة الاختبار اليدوي — لا التخمين.</p>
+</div>
+
+<div class="space-y-stack-sm">
+<div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
+<span class="material-symbols-outlined text-clay-accent">description</span>
+<span data-i18n-ar="مصفوفة الاختبار صار لها سجلّ" data-i18n-en="The test matrix has a record now">مصفوفة الاختبار صار لها سجلّ</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="55 حالة اختبار، منها 20 إلزامية قبل كل إصدار — ولكل واحدة تاريخ وجهاز ونتيجة. وما لم يُنفَّذ مكتوب فيه «لم يُنفَّذ» بسببه بدل تركه فارغاً. وبوّابة آلية تمنع تجهيز إصدار وصفٌّ إلزامي بلا سجلّ." data-i18n-en="55 test cases, 20 of them mandatory before any release — each with a date, a device and a result. What was not run says so, with its reason, instead of sitting empty. An automated gate blocks a release while a mandatory row has no record.">55 حالة اختبار، منها 20 إلزامية قبل كل إصدار — ولكل واحدة تاريخ وجهاز ونتيجة. وما لم يُنفَّذ مكتوب فيه «لم يُنفَّذ» بسببه بدل تركه فارغاً. وبوّابة آلية تمنع تجهيز إصدار وصفٌّ إلزامي بلا سجلّ.</p>
 </div>
 
 <div class="space-y-stack-sm">
 <div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
 <span class="material-symbols-outlined text-clay-accent">build</span>
-<span data-i18n-ar="صيانة: تبعيات منظّمة وتنظيف بلا تغيير سلوك" data-i18n-en="Maintenance: tidier dependencies, behaviour-preserving cleanup">صيانة: تبعيات منظّمة وتنظيف بلا تغيير سلوك</span>
+<span data-i18n-ar="إسناد إصدار يرفض أن يكذب" data-i18n-en="Release metadata that refuses to lie">إسناد إصدار يرفض أن يكذب</span>
 </div>
-<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="سياسة تحديث التبعيات أُحكمت (طلب واحد للدنيا والرقعة لكل نظام، وتجاهل الترقيات الكبرى)، ونُظّفت تحذيرات التحليل الساكن مع توثيق كل استثناء بسببه." data-i18n-en="The dependency policy is tighter (one minor/patch PR per ecosystem, majors ignored), and the static-analysis warnings were cleaned with every exception documented.">سياسة تحديث التبعيات أُحكمت (طلب واحد للدنيا والرقعة لكل نظام، وتجاهل الترقيات الكبرى)، ونُظّفت تحذيرات التحليل الساكن مع توثيق كل استثناء بسببه.</p>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="كل دفعة تولّد ملف إسناد يحمل الإصدار والالتزام وحالة الشجرة وبصمات الأصول، وقائمة مكوّنات بصيغة CycloneDX فيها 804 مكوّنات. وكلاهما يرفض الكتابة إن اختلف رقم الإصدار بين ملفات المشروع." data-i18n-en="Every push generates a metadata file carrying the version, the commit, the tree state and asset fingerprints, plus a CycloneDX component list with 804 components. Both refuse to write when the version files disagree.">كل دفعة تولّد ملف إسناد يحمل الإصدار والالتزام وحالة الشجرة وبصمات الأصول، وقائمة مكوّنات بصيغة CycloneDX فيها 804 مكوّنات. وكلاهما يرفض الكتابة إن اختلف رقم الإصدار بين ملفات المشروع.</p>
+</div>
+
+<div class="space-y-stack-sm">
+<div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
+<span class="material-symbols-outlined text-clay-accent">bolt</span>
+<span data-i18n-ar="ثغرة حقيقية أُغلقت قبل أن تصل" data-i18n-en="A real advisory closed before it shipped">ثغرة حقيقية أُغلقت قبل أن تصل</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="بوّابة الاعتماديات كشفت تنبيهاً فعلياً في مكتبة تشفير الاتصال، وله مسار مُثبَت في بناء ويندوز، فرفعنا نسختها. والاستثناءات المتبقية كلها مكتبات بلا صيانة، موثَّقة بتاريخها وسببها لا مسكوت عنها." data-i18n-en="The dependency gate surfaced a real advisory in a TLS library with a proven path into the Windows build, and the crate was bumped. The remaining exceptions are all unmaintained packages, each dated and justified rather than left silent.">بوّابة الاعتماديات كشفت تنبيهاً فعلياً في مكتبة تشفير الاتصال، وله مسار مُثبَت في بناء ويندوز، فرفعنا نسختها. والاستثناءات المتبقية كلها مكتبات بلا صيانة، موثَّقة بتاريخها وسببها لا مسكوت عنها.</p>
+</div>
+
+<div class="space-y-stack-sm">
+<div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
+<span class="material-symbols-outlined text-clay-accent">download</span>
+<span data-i18n-ar="تنزيل الأصول بتحقّق بصمة، ووثائق للمساهم" data-i18n-en="Digest-verified assets, and docs for contributors">تنزيل الأصول بتحقّق بصمة، ووثائق للمساهم</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="سكربت واحد ينزّل أدوات المشروع والنموذج ويتحقّق من بصمة كل ملف قبل استخدامه، وصفحة حالة للمشروع، وصفحة تشرح تحذير ويندوز عند أول تشغيل — ليدخل المساهم بلا تخمين." data-i18n-en="One script downloads the project tools and model and verifies each file digest before use, alongside a project status page and a page explaining the first-run Windows warning — so a contributor can start without guessing.">سكربت واحد ينزّل أدوات المشروع والنموذج ويتحقّق من بصمة كل ملف قبل استخدامه، وصفحة حالة للمشروع، وصفحة تشرح تحذير ويندوز عند أول تشغيل — ليدخل المساهم بلا تخمين.</p>
 </div>
 
 </div>
