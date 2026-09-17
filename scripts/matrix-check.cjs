@@ -35,6 +35,12 @@ const EXIT = { PASS: 0, INCOMPLETE: 1, MISUSE: 2 };
 /**
  * يقسم سطر جدول إلى خاناته. يحترم `\|` (شرطة مائلة عكسية تسبق الأنبوب) كأنبوب
  * حرفي داخل الخانة — فالملف يوثّق قالب الصفّ بهذه الصيغة.
+ *
+ * الطرفان يُطرحان **بالقياس لا بالموضع**: ما قبل أول `|` فارغٌ دائماً فيُطرح،
+ * وأما الخانة الأخيرة فتُطرح **فقط إن كان الصفّ منتهياً بأنبوب**. و`slice(1,-1)`
+ * كان يطرحها دائماً، فصفٌّ صحيح في Markdown بلا أنبوب ختامي
+ * (`| 9.9 **[إلزامي]** | ... | ✅ · 2026-09-17 · جهاز |`) يفقد خانته الأخيرة
+ * ⇒ يُقيَّم عمودٌ آخر (عطل مُعاد إنتاجه: طُبع «فارغ بلا تاريخ · بلا نتيجة»).
  * @param {string} line
  * @returns {string[]|null} الخانات مقصوصة، أو null إن لم يكن سطر جدول.
  */
@@ -59,7 +65,10 @@ function splitRow(line) {
   cells.push(cur);
   // اطرح الطرفين الفارغين (قبل أول `|` وبعد آخر `|`).
   if (cells.length < 2) return null;
-  return cells.slice(1, -1).map((c) => c.trim());
+  const body = cells.slice(1);
+  // `cur` هو ما تلا آخر أنبوب: فارغاً (أو مسافات) ⇒ الصفّ منتهٍ بأنبوب.
+  const endedWithPipe = cur.trim() === '';
+  return (endedWithPipe ? body.slice(0, -1) : body).map((c) => c.trim());
 }
 
 /** هل الخانة فاصل ترويسة (`---`, `:--:`, …)؟ */
@@ -238,9 +247,116 @@ const USAGE = `الاستعمال: node scripts/matrix-check.cjs [--file=<path>]
 
   --file=<path>  مسار المصفوفة (افتراضاً qa/TEST-MATRIX.md)
   --quiet        لا تطبع إلا الملخّص وسطور النقص
+  --selfcheck    يفحص الحارس نفسه على مصفوفات مصنوعة (مُفسَد · ضابط · صفر مدخل)
   --help         هذه الرسالة
 
 يرجع 0 إن اكتملت كل الصفوف الإلزامية · 1 إن بقي صفّ ناقص · 2 عند خطأ بنية/استعمال.`;
+
+/* ---------------------------------------------------------------------------
+// الفحص الذاتي: الحارس يُسقط على نصّ مُخرَّب، ويمرّ على نصّ سليم رآه فعلاً
+// ---------------------------------------------------------------------------
+// العطل الذي وُلد هذا الفحص لأجله: `slice(1,-1)` كان يطرح الخانة الأخيرة من
+// صفٍّ **بلا أنبوب ختامي** — وهو صفّ صحيح في Markdown — فيقرأ عموداً آخر
+// ويطبع «فارغ بلا تاريخ · بلا نتيجة» عن صفٍّ مملوء. فالفحص يشغّل هذا الملف
+// نفسه (لا دواله وحده) على مصفوفات مصنوعة، ويحكم على رمز الخروج وعلى النصّ:
+//
+//   ① **ضابط بلا أنبوب**: صفّ مملوء بلا أنبوب ختامي ⇒ يجب أن يمرّ (0)
+//      **وقد رأى تاريخه وجهازه ونتيجته** — وإلا مرّ لأنه لم ينظر.
+//   ② **تكافؤ**: الصفّ نفسه بأنبوب ختامي ⇒ نفس الحكم ونفس السبب المطبوع.
+//   ③ **مُفسَد**: صفّ إلزامي بخانة نتيجة فارغة ⇒ يجب أن يُسقط الحارس (1).
+//   ④ **صفر مدخل**: مصفوفة بلا صفّ إلزامي ⇒ يجب أن تفشل بصوت عالٍ (2).
+//
+// كل عمليات الخادم/الطفل تُطلق بلا نافذة (`windowsHide`)، والمجلد المصنوع
+// تحت `os.tmpdir()` ويُحذف في النهاية. */
+
+const FIXTURE_HEADER = [
+  '| # | البيئة | الخطوات | النتيجة المتوقَّعة | النتيجة |',
+  '| --- | --- | --- | --- | --- |',
+].join('\n');
+
+/** صفّ مصفوفة مصنوع. `tail` = خانة النتيجة، و`close` = الأنبوب الختامي. */
+function fixtureRow(result, close) {
+  const head = '| 9.9 **[إلزامي]** | بيئة مصنوعة | خطوات مصنوعة | نتيجة متوقَّعة |';
+  return close ? `${head} ${result} |` : `${head} ${result}`;
+}
+
+function selfcheck() {
+  const fsMod = require('node:fs');
+  const osMod = require('node:os');
+  const { spawnSync } = require('node:child_process');
+  const dir = fsMod.mkdtempSync(path.join(osMod.tmpdir(), 'hl-matrix-selfcheck-'));
+  const failures = [];
+  const FILLED = '✅ · 2026-09-17 · Win11-26200/i9-10850K/RTX3070 · نصّ النتيجة';
+  const cases = [
+    {
+      label: '① ضابط: صفّ مملوء بلا أنبوب ختامي يُقيَّم مملوءاً',
+      rows: [fixtureRow(FILLED, false)],
+      expectStatus: EXIT.PASS,
+      expectText: ['1 من 1 مملوء', '2026-09-17', 'Win11-26200/i9-10850K/RTX3070'],
+      forbidText: ['بلا تاريخ'],
+    },
+    {
+      label: '② تكافؤ: الصفّ نفسه بأنبوب ختامي يعطي نفس الحكم',
+      rows: [fixtureRow(FILLED, true)],
+      expectStatus: EXIT.PASS,
+      expectText: ['1 من 1 مملوء', '2026-09-17', 'Win11-26200/i9-10850K/RTX3070'],
+      forbidText: ['بلا تاريخ'],
+    },
+    {
+      label: '③ مُفسَد: خانة نتيجة فارغة تُسقط الحارس (1)',
+      rows: [fixtureRow('', true)],
+      expectStatus: EXIT.INCOMPLETE,
+      expectText: ['9.9', 'بلا'],
+      forbidText: [],
+    },
+    {
+      label: '④ صفر مدخل: بلا صفّ إلزامي ⇒ فشل بصوت عالٍ (2)',
+      rows: ['| 9.9 | بيئة مصنوعة | خطوات | نتيجة متوقَّعة | ✅ · 2026-09-17 · جهاز · نصّ |'],
+      expectStatus: EXIT.MISUSE,
+      expectText: ['صفر صفّ إلزامي'],
+      forbidText: [],
+    },
+  ];
+
+  for (const c of cases) {
+    const file = path.join(dir, `case-${cases.indexOf(c)}.md`);
+    fsMod.writeFileSync(file, `${FIXTURE_HEADER}\n${c.rows.join('\n')}\n`, 'utf8');
+    const r = spawnSync(process.execPath, [__filename, `--file=${file}`], {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    const out = `${r.stdout || ''}${r.stderr || ''}`;
+    const problems = [];
+    if (r.status !== c.expectStatus) {
+      problems.push(`رمز الخروج ${r.status} بدل ${c.expectStatus}`);
+    }
+    for (const t of c.expectText) {
+      if (!out.includes(t)) problems.push(`المخرَج لا يحوي «${t}»`);
+    }
+    for (const t of c.forbidText) {
+      if (out.includes(t)) problems.push(`المخرَج يحوي «${t}» وهو ممنوع`);
+    }
+    if (problems.length === 0) {
+      process.stdout.write(`✅ ${c.label}\n`);
+    } else {
+      failures.push(`${c.label} — ${problems.join(' · ')}\n${out.trim()}`);
+      process.stdout.write(`✗ ${c.label} — ${problems.join(' · ')}\n`);
+    }
+  }
+
+  try {
+    fsMod.rmSync(dir, { recursive: true, force: true });
+  } catch {
+    /* مجلد مؤقت: فشل حذفه لا يُسقط الفحص */
+  }
+
+  if (failures.length > 0) {
+    process.stderr.write(`\n✗ الفحص الذاتي: ${failures.length} حالة فشلت\n`);
+    return EXIT.MISUSE;
+  }
+  process.stdout.write(`\n✓ الفحص الذاتي: ${cases.length} من ${cases.length} حالة سليمة\n`);
+  return EXIT.PASS;
+}
 
 function main(argv) {
   const opts = parseArgs(argv);
@@ -307,7 +423,10 @@ function main(argv) {
 }
 
 if (require.main === module) {
-  process.exitCode = main(process.argv);
+  // `--selfcheck` قبل parseArgs: هو ليس مساراً ولا وسيطاً للمصفوفة.
+  process.exitCode = process.argv.includes('--selfcheck')
+    ? selfcheck()
+    : main(process.argv);
 }
 
-module.exports = { parseRows, assessCell, findDate, splitRow, main };
+module.exports = { parseRows, assessCell, findDate, splitRow, main, selfcheck };

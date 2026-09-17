@@ -72,29 +72,72 @@ impl std::fmt::Display for MediaError {
 
 impl std::error::Error for MediaError {}
 
-/// Resolve bundled tools. Order: env override → exe_dir/bin → project bin.
-pub fn resolve_tool(tool: &str) -> Result<PathBuf, MediaError> {
-    let exe_name = if cfg!(windows) {
+/// How far above the executable's own directory the development-layout walk
+/// may climb. The deepest real case is `src-tauri/target/debug/deps` reaching
+/// the project's `bin/` in four hops; anything above the project root belongs
+/// to no part of this application.
+const MAX_ANCESTOR_HOPS: usize = 4;
+
+/// The executable name a tool is looked up under on this platform.
+fn tool_exe_name(tool: &str) -> String {
+    if cfg!(windows) {
         format!("{tool}.exe")
     } else {
         tool.to_string()
-    };
+    }
+}
+
+/// Resolve bundled tools. Order: env override → exe_dir/bin → project bin.
+pub fn resolve_tool(tool: &str) -> Result<PathBuf, MediaError> {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf));
+    let tools_dir = std::env::var_os("HARAMLITE_TOOLS_DIR").map(PathBuf::from);
+    let cwd = std::env::current_dir().ok();
+    resolve_tool_in(
+        tools_dir.as_deref(),
+        exe_dir.as_deref(),
+        cwd.as_deref(),
+        tool,
+    )
+}
+
+/// [`resolve_tool`] with every source of ambient state injected, so the layout
+/// rules are testable **without reading or writing the process environment** —
+/// a tool-resolution test must not become another env-var racer.
+///
+/// The development walk is **bounded twice**: it stops at the project root
+/// (the ancestor holding `.git`) and never takes more than
+/// [`MAX_ANCESTOR_HOPS`] hops. Unbounded, `parent.ancestors().skip(1)` climbed
+/// out of the application entirely: an install under
+/// `%LOCALAPPDATA%\Programs\HaramLite` reached `C:\bin\ffmpeg.exe`, and a
+/// stranger's ffmpeg there outranked the tool we ship. `HARAMLITE_TOOLS_DIR`
+/// stays first (the e2e harness pins its tools through it).
+pub(crate) fn resolve_tool_in(
+    tools_dir: Option<&Path>,
+    exe_dir: Option<&Path>,
+    cwd: Option<&Path>,
+    tool: &str,
+) -> Result<PathBuf, MediaError> {
+    let exe_name = tool_exe_name(tool);
 
     let mut candidates: Vec<PathBuf> = Vec::new();
 
-    if let Ok(dir) = std::env::var("HARAMLITE_TOOLS_DIR") {
-        candidates.push(PathBuf::from(dir).join(&exe_name));
+    if let Some(dir) = tools_dir {
+        candidates.push(dir.join(&exe_name));
     }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            candidates.push(parent.join("bin").join(&exe_name));
-            // dev layout: src-tauri/target/debug → walk up to project bin/
-            for ancestor in parent.ancestors().skip(1) {
-                candidates.push(ancestor.join("bin").join(&exe_name));
+    if let Some(parent) = exe_dir {
+        candidates.push(parent.join("bin").join(&exe_name));
+        // dev layout: src-tauri/target/debug[/deps] → up to the project bin/.
+        for ancestor in parent.ancestors().skip(1).take(MAX_ANCESTOR_HOPS) {
+            candidates.push(ancestor.join("bin").join(&exe_name));
+            // The project root is the last level that may supply a tool.
+            if ancestor.join(".git").exists() {
+                break;
             }
         }
     }
-    if let Ok(cwd) = std::env::current_dir() {
+    if let Some(cwd) = cwd {
         candidates.push(cwd.join("bin").join(&exe_name));
         candidates.push(cwd.join("../bin").join(&exe_name));
     }
@@ -308,8 +351,16 @@ pub fn normalize_for_engine_limited(
 }
 
 /// Extract the audio track of any media into `format` (mp3/wav/flac).
+///
+/// ONE normalization feeds all three decisions below — what is accepted, which
+/// encoder runs, and what the file is called. Validating the lowercased form
+/// while matching the **raw** one let `"MP3"` through and then chose the PCM
+/// fallback for it, so the caller got PCM in a file named `.MP3` (or an ffmpeg
+/// muxer error, depending on the build). `format` is now read only through
+/// `fmt`.
 pub fn extract_audio(input: &Path, format: &str, out_dir: &Path) -> Result<PathBuf, MediaError> {
-    match format.to_ascii_lowercase().as_str() {
+    let fmt = format.to_ascii_lowercase();
+    match fmt.as_str() {
         "mp3" | "wav" | "flac" => {}
         other => {
             return Err(MediaError::InvalidOutput(format!(
@@ -323,9 +374,9 @@ pub fn extract_audio(input: &Path, format: &str, out_dir: &Path) -> Result<PathB
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "audio".into());
-    let out = out_dir.join(format!("{stem}_haramlite.{format}"));
+    let out = out_dir.join(format!("{stem}_haramlite.{fmt}"));
 
-    let codec_args: &[&str] = match format {
+    let codec_args: &[&str] = match fmt.as_str() {
         "mp3" => &["-c:a", "libmp3lame", "-b:a", "320k"],
         "flac" => &["-c:a", "flac"],
         _ => &["-c:a", "pcm_s16le"],
@@ -541,9 +592,168 @@ mod tests {
         std::fs::remove_dir_all(&tmp).ok();
     }
 
+    /// Item 2 regression: `"MP3"` must be the same request as `"mp3"`.
+    ///
+    /// Before the fix the validation read the lowercased form while the codec
+    /// choice and the file name read the raw one, so `"MP3"` passed validation
+    /// and then fell into the PCM arm — a `.MP3` file holding PCM (or an
+    /// ffmpeg muxer refusal). The assertion is on the MEASURED codec (ffprobe),
+    /// not on the name, so a wrong-encoder run cannot pass by being renamed.
+    #[test]
+    fn uppercase_format_gets_the_real_encoder_not_just_the_name() {
+        if !tools_available() {
+            eprintln!("skipping: ffmpeg/ffprobe not found in bin/");
+            return;
+        }
+        let tmp = std::env::temp_dir().join(format!("hl_fmtcase_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let (wav, _mp4) = make_samples(&tmp);
+        let out_dir = tmp.join("out");
+
+        let upper = extract_audio(&wav, "MP3", &out_dir)
+            .expect("\"MP3\" is a valid request and must produce a real mp3");
+        assert_eq!(
+            upper.extension().and_then(|e| e.to_str()),
+            Some("mp3"),
+            "the output name must use the normalized format: {}",
+            upper.display()
+        );
+        let info = probe(&upper).expect("probe the uppercase-format output");
+        assert_eq!(
+            info.audio_codec.as_deref(),
+            Some("mp3"),
+            "the file must actually CONTAIN mp3, not PCM under an .MP3 name: {info:?}"
+        );
+
+        // Control: the lowercase spelling is unchanged, byte-for-byte behaviour.
+        let lower = extract_audio(&wav, "mp3", &out_dir).expect("extract mp3");
+        let lower_info = probe(&lower).expect("probe the lowercase-format output");
+        assert_eq!(lower_info.audio_codec.as_deref(), Some("mp3"));
+        assert_eq!(
+            lower.file_name(),
+            upper.file_name(),
+            "both spellings must land on the same output file"
+        );
+
+        // And an unsupported format is still refused (the guard did not widen).
+        assert!(extract_audio(&wav, "OGG", &out_dir).is_err());
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// Item 3 regression: a `bin/<tool>` with nothing to do with this project
+    /// must not be picked up.
+    ///
+    /// Reproduces the reported hazard — an app five levels below a stray
+    /// `C:\bin\ffmpeg.exe` — where the unbounded ancestor walk climbed out of
+    /// the application and let a stranger's ffmpeg outrank the bundled one.
+    /// Every input is injected, so this test reads and writes no env var and
+    /// cannot become an env racer itself.
+    #[test]
+    fn a_foreign_bin_far_above_the_app_is_not_reached() {
+        let root = std::env::temp_dir().join(format!("hl_toolwalk_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        // The decoy: the foreign tool, at the top of the tree.
+        let decoy = root.join("bin").join(tool_exe_name("ffmpeg"));
+        std::fs::create_dir_all(decoy.parent().unwrap()).unwrap();
+        std::fs::write(&decoy, b"a stranger's ffmpeg").unwrap();
+        // The app dir: five hops below it, exactly the install shape
+        // (%LOCALAPPDATA%\Programs\HaramLite under C:\).
+        let app = root
+            .join("L1")
+            .join("L2")
+            .join("L3")
+            .join("L4")
+            .join("HaramLite");
+        std::fs::create_dir_all(&app).unwrap();
+
+        let got = resolve_tool_in(None, Some(&app), None, "ffmpeg");
+        let got_path = got.as_ref().ok().map(|p| p.as_path());
+        assert_ne!(
+            got_path,
+            Some(decoy.as_path()),
+            "a foreign bin/ far above the app must never be chosen"
+        );
+        assert!(
+            got.is_err(),
+            "this tree holds nothing else, so the tool is missing: {:?}",
+            got
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Item 3 control: the walk is bounded, not disabled.
+    ///
+    /// The development layout must still resolve the project's own `bin/` —
+    /// from `target/debug/deps`, four hops up — and must stop AT the project
+    /// root rather than climbing past it into the parent folder.
+    #[test]
+    fn the_project_bin_is_still_reachable_but_nothing_above_it() {
+        let root = std::env::temp_dir().join(format!("hl_toolwalk_dev_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let project = root.join("project");
+        let deps = project
+            .join("src-tauri")
+            .join("target")
+            .join("debug")
+            .join("deps");
+        std::fs::create_dir_all(&deps).unwrap();
+        // The project marker that anchors the walk …
+        std::fs::write(project.join(".git"), b"gitdir: elsewhere\n").unwrap();
+        // … the project's own tool …
+        let ours = project.join("bin").join(tool_exe_name("ffmpeg"));
+        std::fs::create_dir_all(ours.parent().unwrap()).unwrap();
+        std::fs::write(&ours, b"ours").unwrap();
+        // … and a decoy ABOVE the project root, still inside the hop window.
+        let above = root.join("bin").join(tool_exe_name("ffmpeg"));
+        std::fs::create_dir_all(above.parent().unwrap()).unwrap();
+        std::fs::write(&above, b"above the project").unwrap();
+
+        assert_eq!(
+            resolve_tool_in(None, Some(&deps), None, "ffmpeg")
+                .ok()
+                .as_deref(),
+            Some(ours.as_path()),
+            "the project's own bin/ must win and the walk must stop there"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Item 3: `HARAMLITE_TOOLS_DIR` keeps absolute precedence over every
+    /// layout candidate — the e2e harness pins the shipped tools through it.
+    #[test]
+    fn the_tools_dir_override_still_comes_first() {
+        let root = std::env::temp_dir().join(format!("hl_toolsenv_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let pinned = root.join("pinned");
+        std::fs::create_dir_all(&pinned).unwrap();
+        let tool = pinned.join(tool_exe_name("ffmpeg"));
+        std::fs::write(&tool, b"pinned by env").unwrap();
+        // A nearer, perfectly good bin/ that must NOT win over the override.
+        let app = root.join("app");
+        let nearer = app.join("bin").join(tool_exe_name("ffmpeg"));
+        std::fs::create_dir_all(nearer.parent().unwrap()).unwrap();
+        std::fs::write(&nearer, b"nearer").unwrap();
+
+        assert_eq!(
+            resolve_tool_in(Some(&pinned), Some(&app), None, "ffmpeg")
+                .ok()
+                .as_deref(),
+            Some(tool.as_path()),
+            "HARAMLITE_TOOLS_DIR must stay first"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     // P3 tests share one process-wide env var (HARAMLITE_VIDEO_ENCODER),
     // and Rust runs tests in parallel threads — so all three run inside ONE
     // #[test] driver, strictly serial. Never split them apart.
+    //
+    // Being one test only serializes them against EACH OTHER; the variable is
+    // process-wide, so the driver also takes the crate-wide env lock (paths.rs)
+    // for its whole run, and restores the previous value even if it panics.
     fn p3_selection() {
         // Env override is authoritative in both directions ...
         // 0.2.5: `x264` is the LEGACY spelling and must still mean the
@@ -568,7 +778,6 @@ mod tests {
         // An unknown value must keep behaving exactly as it did before the
         // rename: hardware when present, software otherwise — never an error.
         assert_eq!(choose_video_encoder(false), VideoEncoder::Mf);
-        std::env::remove_var("HARAMLITE_VIDEO_ENCODER");
     }
 
     fn p3_probe_cached() {
@@ -590,6 +799,13 @@ mod tests {
     /// prints ENCODER-BENCH lines.
     #[test]
     fn p3_encoder_paths() {
+        // The whole driver runs under the crate-wide env lock: it writes
+        // HARAMLITE_VIDEO_ENCODER, which every concurrent `export_video_with_cuts`
+        // in this binary reads through `choose_video_encoder`. Holding it here
+        // (and not in the helpers) keeps the lock non-reentrant and the window
+        // honest — the variable is foreign-free for the entire measurement.
+        let _serial = crate::paths::serial_guard();
+        let _env = crate::paths::env_restore("HARAMLITE_VIDEO_ENCODER");
         p3_selection();
         p3_probe_cached();
         if !tools_available() {
@@ -689,7 +905,7 @@ mod tests {
                 Err(e) => panic!("{forced} path must never hard-fail (fallback exists): {e}"),
             }
         }
-        std::env::remove_var("HARAMLITE_VIDEO_ENCODER");
+        // The env var is put back by `env_restore` on the way out.
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

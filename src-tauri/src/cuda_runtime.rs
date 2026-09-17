@@ -653,7 +653,16 @@ pub fn ensure_dll_path() {
     }
     if let Ok(path) = std::env::var("PATH") {
         if !path.split(';').any(|p| p.eq_ignore_ascii_case(&dir_s)) {
-            // safe here: called at process startup before other threads
+            // Safe in production: called at process startup, before `run()` or
+            // `cli_entry()` lets any other thread exist. In a TEST build the
+            // harness already has threads reading the environment, so the
+            // write takes the crate-wide env lock (paths.rs) — the same lock
+            // every other env-writing test holds. Both callers today are
+            // production entrypoints (`run`, `cli_entry`), so this is a
+            // guard for a reachability that does not exist yet rather than a
+            // fix for a live race.
+            #[cfg(test)]
+            let _serial = crate::paths::serial_guard();
             std::env::set_var("PATH", format!("{dir_s};{path}"));
         }
     }

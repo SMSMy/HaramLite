@@ -97,10 +97,55 @@ pub fn migrate_legacy(legacy: &Path, target: &Path) -> Migration {
 /// is in the blast radius, because one test's teardown deletes its temp base,
 /// and that used to unclaim the pipeline lock test mid-test (the lock file
 /// lives under the very same resolved path — a real flake caught 2026-09-11).
+///
+/// It is also the ONE lock every test that writes a process-wide environment
+/// variable takes (`HARAMLITE_DATA_DIR`, `HARAMLITE_VIDEO_ENCODER`,
+/// `HARAMLITE_YTDLP_STATE_DIR`, `PATH`): `std::env::set_var` is process-wide
+/// while the harness runs tests on parallel threads, so two writers — or a
+/// writer and a reader — must never overlap. Rust's `Mutex` is not reentrant,
+/// so take it ONCE per test: `let _serial = crate::paths::serial_guard();`
+/// next to `let _env = crate::paths::env_restore("VAR");`.
 #[cfg(test)]
 pub fn test_lock() -> &'static std::sync::Mutex<()> {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     &LOCK
+}
+
+/// Take the crate-wide test lock, tolerating poisoning: one panicking test
+/// must not turn every later serialized test into a panic of its own.
+#[cfg(test)]
+pub fn serial_guard() -> std::sync::MutexGuard<'static, ()> {
+    test_lock().lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Snapshot of one environment variable, restored on drop — including while a
+/// test unwinds, so a failure cannot leak a stray value into the rest of the
+/// run. Pair with [`serial_guard`]; this type deliberately does not lock, so
+/// it can be created after the guard without any reentrancy hazard.
+#[cfg(test)]
+pub struct EnvRestore {
+    key: &'static str,
+    prev: Option<std::ffi::OsString>,
+}
+
+#[cfg(test)]
+impl Drop for EnvRestore {
+    fn drop(&mut self) {
+        match self.prev.take() {
+            Some(v) => std::env::set_var(self.key, v),
+            None => std::env::remove_var(self.key),
+        }
+    }
+}
+
+/// Remember `key`'s current value so the test leaves the process as it found
+/// it. Must be called while holding [`serial_guard`].
+#[cfg(test)]
+pub fn env_restore(key: &'static str) -> EnvRestore {
+    EnvRestore {
+        key,
+        prev: std::env::var_os(key),
+    }
 }
 
 fn count_files(root: &Path) -> usize {
