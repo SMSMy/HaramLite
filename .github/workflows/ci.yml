@@ -34,10 +34,14 @@ jobs:
         with:
           version: 10
 
+      # Node 20 كان دون أرضية أدوات الاختبار: `jsdom@30` يعلن `engines: ^22.22.2 || ^24.15.0 || >=26`
+      # و`undici@8` يطلب `>=22.19.0`، فكانت خطوة `vitest` تفشل بـ
+      # `webidl.util.markAsUncloneable is not a function` — وقد ظهر ذلك في أول دفع بعد
+      # توصيل البوّابة (2026-09-17) لا قبلها. (وعلى جهاز المالك Node 25 فالاختبارات تمرّ.)
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - name: Setup Rust
