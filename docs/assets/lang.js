@@ -29,6 +29,53 @@
   function fill(t) {
     return String(t).replace(/\{v\}/g, version());
   }
+  /* الوسوم الوحيدة المسموح بها داخل قيمة ترجمة. محصورة عمداً: القيم في
+     صفحات الموقع لا تحمل غير <b> و<code>، وأي وسم آخر (‏img/script/iframe)
+     يُطرح نصّاً لا عنصراً — فلا تصير سمة الترجمة باباً لحقن وسم. */
+  var RICH_TAGS = { B: 1, STRONG: 1, CODE: 1 };
+  function hasElementChildren(el) {
+    for (var i = 0; i < el.childNodes.length; i++) {
+      if (el.childNodes[i].nodeType === 1) return true;
+    }
+    return false;
+  }
+  /* وسم مسموح ⇒ يُبنى من جديد **بلا أي سمة**؛ وغير المسموح ⇒ عقدة نصّية.
+     البناء من جديد لا نسخ العقدة، فلا يبقى `onclick` ولا `src` ولا غيرهما. */
+  function safeNode(source, host) {
+    if (source.nodeType === 3) return host.createTextNode(source.nodeValue);
+    if (source.nodeType !== 1 || !RICH_TAGS[source.tagName]) {
+      return host.createTextNode(source.textContent || '');
+    }
+    var node = host.createElement(source.tagName.toLowerCase());
+    for (var i = 0; i < source.childNodes.length; i++) {
+      node.appendChild(safeNode(source.childNodes[i], host));
+    }
+    return node;
+  }
+  /* يكتب قيمة الترجمة على عنصر له أبناء عنصرية **بلا هدم ترميزه**: يبني شجرة
+     آمنة من القيمة ويستبدل بها محتوى العنصر، بدل `textContent` التي تمحو
+     الأبناء كلهم.
+       - عنصر قيمته موجّهة إلى `data-i18n-attr` (‏video-shell: aria-label)
+         **يُستثنى تماماً** — فسمة `data-i18n-ar` عنده ليست نصّاً مقصوداً به،
+         وكانت الكتابة عليه تهدم غلاف الفيديو. (‏TRANSPARENCY لا تحمل
+         `data-i18n-attr`، فنصّها يُترجم كما هو مقصود.)
+       - **ولا يُسلَك هذا المسار أصلاً لقيمة بلا وسم**: عنصر أبناؤه عناصر
+         وتكتب له سمةٌ نصّاً بلا وسوم ليس نصّه المقصود (‏TRANSPARENCY:72 —
+         السمة «تدقيق من الشيفرة · 0.2.7» والابن `js-release-tag` يحمل الرقم
+         الحيّ). فتُترك بناؤه كما هي بدل محو ابنها.
+       - والوسوم المسموح بها (`RICH_TAGS`) تُبنى عناصر بلا أي سمة، وغيرها
+         يُطرح نصّاً — فلا تصير سمة الترجمة باباً لحقن وسم (`<img onerror>`).
+     (وغير هذا المسار يبقى على `textContent` كما كان: أبسط وأسرع.) */
+  function setI18nContent(el, value) {
+    var doc = el.ownerDocument;
+    var tpl = doc.createElement('template');
+    tpl.innerHTML = value;
+    var frag = doc.createDocumentFragment();
+    var nodes = tpl.content.childNodes;
+    for (var j = 0; j < nodes.length; j++) frag.appendChild(safeNode(nodes[j], doc));
+    while (el.firstChild) el.removeChild(el.firstChild);
+    el.appendChild(frag);
+  }
   function apply(lang) {
     var l = lang === 'en' ? 'en' : 'ar';
     // نسخة إنجليزية للمتن: تُعلَن ولا تُستنتج
@@ -38,7 +85,14 @@
     document.documentElement.dir = doc === 'ar' ? 'rtl' : 'ltr';
     document.querySelectorAll('[data-i18n-ar]').forEach(function (el) {
       var t = el.getAttribute(l === 'ar' ? 'data-i18n-ar' : 'data-i18n-en');
-      if (t) el.textContent = fill(t);
+      if (!t) return;
+      var v = fill(t);
+      if (!hasElementChildren(el)) { el.textContent = v; return; }
+      /* وسمٌ على عنصر له أبناء عنصرية: مسار غنيّ آمن — إلا أن تكون قيمته
+         موجّهة إلى `data-i18n-attr` (فليست نصّه) أو بلا وسم (فلا شيء يُبنى
+         وتُترك بناؤه كما هي). */
+      if (el.hasAttribute('data-i18n-attr') || v.indexOf('<') === -1) return;
+      setI18nContent(el, v);
     });
     document.querySelectorAll('[data-i18n-attr]').forEach(function (el) {
       var a = el.getAttribute('data-i18n-attr');

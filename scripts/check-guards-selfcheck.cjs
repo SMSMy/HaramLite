@@ -149,9 +149,56 @@ CASES.push({
       apply: (dir) => mk(dir, 'docs/bad.html', '<!doctype html><html><body><div><span></div></body></html>\n') },
     { label: 'وسم شارد بلا فاتح',
       apply: (dir) => mk(dir, 'docs/bad.html', '<!doctype html><html><body></article></body></html>\n') },
+    { label: 'تعليق HTML غير مغلق (يبتلع قسماً كاملاً حتى --> التالي)',
+      apply: (dir) => mk(dir, 'docs/bad.html',
+        '<!doctype html><html><body>\n' +
+        '<!-- Transparent System Limitations (<section class="x">\n' +
+        '<p>قسم كامل يبتلعه التعليق</p>\n' +
+        '</section>\n' +
+        '<!-- تعليق سليم -->\n' +
+        '<div>بقية الصفحة</div>\n' +
+        '</body></html>\n') },
+    { label: '--> شارد بلا <!-- يقابله',
+      apply: (dir) => mk(dir, 'docs/bad.html', '<!doctype html><html><body><p>نصّ</p>-->\n</body></html>\n') },
   ],
   zero: { label: 'docs فارغ',
     apply: (dir) => { fs.rmSync(path.join(dir, 'docs'), { recursive: true, force: true }); fs.mkdirSync(path.join(dir, 'docs'), { recursive: true }); } },
+});
+
+/* ═══ ٢ب) حارس CSS المشحون (رموز مقحَمة في المستوى الأعلى) ═════════════════ */
+const EXT_HTML = '<!doctype html><html><head><link rel="stylesheet" href="popup.css"></head>' +
+  '<body><div class="mode-item"></div></body></html>\n';
+const EXT_CSS_OK = '/* ok */\n@font-face { font-family: "T"; src: url(a.otf); }\n' +
+  '.a { color: #da7756; }\n.b,\n.c { color: red; }\n' +
+  ".after\\:content-\\[\\'\\'\\]:after { content: \"\"; }\n";
+CASES.push({
+  name: 'check-css-toplevel.cjs',
+  script: S('check-css-toplevel.cjs'),
+  build(dir) {
+    mk(dir, 'browser-extension/popup.html', EXT_HTML);
+    mk(dir, 'browser-extension/popup.css', EXT_CSS_OK);
+  },
+  controlArgs: (dir) => ['--root', dir],
+  saw: (dir, res) => { const m = res.out.match(/CSS المشحون: (\d+) ملفاً/); return m ? Number(m[1]) : 0; },
+  mutants: [
+    { label: 'سطر عربي عارٍ (# بلا محرِّف) في ملف CSS',
+      apply: (dir) => mk(dir, 'browser-extension/popup.css',
+        EXT_CSS_OK + '# أنماط تستخدمها النافذة الجديدة\n.x { color: red; }\n') },
+    { label: "بداية here-string باورشل ($extra = @')",
+      apply: (dir) => mk(dir, 'browser-extension/popup.css',
+        EXT_CSS_OK + "$extra = @'\n.x { color: red; }\n") },
+    { label: 'علامة تنصيص شاردة تعبر الأسطر (العيب الأصلي)',
+      apply: (dir) => mk(dir, 'browser-extension/popup.css',
+        EXT_CSS_OK + "'\n\n# أنماط\n$extra = @'\n\n.x { color: red; }\n") },
+    { label: 'نصّ في المستوى الأعلى لا يصلح محدِّداً',
+      apply: (dir) => mk(dir, 'browser-extension/popup.css',
+        EXT_CSS_OK + 'echo hello world;\n') },
+    { label: '«}» بلا «{» يقابلها',
+      apply: (dir) => mk(dir, 'browser-extension/popup.css', EXT_CSS_OK + '}\n') },
+  ],
+  zero: { label: 'لا ملف CSS مشحون',
+    apply: (dir) => mk(dir, 'browser-extension/popup.html',
+      '<!doctype html><html><head></head><body></body></html>\n') },
 });
 
 /* ═══ 3) حارس العربية ═══════════════════════════════════════════════════════ */

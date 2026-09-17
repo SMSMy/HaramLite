@@ -524,39 +524,6 @@
     });
   });
 </script>
-<script>
-  /* تبديل عربي/إنجليزي: يبدّل lang/dir ونصوص العناصر الموسومة data-i18n-ar/en،
-     ويحفظ الاختيار في المتصفح فلا يعود الزائر إلى العربية في كل زيارة. */
-  (function () {
-    var KEY = 'hl.lang';
-    function applyLang(lang) {
-      var l = lang === 'en' ? 'en' : 'ar';
-      document.documentElement.lang = l;
-      document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
-      document.querySelectorAll('[data-i18n-ar]').forEach(function (el) {
-        var text = el.getAttribute(l === 'ar' ? 'data-i18n-ar' : 'data-i18n-en');
-        if (text) el.textContent = text;
-      });
-      // السمات (aria-label · alt · title · placeholder) لا يبدّلها textContent
-      document.querySelectorAll('[data-i18n-attr]').forEach(function (el) {
-        var a = el.getAttribute('data-i18n-attr');
-        var v = el.getAttribute(l === 'ar' ? 'data-i18n-ar' : 'data-i18n-en');
-        if (a && v) el.setAttribute(a, v);
-      });
-      var btn = document.getElementById('bridge-lang-btn');
-      if (btn) btn.textContent = l === 'ar' ? 'English' : 'العربية';
-      try { localStorage.setItem(KEY, l); } catch (e) {}
-    }
-    var saved = null;
-    try { saved = localStorage.getItem(KEY); } catch (e) {}
-    var prefersAr = ((navigator.language || 'ar') + '').toLowerCase().startsWith('ar');
-    applyLang(saved === 'en' || saved === 'ar' ? saved : (prefersAr ? 'ar' : 'en'));
-    var btn = document.getElementById('bridge-lang-btn');
-    if (btn) btn.addEventListener('click', function () {
-      applyLang(document.documentElement.lang === 'ar' ? 'en' : 'ar');
-    });
-  })();
-</script>
 <script src="assets/lang.js"></script>
 </body>
 
