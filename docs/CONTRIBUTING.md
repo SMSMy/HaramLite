@@ -49,8 +49,10 @@ browser-extension/    إضافة MV3 (روابط فقط — بلا تتبع)
 ## إصدار جديد (Release) — المسار الحقيقي (كما نُفِّذ في 0.2.3)
 
 > تنبيه: دفع وسم `vX.Y.Z` **لا يبني شيئاً**. المشغّل على الوسوم **معطَّل عمداً**
-> (`release.yml:19-26` — حصة Actions متضايقة)، والتوقيع **مؤجَّل** (`:70-71` معلَّق
-> بانتظار السرّ) و`includeUpdaterJson: false` (`:83` — فلا `latest.json` ولا `.sig`).
+> (`release.yml:19-26`) — **والسبب المسجَّل فيه «تخزين Actions»**، ورصدت مراجعة 0.2.7 أن
+> دقائق العدّائين القياسيين **مجانية للمستودعات العامة**، فصار السبب **يستحق إعادة قياس**
+> (بند ب-٣ في خطة 0.2.7) لا أن يُبنى عليه. والتوقيع **مؤجَّل** (`:70-71` معلَّق بانتظار
+> السرّ) و`includeUpdaterJson: false` (`:83` — فلا `latest.json` ولا `.sig`).
 > الخطوات أدناه هي ما يحدث فعلاً، لا ما كان مخططاً له.
 
 1. ارفع الإصدار في **المواضع الخمسة**: `package.json` · `src-tauri/tauri.conf.json` ·
@@ -66,6 +68,23 @@ browser-extension/    إضافة MV3 (روابط فقط — بلا تتبع)
    فعلاً** — البناء الآلي لا يطابق المحلي بايتاً ببايت (مُثبَت على 0.2.2 و0.2.3).
 6. بديل: تشغيل `release.yml` **يدوياً** من تبويب Actions (يبني وينشر بلا توقيع
    ولا `latest.json` حتى تُضاف أسرار التوقيع أدناه).
+
+**وما يُضاف منذ 0.2.7 — إسناد الإصدار (ب-٢):**
+
+```powershell
+git tag vX.Y.Z                     # الوسم **أولاً**: دونه يبقى git_tag فارغاً
+node scripts/build-info.cjs        # ⇒ dist/release-metadata/{build-info.json,sbom.cdx.json}
+gh release upload vX.Y.Z dist/release-metadata/build-info.json dist/release-metadata/sbom.cdx.json
+```
+
+- **والوسم قبل التوليد لا بعده**: حقل `git_tag` يُقرأ بـ`git describe --tags --exact-match HEAD`،
+  فإن وُلِّد الملف قبل الوسم كتب `null` مع سبب — صادقاً لكنه غير مفيد للمراجع.
+- وملف الإسناد **يفشل ولا يُكتب** إن اختلف الإصدار بين الملفات الأربعة (مُفسَد مُنفَّذ: `package.json` وحده ⇒ رفض).
+- ‏`sbom.cdx.json` (‏CycloneDX 1.5) يحمل **804 مكوّنات** مقيسة: 597 من `cargo metadata --locked`
+  (مطابقة لكتل `Cargo.lock`) و207 من `pnpm-lock.yaml`.
+- ولفحصه خارجياً: `osv-scanner --sbom dist/release-metadata/sbom.cdx.json` — والمقيس عند 0.2.7:
+  **7 تنبيهات** في حزم Cargo (كلها `unmaintained`/`unsound` وهي نفسها المستثناة في `deny.toml`)
+  و**0 في npm**. (واسم الملف `sbom.cdx.json` **شرط** لا ذوق: الأداة ترفض اسماً لا يوافق المواصفة.)
 7. **أسرار المستودع المطلوبة (عند تفعيل التحديث الذاتي فقط):**
    - `TAURI_SIGNING_PRIVATE_KEY` ← محتوى `updater.key` (المولّد محلياً، **ممنوع رفعه**).
    - توليد مفتاح جديد: `pnpm tauri signer generate -w updater.key --ci` وضع المفتاح العام في `plugins.updater.pubkey`.

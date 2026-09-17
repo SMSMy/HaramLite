@@ -103,6 +103,13 @@ jobs:
           manifest-path: src-tauri/Cargo.toml
           command: check
 
+      # إسناد الإصدار (سبرنت 0.2.7 · ب-٢): يولّد `build-info.json` و SBOM بصيغة CycloneDX
+      # من الرسم المقيس (‏597 حزمة Cargo + 207 npm). ويفشل — **ولا يكتب شيئاً** — إن اختلف
+      # الإصدار بين الملفات الأربعة، لأن ملف إسناد يحمل إصداراً غير الذي يُبنى كذب.
+      # (وفي النشر يُشغَّل **بعد الوسم** ثم يُرفع الملفان مع الأصول — انظر `docs/CONTRIBUTING.md`.)
+      - name: Release metadata (build-info · SBOM)
+        run: pnpm build:info
+
       - name: TypeScript check
         run: pnpm exec tsc --noEmit
 
