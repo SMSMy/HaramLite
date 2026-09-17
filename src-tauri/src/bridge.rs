@@ -1923,4 +1923,198 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    // ── Native Messaging framing: the port is long-lived ─────────────────
+    //
+    // `native_host_entry` reads the REAL process stdin, so the only faithful
+    // way to exercise its framing loop is to re-exec this test binary and give
+    // it a pipe to read. The child half is inert unless the env marker is set,
+    // so an ordinary `cargo test` run just sees it pass.
+
+    #[test]
+    fn native_host_child_runs_the_real_loop() {
+        if std::env::var("HARAMLITE_NATIVE_HOST_CHILD").is_err() {
+            return; // not the child: inert under a normal test run
+        }
+        assert_eq!(native_host_entry(), 0, "the host loop must exit cleanly");
+    }
+
+    /// One Native Messaging frame: 4-byte LE length + payload.
+    fn nm_frame(body: &[u8]) -> Vec<u8> {
+        let mut v = (body.len() as u32).to_le_bytes().to_vec();
+        v.extend_from_slice(body);
+        v
+    }
+
+    fn tail(s: &str) -> String {
+        let total = s.chars().count();
+        s.chars().skip(total.saturating_sub(400)).collect()
+    }
+
+    /// A live host process. Stdin stays OPEN for the whole test, exactly as the
+    /// browser holds it, so the loop never sees an EOF-shortened stream.
+    struct LiveHost {
+        child: std::process::Child,
+        stdin: Option<std::process::ChildStdin>,
+        out: Arc<Mutex<String>>,
+        reader: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl LiveHost {
+        fn spawn(base: &Path) -> Self {
+            use std::process::{Command, Stdio};
+            let exe = std::env::current_exe().expect("current_exe");
+            let mut child = Command::new(exe)
+                .args([
+                    "--exact",
+                    "bridge::tests::native_host_child_runs_the_real_loop",
+                    "--nocapture",
+                ])
+                .env("HARAMLITE_NATIVE_HOST_CHILD", "1")
+                .env("HARAMLITE_DATA_DIR", base)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("spawn the host loop in a child process");
+            let stdin = child.stdin.take();
+            let out = Arc::new(Mutex::new(String::new()));
+            let sink = out.clone();
+            let reader = child.stdout.take().map(|mut stdout| {
+                std::thread::spawn(move || {
+                    let mut chunk = [0u8; 65536];
+                    // Append as bytes arrive: the host answers while it runs,
+                    // so a read-to-EOF buffer would hide every reply.
+                    while let Ok(n) = stdout.read(&mut chunk) {
+                        if n == 0 {
+                            break;
+                        }
+                        sink.lock()
+                            .unwrap_or_else(|p| p.into_inner())
+                            .push_str(&String::from_utf8_lossy(&chunk[..n]));
+                    }
+                })
+            });
+            Self {
+                child,
+                stdin,
+                out,
+                reader,
+            }
+        }
+
+        fn feed(&mut self, bytes: &[u8]) {
+            let w = self.stdin.as_mut().expect("child stdin");
+            w.write_all(bytes).expect("feed the host");
+            w.flush().expect("flush");
+        }
+
+        fn seen(&self, needle: &str) -> bool {
+            self.out
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .contains(needle)
+        }
+
+        fn count(&self, needle: &str) -> usize {
+            self.out
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .matches(needle)
+                .count()
+        }
+
+        /// Wait for `needle` to appear, giving up after `ms`.
+        fn wait_for(&self, needle: &str, ms: u64) -> bool {
+            let deadline = std::time::Instant::now() + Duration::from_millis(ms);
+            while std::time::Instant::now() < deadline {
+                if self.seen(needle) {
+                    return true;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            self.seen(needle)
+        }
+
+        /// Kill the host and collect everything it wrote.
+        fn finish(mut self) -> String {
+            drop(self.stdin.take());
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+            if let Some(h) = self.reader.take() {
+                let _ = h.join();
+            }
+            self.out
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .clone()
+        }
+    }
+
+    /// A frame the host REFUSES must still be consumed whole. Otherwise its
+    /// payload's first bytes are read as the next length, and every later
+    /// message on this port is misread — the browser keeps ONE host process per
+    /// `connectNative` port (browser-extension/background.js:30), so the port
+    /// stays desynced for the session.
+    #[test]
+    fn refused_overlong_frame_must_not_desync_the_port() {
+        let base = std::env::temp_dir().join(format!("hl_nm_desync_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::create_dir_all(&base);
+
+        // An unknown message type: the host's reply echoes it, so seeing this
+        // nonce proves the frame was parsed AND dispatched. No other byte in
+        // the stream can produce it.
+        let nonce = "NONCE_7f3a1c9d";
+        let probe = nm_frame(format!(r#"{{"type":"{nonce}"}}"#).as_bytes());
+
+        // Control — the input is sound: a lone probe is well-formed and IS
+        // answered, so a failure below is the refused frame, not bad input.
+        let mut host = LiveHost::spawn(&base);
+        host.feed(&probe);
+        let control_ok = host.wait_for(nonce, 5000);
+        let control_out = host.finish();
+        println!("control: lone well-formed probe answered = {control_ok}");
+        assert!(
+            control_ok,
+            "control: a lone well-formed probe must be answered; child said: {}",
+            tail(&control_out)
+        );
+
+        // Subject — ONE frame whose declared length is over the 1 MB cap
+        // (bridge.rs:191), written in full: declared == actual, byte for byte
+        // as a browser writes it. Then the very same probe.
+        let declared = 1_000_001usize;
+        let mut stream = (declared as u32).to_le_bytes().to_vec();
+        stream.extend(std::iter::repeat(0xFFu8).take(declared));
+        stream.extend_from_slice(&probe);
+
+        let mut host = LiveHost::spawn(&base);
+        host.feed(&stream);
+        // The host is alive and did refuse that frame — so its silence about
+        // the probe is the desync, not a dead or unstarted process.
+        let refused = host.wait_for("bad message length", 5000);
+        let answered = host.wait_for(nonce, 3000);
+        let bad = host.count("bad message length");
+        let out = host.finish();
+        let _ = std::fs::remove_dir_all(&base);
+        println!(
+            "subject: over-cap frame refused = {refused}; probe answered = {answered}; \
+             'bad message length' replies from that ONE frame = {bad}"
+        );
+
+        assert!(
+            refused,
+            "the host must refuse an over-cap frame; child said: {}",
+            tail(&out)
+        );
+        assert!(
+            answered,
+            "port desynced: after ONE refused over-cap frame the next well-formed \
+             message was never answered. One bad frame produced {bad} \
+             'bad message length' replies — the loop read the payload as length \
+             headers instead of draining it. Child tail: {}",
+            tail(&out)
+        );
+    }
 }
