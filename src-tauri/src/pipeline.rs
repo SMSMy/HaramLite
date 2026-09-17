@@ -574,6 +574,10 @@ mod tests {
     /// scratch (tens of MB) behind in the user's output folder.
     #[test]
     fn failed_run_leaves_no_work_dir() {
+        // `process_file` claims the cross-path lock, and that lock file lives
+        // under the shared resolved data dir — so this test READS the env var
+        // the bridge tests write. Same crate-wide lock as theirs (paths.rs).
+        let _guard = crate::paths::serial_guard();
         let tmp = std::env::temp_dir().join(format!("hl_pipe_fail_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         let out = tmp.join("out");
