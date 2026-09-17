@@ -131,6 +131,30 @@ const BUILTIN_MUTANTS = [
     (s) => s.replace(/(const gapTick = \(boundary, landing\) => \{\n)/, '$1      void globalThis[["plan","Gap"].join("")];\n')],
   ['بوابة كاذبة محلية تُخفي احتضار الصوت',
     (s) => s.replace('      w.pace = { boundary, landing, rate };\n      w.held = true;\n', '      const NEVER = false;\n      if (NEVER) { w.held = true; }\n      w.pace = { boundary, landing, rate };\n')],
+
+  // ── عائلة: الثقب الأعمى (B1..B9) — تسعة أعطال قِيست فمرّت كلها «473/0 · exit 0» ────────
+  // أُضيفت هنا بعد إغلاقها كي يصير البرهان **بوابة دائمة**: كان الحارس يفحص نصّ العبارة
+  // لا **حياة** العبارة ولا سلوكها، فمرّت كتابة ثالثة للصوت بصيغ لا يراها عدّ نصّي،
+  // وقلبُ إشارة الفرق، وسطرٌ واحد يُبطل البوابة، وحلقتا جدولة/استماع بصيغتين لا يعدّهما
+  // شيء. وكل عطل هنا أُثبت أنه **يسقط** الآن (والضابط: النصّ السليم = 0 فاشل · exit 0).
+  ['B1 قلب البوابة الواحدة: `cur - want` ⟶ `want - cur` (يعطّل «لا سحب للخلف»)',
+    (s) => s.replace('      const delta = cur - want;\n', '      const delta = want - cur;\n')],
+  ['B2 سطر واحد يقتل البوابة: `allowBack = true;` داخل setAudioTime',
+    (s) => s.replace('      const delta = cur - want;\n', '      const delta = cur - want;\n      allowBack = true;\n')],
+  ['B3 كتابة ثالثة للصوت بصيغة محسوبة `audio["currentTime"] = 0` في gapTick',
+    (s) => s.replace('const gapTick = (boundary, landing) => {\n', 'const gapTick = (boundary, landing) => {\n      audio["currentTime"] = 0;\n')],
+  ['B4 كتابة ثالثة للصوت باسم بديل `const _a = audio; _a.currentTime = 0`',
+    (s) => s.replace('    const setAudioTime = (site, want, allowBack) => {\n', '    const _a = audio;\n    const setAudioTime = (site, want, allowBack) => {\n      _a.currentTime = 0;\n')],
+  ['B5 كتابة ثالثة للصوت بإسناد مركّب `audio.currentTime -= 0.5` في gapTick',
+    (s) => s.replace('const gapTick = (boundary, landing) => {\n', 'const gapTick = (boundary, landing) => {\n      audio.currentTime -= 0.5;\n')],
+  ['B6 تعليق الكتابة الحيّة `reanchorAudio(target);` في gapTick',
+    (s) => s.replace('        reanchorAudio(target);\n', '        // reanchorAudio(target);\n')],
+  ['B7 حلقة `requestAnimationFrame` جديدة في startWatch (بلا مؤقّت ⇒ لا يُعدّها شيء)',
+    (s) => s.replace('    WATCH = w;\n', '    WATCH = w;\n    requestAnimationFrame(() => { gapTick(); });\n')],
+  ['B8 مستمع بإسناد خاصية `video.ontimeupdate =` (لا يزيد عدّ addEventListener/on)',
+    (s) => s.replace('    WATCH = w;\n', '    WATCH = w;\n    video.ontimeupdate = () => { gapTick(); };\n')],
+  ['B9 قيمة مشتقّة غير مثبَّتة `const expect = audioPos() + 1;` في نبضة الانحراف',
+    (s) => s.replace('      const expect = audioPos();\n', '      const expect = audioPos() + 1;\n')],
 ];
 
 /* ── الحلّ: بيئة مصنوعة أو المستودع ─────────────────────────────────────────── */

@@ -38,6 +38,39 @@ function extractBlock(text, opener) {
   return null;
 }
 const has = (block, needle) => !!block && block.body.includes(needle);
+/** يُفرّغ التعليقات **بمسافات** (والأسطر كما هي) ويُبقي النصوص الحرفية — فتُقاس «حياة»
+ *  العبارة لا مجرّد وجود نصّها، وتبقى الإزاحات وأرقام الأسطر صالحة للاستخراج والرسائل.
+ *  (كانت معرَّفة في §٣٤؛ رُفعت إلى الرأس لأن §٤ صار يعتمدها كذلك.) */
+function stripComments(text) {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    const d = text[i + 1];
+    if (c === '/' && d === '/') { while (i < text.length && text[i] !== '\n') { out += ' '; i++; } continue; }
+    if (c === '/' && d === '*') {
+      out += '  ';
+      i += 2;
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) { out += text[i] === '\n' ? '\n' : ' '; i++; }
+      if (i < text.length) { out += '  '; i += 2; }
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') {
+      const q = c;
+      out += c;
+      i++;
+      while (i < text.length && text[i] !== q) {
+        if (text[i] === '\\') { out += text[i]; i++; if (i < text.length) { out += text[i]; i++; } continue; }
+        out += text[i]; i++;
+      }
+      if (i < text.length) { out += text[i]; i++; }
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
 
 console.log('=== ١) الدوال النقية تُستخرج من الملف المشحون ===');
 const names = ['mapFullToCut', 'isGap', 'skipVideoGaps', 'nextGapStart', 'gapStats', 'keptStretchAround'];
@@ -87,14 +120,160 @@ ok('وسيط العدّ الزوجي = متوسط العنصرين الأوسط�
   Math.abs(g5.before.median - 9.75) < 1e-9);
 
 console.log('\n=== ٤) بوابة واحدة: كتابتان فقط لموضع الصوت ===');
+// الثقب المُقاس: العدّ النصّي الخام `audio\.currentTime\s*=` رأى كتابتين فقط، فمرّت
+// **كتابة ثالثة حيّة** بصيغ لا يراها: `audio['currentTime'] = 0` (وصول محسوب) ·
+// `const _a = audio; _a.currentTime = 0` (اسم بديل) · `audio.currentTime -= 0.5`
+// (إسناد مركّب) · وكتابة **مُعلَّقة** عُدَّت حيّة. العلاج تعميم «فحص بنية الإسناد»
+// (مبدأ `lsScan`: يُبنى من بنية اللغة لا من صيغة واحدة) وهجرته إلى `stripComments`:
+//   (١) الماسح يقرأ **كل** إسناد إلى خاصية حسّاسة للعنصرين (`currentTime` · `playbackRate` ·
+//       `muted` · `volume`) — بالوصول المحسوب وبكل معاملات الإسناد المركّب (`+= -= *=`) —
+//       على النصّ الحيّ المجرَّد من التعليقات. فكتابة ثالثة أو مُعلَّقة أو مركّبة لا تنجو.
+//   (٢) قائمة بيضاء **بالسياق والنصّ**: التسعة عشر موضعاً المشحونة حصراً (كتابتا الصوت ·
+//       كتابة الصورة · ومعدّلات/كتم/صوت العنصرين)، كلٌّ منسوب إلى جسم دالته بالنصّ
+//       المثبَّت — فأي إسناد جديد على عنصر وسائط (ولو `video.playbackRate = 2`)
+//       يُسقط الفحص حتى يُضاف وعياً.
+//   (٣) وحظر أسماء بديلة للعنصرين: إسناد `const x = audio` أو `= video` — فأي كتابة
+//       تمرّ من الاسم البديل تسقط.
+const CT_ALLOWED = [
+  { obj: 'audio', prop: 'currentTime', op: '=', rhs: 'want', ctx: 'const setAudioTime = (site, want, allowBack) =>' },
+  { obj: 'audio', prop: 'currentTime', op: '=', rhs: 'want', ctx: 'const reanchorAudio = (fullT) =>' },
+  { obj: 'audio', prop: 'muted', op: '=', rhs: 'true', ctx: 'const reanchorAudio = (fullT) =>' },
+  { obj: 'audio', prop: 'muted', op: '=', rhs: 'false', ctx: 'const reanchorAudio = (fullT) =>' },
+  { obj: 'video', prop: 'currentTime', op: '=', rhs: 'target', ctx: 'const gapTick = (boundary, landing) =>' },
+  { obj: 'video', prop: 'playbackRate', op: '=', rhs: 'rate', ctx: 'const paceEnter = (boundary, landing, rate) =>' },
+  { obj: 'video', prop: 'playbackRate', op: '=', rhs: 'w.prevRate || 1', ctx: 'const paceExit = (why) =>' },
+  { obj: 'video', prop: 'playbackRate', op: '=', rhs: '1', ctx: "on(video, 'ratechange', () =>" },
+  { obj: 'audio', prop: 'playbackRate', op: '=', rhs: '1', ctx: "on(video, 'ratechange', () =>" },
+  { obj: 'audio', prop: 'playbackRate', op: '=', rhs: '1', ctx: 'async function startWatch()' },
+  { obj: 'video', prop: 'muted', op: '=', rhs: 'true', ctx: 'async function startWatch()' },
+  { obj: 'video', prop: 'muted', op: '=', rhs: 'true', ctx: 'async function startWatch()' },
+  { obj: 'video', prop: 'muted', op: '=', rhs: 'true', ctx: 'async function startWatch()' },
+  { obj: 'video', prop: 'muted', op: '=', rhs: 'true', ctx: 'async function startWatch()' },
+  { obj: 'audio', prop: 'volume', op: '=', rhs: 'video.volume', ctx: 'async function startWatch()' },
+  { obj: 'audio', prop: 'volume', op: '=', rhs: 'video.volume', ctx: 'async function startWatch()' },
+  { obj: 'video', prop: 'muted', op: '=', rhs: 'w.prevMuted', ctx: 'function stopWatch(' },
+  { obj: 'video', prop: 'playbackRate', op: '=', rhs: 'w.prevRate', ctx: 'function stopWatch(' },
+  { obj: 'video', prop: 'playbackRate', op: '=', rhs: '1', ctx: 'async function startWatch()' },
+];
+const ELEMENT_NAMES = ['audio', 'video'];
+const SENSITIVE_PROPS = ['currentTime', 'playbackRate', 'muted', 'volume'];
+/** يقرأ كل إسناد إلى خاصية حسّاسة على عنصر وسائط. النصوص الحرفية تبقى **مقتبسة** في
+ *  النصّ الممسوح (فيميّز `['currentTime']` النمطُ بالمجموعة ٣)، ويُقرأ اسم المفتاح من
+ *  النصّ الأصلي عبر `literalKeys` — لأن تجريد الأقتباس وحده يجعل `[ currentTime ]` لا
+ *  يطابق النمط (وهو ما قِيس: كتابة محسوبة مرّت فارتفع العدّ ١٩ ⟶ ١٨ بلا رصد). */
+const CT_WRITE_RE = /(?:([A-Za-z_$][\w$]*)\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*(['"`])([A-Za-z_$][\w$]*)\3\s*\]))\s*((?:\+|-|\*|\/|%|\*\*|\|\||&&|\?\?|&|\||\^|<<|>>|>>>)?=)(?!=)\s*([^;\n]*)/g;
+/** امتداد النصّ الحرفي الذي يبدأ عند فهرس محرف الاقتباس. */
+const literalKeys = (text) => {
+  const map = new Map();
+  const re = /(['"`])([A-Za-z_$][\w$]*)\1/g;
+  let m;
+  while ((m = re.exec(text)) !== null) map.set(m.index, { name: m[2], end: m.index + m[0].length - 1 });
+  return map;
+};
+const ctWriteScan = (text) => {
+  const txt = stripComments(text);
+  const keys = literalKeys(txt);
+  const out = [];
+  let m;
+  while ((m = CT_WRITE_RE.exec(txt)) !== null) {
+    const prop = m[2] || m[4];
+    if (!SENSITIVE_PROPS.includes(prop)) continue;
+    let name = prop;
+    if (!m[2]) {                       // وصول محسوب بمفتاح حرفي: نميّز المقتبس من المكتوب بلا أقتباس
+      const q = txt.indexOf(m[3] === '`' ? '`' : m[3], m.index);
+      const k = keys.get(q);
+      if (k && k.end <= m.index + m[0].length) name = k.name;
+    }
+    out.push({ obj: m[1], prop: name, op: m[5], rhs: m[6].trim(), at: m.index, line: txt.slice(0, m.index).split('\n').length, text: m[0].trim() });
+  }
+  return out;
+};
+/** نسبة كل إسناد إلى جسم دالة من الملف بالحدود (استخراج من النصّ المجرَّد = نفس الإزاحات). */
+const ctCtxOf = (text) => {
+  const txt = stripComments(text);
+  const spans = [];
+  for (const a of CT_ALLOWED) {
+    if (spans.some((s) => s.ctx === a.ctx)) continue;
+    const b = extractBlock(txt, a.ctx);
+    if (b) spans.push({ ctx: a.ctx, start: txt.indexOf(b.full), end: txt.indexOf(b.full) + b.full.length });
+  }
+  return (at) => { const s = spans.find((x) => at > x.start && at < x.end); return s ? s.ctx : null; };
+};
+const ctSiteAllowed = (text) => {
+  const ctxOf = ctCtxOf(text);
+  const writes = ctWriteScan(text);
+  const keyOf = (wr) => [wr.obj, wr.prop, wr.op, wr.rhs, ctxOf(wr.at)].join('|');
+  const allowedKey = (a) => [a.obj, a.prop, a.op, a.rhs, a.ctx].join('|');
+  // مقابلة **واحداً بواحد** كمجموعة: تُقيَّد السياق (الدالة) بالعدّ لا بالانتماء وحده، فحذف
+  // استعادة `w.prevRate` من paceExit لا يُغطّيه وجود مثلها في stopWatch — القائمة البيضاء
+  // والكتابات كلتاهما تُجمعان بمفتاح (العنصر · الخاصية · المعامل · الطرف الأيمن · الدالة).
+  const tally = (xs, keyFn) => {
+    const m = new Map();
+    for (const x of xs) { const k = keyFn(x); m.set(k, (m.get(k) || 0) + 1); }
+    return m;
+  };
+  const got = tally(writes, keyOf);
+  const want = tally(CT_ALLOWED, allowedKey);
+  const bad = [];
+  for (const [k, n] of want) {
+    const g = got.get(k) || 0;
+    if (g < n) bad.push(`ناقص ×${n - g}: ${k.replace(/\|/g, ' ')}`);
+  }
+  for (const [k, n] of got) {
+    const w = want.get(k) || 0;
+    if (n > w) bad.push(`زائد ×${n - w}: ${k.replace(/\|/g, ' ')}`);
+  }
+  return { writes, bad };
+};
+/** أسماء بديلة للعنصرين: إسناد العنصر **نفسه** إلى معرّف آخر (`const _a = audio` · `x = video`)
+ *  — لا قراءة خاصية منه (`const cur = audio.currentTime`) ولا إسناد كائن آخر إليه. */
+const elementAliasesOf = (text) => {
+  const txt = stripComments(text);
+  const names = ELEMENT_NAMES.join('|');
+  return txt.match(new RegExp(`(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*(?:${names})\\b(?!\\s*[.\\[])`, 'g')) || [];
+};
+const ct = ctSiteAllowed(src);
+const ctAliases = elementAliasesOf(src);
+const audioWrites = ct.writes.filter((x) => x.obj === 'audio' && x.prop === 'currentTime' && x.op === '=');
+const videoWrites = ct.writes.filter((x) => x.obj === 'video' && x.prop === 'currentTime' && x.op === '=');
+const ctList = (xs) => xs.map((x) => `${x.obj}.${x.prop}${x.op} @${x.line}`).join(' · ') || 'لا شيء';
+ok(`البنية: كل إسناد إلى \`audio.currentTime\` بصيغة الإسناد المثبَّتة \`=\` (وجد ${ctList(audioWrites)} · ومركّب=${ct.writes.filter((x) => x.obj === 'audio' && x.op !== '=').length})`,
+  audioWrites.length === 2 && ct.writes.filter((x) => x.obj === 'audio' && x.prop === 'currentTime' && x.op !== '=').length === 0,
+  ctList(audioWrites));
+ok(`والكتابة الواحدة على الصورة مثبَّتة \`video.currentTime = target\` (وجد ${ctList(videoWrites)})`,
+  videoWrites.length === 1 && videoWrites[0].text === 'video.currentTime = target', ctList(videoWrites));
 const writes = src.match(/audio\.currentTime\s*=/g) || [];
 ok(`عدد كتابات موضع الصوت = 2 (وجد ${writes.length})`, writes.length === 2);
+ok(`فكل إسناد حسّاس على العنصرين — بأي صيغة إسناد — ضمن المواضع المعلنة بنصّها كمجموعة (وجد ${ct.writes.length} إسناداً، خلل ${ct.bad.length})`,
+  ct.writes.length === CT_ALLOWED.length && ct.bad.length === 0, ct.bad.join(' · ') || 'لا شيء');
+ok('والماسح نفسه يميّز الصيغ: يقبل المعلنة ويرفض المحسوبة بقيمة أخرى والمركّبة والاسم البديل والمُعلَّقة (معايرة)',
+  (() => {
+    const good = ctSiteAllowed(src).bad.length === 0;
+    // وصول محسوب بمفتاح حرفي **بقيمة أخرى** (مُفسَد B3 نفسه): يُرصد ويُرفض
+    const computedBad = ctSiteAllowed(src.replace('audio.currentTime = want', "audio['currentTime'] = 0")).bad.length > 0;
+    // ووصول محسوب بالقيمة نفسها: صيغة مكافئة ⇒ لا يُرفض (كي لا يكون الفحص شكلياً)
+    const computedSame = ctSiteAllowed(src.replace('audio.currentTime = want', "audio['currentTime'] = want")).bad.length === 0;
+    const compound = ctSiteAllowed(src.replace('audio.currentTime = want', 'audio.currentTime -= 0.5')).bad.length > 0;
+    const aliasedTxt = src.replace('const setAudioTime = (site, want, allowBack) => {\n      const cur = audio.currentTime;',
+      'const setAudioTime = (site, want, allowBack) => {\n      const _a = audio;\n      const cur = _a.currentTime;');
+    const aliased = aliasedTxt !== src && elementAliasesOf(aliasedTxt).length === 1;
+    const commented = ctSiteAllowed(src.replace('audio.currentTime = want', '// audio.currentTime = want')).bad.length > 0;
+    return good && computedBad && computedSame && compound && aliased && commented;
+  })());
+ok(`ولا اسم بديل للعنصرين يُسنَد إليه (وجد ${ctAliases.length})`, ctAliases.length === 0, ctAliases.join(' · '));
 const gate = extractBlock(src, 'const setAudioTime = (site, want, allowBack) =>');
 const reanchor = extractBlock(src, 'const reanchorAudio = (fullT) =>');
 ok('setAudioTime موجودة', !!gate);
 ok('reanchorAudio موجودة', !!reanchor);
-ok('كتابة داخل setAudioTime', has(gate, 'audio.currentTime = want'));
-ok('كتابة داخل reanchorAudio', has(reanchor, 'audio.currentTime = want'));
+// التثبيت النصّي لكتابة كل بوابة (بالنصّ **الحيّ**): صيغة الإسناد نفسها لا الرقم وحده.
+ok('كتابة `audio.currentTime = want` حيّة داخل setAudioTime (لا مُعلَّقة)',
+  !!gate && stripComments(gate.body).includes('audio.currentTime = want'));
+ok('كتابة `audio.currentTime = want` حيّة داخل reanchorAudio (لا مُعلَّقة)',
+  !!reanchor && stripComments(reanchor.body).includes('audio.currentTime = want'));
+ok('كتابة موضع الصوت في setAudioTime مرة واحدة بالضبط',
+  !!gate && (ctWriteScan(gate.body).filter((x) => x.prop === 'currentTime').length === 1));
+ok('كتابة موضع الصوت في reanchorAudio مرة واحدة بالضبط',
+  !!reanchor && (ctWriteScan(reanchor.body).filter((x) => x.prop === 'currentTime').length === 1));
 ok('kickAudio لا تكتب مباشرة', !has(extractBlock(src, 'const kickAudio = () =>'), 'audio.currentTime ='));
 ok('gapTick لا تكتب الصوت', !has(extractBlock(src, 'const gapTick = (boundary, landing) =>'), 'audio.currentTime ='));
 
@@ -104,6 +283,82 @@ ok('الرفض يسبق الكتابة (ترتيب بالفهرس)', gate.body.i
 ok('الرفض يُسجَّل في الأثر', /trace\(site \+ '-skip', 'no-rewind'\)/.test(gate.body));
 ok('الفرق المُوقَّع يُسجَّل عند البوابة', /trace\(site, `d=\$\{delta\.toFixed\(3\)\}`\)/.test(gate.body));
 ok('تسامح 0.05s قبل الكتابة', /!\(Math\.abs\(delta\) > 0\.05\)/.test(gate.body));
+
+console.log('\n=== ٥-أ) سلوكياً: نُنفّذ setAudioTime نفسها (البوابة الواحدة) — لا نفحص نصّها ===');
+// السبب الجذري للثقب الأعمى: `setAudioTime` — **موضوع الحارس كلّه** — لم تُنفَّذ ولا مرّة.
+// النقيّ يُبنى بـnew Function (الدوال الخمس في §١)، ودوال الحالة تُفحص نصّاً فقط. فالقلب
+// `cur - want` ⟶ `want - cur` و`allowBack = true;` يمرّان والحارس أخضر، والأثر سلوكي:
+// الضابط يمنع كتابة **للقفز للخلف** على صوت يعمل (10.000 تبقى 10.000) والمُفسَد ينفّذها
+// (5.000) ⇒ عطل «تكرار الكلمة» بعينه. فهنا يُبنى جسمها **حرفياً** من الملف المشحون ويُنادى
+// على ستّة مشاهد، ويُقاس أثرها: هل كُتب الموضع؟ وهل سُجّل الرفض؟ (النمط نفسه في §١٠-أ.)
+const buildGate = new Function('guard', [
+  'const audio = guard.audio;',
+  'const trace = guard.trace;',
+  'const setAudioTime = (site, want, allowBack) => {',
+  gate ? gate.body : 'throw new Error("لا جسم")',
+  '};',
+  'return setAudioTime;',
+].join('\n'));
+const gateScenes = (built, cur, want, back, paused) => {
+  const scene = { writes: [], skips: [], rows: [] };
+  const audio = { currentTime: cur, paused: !!paused, duration: 30 };
+  try {
+    const trace = (s, e) => { if (String(s).endsWith('-skip')) scene.skips.push(String(s)); else scene.rows.push(`${s} ${e || ''}`); };
+    built({ audio, trace })('kick', want, back);
+  } catch (e) { scene.err = String(e && e.message); }
+  scene.final = audio.currentTime;
+  scene.wrote = audio.currentTime !== cur;
+  return scene;
+};
+let gateErr = null;
+const sc = {};
+try {
+  // ١) سحب للخلف على صوت يعمل بلا إذن ⇒ لا كتابة (وهذه هي البوابة التي يعلنها سطر الحارس الأخير)
+  sc.back = gateScenes(buildGate, 10, 5, false, false);
+  // ٢) سحب للخلف بإذن (قفزة مستخدم/إطلاق احتجاز) ⇒ الكتابة تنفّذ
+  sc.allowed = gateScenes(buildGate, 10, 5, true, false);
+  // ٣) إلحاق أمامي على صوت يعمل ⇒ يُنفَّذ (القفزة للأمام لا تُسمع)
+  sc.fwd = gateScenes(buildGate, 5, 10, false, false);
+  // ٤) فرق 0.02s ⇒ داخل التسامح فلا كتابة (وإلا رجّعنا الصوت بلا حاجة)
+  sc.tol = gateScenes(buildGate, 10, 9.98, false, false);
+  // ٥) صوت متوقف: السماح بالرجوع مشروط بـ`!audio.paused` ⇒ الكتابة تنفّذ بلا إذن
+  sc.paused = gateScenes(buildGate, 10, 5, false, true);
+  // ٦) الحدّ الفعلي: 0.9s سحباً للخلف على صوت يعمل ⇒ رفض قاطع بلا كتابة (الموضع يبقى 10)
+  sc.edgeOver = gateScenes(buildGate, 10, 9.1, false, false);
+} catch (e) { gateErr = e; }
+ok('سلوكياً — الحدّ: سحب 0.900s على صوت يعمل يُرفض فلا كتابة ولا تغيّر في الموضع',
+  !!sc.edgeOver && sc.edgeOver.wrote === false && sc.edgeOver.final === 10 && sc.edgeOver.skips.length === 1,
+  `الموضع=${sc.edgeOver && sc.edgeOver.final} · رفض=${sc.edgeOver && sc.edgeOver.skips.length}`);
+ok('تُبنى setAudioTime من نصّ الملف وتُنادى فعلاً بلا خطأ', gateErr === null && !sc.back.err,
+  gateErr ? String(gateErr.message) : (sc.back.err || ''));
+ok('سلوكياً — سحب للخلف على صوت يعمل: **لا** كتابة للموضع (10.000 تبقى 10.000)',
+  !!sc.back && sc.back.wrote === false && sc.back.final === 10, `الموضع=${sc.back && sc.back.final}`);
+ok('وسُجّل الرفض بوسم no-rewind (دليل التنفيذ لا الصمت)',
+  !!sc.back && sc.back.skips.length === 1 && /^site-skip$|^kick-skip$/.test(sc.back.skips[0]), (sc.back && sc.back.skips.join(',')) || 'لا شيء');
+ok('سلوكياً — السحب للخلف **بإذن** (allowBack=true) يُنفَّذ: 10.000 ⟶ 5.000',
+  !!sc.allowed && sc.allowed.wrote === true && sc.allowed.final === 5 && sc.allowed.skips.length === 0,
+  `الموضع=${sc.allowed && sc.allowed.final} · رفض=${sc.allowed && sc.allowed.skips.length}`);
+ok('سلوكياً — الإلحاق الأمامي يُنفَّذ (5.000 ⟶ 10.000) بلا إذن',
+  !!sc.fwd && sc.fwd.wrote === true && sc.fwd.final === 10, `الموضع=${sc.fwd && sc.fwd.final}`);
+ok('سلوكياً — فرق داخل التسامح (0.020s) لا يُكتب',
+  !!sc.tol && sc.tol.wrote === false, `الموضع=${sc.tol && sc.tol.final}`);
+ok('سلوكياً — صوت متوقف: الكتابة للخلف تنفّذ بلا إذن (شرط !audio.paused فعّال)',
+  !!sc.paused && sc.paused.wrote === true && sc.paused.final === 5, `الموضع=${sc.paused && sc.paused.final}`);
+// والتثبيت النصّي للصيغة التي يقوم عليها السلوك: أي قلب أو إعادة كتابة للفرق يسقط هنا
+// **قبل** أن يصل السلوك (وسطر الحارس الأخير يعلن هذه البوابة بعينها).
+const DELTA_BINDING = 'const delta = cur - want;';
+const CURLINE_BINDING = 'const cur = audio.currentTime;';
+ok(`الصيغة مثبَّتة نصّاً: \`${CURLINE_BINDING}\``,
+  !!gate && stripComments(gate.body).includes(CURLINE_BINDING));
+ok(`الصيغة مثبَّتة نصّاً: \`${DELTA_BINDING}\` — إشارة الفرق هي الفرق بين بوابة وثقب (لا تُقلب ولا تُشتقّ)`,
+  !!gate && stripComments(gate.body).includes(DELTA_BINDING));
+ok('وشرط الرفض هو نصّه المثبَّت نفسه (لا تعبير مُشتقّ مكانه)',
+  !!gate && stripComments(gate.body).includes('if (!allowBack && !audio.paused && delta > 0.05) {'));
+ok('وعلامة السماح لا تُكتب داخل الجسم (سطر `allowBack = true;` يُبطل الشرط كلّه)',
+  !!gate && !/\ballowBack\s*=/.test(stripComments(gate.body)));
+ok('ولا إسناد إلى `delta` بعد تعريفه (الفرق يُقاس مرّة واحدة من `cur` و`want`)',
+  !!gate && !/^\s*delta\s*=/m.test(stripComments(gate.body).split(DELTA_BINDING).join('')));
+// ← تسقط هنا: B1 (قلب الفرق) و B2 (allowBack = true)، بل يفشل بناء المشهد نفسه عليهما.
 
 console.log('\n=== ٦) مواضع النداء وأعلام السماح بالرجوع ===');
 ok('kick: allowBack=false', /setAudioTime\('kick', audioPos\(\), false\)/.test(src));
@@ -692,6 +947,35 @@ ok(`مواضع السحب للخلف = المواضع المسموحة في §٥
 ok('ومواضع setAudioTime = 7 كلها بأعلامها المعروفة', (src.match(/setAudioTime\(/g) || []).length === 7);
 ok('وpace-release بـallowBack=true حصراً', /setAudioTime\('pace-release', audioPos\(\), true\)/.test(exitB));
 
+// ── القيم المشتقّة المشحونة: قِيست في الملف لا في التعليق ولا في صيغة أُخرى ────────────
+// العمى (ب٩): `const expect = audioPos() + 1;` يمرّ — لا فحص يثبّت **القيم المشتقّة**
+// التي يقوم عليها القرار (موضع الصوت المتوقّع، وفرق التقدّم) ولا أعلام النداء. فكلٌّ منها
+// يُثبَّت هنا بنصّه، والقيمة الوسيطة تُشتقّ من الحقل المعلن لا من نصّ مكرّر (وإلا صار
+// تجميداً إملائياً لا تثبيتاً لدلالة).
+const driftS2 = bodyOf(extractBlock(src, 'w.drift = setInterval('));
+const DRIFT_EXPECT = 'const expect = audioPos();';
+const DRIFT_LEAD = 'const lead = audio.currentTime - expect;';
+ok(`القيمة المشتقّة مثبَّتة: \`${DRIFT_EXPECT}\` — موضع الصوت المتوقّع هو الخريطة المطبَّقة نفسها، لا الخريطة زائد إزاحة`,
+  driftS2.includes(DRIFT_EXPECT));
+ok(`القيمة المشتقّة مثبَّتة: \`${DRIFT_LEAD}\` — فرق التقدّم هو (موضع الصوت − المتوقّع) بإشارته`,
+  driftS2.includes(DRIFT_LEAD));
+// عتبة القرار ثابتة على القيمة المقيسة نفسها (0.35s) في الموضعين: تتكرّر بالمعنى لا بالرقم.
+const driftLeadChecks = (driftS2.match(/lead\s*[<>]\s*-?0\.35/g) || []);
+ok(`وعتبة قرار التقدّم 0.35s في الفرعين (وجد ${driftLeadChecks.length}: ${driftLeadChecks.join(' · ')})`,
+  driftLeadChecks.length === 2 && /lead\s*>\s*0\.35/.test(driftS2) && /lead\s*<\s*-0\.35/.test(driftS2));
+// ووسائط النداءين مثبَّتة: النداء المؤكَّد يأخذ `expect` (لا تعبيراً)، والملحق الأمامي كذلك.
+const driftCallArgs = (driftS2.match(/setAudioTime\('drift(?:-confirmed)?',\s*([^,)]+),/g) || []).map((s) => s.replace(/\s+/g, ' '));
+ok(`وسيطا نداءي التصحيح مثبَّتان (وجد ${driftCallArgs.length}): ${driftCallArgs.join(' · ')}`,
+  driftCallArgs.length === 2 && driftCallArgs.every((a) => /,\s*expect,/.test(a)));
+// والأسماء المشتقّة لا تُعاد كتابتها بعد تعريفها (تقدير ثابت من مصدره، لا تراكم).
+ok('و`expect` و`lead` لا يُعاد إسنادهما بعد تعريفهما (تعريف واحد لكلٍّ في النبضة)',
+  (driftS2.match(/const expect\s*=/g) || []).length === 1 && (driftS2.match(/const lead\s*=/g) || []).length === 1
+  && !/(?<!const )\blead\s*=[^=]/.test(driftS2.replace(DRIFT_LEAD, '')));
+// أعلام النداء في الملف كلّه: القيمة الحرفية `true`/`false` للوسيط الثالث — لا تعبير.
+const backFlagForms = (src.match(/setAudioTime\('[a-z-]+',[^;]*?(true|false)\)/g) || []).map((s) => s.replace(/\s+/g, ' '));
+ok(`أعلام السماح كلها قيم حرفية true/false (وجد ${backFlagForms.length} نداءً، ولا تعبير محسوب)`,
+  backFlagForms.length === 7 && backFlagForms.every((a) => /,\s*(true|false)\)$/.test(a)), backFlagForms.join(' · '));
+
 console.log('\n=== ٢٥) اختبارات سلبية للتسريع: كل مُفسَد يجب أن يُسقط حارسه ===');
 const paceMuts = [
   ['ص: keptStretchAround تشير إلى حالة خارجية', src.replace(
@@ -1269,24 +1553,58 @@ for (const [label, mutant] of gsMuts) {
 console.log('\n=== ٣١) عدّ ثابت للمجدولات والمستمعين: لا مؤقّت ولا مستمع جديد (ثقب N1) ===');
 // الثقب المُقاس: `setInterval(() => {}, 5000);` داخل gapTick يمرّ — سلوك دوري جديد دائم لا
 // يراه أي فحص قائم. العلاج عدّ ثابت لكل مواضع الجدولة والتسجيل في الملف المشحون (بأسلوب
-// «عدد كتابات موضع الصوت = 2» نفسه). المقيس على هذا الالتزام: setInterval( = 5 ·
-// setTimeout( = 8 · on( = 10 · addEventListener( = 11. والمستمعون يُعدّون على النصّ مجرَّد
-// التعليقات والنصوص، فلا يُضلّل تعليقٌ يذكر on(، والمجدولات على النصّ كما هو.
-const COUNT_WANT = { setInterval: 5, setTimeout: 8, on: 10, addEventListener: 11 };
+// «عدد كتابات موضع الصوت = 2» نفسه). والمستمعون يُعدّون على النصّ مجرَّد
+// التعليقات والنصوص، فلا يُضلّل تعليقٌ يذكر on(.
+//
+// **العمى الثاني (مُقاس)**: العدّ كان على `setInterval( · setTimeout( · on( ·
+// addEventListener(` وحدها، فمرّت **حلقتا جدولة/استماع بصيغن لا يعدّهما شيء**:
+//   (ب٧) `requestAnimationFrame(() => { gapTick(); });` في startWatch — جدولة دورية
+//        بلا مؤقّت، فتُشغّل مسار المزامنة خارج كل العدّ.
+//   (ب٨) `video.ontimeupdate = () => { gapTick(); };` — إسناد **خاصية** معالج لا نداء
+//        `addEventListener`، فلا يزيد عدّ المستمعين ويُضاف مستمع كامل بلا وعي.
+// فالعدّ يُعمَّم إلى: كل دوال الجدولة المعروفة + خصائص المعالج `on<event>` (بأي عنصر)
+// + خصائص المؤقّتات (`x = setInterval(…)`). وكل مجموعة تُثبَّت **بعددها الحالي**، فأي
+// إضافة — ولو بصيغة جديدة — تُسقط الفحص حتى تُضاف وعياً.
+const SCHED_NAMES = ['setInterval', 'setTimeout', 'requestAnimationFrame', 'setImmediate', 'queueMicrotask'];
+const COUNT_WANT = {
+  setInterval: 5, setTimeout: 8, on: 10, addEventListener: 11,
+  requestAnimationFrame: 0, setImmediate: 0, queueMicrotask: 0,
+  propHandlers: 0, timerProps: 6,
+};
 const countScan = (text) => {
   const txt = stripLiterals(text);
+  const noCom = stripComments(text);
   return {
     setInterval: (text.match(/setInterval\s*\(/g) || []).length,
     setTimeout: (text.match(/setTimeout\s*\(/g) || []).length,
     on: (txt.match(/(?<![\w$.])on\s*\(/g) || []).length,
     addEventListener: (txt.match(/addEventListener\s*\(/g) || []).length,
+    requestAnimationFrame: (text.match(/requestAnimationFrame\s*\(/g) || []).length,
+    setImmediate: (text.match(/setImmediate\s*\(/g) || []).length,
+    queueMicrotask: (text.match(/queueMicrotask\s*\(/g) || []).length,
+    // إسناد معالج عبر خاصية: `video.ontimeupdate = …` · `el.onclick = …` (نصّ حيّ)
+    propHandlers: (noCom.match(/\.\s*on[a-z]+\s*=/g) || []).length,
+    // إسناد مؤقّت إلى **خاصية** كائن: `w.gap = setInterval(…)` · `w.paceTimer = setTimeout(…)`.
+    // المقصود الخاصية لا المعرّف المحلّي (`const to = setTimeout(…)` يعدّه `setTimeout(` وحده)،
+    // فالنمط يشترط نقطة قبل الاسم — وبلا هذا الشرط قِيس 10 بدل 3 (المعاريف المحلّية تُحسب).
+    timerProps: (noCom.match(/\.\s*[A-Za-z_$][\w$]*\s*=\s*(?:setInterval|setTimeout|requestAnimationFrame|queueMicrotask)\s*\(/g) || []).length,
   };
 };
 const cnt = countScan(src);
-ok(`عدد setInterval( = ${COUNT_WANT.setInterval} بالضبط (وجد ${cnt.setInterval})`, cnt.setInterval === COUNT_WANT.setInterval);
-ok(`عدد setTimeout( = ${COUNT_WANT.setTimeout} بالضبط (وجد ${cnt.setTimeout})`, cnt.setTimeout === COUNT_WANT.setTimeout);
-ok(`عدد تسجيلات المستمعين on( = ${COUNT_WANT.on} بالضبط (وجد ${cnt.on})`, cnt.on === COUNT_WANT.on);
-ok(`وaddEventListener( = ${COUNT_WANT.addEventListener} بالضبط (وجد ${cnt.addEventListener})`, cnt.addEventListener === COUNT_WANT.addEventListener);
+// ومرساة على القائمة نفسها: كل دالّة جدولة معروفة **يجب** أن يكون لها عدّاد في الماسح،
+// وإلا أُضيف اسم هنا ونُسي هناك فصار العمى يعود من الباب نفسه.
+ok(`كل دوال الجدولة المعروفة (${SCHED_NAMES.length}) لها عدّاد في الماسح`,
+  SCHED_NAMES.every((n) => Object.hasOwn(COUNT_WANT, n) && typeof cnt[n] === 'number'),
+  SCHED_NAMES.filter((n) => !Object.hasOwn(COUNT_WANT, n)).join(' · ') || 'لا شيء');
+const COUNT_LABEL = {
+  setInterval: 'setInterval(', setTimeout: 'setTimeout(', on: 'تسجيلات المستمعين on(',
+  addEventListener: 'addEventListener(', requestAnimationFrame: 'requestAnimationFrame(',
+  setImmediate: 'setImmediate(', queueMicrotask: 'queueMicrotask(',
+  propHandlers: 'خصائص المعالج on<event>', timerProps: 'إسناد مؤقّت إلى خاصية كائن',
+};
+for (const k of Object.keys(COUNT_WANT)) {
+  ok(`عدد ${COUNT_LABEL[k]} = ${COUNT_WANT[k]} بالضبط (وجد ${cnt[k]})`, cnt[k] === COUNT_WANT[k]);
+}
 const cntFell = (text) => { const c = countScan(text); return Object.keys(COUNT_WANT).filter((k) => c[k] !== COUNT_WANT[k]).map((k) => `${k}=${c[k]}`); };
 const cntMuts = [
   ['ن١: setInterval جديد بلا داعٍ (مُفسَد N1 نفسه)',
@@ -1297,6 +1615,15 @@ const cntMuts = [
     src.replace("on(video, 'ended', () => { stopWatch(); });", "on(video, 'ended', () => { stopWatch(); });\n    on(video, 'timeupdate', () => {});")],
   ['ن٤: مستمع addEventListener إضافي',
     src.replace("on(video, 'ended', () => { stopWatch(); });", "on(video, 'ended', () => { stopWatch(); });\n    video.addEventListener('suspend', () => {});")],
+  // العمى الثاني بعينه: الصيغتان اللتان مرّتا
+  ['ن٥ (ب٧): حلقة requestAnimationFrame جديدة في startWatch (بلا مؤقّت ⇒ لا يُعدّها شيء)',
+    src.replace('    WATCH = w;\n', '    WATCH = w;\n    requestAnimationFrame(() => { gapTick(); });\n')],
+  ['ن٦ (ب٨): مستمع بصيغة إسناد خاصية `video.ontimeupdate =` (لا يزيد عدّ المستمعين)',
+    src.replace('    WATCH = w;\n', '    WATCH = w;\n    video.ontimeupdate = () => { gapTick(); };\n')],
+  ['ن٧: جدولة بصيغة معالج خاصية على عنصر آخر `audio.onplay =`',
+    src.replace('    WATCH = w;\n', '    WATCH = w;\n    audio.onplay = () => {};\n')],
+  ['ن٨: مؤقّت مُسنَد إلى خاصية جديدة (لا يزيد `setTimeout(` وحده إن أُعيد استخدام مؤقّت قائم)',
+    src.replace('    WATCH = w;\n', '    WATCH = w;\n    w.keepAlive = setInterval(() => {}, 1000);\n')],
 ];
 for (const [label, mutant] of cntMuts) {
   const fell = mutant !== src ? cntFell(mutant) : [];
@@ -1495,37 +1822,8 @@ console.log('\n=== ٣٤) قاعدة الفرع الميت والتعليق + أ�
 //       محسوب تُبقي استعادة ٢٫٥٥× صامتة. (الصيغة **المجزّأة حرفياً** مُغلقة سلفاً في §٢٦،
 //       وقِيس ذلك؛ وهذا الفحص يغطّي المفتاح المتغيّر الذي لا تجزئة فيه — وقِيس أنه كان مفتوحاً.)
 //   (د) العبارات الحسّاسة تُبحث في نصّ **مجرَّد من التعليقات** والنصوص الحرفية محفوظة فيه،
-//       فتعليق عبارة حيّة يُسقط الفحص: هذا فرق «الوجود» عن «الحياة».
-function stripComments(text) {
-  let out = '';
-  let i = 0;
-  while (i < text.length) {
-    const c = text[i];
-    const d = text[i + 1];
-    if (c === '/' && d === '/') { while (i < text.length && text[i] !== '\n') { out += ' '; i++; } continue; }
-    if (c === '/' && d === '*') {
-      out += '  ';
-      i += 2;
-      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) { out += text[i] === '\n' ? '\n' : ' '; i++; }
-      if (i < text.length) { out += '  '; i += 2; }
-      continue;
-    }
-    if (c === "'" || c === '"' || c === '`') {
-      const q = c;
-      out += c;
-      i++;
-      while (i < text.length && text[i] !== q) {
-        if (text[i] === '\\') { out += text[i]; i++; if (i < text.length) { out += text[i]; i++; } continue; }
-        out += text[i]; i++;
-      }
-      if (i < text.length) { out += text[i]; i++; }
-      continue;
-    }
-    out += c;
-    i++;
-  }
-  return out;
-}
+//       فتعليق عبارة حيّة يُسقط الفحص: هذا فرق «الوجود» عن «الحياة». (و`stripComments`
+//       معرَّفة في رأس الملف لأن §٤ يستعملها أيضاً.)
 const noComment = stripComments(src);
 const CAL_COMMENT = 'قفزة صنعناها نحن';
 const CAL_LITERAL = "'hl.synclog'";
