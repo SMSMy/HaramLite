@@ -23,7 +23,8 @@
     "versions:check": "node scripts/verify-versions.cjs",
     "ext:guard": "node scripts/check-extension-sync.cjs",
     "ext:mutants": "node scripts/check-extension-mutants.cjs",
-    "site:check": "node scripts/check-site-css.cjs && node scripts/check-site-pages.cjs && node scripts/check-site-tags.cjs && node scripts/check-site-arabic.cjs && node scripts/check-site-links.cjs"
+    "site:check": "node scripts/check-site-css.cjs && node scripts/check-site-pages.cjs && node scripts/check-site-tags.cjs && node scripts/check-site-arabic.cjs && node scripts/check-site-links.cjs",
+    "matrix:check": "node scripts/matrix-check.cjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
