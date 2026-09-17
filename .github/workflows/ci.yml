@@ -103,11 +103,31 @@ jobs:
       # تفشل على **كل** ثغرة بلا اعتبار للدرجة (v2 أزال `severity-threshold`).
       # والاستثناءات السبعة فيه كلها `unmaintained`/`unsound` **بلا ترقية آمنة**، ومُثبَت
       # بالمُفسِد أن إرجاع `rustls` إلى 0.23.43 يُسقط البوابة رغمها — أي أنها ضيّقة لا مُرخاة.
+      #
+      # **ولماذا لا يُستعمل `EmbarkStudios/cargo-deny-action`**: هو إجراء **حاوية Docker**
+      # و«Container action is only supported on Linux» — وهذه المهمّة على ويندوز، فكانت
+      # الخطوة تفشل **قبل أن تفحص شيئاً**. (لم يُرَ ذلك إلا في أول دفع بعد توصيلها،
+      # 2026-09-17.) فنجلب الثنائي الرسمي لويندوز بـ`gh` — كما تفعل مهمّة e2e أصلاً —
+      # **بلا اعتمادية جديدة**، ونثبّت إصداره، ونتحقّق من بصمته قبل تشغيله.
+      # (والبصمة من النشرة نفسها ⇒ فحص سلامة نقل لا مرجع ثقة مستقل — كحال مانيفست الأصول.)
       - name: Dependency gates (licences · bans · sources · advisories)
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          manifest-path: src-tauri/Cargo.toml
-          command: check
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ver   = '0.20.2'
+          $asset = "cargo-deny-$ver-x86_64-pc-windows-msvc.tar.gz"
+          $dir   = Join-Path $env:RUNNER_TEMP 'cargo-deny'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          gh release download $ver --repo EmbarkStudios/cargo-deny -p $asset -p "$asset.sha256" -D $dir --clobber
+          $want = (Get-Content (Join-Path $dir "$asset.sha256") -Raw).Trim().Split()[0].ToLower()
+          $got  = (Get-FileHash (Join-Path $dir $asset) -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $want) { throw "cargo-deny digest mismatch: $got != $want" }
+          tar -xzf (Join-Path $dir $asset) -C $dir
+          $deny = (Get-ChildItem $dir -Recurse -Filter 'cargo-deny.exe' | Select-Object -First 1).FullName
+          & $deny --version
+          & $deny --all-features --manifest-path src-tauri/Cargo.toml --config deny.toml check
 
       # إسناد الإصدار (سبرنت 0.2.7 · ب-٢): يولّد `build-info.json` و SBOM بصيغة CycloneDX
       # من الرسم المقيس (‏597 حزمة Cargo + 207 npm). ويفشل — **ولا يكتب شيئاً** — إن اختلف
