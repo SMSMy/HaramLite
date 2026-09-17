@@ -16,13 +16,18 @@ import LANG_JS from '../../docs/assets/lang.js?raw';
 import BRIDGE_HTML from '../../docs/bridge.html?raw';
 import TRANSPARENCY_HTML from '../../docs/TRANSPARENCY.html?raw';
 
+/** نافذة lang.js: الملف يعلن واجهته عليها
+ *  (`window.HaramLiteLang = { apply, current, KEY }` — docs/assets/lang.js:109).
+ *  تصريح محلي بدل توسيع `Window` عالميّاً. */
+type LangWindow = Window & { HaramLiteLang: { apply: (lang: 'ar' | 'en') => void } };
+
 /** يشغّل lang.js داخل الصفحة المعطاة ويعيد نافذتها. */
-function mount(html: string, storedLang: 'ar' | 'en'): Window {
+function mount(html: string, storedLang: 'ar' | 'en'): LangWindow {
   const dom = new JSDOM(html, { url: 'https://haramlite.com/', runScripts: 'outside-only' });
   dom.window.localStorage.setItem('hl.lang', storedLang);
   (dom.window as unknown as { eval: (code: string) => void }).eval(LANG_JS);
   dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
-  return dom.window as unknown as Window;
+  return dom.window as unknown as LangWindow;
 }
 
 const norm = (s: string | null): string => (s || '').replace(/\s+/g, ' ').trim();
