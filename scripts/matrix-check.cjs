@@ -23,7 +23,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DEFAULT_FILE = path.join('docs', 'TEST-MATRIX.md');
+const DEFAULT_FILE = path.join('qa', 'TEST-MATRIX.md');
 const MANDATORY_RE = /\[إلزامي\]/;
 
 const EXIT = { PASS: 0, INCOMPLETE: 1, MISUSE: 2 };
@@ -236,7 +236,7 @@ function parseArgs(argv) {
 
 const USAGE = `الاستعمال: node scripts/matrix-check.cjs [--file=<path>] [--quiet]
 
-  --file=<path>  مسار المصفوفة (افتراضاً docs/TEST-MATRIX.md)
+  --file=<path>  مسار المصفوفة (افتراضاً qa/TEST-MATRIX.md)
   --quiet        لا تطبع إلا الملخّص وسطور النقص
   --help         هذه الرسالة
 
