@@ -440,6 +440,56 @@ CASES.push({
     apply: (dir) => { for (const f of ['package.json', 'src-tauri/tauri.conf.json', 'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock']) fs.rmSync(path.join(dir, f), { force: true }); } },
 });
 
+/* ═══ 9) حارس أصول CUDA (DLL ناقص · افتراق القائمتين) ═══════════════════════ */
+/* البيئة تحمل السير الحقيقي و`CUDA_FILES` الحقيقية، والحارس يبني عيّنات PE
+   المصنوعة بنفسه (لا ملف ثنائي في المستودع ولا في البيئة). */
+const cudaGuard = require('./check-cuda-assets.cjs');
+const CUDA_NAMES = cudaGuard.cudaFilesFromRust(
+  fs.readFileSync(path.join(REPO, 'src-tauri/src/cuda_runtime.rs'), 'utf8')
+);
+const CUDA_WF = path.join(REPO, '.github/workflows/cuda-assets.yml');
+const cudaWfPath = (dir) => path.join(dir, '.github/workflows/cuda-assets.yml');
+/* `editCudaWf` تفشل بصوت عالٍ إن لم يطابق نمط الاستبدال شيئاً: مُفسَد لم يغيّر
+   ملفه «يمرّ» فيُعلن الحارس معطوباً وهو سليم (وقع فعلاً في أول تشغيل). */
+const editCudaWf = (dir, fn) => {
+  const p = cudaWfPath(dir);
+  const before = fs.readFileSync(p, 'utf8');
+  const after = fn(before);
+  if (after === before) throw new Error('مُفسَد لم يغيّر السير — نمط الاستبدال لا يطابق');
+  fs.writeFileSync(p, after);
+};
+CASES.push({
+  name: 'check-cuda-assets.cjs',
+  script: S('check-cuda-assets.cjs'),
+  build(dir) {
+    mk(dir, 'src-tauri/src/cuda_runtime.rs',
+      'pub const CUDA_FILES: &[&str] = &[\n' +
+      CUDA_NAMES.map((n) => '    "' + n + '",').join('\n') +
+      '\n];\n');
+    copyInto(dir, '.github/workflows/cuda-assets.yml', CUDA_WF);
+  },
+  controlArgs: (dir) => ['--root', dir],
+  saw: (dir, res) => { const m = res.out.match(/حارس أصول CUDA: (\d+)/); return m ? Number(m[1]) : 0; },
+  sawExpected: CUDA_NAMES.length,
+  mutants: [
+    { label: 'اسم أُسقط من $EXPECTED في السير ⇒ افتراق عن CUDA_FILES',
+      apply: (dir) => editCudaWf(dir, (s) => s.replace("'cufft64_11.dll',", '')),
+      mustMatch: /افتراق/ },
+    { label: 'استثناء الحجم بالاسم عاد إلى السير (العيب الأصلي)',
+      apply: (dir) => editCudaWf(dir, (s) => s.replace(
+        "            if (-not $src) { throw \"ORT gpu zip missing $dll\" }",
+        "            if (-not $src) { throw \"ORT gpu zip missing $dll\" }\n" +
+        "            if ($src.Length -lt 10KB -and $dll -ne 'onnxruntime_providers_shared.dll') { throw \"stub\" }")),
+      mustMatch: /استثناء|الاستثناء/ },
+    { label: 'قاعدة PE عُطّلت في السير ⇒ الملف المبتور يمرّ',
+      apply: (dir) => editCudaWf(dir, (s) => s.replace(
+        'if ($len -lt $need) { throw', 'if ($false -and ($len -lt $need)) { throw')),
+      mustMatch: /قاعدة PE/ },
+  ],
+  zero: { label: 'لا cuda_runtime.rs (لا قائمة تُقاس)',
+    apply: (dir) => fs.rmSync(path.join(dir, 'src-tauri/src/cuda_runtime.rs'), { force: true }) },
+});
+
 /* ═══ التشغيل ═══════════════════════════════════════════════════════════════ */
 
 const results = [];   // { case, kind, label, ok, detail }

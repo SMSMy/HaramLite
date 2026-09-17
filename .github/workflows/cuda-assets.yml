@@ -85,9 +85,54 @@ jobs:
           foreach ($dll in @('onnxruntime_providers_shared.dll','onnxruntime_providers_cuda.dll')) {
             $src = Get-ChildItem (Join-Path $work 'ort') -Recurse -Filter $dll | Select-Object -First 1
             if (-not $src) { throw "ORT gpu zip missing $dll" }
-            if ($src.Length -lt 10KB -and $dll -ne 'onnxruntime_providers_shared.dll') { throw "$dll looks like a stub ($($src.Length) bytes)" }
+            # لا فحص حجم هنا بعد الآن: الحارس المفرد أدناه (قبل المانيفست) يمرّ
+            # على **كل** ملف في bin/ بقاعدة واحدة. الشرط القديم كان يستثني
+            # onnxruntime_providers_shared.dll بالاسم، فبقي الملف الوحيد في
+            # المجموعة بلا أي فحص — وهو بالضبط ما ينبغي أن يراه الحارس.
             Copy-Item $src.FullName (Join-Path $bin $dll)
           }
+
+          # 3ب) حارس السلامة: كل ملف في bin/ يجب أن يكون PE **كاملاً**.
+          #     دمية الربط التي يتركها ort وحده 0 بايت، والتنزيل المنقطع ملف
+          #     أقصر مما تعلنه رؤوسه — والقاعدة الواحدة تمسك الاثنين، فلا حاجة
+          #     إلى استثناء اسم بعينه (وقد كان الاستثناء هو العيب).
+          # >>> CUDA_ASSET_GUARD:BEGIN
+          function Test-CompletePe {
+            param([Parameter(Mandatory)][System.IO.FileInfo]$File)
+            $len = $File.Length
+            if ($len -lt 512) { throw "✗ $($File.Name): $len bytes — أصغر من رأس PE (دمية ربط فارغة؟)" }
+            $head = [byte[]]::new([int][Math]::Min($len, 65536))
+            $fs = [System.IO.File]::OpenRead($File.FullName)
+            try { $null = $fs.Read($head, 0, $head.Length) } finally { $fs.Dispose() }
+            if ($head[0] -ne 0x4D -or $head[1] -ne 0x5A) { throw "✗ $($File.Name): ليس PE (لا يبدأ بـ MZ)" }
+            $pe = [BitConverter]::ToInt32($head, 0x3C)
+            if ($pe -lt 64 -or $pe + 24 -gt $head.Length) { throw "✗ $($File.Name): رأس PE خارج ما قُرئ" }
+            if ([BitConverter]::ToUInt32($head, $pe) -ne 0x00004550) { throw "✗ $($File.Name): توقيع PE خاطئ" }
+            $coff = $pe + 4
+            $nsec = [BitConverter]::ToUInt16($head, $coff + 2)
+            $optsz = [BitConverter]::ToUInt16($head, $coff + 16)
+            if ($nsec -lt 1) { throw "✗ $($File.Name): بلا أقسام" }
+            $opt = $coff + 20
+            $need = [int64][Math]::Max([int][BitConverter]::ToUInt32($head, $opt + 60), 512)
+            for ($i = 0; $i -lt $nsec; $i++) {
+              $sec = $opt + $optsz + ($i * 40)
+              if ($sec + 40 -gt $head.Length) { throw "✗ $($File.Name): جدول الأقسام خارج ما قُرئ" }
+              $rawSz = [BitConverter]::ToUInt32($head, $sec + 16)
+              $rawPtr = [BitConverter]::ToUInt32($head, $sec + 20)
+              $end = [int64]$rawPtr + [int64]$rawSz
+              if ($end -gt $need) { $need = $end }
+            }
+            if ($len -lt $need) { throw "✗ $($File.Name): مبتور — $len bytes والرؤوس تعلن $need" }
+            Write-Host "  ✓ $($File.Name) كامل ($len bytes)"
+          }
+
+          # وكل ملف يجب أن يمرّ — وقائمة فارغة **فشل** لا نجاح: حارس لم يرَ
+          # شيئاً لا يُثبت شيئاً.
+          $dlls = @(Get-ChildItem $bin -Filter '*.dll' | Sort-Object Name)
+          if ($dlls.Count -eq 0) { throw "✗ لا ملفات DLL في $bin — لا شيء يُفحص، فلا نجاح" }
+          foreach ($f in $dlls) { Test-CompletePe -File $f }
+          Write-Host "✓ كل ملفات bin سليمة: $($dlls.Count)"
+          # <<< CUDA_ASSET_GUARD:END
 
           # 4) self-describing manifest (name + sha256 per file)
           $manifest = [ordered]@{ files = @() }

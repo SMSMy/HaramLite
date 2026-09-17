@@ -25,6 +25,7 @@
     "ext:mutants": "node scripts/check-extension-mutants.cjs",
     "site:check": "node scripts/check-site-css.cjs && node scripts/check-site-pages.cjs && node scripts/check-site-tags.cjs && node scripts/check-site-arabic.cjs && node scripts/check-site-links.cjs && node scripts/site-footer-and-icon-buttons.cjs --check",
     "matrix:check": "node scripts/matrix-check.cjs",
+    "cuda:guard": "node scripts/check-cuda-assets.cjs",
     "guards:selfcheck": "node scripts/check-guards-selfcheck.cjs"
   },
   "dependencies": {

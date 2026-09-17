@@ -90,7 +90,12 @@ impl StftPlan {
     /// Inverse STFT. `spec_re/spec_im`: [DIM_F][frames] one-sided spectrum.
     /// Returns exactly `(frames-1)*HOP` samples (torch.istft center=True).
     pub fn inverse(&self, spec_re: &[Vec<f32>], spec_im: &[Vec<f32>], frames: usize) -> Vec<f32> {
-        let out_len = (frames - 1) * HOP;
+        // `frames` is caller-supplied (`separator.rs` derives it from DIM_T), and
+        // 0 is a value a caller reaches for an empty chunk. `frames - 1` must not
+        // be evaluated below zero: in a debug build it aborts the process, and in
+        // release the wrap silently decides both the allocation size and the
+        // returned length. frames=1 keeps `(1-1)*HOP = 0`, byte for byte as before.
+        let out_len = frames.saturating_sub(1) * HOP;
         let total = out_len + N_FFT;
         let mut acc = vec![0.0f32; total];
         let mut env = vec![0.0f32; total];
@@ -215,6 +220,36 @@ mod tests {
             let y = plan.inverse(&re, &im, frames);
             assert!(y.iter().all(|v| v.is_finite()), "t={t} produced non-finite");
         }
+    }
+
+    /// `frames` is a caller-supplied count (`separator.rs` derives it from
+    /// `DIM_T`), so 0 is a value a caller can arrive at for an empty chunk.
+    /// `inverse` computes `(frames - 1) * HOP`, which must not be evaluated
+    /// below zero: in a debug build it aborts the process, and in release the
+    /// wrap silently decides both the allocation size and the returned length.
+    #[test]
+    fn inverse_with_zero_frames_must_not_underflow() {
+        let plan = StftPlan::new();
+        let re: Vec<Vec<f32>> = vec![vec![0.0f32; 1]; DIM_F];
+        let im = re.clone();
+
+        // Control: the same buffers with the smallest legal frame count are
+        // answered — so the failure below comes from `frames` alone, not from
+        // malformed input.
+        let control = plan.inverse(&re, &im, 1);
+        assert!(
+            control.is_empty(),
+            "frames=1 must return (1-1)*HOP = 0 samples, got {}",
+            control.len()
+        );
+
+        // Subject: frames = 0 (empty chunk).
+        let y = plan.inverse(&re, &im, 0);
+        assert!(
+            y.is_empty(),
+            "frames=0 must yield no samples, got {}",
+            y.len()
+        );
     }
 }
 

@@ -150,6 +150,11 @@ pub fn effective_nonce(base: &Path, in_memory: &[u8]) -> Vec<u8> {
 // فالنطاق الثابت صار **فارغاً**، والسماح **زمني**: يُمنح لحظة أن ينجح الخلف
 // فعلاً في فتح ذاك الملف وقراءته — أي أن المسار صار مساراً سلّمناه، لا مساراً
 // ادّعته الواجهة. مسار لم يمرّ بذاك النجاح يبقى مرفوضاً حتى لو وُجد على القرص.
+//
+// **وو-١ ب (مراجعة 0.2.7)**: «زمني» كانت تسمية لا سلوكاً — `allow_file` تُضاف
+// ولا تُسحب، فالنطاق ينمو لعمر العملية. الآن للمنح **نافذة** (`GRANT_WINDOW`)
+// والأقدم يُبطل بـ`forbid_file` فلا يبقى مقروءاً. التفصيل والثمن المُعلَن في
+// تعليق `GRANT_WINDOW`.
 
 /// المسار الذي يقارن به Tauri فعلاً: `is_allowed` يستدعي
 /// `try_resolve_symlink_and_canonicalize`، فالنمط المسموح يجب أن يكون
@@ -161,23 +166,118 @@ pub fn canonical_target(path: &Path) -> Option<PathBuf> {
     std::fs::canonicalize(path).ok()
 }
 
-/// اسمح لبروتوكول الأصول بمسار واحد سلّمه الخلف إلى الواجهة.
+/// كم مساراً مُسلَّماً يبقى مقروءاً في الوقت نفسه.
+///
+/// **العيب الذي يعالجه** (و-١ ب، المراجعة الأمنية لـ0.2.7): `allow_file` كانت
+/// **تُضاف ولا تُسحب**، فنطاق الأصول ينمو لعمر العملية — كل ملف نجح
+/// `player_prepare` عليه يبقى مقروءاً عبر `asset:` إلى أن يُغلق التطبيق، ولو
+/// كان المستخدم قد انتهى منه منذ ساعات. أي سكربت يجري في الواجهة يقرأ **كل**
+/// ما مُرِّر في الجلسة، لا ما يُعرض الآن.
+///
+/// **ولماذا نافذة لا مسار واحد**: `Scope` لا يملك «إلغاء سماح»، و`forbid_file`
+/// له الأولوية **دائماً وبلا رجعة** (`try_resolve_symlink_and_canonicalize` ثم
+/// `forbidden` تُسبق `allowed`). فسحب مسار يمنع إعادة منحه في العملية نفسها —
+/// أي أن التضييق إلى مسار واحد يكسر تدفّقاً حقيقياً (أ ← ب ← أ). فالنافذة تحفظ
+/// الذهاب والعودة داخل جلسة اللاعب، وتجعل المقروء **ثابتاً** بدل أن ينمو.
+///
+/// **الثمن المُعلَن**: المنح بعد الإبطال لا يمكن استرجاعه (`Scope` بلا
+/// un-forbid)، فيُعاد **خطأً صريحاً** لا فشلاً صامتاً. وثانياً — وهذا **مقيس لا
+/// مُدَّعى** — `forbid_file` **لا يحذف** النمط من مجموعة السماح: فالمجموعتان
+/// تنموان معاً (نمطان لكل مسار)، لكن القرار يمرّ على المنع أولاً، فالنموّ
+/// **ذاكرة فقط** ولا يمنح قراءة. أي أن هذا الإصلاح يضيّق **المقروء** لا
+/// البصمة؛ ولو أُريد تقييد البصمة أيضاً فلا سبيل إليه بهذه الواجهة.
+pub const GRANT_WINDOW: usize = 8;
+
+/// المسارات الممنوحة الآن، من الأقدم إلى الأحدث.
+static GRANTED: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+
+/// سياسة المنح وحدها، **دالة نقية**: تأخذ السجل (من الأقدم إلى الأحدث) والمسار
+/// الجديد والسعة، وتعيد السجل بعد المنح والمسارات التي يجب سحبها.
+///
+/// نقية لتُختبر بلا نطاق ولا تطبيق ولا إطلاق — وهي الموضع الوحيد الذي يقرر
+/// الإبطال، فلا يمكن «إصلاح» الإبطال في الاختبار وحده.
+pub fn plan_grant(
+    history: &[PathBuf],
+    newly: &Path,
+    window: usize,
+) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    // إعادة المنح تُحرّك المسار إلى الأحدث ولا تُكرّره (والنمط في `Scope`
+    // مجموعة، فالتكرار لا يوسّع شيئاً — لكن السجل يجب أن يبقى صادقاً).
+    let mut next: Vec<PathBuf> = history
+        .iter()
+        .filter(|p| p.as_path() != newly)
+        .cloned()
+        .collect();
+    next.push(newly.to_path_buf());
+    let cap = window.max(1);
+    let mut revoked = Vec::new();
+    while next.len() > cap {
+        revoked.push(next.remove(0));
+    }
+    (next, revoked)
+}
+
+/// المسارات الممنوحة الآن (الأقدم أولاً) — للفحص والاختبار.
+pub fn granted_paths() -> Vec<PathBuf> {
+    GRANTED.lock().unwrap_or_else(|p| p.into_inner()).clone()
+}
+
+/// اسمح لبروتوكول الأصول بمسار واحد سلّمه الخلف إلى الواجهة، واسحب الأقدم إن
+/// امتلأت النافذة.
 ///
 /// يُستدعى **بعد** نجاح قراءة الملف فعلاً (لا قبل). فشل السماح لا يُسقط
 /// العملية: أسوأ حاله ألا تُعرض المعاينة (والرسالة في السجل).
-pub fn allow_asset_for_frontend(app: &tauri::AppHandle, path: &Path) {
+///
+/// `Err` تعني **مساراً أُبطل سابقاً في هذه العملية**: `forbid_file` له الأولوية
+/// على أي `allow_file` لاحق، فلا فائدة من تسليم الواجهة مساراً سيردّ عليه
+/// البروتوكول بـ403. تُبلَّغ الحالة صراحةً بدل فشل صامت.
+///
+/// عامّة على `R` لتُقاس في الاختبار على `MockRuntime` بنفس الكود الذي يعمل في
+/// الإنتاج (لا نسخة ثانية للاختبار).
+pub fn allow_asset_for_frontend<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    path: &Path,
+) -> Result<(), String> {
     use tauri::Manager;
     let Some(canonical) = canonical_target(path) else {
         tracing::debug!(target: "app", "لم يُسمح بمسار غير موجود في نطاق الأصول: {}", path.display());
-        return;
+        return Ok(());
     };
     let scope = app.asset_protocol_scope();
-    match scope.allow_file(&canonical) {
-        Ok(()) => {
-            tracing::debug!(target: "app", "سُمح لمسار واحد في نطاق الأصول: {}", canonical.display())
-        }
-        Err(e) => tracing::warn!(target: "app", "تعذر السماح بالمسار في نطاق الأصول: {e}"),
+
+    // مُبطل سابقاً ⇒ لا يمكن استرجاعه في هذه العملية (انظر `GRANT_WINDOW`).
+    if scope.is_forbidden(&canonical) {
+        return Err(format!(
+            "سُحب السماح بهذا المسار سابقاً في هذه الجلسة ولا يمكن منحه ثانية: {}",
+            canonical.display()
+        ));
     }
+
+    let (next, revoked) = {
+        let history = granted_paths();
+        plan_grant(&history, &canonical, GRANT_WINDOW)
+    };
+
+    scope
+        .allow_file(&canonical)
+        .map_err(|e| format!("تعذر السماح بالمسار في نطاق الأصول: {e}"))?;
+    *GRANTED.lock().unwrap_or_else(|p| p.into_inner()) = next;
+    tracing::debug!(target: "app", "سُمح لمسار واحد في نطاق الأصول: {}", canonical.display());
+
+    for old in revoked {
+        match scope.forbid_file(&old) {
+            Ok(()) => tracing::debug!(
+                target: "app",
+                "سُحب السماح بمسار خارج النافذة ({}): {}",
+                GRANT_WINDOW,
+                old.display()
+            ),
+            // سحب فاشل = المسار يبقى مقروءاً؛ يُسجَّل تحذيراً ولا يُسقط المنح
+            // الجديد (الواجهة تحتاجه الآن).
+            Err(e) => tracing::warn!(target: "app", "تعذر سحب السماح بالمسار: {e}"),
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -264,6 +364,150 @@ mod tests {
                 .unwrap_or(false),
             "deny فارغ كما كان (لا سلوك جديد)"
         );
+    }
+
+    /// و-١ ب — سياسة النافذة وحدها، **نقية**: بلا نطاق ولا تطبيق ولا إطلاق.
+    /// وهي الموضع الوحيد الذي يقرر الإبطال، فلا يمكن «إصلاح» السلوك في
+    /// الاختبار وحده.
+    #[test]
+    fn the_grant_window_keeps_the_newest_and_revokes_the_oldest() {
+        let p = |i: usize| PathBuf::from(format!(r"C:\out\track{i}.mp3"));
+        let total = GRANT_WINDOW * 3;
+        let mut history: Vec<PathBuf> = Vec::new();
+        let mut revoked: Vec<PathBuf> = Vec::new();
+        for i in 0..total {
+            let (next, rev) = plan_grant(&history, &p(i), GRANT_WINDOW);
+            assert!(
+                next.len() <= GRANT_WINDOW,
+                "النافذة تجاوزت سعتها: {}",
+                next.len()
+            );
+            assert_eq!(next.last(), Some(&p(i)), "الجديد في آخر السجل");
+            assert!(!rev.contains(&p(i)), "لا يُبطل ما مُنح للتوّ");
+            revoked.extend(rev);
+            history = next;
+        }
+        assert_eq!(
+            revoked.len(),
+            total - GRANT_WINDOW,
+            "كل ما خرج من النافذة أُبطل مرة واحدة"
+        );
+        assert!(!history.contains(&p(0)), "الأقدم خرج من النافذة");
+        assert!(history.contains(&p(total - 1)), "الأحدث بقي");
+
+        // إعادة منح مسار **داخل** النافذة: يصير الأحدث، بلا تكرار ولا إبطال —
+        // وهذا هو تدفّق اللاعب (أ ← ب ← أ).
+        let back = history[0].clone();
+        let (next, rev) = plan_grant(&history, &back, GRANT_WINDOW);
+        assert_eq!(next.last(), Some(&back), "إعادة المنح تُحرّك إلى الأحدث");
+        assert_eq!(next.len(), GRANT_WINDOW, "بلا تكرار");
+        assert!(rev.is_empty(), "إعادة منح لا تُبطل شيئاً");
+        assert_eq!(next.iter().filter(|x| **x == back).count(), 1, "مرة واحدة");
+    }
+
+    /// سعة دنيا (1): تبقى صحيحة — لا انهيار ولا إبطال للجديد.
+    #[test]
+    fn a_window_of_one_keeps_exactly_one_path() {
+        let a = PathBuf::from(r"C:\out\a.mp3");
+        let b = PathBuf::from(r"C:\out\b.mp3");
+        let (one, none) = plan_grant(&[], &a, 1);
+        assert_eq!(one, vec![a.clone()]);
+        assert!(none.is_empty());
+        let (still_one, rev) = plan_grant(&one, &b, 1);
+        assert_eq!(still_one, vec![b.clone()]);
+        assert_eq!(rev, vec![a], "الأقدم وحده يُبطل");
+        // سعة 0 تُعامل كـ1: لا نافذة فارغة تُبطل ما مُنح للتوّ.
+        let (floor, rev) = plan_grant(&[], &b, 0);
+        assert_eq!(floor, vec![b]);
+        assert!(rev.is_empty());
+    }
+
+    /// و-١ ب — السلوك الفعلي على نطاق حقيقي، و**مُفسَده**: ما لم يُسلَّم قطّ أو
+    /// خرج من النافذة ⇒ `is_allowed` كاذب ⇒ بروتوكول الأصول يردّ 403.
+    ///
+    /// وهو الاختبار **الوحيد** الذي يمسّ السجل العام (`GRANTED`): لو شاركه غيره
+    /// لصار الإبطال تابعاً لترتيب تشغيل الاختبارات لا للسياسة.
+    #[test]
+    fn the_asset_scope_stops_growing_and_evicted_paths_are_refused() {
+        use tauri::Manager as _;
+
+        let app = tauri::test::mock_app();
+        let scope = app.asset_protocol_scope();
+        let handle = app.handle().clone();
+        let root = std::env::temp_dir().join(format!("hl_scope_window_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+
+        let n = GRANT_WINDOW * 3;
+        let files: Vec<PathBuf> = (0..n)
+            .map(|i| {
+                let p = root.join(format!("t{i}.mp3"));
+                std::fs::write(&p, b"handed over").unwrap();
+                p
+            })
+            .collect();
+        let stranger = root.join("never-handed.txt");
+        std::fs::write(&stranger, b"never handed over").unwrap();
+
+        // ضابط: قبل أي منح لا شيء مسموح.
+        assert!(!scope.is_allowed(&files[n - 1]), "لا شيء مسموح قبل التسليم");
+
+        for f in &files {
+            allow_asset_for_frontend(&handle, f).expect("منح مسار سلّمه الخلف");
+        }
+
+        // الأحدث مسموح، والأقدم (خرج من النافذة) **يُرفض** — وهو المُفسَد.
+        assert!(
+            scope.is_allowed(canonical_target(&files[n - 1]).unwrap()),
+            "أحدث مسار مسموح"
+        );
+        assert!(scope.is_allowed(&files[n - 1]), "ونفسه بالمسار الخام");
+        assert!(
+            !scope.is_allowed(canonical_target(&files[0]).unwrap()),
+            "أقدم مسار خرج من النافذة ⇒ يجب أن يُرفض"
+        );
+        assert!(!scope.is_allowed(&files[0]), "ونفسه بالمسار الخام مرفوض");
+        assert!(!scope.is_allowed(&stranger), "وملف لم يُسلَّم قطّ مرفوض");
+
+        // **المقيس**: المقروء الآن هو النافذة وحدها لا كل ما مُنح. هذا هو
+        // الفرق العملي — قبل هذا الإصلاح كان العدّ 24 (كل ما مُنح في الجلسة)،
+        // وهو معنى «النطاق ينمو لعمر العملية».
+        let readable: Vec<&PathBuf> = files.iter().filter(|f| scope.is_allowed(f)).collect();
+        assert_eq!(
+            readable.len(),
+            GRANT_WINDOW,
+            "المقروء يجب أن يكون النافذة وحدها ({GRANT_WINDOW}) لا {n} — والمقروء فعلاً: {readable:?}"
+        );
+        assert_eq!(
+            readable.last().map(|p| p.as_path()),
+            Some(files[n - 1].as_path()),
+            "وآخرها هو أحدث ما مُنح"
+        );
+
+        // **والثمن المُعلَن — مقيس لا مُدَّعى**: `Scope` لا يملك إزالة نمط،
+        // فمجموعة السماح **تبقى** تحمل كل مسار مُنح (نمطان لكل مسار على ويندوز:
+        // الصيغة الأصلية والمجرَّدة)، ومجموعة المنع تحمل كل ما أُبطل. فالنموّ
+        // الباقي ذاكرةٌ فقط ولا يمنح قراءة: القرار يمرّ على المنع أولاً.
+        let patterns = scope.allowed_patterns().len();
+        assert!(
+            patterns >= 2 * n,
+            "أنماط السماح لا تُحذف من `Scope` — قياس متوقّع ≥ {}، وجدت {patterns}",
+            2 * n
+        );
+        assert!(
+            scope.forbidden_patterns().len() >= n - GRANT_WINDOW,
+            "وكل ما أُبطل دخل مجموعة المنع"
+        );
+
+        // الثمن المُعلَن: `forbid_file` لا رجعة له، فإعادة منح مسار أُبطل
+        // **تُبلَّغ** ولا تمرّ بصمت (البروتوكول سيردّ 403 على أي حال).
+        assert!(
+            allow_asset_for_frontend(&handle, &files[0]).is_err(),
+            "إعادة منح مسار مُبطل يجب أن تُبلَّغ"
+        );
+        assert_eq!(granted_paths().len(), GRANT_WINDOW, "السجل بطول النافذة");
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     fn tmp(name: &str) -> PathBuf {
