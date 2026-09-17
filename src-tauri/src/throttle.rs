@@ -68,18 +68,31 @@ impl Throttle {
     }
 
     /// One-line rate evidence for end-of-run log lines.
+    ///
+    /// A counter whose lock is poisoned is **said to be unmeasured**, never
+    /// reported as `0 emitted / 0 suppressed`: zero is a real measurement
+    /// ("the channel never fired"), and printing it for a lock we could not
+    /// read is a log line asserting a measurement that was never taken — the
+    /// one thing rule 3 forbids. A thread that panicked while holding either
+    /// counter leaves that side unknown; the line then carries no numbers at
+    /// all, so nothing downstream can mistake silence for evidence.
     pub fn report(&self, key: &'static str) -> String {
-        let get = |m: &Mutex<HashMap<&'static str, u64>>| {
-            m.lock()
-                .map(|g| g.get(key).copied().unwrap_or(0))
-                .unwrap_or(0)
+        let count = |m: &Mutex<HashMap<&'static str, u64>>| -> Option<u64> {
+            m.lock().ok().map(|g| g.get(key).copied().unwrap_or(0))
         };
-        format!(
-            "{}: {} emitted / {} suppressed",
-            key,
-            get(&self.emitted),
-            get(&self.suppressed)
-        )
+        let emitted = count(&self.emitted);
+        let suppressed = count(&self.suppressed);
+        match (emitted, suppressed) {
+            (Some(e), Some(s)) => format!("{key}: {e} emitted / {s} suppressed"),
+            (e, s) => format!(
+                "{key}: قياس غير متاح — {}؛ لا أرقام ولا ادّعاء بمعدّل",
+                match (e.is_some(), s.is_some()) {
+                    (false, false) => "عدّادا emitted و suppressed مقفلان (خيط سمّمهما)",
+                    (false, true) => "عدّاد emitted مقفل (خيط سمّمه)",
+                    _ => "عدّاد suppressed مقفل (خيط سمّمه)",
+                }
+            ),
+        }
     }
 }
 
@@ -137,6 +150,52 @@ mod tests {
         assert!(
             rep.contains("suppressed"),
             "report must carry both sides: {rep}"
+        );
+    }
+
+    /// Rule 3 at the log line: a counter the process could not read must not
+    /// be printed as a number. A thread panics while holding the `emitted`
+    /// lock, poisoning it, and the report must name the unmeasured side
+    /// instead of claiming «0 emitted / 0 suppressed».
+    #[test]
+    fn a_poisoned_counter_is_said_not_zeroed() {
+        let th = std::sync::Arc::new(Throttle::new());
+        let t0 = Instant::now();
+        assert!(th.allow_at("k", t0), "one real emit");
+        assert!(!th.allow_at("k", t0), "one real suppression");
+
+        let poisoner = {
+            let th = std::sync::Arc::clone(&th);
+            std::thread::spawn(move || {
+                // The guard is held across the panic, so unwinding poisons it.
+                let _held = th.emitted.lock().expect("fresh counter lock");
+                panic!("deliberate: poison the emitted counter");
+            })
+        };
+        assert!(poisoner.join().is_err(), "the poisoner must have panicked");
+
+        let rep = th.report("k");
+        assert!(
+            rep.contains("غير متاح"),
+            "an unreadable counter must be said, not zeroed: {rep}"
+        );
+        assert!(
+            !rep.contains("emitted /"),
+            "no two-number claim may be printed at all: {rep}"
+        );
+        assert!(
+            rep.contains("emitted مقفل"),
+            "the line must name WHICH side is unknown: {rep}"
+        );
+
+        // Control: a healthy throttle still prints real numbers — the fix
+        // changed the unavailable case only.
+        let fresh = Throttle::new();
+        assert!(fresh.allow_at("k", t0));
+        assert!(
+            fresh.report("k").contains("1 emitted / 0 suppressed"),
+            "healthy path unchanged: {}",
+            fresh.report("k")
         );
     }
 }

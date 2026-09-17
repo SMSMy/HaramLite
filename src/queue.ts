@@ -291,16 +291,33 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?:
   saveBatchState();
 }
 
-/** Re-run one failed batch item with the last used separation options. */
+/** Re-run one failed batch item with the last used separation options.
+ *
+ * The retry button is rendered INSIDE the batch list, so it is on screen while
+ * the batch loop is still working on another file. Clicking it used to start a
+ * second separator beside the one in flight (`batchRunning` and
+ * `singleRunning` both true — the state `integration.ts:101/108` reads to keep
+ * the two progress channels apart). The click now goes through the same
+ * gate as every other run: no lease, no second run. */
 let lastSepOpts: SepOpts | null = null;
 async function retryBatchItem(file: string): Promise<void> {
+  const result = sepResultEl();
+  if (!result) return;
+  if (!session.isIdle()) {
+    // Say why nothing happened instead of starting a racing job.
+    result.textContent = t('sep_busy');
+    result.classList.remove('hidden');
+    invoke('push_log', {
+      level: 'warn',
+      message: `retry ignored: a ${session.getActiveRun() ?? 'unknown'} run is in progress (${file})`,
+    });
+    return;
+  }
   const kindSel = document.querySelector<HTMLElement>('.kind-card.selected');
   const o: SepOpts = lastSepOpts ?? {
     outKind: (kindSel?.dataset.kind as 'audio' | 'video') ?? 'audio',
   };
   const keepInst = (document.getElementById('keep-inst') as HTMLInputElement)?.checked ?? false;
-  const result = sepResultEl();
-  if (!result) return;
   markBatchItem(file, 'run');
   await runOne(file, keepInst, o, result);
 }
@@ -411,7 +428,12 @@ export function wireSeparate(): void {
 
     // batch path
     lastSepOpts = { outKind, quality, advFmt };
-    session.setBatchRunning(true);
+    // Same lease as the single path: if anything already owns the engine the
+    // loop must not start (the button guards above, this is the chokepoint).
+    if (!session.setBatchRunning(true)) {
+      setVerdict(probeEl(), t('sep_busy'), true);
+      return;
+    }
     batchAbort = false;
     sepBtnEl().textContent = t('toggle_pause');
     const failures: string[] = [];
@@ -435,7 +457,7 @@ export function wireSeparate(): void {
       done += 1;
       setBatchCounter(done, total);
     }
-    session.setBatchRunning(false);
+    session.endRun('batch');
     sepBtnEl().disabled = false;
     const key = session.getCurrentMode() === 'song' ? 'btn_sep_song' : 'btn_sep_clip';
     sepBtnEl().innerHTML =
@@ -467,7 +489,18 @@ async function runOne(
   result: HTMLElement,
 ): Promise<void> {
   const btn = sepBtnEl();
-  session.setSingleRunning(true);
+  // The single gate for "may a run start now": the same lease the batch loop
+  // and the retry button take (session.ts). Without it a caller that skipped
+  // the button guard could still start a second separator on the same engine.
+  if (!session.setSingleRunning(true)) {
+    result.textContent = t('sep_busy');
+    result.classList.remove('hidden');
+    invoke('push_log', {
+      level: 'warn',
+      message: `run refused: ${session.getActiveRun() ?? 'another'} run in progress (${path})`,
+    });
+    return;
+  }
   const prevHtml = btn.innerHTML;
   btn.disabled = false; // F-4: stays clickable — it is now the cancel button
   btn.textContent = t('toggle_cancel');
@@ -492,7 +525,7 @@ async function runOne(
     invoke('push_log', { level: 'error', message: `separate failed: ${e}` });
     void notify(t('notify_fail'), fileBaseName(path));
   } finally {
-    session.setSingleRunning(false);
+    session.endRun('single');
     btn.disabled = false;
     btn.innerHTML = prevHtml;
   }

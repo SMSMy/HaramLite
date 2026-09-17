@@ -1378,6 +1378,11 @@ mod tests {
     #[test]
     fn check_cadence_respects_state() {
         // Audit 2026-09-03: isolate from the user's REAL update state.
+        // The variable is process-wide while the harness runs tests on parallel
+        // threads, so the crate-wide env lock is taken first and the previous
+        // value restored on the way out — including if this test panics.
+        let _serial = crate::paths::serial_guard();
+        let _env = crate::paths::env_restore("HARAMLITE_YTDLP_STATE_DIR");
         let dir = std::env::temp_dir().join(format!("hl_ytdlp_state_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -1399,7 +1404,6 @@ mod tests {
         .ok();
         assert!(is_check_due(false));
 
-        std::env::remove_var("HARAMLITE_YTDLP_STATE_DIR");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
