@@ -81,6 +81,11 @@ function initRepo(dir) {
   runGit(['add', '-A'], dir);
   runGit(['commit', '-qm', 'init'], dir);
 }
+/** التزام المستودع المصنوع — يُقرأ بعد `initRepo` ليُبنى عليه `GITHUB_SHA`. */
+function headSha(dir) {
+  const r = runGit(['rev-parse', 'HEAD'], dir);
+  return r.status === 0 ? r.stdout.trim() : null;
+}
 /** طلب HTTP خام بلا تطبيع للمسار (سوكيت مباشر) — يقيس ما يصل الخادم فعلاً. */
 function rawGet(port, target, timeoutMs = 4000) {
   return new Promise((resolve) => {
@@ -342,6 +347,27 @@ CASES.push({
     initRepo(dir);
   },
   controlArgs: (dir) => ['--no-sbom', '--out', 'out'],
+  /* البيئة المصنوعة تحمل مستودع git مصنوعاً (فـ`git rev-parse HEAD` يُقاس ولا
+     يُخترع)، فيجب أن تحمل **هوية CI متّسقة معه**. السبب عطل مُقاس في CI وحده:
+     عدّاء GitHub يضبط `GITHUB_SHA` على التزام المستودع الحقيقي، و`build-info.cjs`
+     يقابل `GITHUB_SHA` بـ`git rev-parse HEAD` **قبل أن يكتب** ويرفض إن اختلفا
+     (وهو حارس صحيح: إسناد يشير إلى غير مصدره كذب). وهنا HEAD التزام **مصنوع**
+     لا يمكن أن يطابق `GITHUB_SHA` الموروث أبداً ⇒ exit 1 على العدّاء، و0 على
+     الجهاز (حيث لا `GITHUB_SHA`) — أي بيئة **غير سليمة** مرّت محلياً وسقطت في CI.
+     فالتصحيح في البيئة لا في الحارس: تُشتقّ هوية CI من الالتزام المصنوع نفسه.
+     وتُبنى **صريحة بلا وراثة** حتى تكون البيئة واحدة على الجهاز والعدّاء جميعاً
+     (لا مسار يعمل عندنا ويسقط هناك). */
+  childEnv(dir) {
+    return {
+      GITHUB_ACTIONS: 'true',
+      GITHUB_SHA: headSha(dir),
+      GITHUB_RUN_ID: '0000000000',
+      GITHUB_RUN_ATTEMPT: '1',
+      GITHUB_WORKFLOW: 'selfcheck',
+      GITHUB_REPOSITORY: 'selfcheck/fixture',
+      GITHUB_REF: 'refs/heads/selfcheck',
+    };
+  },
   // الضابط: الملف كُتب فعلاً في الموضع المطلوب.
   saw: (dir) => (fs.existsSync(path.join(dir, 'out/build-info.json')) ? 1 : 0),
   sawExpected: 1,
@@ -353,6 +379,15 @@ CASES.push({
     { label: '--assets في الآخر بلا قيمة كان ينهار بـstack trace',
       args: (dir) => ['--no-sbom', '--assets'],
       mustMatch: /--assets/ },
+    /* يُثبت أن مقابلة `GITHUB_SHA` بـHEAD **مشتغلة وملزِمة** في هذه البيئة، لا
+       مُتجاوَزة: `childEnv` هنا يُدخل sha مخالفاً عمداً (والضابط في الحالتين
+       يشتقّ sha مطابقاً) ⇒ الحارس يجب أن يرفض ولا يكتب. وهذا يحرس العطل نفسه من
+       الطرف الآخر: لو أُفرغت البيئة من `GITHUB_SHA` ليُسكَت الفحص، سقط هذا
+       المُفسَد — فالبيئة لا تُصلَح بإسكات شرط، بل بتحقيقه. */
+    { label: 'هوية CI مخالفة للالتزام المقيس (GITHUB_SHA مزحوم) ⇒ يُرفض ولا يُكتب',
+      env: { GITHUB_SHA: '0000000000000000000000000000000000000000' },
+      mustMatch: /GITHUB_SHA/,
+      alsoCheck: (dir) => !fs.existsSync(path.join(dir, 'out/build-info.json')) },
   ],
   zero: { label: 'لا ملفات إصدار أصلاً',
     apply: (dir) => { for (const f of ['package.json', 'src-tauri/tauri.conf.json', 'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock']) fs.rmSync(path.join(dir, f), { force: true }); } },
@@ -456,7 +491,11 @@ async function main() {
         if (m.cleanup) m.cleanup(dir);
       } else {
         const args = m.args ? m.args(dir) : (c.controlArgs ? c.controlArgs(dir) : ['--root', dir]);
-        const res = runNode(c.needsScriptCopy ? path.join(dir, 'scripts', c.name) : c.script, args, dir, c.childEnv ? c.childEnv(dir) : undefined);
+        /* `c.childEnv` تُبنى أوّلاً ثم يُطمَس منها ما يزحُمه المُفسَد (`m.env`)،
+           فالمُفسَد يغيّر البيئة **فوق** السليمة لا بدلاً منها. */
+        const env = c.childEnv ? c.childEnv(dir) : {};
+        const res = runNode(c.needsScriptCopy ? path.join(dir, 'scripts', c.name) : c.script, args, dir,
+          m.env ? { ...env, ...m.env } : (c.childEnv ? env : undefined));
         const named = /✗/.test(res.out);
         if (res.status === 0) { ok = false; detail = 'exit=0 ← مرّ المُفسَد'; }
         else if (!named) { ok = false; detail = 'exit=' + res.status + ' بلا رسالة «✗» مسمّاة'; }
