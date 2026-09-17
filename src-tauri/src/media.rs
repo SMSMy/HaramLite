@@ -117,6 +117,13 @@ fn make_cmd<S: AsRef<std::ffi::OsStr>>(program: S) -> Command {
     cmd
 }
 
+/// يشغّل أداة مرفقة ويُرجع stdout (ويسقط إلى stderr إذا كان stdout فارغاً).
+///
+/// **تنبيه**: رمز خروج العملية **لا يُفحَص عمداً** — لأن أحد المستدعين
+/// (`ffprobe_video_encoder_info`) تشخيصٌ بأفضل جهد يجب أن ينحدر لا أن يفشل.
+/// وعلى من يحتاج **حكماً** أن يتحقق هو مما حلّله؛ انظر `probe`، حيث كان `{}`
+/// الفارغ من ffprobe على ملف تالف يُقرأ فحصاً ناجحاً لوسائط فارغة
+/// (عطل ميداني: مصفوفة 0.2.7 صفّ 3.1 — أُصلح في `probe` وأُثبِّت باختبار).
 fn run_tool(tool_path: &Path, args: &[&str]) -> Result<String, MediaError> {
     let out = make_cmd(tool_path)
         .args(args)
@@ -197,6 +204,20 @@ pub fn probe(input: &Path) -> Result<MediaInfo, MediaError> {
     )?;
 
     let (container, duration_secs, streams) = parse_ffprobe_json(&json)?;
+
+    // ffprobe prints an EMPTY json object on stdout for a corrupt or missing
+    // input (`{}` — with the real reason on stderr and exit status 1), so a
+    // successful parse is NOT proof of a readable file. An empty result is a
+    // failure: it makes `--probe` exit 1 and `probe_media` report the error.
+    // A file that yielded any stream or a container name still passes, so odd
+    // containers and ffprobe warnings are unaffected.
+    // (Field defect from the 0.2.7 manual matrix, row 3.1.)
+    if container.is_empty() && streams.is_empty() {
+        return Err(MediaError::InvalidOutput(format!(
+            "ffprobe لم يُرجع أي تيار لـ{} — الملف تالف أو غير مقروء",
+            input.display()
+        )));
+    }
 
     let audio = streams
         .iter()
@@ -453,6 +474,43 @@ mod tests {
             "weird-file verdict must fire"
         );
         assert!(info.audio_codec.as_deref() == Some("aac"));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// عطل ميداني من مصفوفة 0.2.7 (صفّ 3.1)، يُثبَّت اختباراً دائماً (‏AGENT.md §٩.ب).
+    ///
+    /// السبب المقيس: ffprobe عند المدخل التالف أو المفقود يطبع `{}` على **stdout**
+    /// (ومعه السبب على stderr) ويخرج برمز 1 — فالتحليل ينجح، وكان `probe` يُعيد
+    /// `Ok` لوسائط فارغة ⇒ `--probe` يخرج 0 و`probe_media` لا يُبلّغ. والفراغ هنا
+    /// **فشل** لا وسائط فارغة.
+    #[test]
+    fn probe_rejects_a_file_that_yields_no_streams() {
+        if !tools_available() {
+            eprintln!("skipping: ffmpeg/ffprobe not found in bin/");
+            return;
+        }
+        let tmp = std::env::temp_dir().join(format!("hl_probe_bad_{}", std::process::id()));
+        let (_wav, good) = make_samples(&tmp);
+
+        // الضابط: الملف السليم يبقى ينجح — وإلا لمرّ الاختبار لأن كل فحص يفشل.
+        assert!(
+            probe(&good).is_ok(),
+            "control: a valid file must still probe"
+        );
+
+        let empty = tmp.join("empty.mp4");
+        std::fs::write(&empty, b"").unwrap();
+        let err = probe(&empty).expect_err("0-byte file must not probe as an empty media");
+        assert!(
+            err.to_string().contains("empty.mp4"),
+            "the error must name the file: {err}"
+        );
+
+        assert!(
+            probe(&tmp.join("does-not-exist.mp4")).is_err(),
+            "a missing file must fail the probe"
+        );
 
         std::fs::remove_dir_all(&tmp).ok();
     }
