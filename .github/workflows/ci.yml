@@ -74,8 +74,14 @@ jobs:
       - name: Fetch the separation model (verified against the pinned digest)
         run: node scripts/fetch-resources.cjs --only=UVR-MDX-NET-Voc_FT.onnx
 
+      # النطاق هنا **مقصود**، وقد فُرض بالقياس لا بالرأي: هذه المهمّة تجلب **النموذج وحده**
+      # (‏`bin/` يبقى stubs)، فطلب التحقّق من ffmpeg/ffprobe/yt-dlp و16 ملف CUDA فيها
+      # **بوّابة لا يمكن أن تنجح** — وهذا ما أثبته أول دفع بعد إضافتها (2026-09-17): رسبت
+      # بـ«bin/ffmpeg.exe — مفقود» وأوقفت ما بعدها. فالتحقّق يطالب بما جُلب فعلاً.
+      # ويبقى `pnpm verify:resources` **كاملاً** أمرَ المطوّر حيث `bin/` معمورة (وهو ما
+      # يجعل سببه الأصلي صحيحاً)، ولا يُدَّعى أنه يعمل في CI بغير هذا النطاق.
       - name: Verify the fetched resources against their pinned digests
-        run: pnpm verify:resources
+        run: node scripts/fetch-resources.cjs --verify-only --only=UVR-MDX-NET-Voc_FT.onnx
 
       - name: Rust tests
         working-directory: src-tauri
