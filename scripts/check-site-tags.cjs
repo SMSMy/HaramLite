@@ -5,6 +5,12 @@
    مجلد فارغ): صفر مدخل · مجلد مفقود · ملف صريح مفقود ⇒ **فشل مسمّى**، لا نجاح
    صامت ولا stack trace.
 
+   وتحصين ثانٍ (عيب مُقاس في docs/guides/remove-music-from-video.html):
+   تعليق HTML غير مغلق — 34 `<!--` مقابل 33 `-->`. أثرُه أن تجريد التعليقات
+   أدناه يبتلع كل ما بين `<!--` و`-->` التالي، فيصير قسم كامل («حدود النظام
+   ومتطلبات العتاد») غير مرئي للحارس، ويُعلن النجاح. فصار توازن التعليقات
+   نفسه فحصاً، **قبل** التجريد، يُسمّي الملف والأرقام وأرقام الأسطر.
+
    الاستعمال: node scripts/check-site-tags.cjs [ملف] [--root <dir>] */
 const fs = require('fs');
 const path = require('path');
@@ -12,9 +18,30 @@ const path = require('path');
 const VOID = new Set(['area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr']);
 const OPTIONAL_END = new Set(['p','li','dt','dd','td','th','tr','thead','tbody','tfoot','option','optgroup','rt','rp','colgroup','caption']);
 
+/** يمسح `<!--` و`-->` بالترتيب كما يقرؤها المحلّل: `-->` لا يقابلها فاتح
+ *  شارد، و`<!--` بلا غلق يمتدّ إلى آخر الملف. ويعيد مواضع الأسطر. */
+function commentBalance(raw) {
+  const problems = [];
+  const mark = (idx) => (raw.slice(0, idx).match(/\n/g) || []).length + 1;
+  const re = /<!--|-->/g;
+  const open = [];
+  let m;
+  while ((m = re.exec(raw))) {
+    if (m[0] === '<!--') open.push({ at: m.index, line: mark(m.index) });
+    else if (open.length === 0) problems.push('«-->» شارد عند السطر ' + mark(m.index) + ' بلا «<!--» يقابله');
+    else open.pop();
+  }
+  for (const o of open) {
+    problems.push('«<!--» غير مغلق عند السطر ' + o.line +
+      ' — يمتدّ إلى آخر الملف فيبتلع ما بعده من وسوم وقسم');
+  }
+  return problems;
+}
+
 function audit(file) {
   let t = fs.readFileSync(file, 'utf8');
   const raw = t;
+  const problems = commentBalance(raw);
   // إخفاء ما ليس وسوم HTML حقيقية (سكربتات/أنماط/تعليقات) مع حفظ أرقام الأسطر
   t = t.replace(/<!--[\s\S]*?-->/g, m => m.replace(/[^\n]/g, ' '));
   t = t.replace(/<script[\s\S]*?<\/script>/gi, m => m.replace(/[^\n]/g, ' '));
@@ -23,7 +50,6 @@ function audit(file) {
   const re = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
   let m;
   const stack = [];
-  const problems = [];
   while ((m = re.exec(t))) {
     const closing = m[1] === '/';
     const tag = m[2].toLowerCase();
