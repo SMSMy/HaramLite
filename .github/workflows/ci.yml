@@ -202,6 +202,15 @@ jobs:
       - name: Site guards
         run: pnpm site:check
 
+      # البوّابة الثالثة عشرة: تحرس الحرّاس أنفسهم. ثمانية حرّاس كانوا يمرّون على
+      # مدخل فارغ، أو ينهارون بدل تسمية الرمز المفقود، أو يُصنّفون انهيار الحارس
+      # اصطياداً. هذه البوّابة تبني لكل حارس بيئةً مصنوعة تحت %TEMP% فيها **مُفسَد**
+      # (يجب أن يُسقطه) و**ضابط** (يجب أن يمرّ عليه وقد رأى مدخلاً غير صفري)
+      # و**صفر مدخل** (يجب أن يفشل بصوت عالٍ). تفشل إن مرّ مُفسَد أو فشل ضابط.
+      # لا اعتماديات خارجية: Node + git، وخادم المعاينة على منفذ 0 يُوقَف بعد القياس.
+      - name: Guard self-check gate (mutant + control per guard)
+        run: pnpm guards:selfcheck
+
   # ── Release gate (ARCHIVE/ROADMAP.md §٧.ب بند ٥ · §6) — workflow_dispatch ONLY ──
   #
   # Why a separate job instead of a step above: this is the one gate that needs

@@ -51,8 +51,24 @@ const root = path.resolve(__dirname, '..');
 /** يقرأ الإصدارات الأربعة بنفس منطق `scripts/verify-versions.cjs` (بوابة
  *  الإصدار المعتمدة) حتى لا يفترق حارسان على الملف نفسه. */
 function readVersions() {
-  const readText = (p) => fs.readFileSync(path.join(root, p), 'utf8');
-  const fromJson = (p) => JSON.parse(readText(p)).version;
+  /* عيب مُقاس: قراءة مباشرة بـ`readFileSync` ⇒ ملف إصدار مفقود أو JSON فاسد
+     كان يُسقط العملية بـstack trace (`ENOENT`/`SyntaxError`) لا برسالة تسمّي
+     الملف. هذه أوّل خطوة في السكربت، فهي أول ما يجب أن يفشل بصوت عالٍ. */
+  const readText = (p) => {
+    const abs = path.join(root, p);
+    if (!fs.existsSync(abs)) {
+      fail(`ملف إصدار مفقود: ${p} — لا سبيل لقياس الإصدار ولا لكتابة إسناد صحيح.\n` +
+           `     الجذر المقيس: ${root}`);
+    }
+    return fs.readFileSync(abs, 'utf8');
+  };
+  const fromJson = (p) => {
+    let j;
+    try { j = JSON.parse(readText(p)); }
+    catch (e) { fail(`ملف إصدار غير صالح (JSON): ${p} — ${e.message}`); }
+    if (!j || typeof j.version !== 'string' || !j.version) fail(`ملف إصدار بلا حقل version نصّي: ${p}`);
+    return j.version;
+  };
 
   const cargoToml = readText('src-tauri/Cargo.toml').match(/^\s*version\s*=\s*"([^"]+)"/m);
 
@@ -222,8 +238,20 @@ function parseArgs(argv) {
   const opts = { out: null, assets: [], sbom: true };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--out') opts.out = argv[++i];
-    else if (a === '--assets') opts.assets.push(argv[++i]);
+    /* عيب مُقاس: `--out` في الآخر بلا قيمة كان يُتجاهل **بصمت** (`argv[++i]`
+       يُرجع undefined فيسقط إلى المسار الافتراضي) ⇒ الأمر يعمل ويخرج 0 وقد
+       كتب في غير الموضع المطلوب، و`--assets` في الآخر كان يرمي
+       `ERR_INVALID_ARG_TYPE` بstack trace. الآن كل علم ذي قيمة يُطالب بها. */
+    if (a === '--out' || a === '--assets') {
+      const v = argv[i + 1];
+      if (v === undefined || v.startsWith('--')) {
+        fail(`العلم ${a} يحتاج قيمة${v === undefined ? '' : ' (وجدت العلم ' + v + ' مكانها)'} — مثال: ` +
+             (a === '--out' ? 'node scripts/build-info.cjs --out dist/release-metadata'
+                            : 'node scripts/build-info.cjs --assets src-tauri/target/release/bundle'));
+      }
+      if (a === '--out') opts.out = v; else opts.assets.push(v);
+      i++;
+    }
     else if (a === '--no-sbom') opts.sbom = false;
     else fail(`وسيط غير معروف: ${a}`);
   }
