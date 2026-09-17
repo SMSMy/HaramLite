@@ -721,7 +721,13 @@ async fn player_prepare(
     // ولهذا الملف وحده: الواجهة تستعمل بروتوكول الأصول مرة واحدة
     // (`src/player.ts:308`) على `plPath` — وهو نفس المسار الذي نجح الخلف
     // للتوّ في فكّ ترميزه وقراءته. مسار لم ينجح لا يُسمح له بشيء.
-    ipc_guard::allow_asset_for_frontend(&app, Path::new(&handed));
+    // و-١ ب: وللمنح نافذة (الأقدم يُسحب بـ`forbid_file`)، فالمرجع الوحيد الذي
+    // يمكن أن يفشل هو إعادة منح مسار أُبطل — ولا يُسقط ذلك الخريطة التي حُسبت
+    // للتوّ: تُسجَّل الحالة بصوت عالٍ ويُعاد التقرير (أسوأ حاله ألا يشتغل الصوت
+    // لهذا الملف، ولا فشل صامت).
+    if let Err(e) = ipc_guard::allow_asset_for_frontend(&app, Path::new(&handed)) {
+        tracing::error!(target: "app", "نطاق الأصول: {e}");
+    }
     // The map covers the whole file — every queued chunk is now inspectable.
     let marked = {
         let mut sessions = store.lock().map_err(|e| e.to_string())?;
@@ -1048,37 +1054,80 @@ fn cancel_watch_file() {
     watch_service::cancel_current();
 }
 
+/// الخطة التي يُسلَّم بها ملف إلى مُشغّل النظام الافتراضي — **دالة نقية**:
+/// لا عملية تُنشأ هنا، فيمكن لاختبار الانحدار أن يؤكّد على بناء الأمر بلا أي
+/// إطلاق (واختبار يُطلق `start` يفتح نوافذ، فلا يُكتب).
+///
+/// **العيب الذي تعالجه** (المراجعة الأمنية لـ0.2.7): كان السطر
+/// `Command::new("cmd").args(["/c","start","",&path])`. وRust لا يقتبس الوسيط
+/// إلا إذا حمل مسافة أو علامة تنصيص، و`cmd` يعيد تحليل السطر: فمسار **بلا
+/// مسافة** فيه `&` أو `|` أو `^` يصير **أمراً ثانياً**. والوصول قائم: المسار
+/// مشتقّ من اسم الملف الذي منحه yt-dlp للتنزيل، وهو من **عنوان الفيديو**،
+/// و`sanitize_title` (`yt_dlp.rs:875-883`) لا يستبدل `&` — فعنوان مثل
+/// `a&calc.mp3` يجعل `cmd` يشغّل `calc.mp3`.
+///
+/// الآن لا وسيط تفسيري إطلاقاً: `explorer` / `open` / `xdg-open` يتلقّون
+/// المسار **وسيطاً واحداً** في `CreateProcess` مباشر، و«افتح هذا العنصر
+/// ببرنامجه الافتراضي» هو ما تفعله هذه البرامج بوسيط عادي — السلوك نفسه بلا
+/// لغة أوامر في الوسط.
+pub(crate) fn default_open_plan(target: &Path) -> (&'static str, Vec<std::ffi::OsString>) {
+    #[cfg(target_os = "windows")]
+    let plan = {
+        // `explorer` يقرأ `/e` و`/n` و`/separate` و`/root,<p>` و`/select,<p>`
+        // **خياراً** لا عنصراً. المستدعي يمرّر مساراً مطلقاً (حرف قرص أولاً)
+        // فلا يمكن أن يتحقّق ذلك؛ والحارس يبقى لأن الدالة متاحة داخل الصنف.
+        let arg = if is_explorer_option(target) {
+            let mut safe = std::ffi::OsString::from(".\\");
+            safe.push(target.as_os_str());
+            safe
+        } else {
+            target.as_os_str().to_os_string()
+        };
+        ("explorer", vec![arg])
+    };
+    #[cfg(target_os = "macos")]
+    let plan = ("open", vec![target.as_os_str().to_os_string()]);
+    #[cfg(target_os = "linux")]
+    let plan = ("xdg-open", vec![target.as_os_str().to_os_string()]);
+    plan
+}
+
+/// هل يقرأ `explorer` هذه الوسيطة كخيار من خياراته؟ القائمة منقولة عن
+/// `open-5.4.1/src/windows.rs:59` (حِزمة المُشغّل المستعملة في المنظومة).
+#[cfg(target_os = "windows")]
+fn is_explorer_option(p: &Path) -> bool {
+    let s = p.to_string_lossy().to_ascii_lowercase();
+    matches!(s.as_str(), "/e" | "/n" | "/separate")
+        || s.starts_with("/root,")
+        || s.starts_with("/select,")
+}
+
+/// ينفّذ الخطة: عملية **واحدة**، بلا صدفة، وبـ`CREATE_NO_WINDOW` فلا تومض
+/// نافذة حتى لو صار المُشغّل برنامجاً بطرفية.
+fn launch_default_open(target: &Path) -> Result<(), String> {
+    let (program, args) = default_open_plan(target);
+    let mut cmd = std::process::Command::new(program);
+    cmd.args(&args);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    cmd.spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 fn open_file(path: String) -> Result<(), String> {
     let target = PathBuf::from(path);
     if !target.exists() {
         return Err("الملف غير موجود".into());
     }
-
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        std::process::Command::new("cmd")
-            .args(["/c", "start", "", &target.to_string_lossy()])
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(&target)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(&target)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    // صيغة مطلقة: `explorer` يقرأ ما يبدأ بـ`/` خياراً، والمسار المطلق لا يمكن
+    // أن يكون خياراً. وبلا `canonicalize` — بادئة `\\?\` تفصيل Win32 لا ينبغي
+    // أن يراه `explorer`.
+    let target = std::path::absolute(&target).unwrap_or(target);
+    launch_default_open(&target)
 }
 
 /// Crash forensics: a marker written at boot and removed on graceful exit.
@@ -1683,5 +1732,123 @@ mod single_instance_tests {
             ipc_guard::REJECT_BYTE,
             "رمز ببايت مبدَّل"
         );
+    }
+}
+
+/// v0.2.7 (البند ١) — حارس انحدار على **بناء الأمر** وحده، بلا أي إطلاق.
+///
+/// لا يُشغَّل `start` ولا أي مُشغّل هنا: الاختبار يقيس الخطة النقية
+/// (`default_open_plan`) التي يُنفّذها `launch_default_open`. وهذا مقصود —
+/// اختبار يُطلق المُشغّل يفتح نافذة على جهاز المستخدم.
+#[cfg(test)]
+mod open_file_tests {
+    use super::*;
+
+    /// المسارات التي كانت تُنتج **أمراً ثانياً** تحت `cmd /c start`: `&` و`|`
+    /// و`^` تفصل الأوامر في `cmd`، و`%` توسّع متغيّرات، والمسافة تجعل Rust
+    /// يقتبس الوسيط (فتنجو الطريق القديم) — والقائمة تغطي الحالتين.
+    const HOSTILE: [&str; 8] = [
+        r"C:\out\a&calc.mp3",
+        r"C:\out\a|whoami.mp3",
+        r"C:\out\a^&b.mp3",
+        r"C:\out\%TEMP%\x.mp3",
+        r"C:\out\a b.mp3",
+        r"C:\out\a,b.mp3",
+        r#"C:\out\a"b.mp3"#,
+        r"C:\out\a&b&c.mp3",
+    ];
+
+    /// الحارس: لا مفسّر أوامر، والمسار **وسيط واحد** يصل حرفياً.
+    ///
+    /// يسقط هذا الاختبار إذا عاد `cmd` (أو أي صدفة) إلى مسار الفتح، أو إن
+    /// صار المسار يُفكَّك/يُقتبس/يُدمج في وسائط.
+    #[test]
+    fn the_open_handoff_never_goes_through_a_command_interpreter() {
+        for raw in HOSTILE {
+            let (program, args) = default_open_plan(Path::new(raw));
+            let p = program.to_ascii_lowercase();
+            assert!(
+                !matches!(
+                    p.as_str(),
+                    "cmd"
+                        | "cmd.exe"
+                        | "powershell"
+                        | "powershell.exe"
+                        | "pwsh"
+                        | "pwsh.exe"
+                        | "sh"
+                        | "bash"
+                ),
+                "مُشغّل الفتح صار مفسّر أوامر: {program}"
+            );
+            assert_eq!(
+                args.len(),
+                1,
+                "المسار يجب أن يكون وسيطاً واحداً لا أكثر: {args:?}"
+            );
+            assert_eq!(
+                args[0],
+                std::ffi::OsString::from(raw),
+                "المسار يجب أن يصل حرفياً بلا اقتباس ولا تفكيك"
+            );
+            assert!(
+                !args.iter().any(|a| a == "/c" || a == "/k" || a == "start"),
+                "بقايا صيغة الصدفة في الوسائط: {args:?}"
+            );
+        }
+    }
+
+    /// ويندوز: المُشغّل هو مُشغّل ملفات النظام (كما في `open_in_explorer`)،
+    /// والمسار بشكل خيار (`/select,…`) يُحصَّن بـ`.\` فلا يُقرأ خياراً.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn the_open_handoff_is_the_os_file_manager() {
+        let (program, args) = default_open_plan(Path::new(r"C:\out\song.mp3"));
+        assert_eq!(program, "explorer", "ويندوز: مُشغّل النظام لا وسيط");
+        assert_eq!(
+            args,
+            vec![std::ffi::OsString::from(r"C:\out\song.mp3")],
+            "وسيطة واحدة، المسار كما هو"
+        );
+        assert!(is_explorer_option(Path::new(r"/select,C:\x.mp3")));
+        assert!(!is_explorer_option(Path::new(r"C:\out\song.mp3")));
+        let (_, guarded) = default_open_plan(Path::new(r"/select,C:\out\song.mp3"));
+        assert_eq!(
+            guarded[0],
+            std::ffi::OsString::from(r".\/select,C:\out\song.mp3"),
+            "مسار بشكل خيار لا يُمرَّر كخيار"
+        );
+    }
+
+    /// الوجه الآخر: `open_file` يرفض ما لا وجود له **قبل** أي إطلاق، فلا خطة
+    /// تُنفَّذ على مسار مفقود.
+    #[test]
+    fn open_file_refuses_a_missing_path_before_any_launch() {
+        let missing = std::env::temp_dir().join("hl_open_never_exists_0_2_7.mp3");
+        let _ = std::fs::remove_file(&missing);
+        assert_eq!(
+            open_file(missing.to_string_lossy().to_string()),
+            Err("الملف غير موجود".to_string())
+        );
+    }
+
+    /// `std::path::absolute` لا يمسّ القرص ولا يضيف بادئة `\\?\` (وهي تفصيل
+    /// Win32 لا ينبغي أن يراه `explorer`) — يُقاس على مسار حقيقي.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn the_handed_path_stays_plain_and_absolute() {
+        let f = std::env::temp_dir().join("hl_open_plain_0_2_7.mp3");
+        std::fs::write(&f, b"x").unwrap();
+        let abs = std::path::absolute(&f).unwrap();
+        assert!(abs.is_absolute());
+        assert!(
+            !abs.to_string_lossy().starts_with(r"\\?\"),
+            "بلا بادئة verbatim: {}",
+            abs.display()
+        );
+        let (program, args) = default_open_plan(&abs);
+        assert_eq!(program, "explorer");
+        assert_eq!(args[0], abs.as_os_str().to_os_string());
+        let _ = std::fs::remove_file(&f);
     }
 }

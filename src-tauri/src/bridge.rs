@@ -190,6 +190,18 @@ pub fn native_host_entry() -> i32 {
         let len = u32::from_le_bytes(len_buf) as usize;
         if len == 0 || len > 1_000_000 {
             reply_err("bad message length");
+            // A refused frame must still be CONSUMED whole. The browser keeps
+            // ONE host process per `connectNative` port, so skipping the
+            // payload would make the loop read its first bytes as the next
+            // length header and every later message on this port would be
+            // misread for the rest of the session. `copy` stops at EOF, so a
+            // short read means the port is gone: stop, don't spin.
+            if std::io::copy(&mut stdin.by_ref().take(len as u64), &mut std::io::sink())
+                .unwrap_or(0)
+                != len as u64
+            {
+                break;
+            }
             continue;
         }
         let mut buf = vec![0u8; len];
@@ -2044,10 +2056,7 @@ mod tests {
             if let Some(h) = self.reader.take() {
                 let _ = h.join();
             }
-            self.out
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .clone()
+            self.out.lock().unwrap_or_else(|p| p.into_inner()).clone()
         }
     }
 
@@ -2086,7 +2095,7 @@ mod tests {
         // as a browser writes it. Then the very same probe.
         let declared = 1_000_001usize;
         let mut stream = (declared as u32).to_le_bytes().to_vec();
-        stream.extend(std::iter::repeat(0xFFu8).take(declared));
+        stream.extend(std::iter::repeat_n(0xFFu8, declared));
         stream.extend_from_slice(&probe);
 
         let mut host = LiveHost::spawn(&base);
