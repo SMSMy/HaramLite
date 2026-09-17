@@ -28,6 +28,28 @@
  * to `hidden` boxes — an element that is `display:none` in the shipped state is
  * not measured (see `--include-hidden`). Findings are reported, never fixed.
  *
+ * WHAT IT REFUSES TO DO (each of these used to be a way to get a green run out
+ * of a page that was never measured):
+ *   • It will not serve the SPA shell in place of a missing ASSET. A request for
+ *     `*.js`/`*.css`/… that is not in `dist/` gets 404 and is recorded; any such
+ *     404 fails the run. `dist/index.html` is also checked up front against the
+ *     files it references. (Previously: a deleted bundle answered `200 text/html`
+ *     with the shell, and the guard said OK.)
+ *   • It will not report a `display:none` ANCESTOR's child as measured. Hidden
+ *     boxes are revealed WITH their `display:none` ancestors, and a box that is
+ *     still 0×0 afterwards is reported as unmeasurable and fails the run.
+ *     (Previously: 0×0 with `revealed: true` ⇒ exit 0, while the same geometry
+ *     visible ⇒ exit 1.)
+ *   • It will not treat the launcher process's exit as a browser failure. On
+ *     Windows `chrome.exe` hands off and exits 0 while the browser lives and
+ *     answers CDP; the guard waits for the DevTools port/endpoint instead.
+ *   • It will not print box counts when the measurement did not complete.
+ *     (Previously: `measured 0 floating box(es)` was printed before FAIL, which
+ *     is how "zero boxes" was read as a finding.)
+ *   • It will not leave the profile directory or the browser behind: cleanup
+ *     kills the process tree AND whoever listens on the CDP port, waits for the
+ *     exit, deletes the profile and verifies it is gone.
+ *
  * USAGE
  * -----
  *   node scripts/check-layout.cjs                       # default sweep
@@ -57,7 +79,7 @@ const fsp = require('node:fs/promises');
 const path = require('node:path');
 const net = require('node:net');
 const os = require('node:os');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -137,6 +159,14 @@ const MIME = {
 };
 
 function startServer() {
+  // كل مسار لم يوجد في dist/ يُسجَّل هنا. الحارس يفشل إن لم يكن فارغاً: سقوط
+  // SPA على أصل مفقود كان يجيب `200 text/html` على حزمة JS محذوفة فيقيس
+  // الحارس هيكلاً فارغاً ويقول OK.
+  const notFound = [];
+  // طلبات تلقائية من المتصفّح نفسه (لا مرجع لها في dist/index.html): تُسجَّل
+  // في probes ولا تُفشل — وإلا لصار غياب favicon فشلاً كاذباً في كل تشغيل.
+  const BROWSER_PROBES = new Set(['/favicon.ico']);
+  const probes = [];
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://127.0.0.1');
@@ -148,13 +178,31 @@ function startServer() {
         res.writeHead(403).end('forbidden');
         return;
       }
-      let body;
+      let body = null;
       try {
         body = await fsp.readFile(file);
       } catch {
-        // SPA fallback: unknown routes get the shell.
-        body = await fsp.readFile(path.join(DIST, 'index.html'));
-        rel = '/index.html';
+        body = null;
+      }
+      if (body === null) {
+        // سقوط SPA للتنقّل فقط: مسار بلا امتداد يطلبه المتصفّح كصفحة. أمّا
+        // أصل بامتداد (js/css/font/png…) فمفقوده 404 صريح — لا هيكل مكانه.
+        const looksLikeAsset = /\.[A-Za-z0-9]+$/.test(rel);
+        const wantsHtml = String(req.headers.accept || '').includes('text/html');
+        if (!looksLikeAsset && wantsHtml) {
+          body = await fsp.readFile(path.join(DIST, 'index.html'));
+          rel = '/index.html';
+        } else if (BROWSER_PROBES.has(rel)) {
+          // طلبات يطلقها المتصفّح من تلقاء نفسه (لا تشير إليها الصفحة): غيابها
+          // ليس أصلاً مفقوداً، ويُسجَّل للمعلومة لا للفشل.
+          probes.push(rel);
+          res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end(`browser probe, not in dist/: ${rel}`);
+          return;
+        } else {
+          notFound.push(rel);
+          res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end(`not in dist/: ${rel}`);
+          return;
+        }
       }
       res.writeHead(200, {
         'content-type': MIME[path.extname(rel).toLowerCase()] || 'application/octet-stream',
@@ -177,9 +225,31 @@ function startServer() {
         reject(new Error(`server bound to ${address}, expected 127.0.0.1`));
         return;
       }
-      resolve({ server, port, origin: `http://127.0.0.1:${port}` });
+      resolve({ server, port, origin: `http://127.0.0.1:${port}`, notFound, probes });
     });
   });
+}
+
+/**
+ * فحص سبق القياس: كل ما يشير إليه dist/index.html من أصول محلّية يجب أن يكون
+ * موجوداً في dist/. الحزمة المحذوفة تُكتشف هنا قبل إطلاق المتصفّح — لا بعد أن
+ * يقيس الحارس هيكلاً فارغاً ويقول OK.
+ */
+function missingReferencedAssets() {
+  const html = fs.readFileSync(path.join(DIST, 'index.html'), 'utf8');
+  const refs = new Set();
+  for (const m of html.matchAll(/\b(?:src|href)="([^"]+)"/g)) {
+    const u = m[1].trim();
+    if (!u || u.startsWith('#') || u.startsWith('data:') || /^[a-z]+:/i.test(u)) continue;
+    refs.add(u.split('?')[0].split('#')[0]);
+  }
+  const missing = [];
+  for (const ref of refs) {
+    const rel = ref.replace(/^\/+/, '');
+    if (!rel) continue;
+    if (!fs.existsSync(path.join(DIST, rel))) missing.push(ref);
+  }
+  return missing.sort();
 }
 
 /* ── browser discovery / launch ───────────────────────────────────────── */
@@ -210,6 +280,90 @@ function findBrowser(explicit) {
 
 async function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
+/** يقتل شجرة عمليّة على ويندوز (taskkill /T) أو عمليّة واحدة على غيره. */
+function killTree(pid) {
+  if (!pid) return false;
+  try {
+    if (process.platform === 'win32') {
+      return spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }).status === 0;
+    }
+    process.kill(pid, 'SIGKILL');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * عمليّات تستمع على منفذ CDP. على ويندوز يخرج مُشغِّل chrome.exe فوراً بينما
+ * المتصفّح الحقيقي يبقى حيّاً (وحينها لا يفيد PID الذي أطلقناه) — فيُقتل صاحب
+ * المنفذ. هذه هي نفس الطريقة التي أُغلقت بها المتصفّحات المتسرّبة سابقاً.
+ * كل محاولة تُسجَّل في lastPortProbe حتى يقول تقرير التنظيف ماذا رأى بالضبط.
+ */
+let lastPortProbe = null;
+function pidsOnPort(port) {
+  try {
+    if (process.platform === 'win32') {
+      const r = spawnSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true, maxBuffer: 1 << 26 });
+      const pids = new Set();
+      for (const line of String(r.stdout || '').split(/\r?\n/)) {
+        if (!line.includes('LISTENING')) continue;
+        const cols = line.trim().split(/\s+/);
+        if ((cols[1] || '').endsWith(`:${port}`)) {
+          const pid = Number(cols[cols.length - 1]);
+          if (pid) pids.add(pid);
+        }
+      }
+      lastPortProbe = { port, how: 'netstat', status: r.status, error: r.error ? r.error.code : null, stdoutBytes: String(r.stdout || '').length, found: [...pids] };
+      return [...pids];
+    }
+    const r = spawnSync('lsof', ['-t', `-i:${port}`], { encoding: 'utf8' });
+    const pids = String(r.stdout || '').split(/\s+/).filter(Boolean).map(Number).filter(Boolean);
+    lastPortProbe = { port, how: 'lsof', status: r.status, error: r.error ? r.error.code : null, stdoutBytes: String(r.stdout || '').length, found: pids };
+    return pids;
+  } catch (err) {
+    lastPortProbe = { port, how: 'threw', error: String((err && err.message) || err), found: [] };
+    return [];
+  }
+}
+
+/**
+ * عمليّات المتصفّح التي تحمل مجلد ملفّنا الشخصي في سطر أمرها. هذا تعريف لا
+ * يخطئ: المجلد اسمه عشوائي خاص بهذه التشغيلة، فكل من يحمله هو متصفّحنا — حتى
+ * لو خرج المُشغِّل وتغيّر الـPID أو تعذّر العثور على المنفذ.
+ */
+function pidsByProfile(dir, exeBase) {
+  try {
+    if (process.platform === 'win32') {
+      const script = `Get-CimInstance Win32_Process -Filter "Name='${exeBase}'" | Where-Object { $_.CommandLine -like '*${dir}*' } | Select-Object -ExpandProperty ProcessId`;
+      const r = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8', windowsHide: true, maxBuffer: 1 << 26 });
+      return String(r.stdout || '').split(/\s+/).filter(Boolean).map(Number).filter(Boolean);
+    }
+    const r = spawnSync('pgrep', ['-f', dir], { encoding: 'utf8' });
+    return String(r.stdout || '').split(/\s+/).filter(Boolean).map(Number).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/** هل ما زال الطرف الآخر يجيب على منفذ CDP؟ (تحقّق وظيفي لا يعتمد على sنظام) */
+async function cdpStillAlive(port) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/json/version`);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+function waitForExit(child, ms) {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), ms);
+    child.once('exit', () => { clearTimeout(timer); resolve(true); });
+  });
+}
+
 async function launchBrowser(exe, opts) {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'haramlite-layout-'));
   const portFile = path.join(dir, 'DevToolsActivePort');
@@ -233,13 +387,14 @@ async function launchBrowser(exe, opts) {
   const child = spawn(exe, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
   let stderr = '';
   child.stderr.on('data', (d) => { stderr += d.toString(); });
+  // مُشغِّل chrome.exe على ويندوز يسلّم الأمر ثم يخرج بـ0 والمتصفّح يبقى حيّاً
+  // ويجيب CDP. لذلك خروج المُشغِّل ليس فشلاً بذاته: الفشل هو ألّا يظهر منفذ.
+  let launcherExit = null;
+  child.once('exit', (code, signal) => { launcherExit = { code, signal }; });
 
   const deadline = Date.now() + 30000;
   let port = 0;
   while (Date.now() < deadline) {
-    if (child.exitCode !== null) {
-      throw new Error(`browser exited early (code ${child.exitCode})\n${stderr.trim()}`);
-    }
     try {
       const txt = await fsp.readFile(portFile, 'utf8');
       const first = txt.split(/\r?\n/)[0].trim();
@@ -248,11 +403,13 @@ async function launchBrowser(exe, opts) {
     await sleep(120);
   }
   if (!port) {
-    child.kill();
-    throw new Error(`browser never reported a DevTools port within 30s\n${stderr.trim()}`);
+    await killTree(child.pid);
+    const why = launcherExit ? ` (the launcher process exited with code ${launcherExit.code}${launcherExit.signal ? `/${launcherExit.signal}` : ''} and no browser took over)` : '';
+    throw new Error(`browser never reported a DevTools port within 30s${why}\n${stderr.trim()}`);
   }
 
-  // Wait for the HTTP endpoint to answer as well.
+  // Wait for the HTTP endpoint to answer as well — this, not the launcher's exit
+  // code, is what proves a browser is actually there to measure with.
   let version = null;
   while (Date.now() < deadline) {
     try {
@@ -262,16 +419,63 @@ async function launchBrowser(exe, opts) {
     await sleep(150);
   }
   if (!version) {
-    child.kill();
+    await killTree(child.pid);
+    for (const pid of pidsOnPort(port)) killTree(pid);
     throw new Error('DevTools HTTP endpoint did not become reachable');
   }
 
+  /**
+   * تنظيف حقيقي: اقتل شجرة المُشغِّل إن كانت حيّة، ثم أصحاب منفذ CDP (المتصفّح
+   * يبقى بعد خروج المُشغِّل)، وانتظر خروج العمليّة فعلاً، ثم احذف مجلد الملف
+   * الشخصي وتحقّق من زواله. كل خطوة تُبلَّغ، والفشل يُرفع إلى main() فيُفشل
+   * الحارس — لا يُترك أثر صامت (كان 9/9 تشغيلات تترك ~340 ملفاً وعمليّات حيّة).
+   */
   const cleanup = async () => {
-    try { child.kill(); } catch { /* already gone */ }
-    await sleep(150);
-    try { await fsp.rm(dir, { recursive: true, force: true }); } catch { /* best effort */ }
+    const exeBase = path.basename(exe);
+    const report = { profileRemoved: false, killed: [], profilePath: dir, remainingPids: [], childExited: true, endpointAlive: false, byProfile: [], byPort: [] };
+    if (child.exitCode === null && child.signalCode === null) {
+      if (killTree(child.pid)) report.killed.push(child.pid);
+      report.childExited = await waitForExit(child, 10000);
+    }
+    // (١) تعريف لا يخطئ: كل عمليّة تحمل مجلد ملفّنا الشخصي، (٢) ثم صاحب منفذ CDP.
+    report.byProfile = pidsByProfile(dir, exeBase);
+    for (const pid of report.byProfile) {
+      killTree(pid);
+      report.killed.push(pid);
+    }
+    report.byPort = pidsOnPort(port);
+    for (const pid of report.byPort) {
+      if (!report.killed.includes(pid)) report.killed.push(pid);
+      killTree(pid);
+    }
+    report.endpointAlive = await cdpStillAlive(port);
+    for (let attempt = 0; attempt < 15; attempt++) {
+      try { await fsp.rm(dir, { recursive: true, force: true }); } catch { /* locked: retry */ }
+      if (!fs.existsSync(dir)) { report.profileRemoved = true; break; }
+      await sleep(200);
+    }
+    if (!report.profileRemoved) {
+      // محاولة أخيرة: اقتل كل من يحمل المجلد أو المنفذ، ثم احذف.
+      for (const pid of [...pidsByProfile(dir, exeBase), ...pidsOnPort(port)]) killTree(pid);
+      await sleep(400);
+      try { await fsp.rm(dir, { recursive: true, force: true }); } catch { /* reported below */ }
+      report.profileRemoved = !fs.existsSync(dir);
+    }
+    report.remainingPids = pidsOnPort(port);
+    report.endpointAlive = (await cdpStillAlive(port)) || report.remainingPids.length > 0 || pidsByProfile(dir, exeBase).length > 0;
+    report.portProbe = lastPortProbe;
+    return report;
   };
-  return { child, port, version, cleanup, stderrText: () => stderr };
+
+  /** تنظيف متزامن لخطّاف الخروج: لا يترك متصفّحاً حيّاً إن انهار الحارس. */
+  const cleanupSync = () => {
+    if (child.exitCode === null && child.signalCode === null) killTree(child.pid);
+    for (const pid of pidsByProfile(dir, path.basename(exe))) killTree(pid);
+    for (const pid of pidsOnPort(port)) killTree(pid);
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
+  };
+
+  return { child, port, version, cleanup, cleanupSync, stderrText: () => stderr, launcherExit: () => launcherExit };
 }
 
 /* ── minimal CDP client over the global WebSocket ─────────────────────── */
@@ -528,6 +732,25 @@ function runProbe(args) {
 
   const rows = [];
   const skipped = [];
+  // المرحلة ١: صفوف ظاهرة. صفوف مخفيّة/صفرية تُؤجَّل: إظهارها يغيّر التخطيط،
+  // فيُقاس الظاهر أولاً كما هو مشحون، ثم تُظهر المخفيّات كلها، ثم تُقاس.
+  const deferred = [];
+  const finishRow = (row, el) => {
+    const overflowLeft = Math.max(0, -row.left);
+    const overflowRight = Math.max(0, row.right - vw);
+    const overflowTop = Math.max(0, -row.top);
+    const overflowBottom = Math.max(0, row.bottom - vh);
+    row.overflowX = +Math.max(overflowLeft, overflowRight).toFixed(2);
+    row.overflowY = +Math.max(overflowTop, overflowBottom).toFixed(2);
+    // A box inside a scroll container is clipped and scrollable by design: it is
+    // reported, never counted as a violation. Same for anything inside a
+    // position:fixed subtree (that ancestor is the box the guard already gates).
+    row.clipped = inlineBlockOverflowX(el) || inFixedAncestor(el);
+    row.violation = row.overflowX > 0.5 || (checkVertical && row.overflowY > 0.5);
+    row.gated = row.violation && !row.clipped;
+    rows.push(row);
+  };
+
   for (const el of floaters) {
     const cs = getComputedStyle(el);
     const r = el.getBoundingClientRect();
@@ -556,30 +779,44 @@ function runProbe(args) {
     };
     if (hidden || tiny) {
       if (!includeHidden) { skipped.push({ name: row.name, why: hidden ? 'hidden' : 'zero-size' }); continue; }
-      // Explicitly asked for: give hidden boxes a measurable box, then say so.
-      el.style.setProperty('display', cs.display === 'none' ? 'block' : cs.display, 'important');
+      deferred.push({ el, row });
+      continue;
+    }
+    finishRow(row, el);
+  }
+
+  if (deferred.length) {
+    // الإظهار أولاً لكل العناصر، ثم القياس: الفصل يضمن أن كل قياس رآه الحالة
+    // نفسها (وإلا أثّر إظهار عنصر على قياس عنصر آخر).
+    const revealedAncestors = new Map();
+    for (const { el } of deferred) {
+      let n = 0;
+      // إظهار العنصر وحده لا يكفي: صندوق داخل حاوية display:none يبقى بلا
+      // صندوق (0×0) فيُقاس صفراً ويُقال `revealed` — وهذا كان يمرّ OK.
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        const pcs = getComputedStyle(p);
+        if (pcs.display === 'none') { p.style.setProperty('display', 'block', 'important'); n++; continue; }
+        if (pcs.visibility === 'hidden') { p.style.setProperty('visibility', 'visible', 'important'); n++; }
+      }
+      revealedAncestors.set(el, n);
+    }
+    for (const { el, row } of deferred) {
+      const cs2 = getComputedStyle(el);
+      el.style.setProperty('display', cs2.display === 'none' ? 'block' : cs2.display, 'important');
       el.style.setProperty('visibility', 'visible', 'important');
       el.style.setProperty('opacity', '1', 'important');
       const r2 = el.getBoundingClientRect();
-      row.revealed = true;
+      const measurable = r2.width >= 1 && r2.height >= 1;
+      // `revealed` بشرط: لا يُقال «أُظهر» لصندوق لم يصر له صندوق.
+      row.revealed = measurable;
+      row.revealedAncestors = revealedAncestors.get(el) || 0;
+      row.unmeasurable = !measurable;
       row.left = +r2.left.toFixed(2); row.right = +r2.right.toFixed(2);
       row.top = +r2.top.toFixed(2); row.bottom = +r2.bottom.toFixed(2);
       row.width = +r2.width.toFixed(2); row.height = +r2.height.toFixed(2);
-      row.tiny = r2.width < 1 || r2.height < 1;
+      row.tiny = !measurable;
+      finishRow(row, el);
     }
-    const overflowLeft = Math.max(0, -row.left);
-    const overflowRight = Math.max(0, row.right - vw);
-    const overflowTop = Math.max(0, -row.top);
-    const overflowBottom = Math.max(0, row.bottom - vh);
-    row.overflowX = +Math.max(overflowLeft, overflowRight).toFixed(2);
-    row.overflowY = +Math.max(overflowTop, overflowBottom).toFixed(2);
-    // A box inside a scroll container is clipped and scrollable by design: it is
-    // reported, never counted as a violation. Same for anything inside a
-    // position:fixed subtree (that ancestor is the box the guard already gates).
-    row.clipped = inlineBlockOverflowX(el) || inFixedAncestor(el);
-    row.violation = row.overflowX > 0.5 || (checkVertical && row.overflowY > 0.5);
-    row.gated = row.violation && !row.clipped;
-    rows.push(row);
   }
 
   // Geometry probe, independent of the rendered box: where WOULD this element
@@ -685,6 +922,15 @@ async function main() {
   if (!fs.existsSync(path.join(DIST, 'index.html'))) {
     fatal(`dist/index.html not found at ${DIST}. Build it first:  pnpm build:web`, 1);
   }
+  // لا قياس على أصول غير موجودة: لو حُذفت الحزمة لبقي الهيكل وحده، وسقوط SPA
+  // كان يجيب 200 text/html فيقول الحارس OK على صفحة لم تُشغَّل أصلاً.
+  const missingAssets = missingReferencedAssets();
+  if (missingAssets.length) {
+    fatal(
+      `dist/index.html يشير إلى ${missingAssets.length} أصلاً غير موجود في dist/: ${missingAssets.join(', ')} — ` +
+      'القياس على هيكل بلا حزمته لا يعني شيئاً. أعِد البناء:  pnpm build:web', 1,
+    );
+  }
 
   const exe = findBrowser(opts.browserPath);
   if (!exe) {
@@ -723,12 +969,16 @@ async function main() {
   if (preScript) log(`  pre-script: ${preScript.length} byte(s) of page JS will run before measurement`);
   log('');
 
-  const { server, origin } = await startServer();
+  const { server, origin, notFound, probes } = await startServer();
   let browser = null;
   let cdp = null;
   const allRows = [];
   const problems = [];
   let driverError = null;
+  let cleanupReport = null;
+  // خطّاف خروج: لا يُترك متصفّح حيّ ومجلد ملف شخصي إن انهار الحارس في المنتصف.
+  const exitHook = () => { if (browser) browser.cleanupSync(); };
+  process.once('exit', exitHook);
 
   try {
     browser = await launchBrowser(exe, opts);
@@ -823,7 +1073,7 @@ async function main() {
           const ordered = data.rows.slice().sort((a, b) => b.overflowX - a.overflowX || a.name.localeCompare(b.name));
           for (const r of ordered) {
             const flag = r.violation ? (r.clipped ? ' [clipped-by-scroll-container]' : ' [OUT OF WINDOW]') : '';
-            const tag = r.revealed ? ' [was-hidden]' : '';
+            const tag = r.unmeasurable ? ' [UNMEASURABLE]' : (r.revealed ? ` [was-hidden${r.revealedAncestors ? `, +${r.revealedAncestors} ancestor(s) revealed` : ''}]` : '');
             log(
               `   ${r.name.padEnd(30).slice(0, 30)} ${r.dir}  ${String(r.width).padStart(7)}  ${String(r.left).padStart(8)}  ${String(r.right).padStart(8)}  ${String(r.overflowX).padStart(9)}  ${String(r.overflowY).padStart(9)}${flag}${tag}`,
             );
@@ -846,6 +1096,14 @@ async function main() {
 
           for (const r of data.rows) {
             allRows.push({ ...r, requestedWidth: width });
+            if (r.unmeasurable) {
+              // صندوق لم يصر له صندوق حتى بعد إظهاره: لا يُقال عنه «قِيس» ولا
+              // يُمرَّر بصمت — هذا هو الموضع الذي كان يخرج 0×0 مع revealed=true.
+              problems.push(
+                `${r.name} (${r.position}) at ${data.viewport.width}px/${r.dir}: قُيس 0×0 حتى بعد إظهاره ` +
+                `(أُظهر ${r.revealedAncestors || 0} وعاءً) — هندسته غير قابلة للقياس فحكم «داخل النافذة» باطل`,
+              );
+            }
             if (r.gated) {
               problems.push(
                 `${r.name} (${r.position}) leaves the ${r.dir} window at ${data.viewport.width}px: ` +
@@ -863,22 +1121,55 @@ async function main() {
     driverError = String((err && err.message) || err);
   } finally {
     if (cdp) cdp.close();
-    if (browser) await browser.cleanup();
+    if (browser) {
+      cleanupReport = await browser.cleanup();
+      if (!cleanupReport.profileRemoved) {
+        problems.push(`تعذّر حذف مجلد الملف الشخصي ${cleanupReport.profilePath} — أثر متروك (قتلنا ${cleanupReport.killed.length} عمليّة)`);
+      }
+      if (cleanupReport.endpointAlive) {
+        problems.push(`متصفّح ما زال حيّاً بعد التنظيف (منفذ CDP ${browser.port} يجيب أو عمليّات باقية) — تسريب`);
+      }
+      if (!cleanupReport.childExited) {
+        problems.push(`عمليّة المتصفّح ${browser.child.pid} لم تنتهِ خلال 10s بعد القتل`);
+      }
+    }
     server.close();
   }
 
+  // أي طلب لأصل غير موجود يعني أن ما قيس ليس ما شُحن.
+  if (notFound.length) {
+    const uniq = [...new Set(notFound)];
+    driverError = driverError || `طلبات لأصول غير موجودة في dist/ أُجيبت 404 (${uniq.length}): ${uniq.join(', ')}`;
+  }
+
   if (opts.json) {
-    log(JSON.stringify({ ok: !driverError && problems.length === 0, driverError, problems, rows: allRows }, null, 2));
+    log(JSON.stringify({ ok: !driverError && problems.length === 0, driverError, problems, notFound, probes, cleanup: cleanupReport, rows: allRows }, null, 2));
+  } else if (driverError) {
+    // عدّ القياس لا يُطبَع حين لم يكتمل القياس: كان «measured 0 floating
+    // box(es)» يُطبَع قبل FAIL فيُقرأ كأن الصفحة بلا صناديق (تفسير «صفر صندوق»).
+    log('the measurement did not complete — no box counts are reported (zeros here would be an artefact, not a finding).');
   } else {
     const tauriMin = 820;
     if (opts.widths.includes(tauriMin)) log(`tauri minWidth ${tauriMin} was covered.`);
     log(`measured ${allRows.length} floating box(es) across ${opts.widths.length * opts.dirs.length} window state(s).`);
+    if (cleanupReport) {
+      log(
+        `cleanup: killed ${cleanupReport.killed.length} process(es) [byProfile ${cleanupReport.byProfile.length}, byPort ${cleanupReport.byPort.length}], ` +
+        `profile ${cleanupReport.profileRemoved ? 'removed' : `LEFT AT ${cleanupReport.profilePath}`}, ` +
+        `endpoint ${cleanupReport.endpointAlive ? 'STILL ALIVE' : 'down'}${cleanupReport.portProbe ? `, port probe ${JSON.stringify(cleanupReport.portProbe)}` : ''}.`,
+      );
+    }
+    if (probes.length) note(`browser probes (not page assets, ignored): ${[...new Set(probes)].join(', ')}`);
   }
 
   if (driverError) {
     // Loud, never a silent pass: a guard that cannot drive a browser has not
     // verified anything.
     console.error(`\nFAIL: could not complete the measurement — ${driverError}`);
+    if (problems.length) {
+      console.error('problems recorded during the attempt:');
+      for (const p of problems) console.error(`  - ${p}`);
+    }
     process.exit(1);
   }
   if (problems.length) {
