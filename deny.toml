@@ -38,9 +38,25 @@ yanked = "deny"
 # transitive crates -- those are exactly the ones that rot unnoticed.
 unmaintained = "all"
 unsound = "all"
-# No advisory is silenced. If an ignore is ever needed it must be added here as
-# `{ id = "RUSTSEC-...", reason = "..." }` with a written reason, never bare.
-ignore = []
+# Advisories that are silenced by name, dated, with the reason. Each is
+# `unmaintained` or `unsound` with **no fixed version reachable in this graph**;
+# none is a vulnerability. A vulnerability is never listed here: the point of
+# this list is that the gate stays RED for anything new and for every CVE.
+#
+# Measured 2026-09-16 with `cargo deny --manifest-path src-tauri/Cargo.toml
+# check advisories` after the rustls fix (RUSTSEC-2026-0285, 0.23.43 -> 0.23.45).
+ignore = [
+    # via gtk / glib -- Linux-only path, not compiled into the Windows build.
+    { id = "RUSTSEC-2024-0429", reason = "glib VariantStrIter unsoundness: reached only through gtk, which this Windows-only app never builds." },
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained: build-time dependency reached only through gtk (Linux path); no fixed release exists." },
+    # via urlpattern <- tauri-utils -- present on the Windows path, no fixed
+    # release exists upstream, and the crates are unused at runtime by this app.
+    { id = "RUSTSEC-2025-0075", reason = "unic-char-property unmaintained: pulled by urlpattern <- tauri-utils; no fixed release upstream." },
+    { id = "RUSTSEC-2025-0080", reason = "unic-char-range unmaintained: pulled by urlpattern <- tauri-utils; no fixed release upstream." },
+    { id = "RUSTSEC-2025-0081", reason = "unic-common unmaintained: pulled by urlpattern <- tauri-utils; no fixed release upstream." },
+    { id = "RUSTSEC-2025-0098", reason = "unic-ucd-version unmaintained: pulled by urlpattern <- tauri-utils; no fixed release upstream." },
+    { id = "RUSTSEC-2025-0100", reason = "unic-ucd-ident unmaintained: pulled by urlpattern <- tauri-utils; no fixed release upstream." },
+]
 
 [licenses]
 version = 2

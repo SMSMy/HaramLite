@@ -92,6 +92,17 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets
 
+      # بوابات الاعتماديات (سبرنت 0.2.7 · د-١ · د-٢): رخص · نسخ مكرّرة · مصادر · وتنبيهات
+      # أمنية. والإعداد في `deny.toml` **مشتقّ من الرسم الفعلي** (597 حزمة)، و`advisories`
+      # تفشل على **كل** ثغرة بلا اعتبار للدرجة (v2 أزال `severity-threshold`).
+      # والاستثناءات السبعة فيه كلها `unmaintained`/`unsound` **بلا ترقية آمنة**، ومُثبَت
+      # بالمُفسِد أن إرجاع `rustls` إلى 0.23.43 يُسقط البوابة رغمها — أي أنها ضيّقة لا مُرخاة.
+      - name: Dependency gates (licences · bans · sources · advisories)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: src-tauri/Cargo.toml
+          command: check
+
       - name: TypeScript check
         run: pnpm exec tsc --noEmit
 
