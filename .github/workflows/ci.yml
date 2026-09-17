@@ -161,6 +161,14 @@ jobs:
       - name: Version consistency guard
         run: pnpm versions:check
 
+      # البوّابة التي ليست في CI ليست بوابة (AGENT.md §١٠): صفوف المصفوفة اليدوية
+      # الإلزامية (20 صفّاً) يجب أن يحمل كلٌّ منها **تاريخاً وجهازاً ونتيجة** في
+      # خانته الأخيرة. تفشل عند صفّ ناقص، وعند فقد بنية الوسم [إلزامي]، وعند
+      # غياب الملف — لأن «حارساً لا يرى» ليس حارساً. والأداة تقيس وجود السجلّ لا
+      # صدق المُختبِر («لم يُنفَّذ» نتيجة مسجَّلة مقبولة).
+      - name: Manual test matrix (every mandatory row carries a record)
+        run: node scripts/matrix-check.cjs --quiet
+
       - name: Site guards
         run: pnpm site:check
 
