@@ -173,7 +173,7 @@ gh release upload vX.Y.Z dist/release-metadata/build-info.json dist/release-meta
 - **الإضافة:** Native Messaging فقط (لا منافذ HTTP). المضيف يكتب ملف طلب في
   `app_data_dir/requests/` والنسخة العاملة تلتقطه — انظر `bridge.rs`.
 
-## البوابات (اثنتا عشرة — تُشغَّل بهذا الترتيب)
+## البوابات (ثلاث عشرة — تُشغَّل بهذا الترتيب)
 
 سير `Quality gate` (`.github/workflows/ci.yml`) يشغّل هذه التسع على **كل دفعة وكل طلب
 سحب إلى `main`**. شغّلها محلياً بنفس الترتيب قبل الدفع: الأرخص والأسرع أولاً، ثم ما يلمس
@@ -193,6 +193,7 @@ gh release upload vX.Y.Z dist/release-metadata/build-info.json dist/release-meta
 | ١٠ | **بوابة المُفسَدات (سلبية)** | `pnpm ext:mutants` | ٢٧ مُفسَداً سلوكياً يُطبَّق على الملف المشحون **في الذاكرة**، وكل مُفسَد **يجب** أن يُسقط الحارس | `Extension mutant gate (negative tests)` |
 | ١١ | اتساق الإصدار | `pnpm versions:check` | إصدار التطبيق في أربعة ملفات (`package.json` · `tauri.conf.json` · `Cargo.toml` · `Cargo.lock`) — يفشل عند أول انحراف، ويطبع إصدار الإضافة **معلَماً بدورة مستقلة** (`1.1.5`) فلا يوحَّد معه | `Version consistency guard` |
 | ١٢ | حرّاس الموقع | `pnpm site:check` | خمسة حرّاس على `docs/`: CSS · الصفحات · الوسوم · العربي · الروابط | `Site guards` |
+| ١٣ | **سجلّ الاختبار اليدوي** | `node scripts/matrix-check.cjs` | الصفوف الإلزامية الـ**20** في `qa/TEST-MATRIX.md` يجب أن يحمل كلٌّ منها **تاريخاً وجهازاً ونتيجة** في خانته الأخيرة. **وتقيس وجود السجلّ لا صدق المُختبِر**: «لم يُنفَّذ» نتيجة مسجَّلة مقبولة. وتفشل بصوت عالٍ (exit 2) على ملف مفقود أو صفر صفّ إلزامي — «حارس لا يرى ليس حارساً» | `Manual test matrix (every mandatory row carries a record)` |
 
 > **أسماء الخطوات لا أرقام الأسطر**: كان العمود يشير إلى `ci.yml:<سطر>` — وتقادمت كلها بمجرد
 > إدراج خطوتين. والاسم لا يتقادم؛ والفحص `grep "name: <الاسم>" .github/workflows/ci.yml`.
