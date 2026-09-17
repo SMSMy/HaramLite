@@ -1,6 +1,11 @@
 /* محقّق توازن الوسوم — المرجع النهائي.
    HTML يسمح بإغفال </p> و</li> … فنتجاهلها. ونفحص الباقي بمكدس حقيقي.
-   الاستعمال: node scripts/check-site-tags.cjs [ملف] */
+
+   تحصين هذه الجولة (عيب مُقاس: «✓ توازن الوسوم سليم في 0 صفحة» و exit 0 على
+   مجلد فارغ): صفر مدخل · مجلد مفقود · ملف صريح مفقود ⇒ **فشل مسمّى**، لا نجاح
+   صامت ولا stack trace.
+
+   الاستعمال: node scripts/check-site-tags.cjs [ملف] [--root <dir>] */
 const fs = require('fs');
 const path = require('path');
 
@@ -43,17 +48,53 @@ function audit(file) {
   return { problems, raw };
 }
 
-const root = path.join(__dirname, '..');
-const only = process.argv[2];
-const files = [];
-if (only) files.push(path.resolve(only));
-else (function walk(dir) {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) { if (!/node_modules|assets|rebuild|\.git/.test(p)) walk(p); }
-    else if (e.name.endsWith('.html')) files.push(p);
+function die(msg) {
+  console.error('✗ حارس الوسوم: ' + msg);
+  process.exit(1);
+}
+
+const argv = process.argv.slice(2);
+let rootArg = null, only = null;
+for (let i = 0; i < argv.length; i++) {
+  if (argv[i] === '--root') {
+    if (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) {
+      console.error('✗ العلم --root يحتاج مساراً — مثال: --root /tmp/fixture');
+      process.exit(2);
+    }
+    rootArg = argv[++i];
+  } else if (argv[i].startsWith('--')) {
+    console.error('✗ وسيط غير معروف: ' + argv[i] + ' — الاستعمال: [ملف] [--root <dir>]');
+    process.exit(2);
+  } else if (only === null) {
+    only = argv[i];
+  } else {
+    console.error('✗ مرّر ملفاً واحداً على الأكثر — الاستعمال: [ملف] [--root <dir>]');
+    process.exit(2);
   }
-})(path.join(root, 'docs'));
+}
+
+const root = rootArg ? path.resolve(rootArg) : path.join(__dirname, '..');
+const files = [];
+if (only) {
+  const p = path.resolve(only);
+  if (!fs.existsSync(p) || !fs.statSync(p).isFile()) die('الملف المطلوب غير موجود: ' + p);
+  files.push(p);
+} else {
+  const docs = path.join(root, 'docs');
+  if (!fs.existsSync(docs) || !fs.statSync(docs).isDirectory()) {
+    die('بنية غير صالحة: docs/ غير موجود عند ' + docs);
+  }
+  (function walk(dir) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) { if (!/node_modules|assets|rebuild|\.git/.test(p)) walk(p); }
+      else if (e.name.endsWith('.html')) files.push(p);
+    }
+  })(docs);
+  if (files.length === 0) {
+    die('صفر صفحة HTML في ' + docs + ' — لا شيء يُفحص، فلا يجوز إعلان النجاح.');
+  }
+}
 
 let bad = 0;
 for (const f of files.sort()) {

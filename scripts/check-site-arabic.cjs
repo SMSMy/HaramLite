@@ -5,11 +5,30 @@
    2) وصف مقطوع     — أحد عشر وصفاً قُصّ عند 155 حرفاً في منتصف كلمة.
    3) إنجليزي زينة  — عناوين كبيرة بلا معنى وظيفي في صفحة عربية.
    4) أخطاء معجمة   — كلمات أُصلحت فعلاً (نقحرة وأخطاء مطبعية).
-   الاستعمال: node scripts/check-site-arabic.cjs */
+
+   تحصين هذه الجولة (عيب مُقاس: نجاح على docs فارغ، وسطر النجاح بلا عدّ فلا
+   يُعرف أمِن صفرٍ أم من عشرين): صفر مدخل · مجلد مفقود ⇒ **فشل مسمّى**، والعدّ
+   يُطبَع في سطر النجاح نفسه.
+
+   الاستعمال: node scripts/check-site-arabic.cjs [--root <dir>] */
 const fs = require('fs');
 const path = require('path');
 
-const root = path.join(__dirname, '..');
+const argv = process.argv.slice(2);
+let rootArg = null;
+for (let i = 0; i < argv.length; i++) {
+  if (argv[i] === '--root') {
+    if (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) {
+      console.error('✗ العلم --root يحتاج مساراً — مثال: --root /tmp/fixture');
+      process.exit(2);
+    }
+    rootArg = argv[++i];
+  } else {
+    console.error('✗ وسيط غير معروف: ' + argv[i] + ' — الاستعمال: [--root <dir>]');
+    process.exit(2);
+  }
+}
+const root = rootArg ? path.resolve(rootArg) : path.join(__dirname, '..');
 
 /* ما يُقبل بالإنجليزية: أسماء المنتجات والبروتوكولات والامتدادات.
    نطابق «كلمة» لا «جملة»: الجملة الإنجليزية المتروكة هي المشكلة. */
@@ -68,13 +87,22 @@ const files = [];
 /* ملف إثبات ملكية قوقل ليس صفحة موقع: قوقل يجلبه من الجذر للتحقق فقط
    (SITE.md: لا يُنقل ولا يُعدَّل). */
 const NOT_A_PAGE = /google[0-9a-f]+\.html$/i;
+const docsDir = path.join(root, 'docs');
+if (!fs.existsSync(docsDir) || !fs.statSync(docsDir).isDirectory()) {
+  console.error('✗ حارس العربية: بنية غير صالحة: docs/ غير موجود عند ' + docsDir);
+  process.exit(1);
+}
 (function walk(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
     if (e.isDirectory()) { if (!/node_modules|assets|rebuild|\.git/.test(p)) walk(p); }
     else if (e.name.endsWith('.html') && !NOT_A_PAGE.test(e.name)) files.push(p);
   }
-})(path.join(root, 'docs'));
+})(docsDir);
+if (files.length === 0) {
+  console.error('✗ حارس العربية: صفر صفحة في ' + docsDir + ' — لا شيء يُفحص، فلا يجوز إعلان النجاح.');
+  process.exit(1);
+}
 
 /* الوسوم التي تُستثنى من فحص الإنجليزية: الشيفرة وأسماء الملفات والمسارات،
    وكتل الطرفية (pre/terminal): مخرجات الأمر الحقيقية تبقى بلغتها، وترجمتها
@@ -176,4 +204,4 @@ if (problems.length) {
   [...new Set(problems)].forEach(p => console.error('     - ' + p));
   process.exit(1);
 }
-console.log('  ✓ العناوين والأوصاف تامة، ولا إنجليزي زينة ولا صياغة مرفوضة');
+console.log('  ✓ العناوين والأوصاف تامة في ' + files.length + ' صفحة، ولا إنجليزي زينة ولا صياغة مرفوضة');

@@ -24,7 +24,8 @@
     "ext:guard": "node scripts/check-extension-sync.cjs",
     "ext:mutants": "node scripts/check-extension-mutants.cjs",
     "site:check": "node scripts/check-site-css.cjs && node scripts/check-site-pages.cjs && node scripts/check-site-tags.cjs && node scripts/check-site-arabic.cjs && node scripts/check-site-links.cjs && node scripts/site-footer-and-icon-buttons.cjs --check",
-    "matrix:check": "node scripts/matrix-check.cjs"
+    "matrix:check": "node scripts/matrix-check.cjs",
+    "guards:selfcheck": "node scripts/check-guards-selfcheck.cjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -43,3 +44,4 @@
     "vitest": "^5.0.1"
   }
 }
+
