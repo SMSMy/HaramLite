@@ -297,7 +297,8 @@ mod tests {
             "الافتراضي هو DEFAULT_LIMIT نفسه (1) لا رقم مكرَّر هنا"
         );
         assert_eq!(
-            crate::slots::DEFAULT_LIMIT, 1,
+            crate::slots::DEFAULT_LIMIT,
+            1,
             "الافتراضيّ المعلَن للمستخدم: 1 (والسقف المسموح 2 يبقى اختياراً)"
         );
         let dir = tmp("max_jobs");
