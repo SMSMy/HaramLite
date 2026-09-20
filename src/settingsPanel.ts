@@ -113,8 +113,9 @@ export function wireSettings(): void {
 
   // م١: سقف الفصول المتزامنة. القائمة تحمل 1 و2 وحدهما، والقيمة تُطبَّع هنا
   // أيضاً: قيمة دخيلة في localStorage (نسخة قديمة أو تعديل يدوي) تُصحَّح إلى
-  // **1** (الافتراضيّ الآمن) بدل أن تُدفع إلى الخلف — والخلف يقصّها على أي
-  // حال (`slots::clamp_limit`)، ولا تُرفع إلى 2 إلا باختيار صريح محفوظ.
+  // **1** (الافتراضيّ الآمن) بدل أن تُدفع إلى الخلف — ولا تُرفع إلى 2 إلا
+  // باختيار صريح محفوظ. **والتطبيع نفسه في `collectSettings`**
+  // (`clampConcurrentJobs` في settings.ts)، فالمعروض = المُرسَل إلى الخلف.
   const maxJobs = document.getElementById('max-jobs') as HTMLSelectElement | null;
   if (maxJobs) {
     maxJobs.value = localStorage.getItem('hl.max_jobs') === '2' ? '2' : '1';
