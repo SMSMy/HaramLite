@@ -111,6 +111,20 @@ export function wireSettings(): void {
     refreshYtdlpUpdateUi();
   }
 
+  // م١: سقف الفصول المتزامنة. القائمة تحمل 1 و2 وحدهما، والقيمة تُطبَّع هنا
+  // أيضاً: قيمة دخيلة في localStorage (نسخة قديمة أو تعديل يدوي) تُصحَّح إلى 2
+  // بدل أن تُدفع إلى الخلف — والخلف يقصّها على أي حال (`slots::clamp_limit`).
+  const maxJobs = document.getElementById('max-jobs') as HTMLSelectElement | null;
+  if (maxJobs) {
+    maxJobs.value = localStorage.getItem('hl.max_jobs') === '1' ? '1' : '2';
+    maxJobs.addEventListener('change', () => {
+      const v = maxJobs.value === '1' ? '1' : '2';
+      maxJobs.value = v;
+      localStorage.setItem('hl.max_jobs', v);
+      pushSettings();
+    });
+  }
+
   if (btnSettings && menu) {
     let menuRelease: (() => void) | null = null;
     const closeMenu = (): void => {

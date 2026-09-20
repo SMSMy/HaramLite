@@ -14,8 +14,9 @@ use std::time::Duration;
 
 use notify::Watcher;
 
-use crate::pipeline::{self, Mode, OutFormat, OutKind};
+use crate::pipeline::{Mode, OutFormat, OutKind};
 use crate::settings::Settings;
+use crate::slots;
 
 static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
 static HANDLE: OnceLock<Mutex<Option<WatchHandle>>> = OnceLock::new();
@@ -291,7 +292,10 @@ fn process_watched(
         }
     }
 
-    let out = pipeline::process_file(
+    // م١: كل ملف يراقبه المجلد يأخذ فتحة جهاز — فملفٌّ يُرمى في المجلد أثناء
+    // فصل يدوي من الواجهة ينتظر ولا يفتح جلسة ORT ثانية على البطاقة.
+    let out = slots::run_separation(
+        "watch",
         &p,
         &out_dir,
         opts.mode,

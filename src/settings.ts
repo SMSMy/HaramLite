@@ -93,6 +93,9 @@ export function collectSettings(): RustSettings {
     watch_out_kind: 'auto',
     watch_max_size_mb: Number(localStorage.getItem('hl.watch_max_mb')) || 2048,
     watch_rescan_secs: Number(localStorage.getItem('hl.watch_rescan')) || 60,
+    // م١: سقف الفصول المتزامنة (1..=2). الافتراضي 2 = سقف ذاكرة الكرت، والخلف
+    // يقصّ أي قيمة خارجة (`slots::clamp_limit`) فلا تعتمد الواجهة على نفسها.
+    max_concurrent_jobs: Number(localStorage.getItem('hl.max_jobs')) || 2,
   };
 }
 export function pushSettings(): void {
@@ -134,6 +137,7 @@ export async function seedSettings(): Promise<void> {
     const nums: [keyof RustSettings, string][] = [
       ['preview_seconds', 'hl.preview_seconds'], ['watch_max_size_mb', 'hl.watch_max_mb'],
       ['watch_rescan_secs', 'hl.watch_rescan'],
+      ['max_concurrent_jobs', 'hl.max_jobs'],
     ];
     for (const [k, ls] of nums) {
       if (localStorage.getItem(ls) === null && typeof s[k] === 'number') {

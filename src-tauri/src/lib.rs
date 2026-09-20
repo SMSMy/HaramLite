@@ -24,6 +24,7 @@ mod separator;
 mod session;
 mod settings;
 mod silence;
+mod slots;
 mod stft;
 mod telegram;
 mod throttle;
@@ -559,7 +560,9 @@ async fn separate_file(
             }
         };
 
-        let out = pipeline::process_file(Path::new(&path), Path::new(&out_dir), mode, kind, keep_inst, true, cuda_enabled, preview_seconds, &|p| {
+        // م١: الفصل يمرّ بالمدخل الواحد `slots::run_separation` فيأخذ فتحة جهاز
+        // (والوسم "gui" يظهر في سِجلّ المهامّ)، وإلا بقي هذا المدخل خارج المحدِّد.
+        let out = slots::run_separation("gui", Path::new(&path), Path::new(&out_dir), mode, kind, keep_inst, true, cuda_enabled, preview_seconds, &|p| {
             if throttle::emit_4hz().allow("sep-progress") {
                 let _ = app.emit("sep-progress", p.clamp(0.0, 1.0));
             }
@@ -569,8 +572,7 @@ async fn separate_file(
             if throttle::emit_4hz().allow("sep-stage") {
                 let _ = app.emit("sep-stage", serde_json::json!({ "stage": stage, "pct": p.clamp(0.0, 1.0) }));
             }
-        })
-        .map_err(|e| e.to_string())?;
+        })?;
         tracing::info!(target: "pipe", "program-path separate finished ({}; {})",
             throttle::emit_4hz().report("sep-progress"), throttle::emit_4hz().report("sep-stage"));
 
@@ -905,13 +907,18 @@ fn set_settings(
             value[key] = serde_json::Value::String(existing);
         }
     }
-    let new: settings::Settings = serde_json::from_value(value).map_err(|e| e.to_string())?;
+    // م١: القصّ قبل الحفظ والنشر — `from_value` لا يمرّ بـ`settings::load`،
+    // فبدون هذا السطر يُحفظ سقف 7 ويُعرض في الواجهة ويُرسل ثانيةً.
+    let mut new: settings::Settings = serde_json::from_value(value).map_err(|e| e.to_string())?;
+    new.normalize();
     let app_data = paths::data_dir();
     persist_then_publish(&state.settings, &new, |s| {
         settings::save(&app_data, s).map_err(|e| e.to_string())
     })?;
     watch_service::apply_settings(&new);
     telegram::apply_settings(&new);
+    // م١: سقف الفتحات إعداد حيّ — يُطبَّق فوراً كي لا يحتاج تغييره إعادة تشغيل.
+    slots::set_limit(new.max_concurrent_jobs);
     // Tray labels follow the app language (no-op when nothing moved).
     tray::refresh_lang(&app, &new.lang);
     use tauri::Emitter;
@@ -1038,7 +1045,11 @@ async fn install_cuda_runtime(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn cancel_process(state: tauri::State<'_, AppState>) {
     state.cancel_flag.store(true, Ordering::SeqCst);
-    tracing::warn!(target: "app", "تم إرسال أمر الإلغاء...");
+    // م١: يوسم أيضاً رمز الإلغاء **لكل مهمّة** في سِجلّ المهامّ. سلوك المستخدم
+    // لم يتغيّر: الإلغاء الفعلي ما زال بالعلم العام أعلاه (لأن `prog` تقرؤه)،
+    // وهذه الرموز يقرؤها بند م٢ حين يقتل شجرة العمليات.
+    let marked = slots::cancel_all();
+    tracing::warn!(target: "app", "تم إرسال أمر الإلغاء... (وُسمت {marked} مهمّة نشطة)");
 }
 
 /// Functional gap: cancel a running BROWSER job from the desktop UI.
@@ -1299,6 +1310,9 @@ pub fn run() {
             // (no providers at env level — sessions select their own), BEFORE
             // the watch folder can start processing.
             separator::init_ort_env();
+            // م١: سقف فتحات الفصل قبل أن تبدأ أي مهمّة (خدمة المراقبة أو غيرها)،
+            // وإلا عملت المهامّ الأولى بسقف الذاكرة الافتراضي لا بسقف المستخدم.
+            slots::set_limit(loaded.max_concurrent_jobs);
             watch_service::init(app.handle().clone());
             watch_service::apply_settings(&loaded);
             // Sprint T2: the tray icon is the app's only always-visible handle

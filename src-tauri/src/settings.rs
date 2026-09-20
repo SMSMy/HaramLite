@@ -19,6 +19,10 @@ pub struct Settings {
     pub preview_seconds: u32, // 10 | 15 | 30
     pub keep_instrumental: bool,
     pub log_open: bool,
+    // م١: سقف الفصول المتزامنة على الجهاز. **إعداد بطاقةٍ لا تفضيل**: قياس
+    // المالك على RTX 3070 (8192 MiB) أعطى 1419 + n×2325 MiB ⇒ الثالثة تتجاوز
+    // ذاكرة الكرت. فالمدى المسموح 1..=2 وحده، وما خرج يُقصّ في `normalize`.
+    pub max_concurrent_jobs: u32,
     // Switching this off leaves yt-dlp frozen at its current version, so a
     // site change can break downloads until the user updates by hand — hence
     // the status line and warning the settings panel shows while it is off.
@@ -57,6 +61,7 @@ impl Default for Settings {
             preview_seconds: 15,
             keep_instrumental: false,
             log_open: true,
+            max_concurrent_jobs: crate::slots::DEFAULT_LIMIT,
             ytdlp_auto_update: true,
             watch_enabled: false,
             watch_path: None,
@@ -81,6 +86,19 @@ pub fn path(app_data: &Path) -> PathBuf {
     app_data.join("settings.json")
 }
 
+impl Settings {
+    /// قصّ القيم الخارجة عن مداها. **نقطة واحدة** يستدعيها كل مدخل تُقرأ منه
+    /// الإعدادات: `load` (ملف عُدّل يدوياً) و`set_settings` (`serde_json`
+    /// مباشرةً، فلا يمرّ بـ`load`).
+    ///
+    /// ولماذا يلزم القصّ أصلاً: القيمة تُحفظ وتُنشر إلى الواجهة كما هي، فسقف 7
+    /// في الملف يبقى معروضاً ويُكتب ثانيةً — ولو قُصّ عند الاستعمال وحده لبدت
+    /// الواجهة تقول 7 والمحرّك يعمل بـ2.
+    pub fn normalize(&mut self) {
+        self.max_concurrent_jobs = crate::slots::clamp_limit(self.max_concurrent_jobs);
+    }
+}
+
 pub fn load(app_data: &Path) -> Settings {
     let p = path(app_data);
     match std::fs::read_to_string(&p) {
@@ -91,6 +109,7 @@ pub fn load(app_data: &Path) -> Settings {
             // from a plaintext file keeps working before the first re-save.
             v.telegram_token = crate::seal::open_setting(&v.telegram_token);
             v.telegram_api_hash = crate::seal::open_setting(&v.telegram_api_hash);
+            v.normalize();
             v
         }
         Err(_) => Settings::default(),
@@ -263,6 +282,36 @@ mod tests {
         assert!(!needs_sealing(&dir));
         std::fs::write(path(&dir), "{ not json").unwrap();
         assert!(!needs_sealing(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// م١: سقف الفصول المتزامنة — الافتراضي 2، والمسموح 1..=2، وما خرج يُقصّ
+    /// **عند القراءة** فلا يبقى سقف 9 في الذاكرة ولا يُعرض في الواجهة ولا
+    /// يُكتب ثانيةً. (القصّ في `normalize` وحدها، و`set_settings` يناديها.)
+    #[test]
+    fn max_concurrent_jobs_defaults_to_two_and_clamps_out_of_range_values() {
+        assert_eq!(
+            Settings::default().max_concurrent_jobs,
+            crate::slots::DEFAULT_LIMIT,
+            "الافتراضي سقف البطاقة لا أقلّ ولا أكثر"
+        );
+        let dir = tmp("max_jobs");
+        std::fs::write(path(&dir), r#"{"max_concurrent_jobs":9}"#).unwrap();
+        assert_eq!(load(&dir).max_concurrent_jobs, 2, "9 تُقصّ إلى السقف");
+        std::fs::write(path(&dir), r#"{"max_concurrent_jobs":0}"#).unwrap();
+        assert_eq!(
+            load(&dir).max_concurrent_jobs,
+            1,
+            "0 تُرفع إلى 1 لا انتظار أبدي"
+        );
+        std::fs::write(path(&dir), r#"{"max_concurrent_jobs":1}"#).unwrap();
+        assert_eq!(load(&dir).max_concurrent_jobs, 1, "القيمة المشروعة تمرّ");
+        std::fs::write(path(&dir), r#"{"lang":"ar"}"#).unwrap();
+        assert_eq!(
+            load(&dir).max_concurrent_jobs,
+            2,
+            "ملف بناء قديم ⇒ الافتراضي"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -11,6 +11,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use crate::pipeline::{self, Mode};
+use crate::slots;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -211,7 +212,10 @@ fn run_files(o: &CliOpts) -> i32 {
         } else {
             pipeline::OutKind::Audio { fmt: o.format }
         };
-        match pipeline::process_file(
+        // م١: CLI عملية منفصلة، وهي بالضبط ما يجعل محدِّداً داخل العملية
+        // بلا قيمة — فالفتحة هنا سيمافور نواة يراه التطبيق أيضاً.
+        match slots::run_separation(
+            "cli",
             path,
             &out_dir,
             o.mode,
