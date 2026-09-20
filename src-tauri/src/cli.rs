@@ -11,6 +11,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use crate::pipeline::{self, Mode};
+use crate::slots;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -211,7 +212,17 @@ fn run_files(o: &CliOpts) -> i32 {
         } else {
             pipeline::OutKind::Audio { fmt: o.format }
         };
-        match pipeline::process_file(
+        // م١: CLI عملية منفصلة، وهي بالضبط ما يجعل محدِّداً داخل العملية
+        // بلا قيمة — فالفتحة هنا mutex نواة يراه التطبيق أيضاً.
+        //
+        // **ولا سطر «بانتظار فتحة فصل…» هنا**: كان يُطبع **قبل** الطلب دائماً
+        // فيكذب على مهمّة أخذت الفتحة فوراً (قِيس: مهمّة حرّة انتهت في 433ms
+        // وطُبع السطر). والإعلان الصادق يأتي من طبقة الفتحات وحدها
+        // (`slots::run_registered_with`) **حين يقع انتظار فعلي**، ومعه زمن
+        // الانتظار المقيس؛ وهو يصل شاشة CLI عبر طبقة `stderr` التي ينصبها
+        // `logging::init_cli` (هدف `slots` عند مستوى `info`).
+        match slots::run_separation(
+            "cli",
             path,
             &out_dir,
             o.mode,

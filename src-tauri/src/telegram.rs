@@ -27,8 +27,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
-use crate::pipeline::{self, Mode, OutFormat, OutKind};
+use crate::pipeline::{Mode, OutFormat, OutKind};
 use crate::settings::Settings;
+use crate::slots;
 
 // ── caps (core.telegram.org/bots/api) ───────────────────────────────────────
 /// Hard cloud cap on anything a bot sends.
@@ -1375,7 +1376,9 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
         };
         status.borrow_mut().set(cfg, ar.to_string(), false);
     };
-    let processed = pipeline::process_file(
+    // م١: مهمّة البوت تأخذ فتحة جهاز مثل كل مدخل آخر.
+    let processed = slots::run_separation(
+        "telegram",
         // Results land in the user's results folder — the same place the
         // browser bridge puts them — NOT in our scratch dir. That was the bug
         // behind the 150MB of "temporary" files the owner found in AppData:
@@ -1810,6 +1813,11 @@ mod tests {
         let second = pairing_code(true)["code"].as_str().unwrap().to_string();
         assert_eq!(first.len(), PAIR_DIGITS);
         assert!(first.chars().all(|c| c.is_ascii_digit()));
+        // **حدّ أمانة**: هذا السطر «رمي عملة» باحتمال فشل كاذب **10⁻⁶** لكل
+        // تشغيل (تطابق رمزين من فضاء 10⁶) — دون حدّ 10⁻¹² المطلوب. لم أغيّره
+        // لأن الغرض هنا «الرمز يعمل مرّة واحدة» لا إثبات تنوّع المولّد: فحص
+        // التنوّع صار في `pairing_codes_are_not_a_fixed_or_small_pool`، وهو
+        // الذي يقيس الأثر بعتبة محسوبة (7.6e-38).
         assert_ne!(first, second, "a regenerated code must differ");
 
         // 2. Non-code chatter is not an attempt (strangers must not burn it).
@@ -1871,22 +1879,45 @@ mod tests {
         assert_eq!(random_code(0), "");
     }
 
-    /// و-٧ — عدم التكرار: ٢٠٠ رمز متتالٍ كلها مختلفة. يسقط فوراً لو عاد
-    /// المولّد ثابتاً أو حبيس بذرة ضيقة (كان `RandomState`+SplitMix64 هنا).
+    /// و-٧ — **مسبار الركود**: المولّد لا يعطي رموزاً ثابتة ولا محبوساً في
+    /// بركة صغيرة، على أثر **يُقاس كل تشغيل**.
+    ///
+    /// **ولماذا تغيّر المسبار** (كان `..._never_repeat` ويشترط أن الـ٢٠٠ رمز
+    /// كلها مختلفة): شرط «لا تكرار إطلاقاً» في سحب من فضاء 10⁶ **رميُ عملة**،
+    /// لا حارس. فاحتمال وقوع تصادم واحد على الأقل = `1 - exp(-λ)` بـ
+    /// `λ = n(n-1)/2N = 0.0199` ⇒ **1.9703%** لكل تشغيل، والقياس يؤكّده:
+    /// **4 إخفاقات في 300 تشغيل (1.33%)** على الثنائي المبنيّ من هذا الملف
+    /// (والمدقّق قاس 1.67% برسالة «رمز مكرَّر عند المحاولة 170»). فـ«cargo
+    /// test أخضر» لم يكن قابلاً لإعادة الإنتاج، وهي بوابة يعتمد عليها ما بعدها.
+    ///
+    /// **والمقصود المعلَن** كان: «يسقط فوراً لو عاد المولّد ثابتاً أو حبيس
+    /// بركة ضيقة». وهذا يقيسه عدد **العناصر المتمايزة** لا شرط «لا تكرار»:
+    /// مولّد ثابت ⇒ متمايز = **1**، ومولّد محبوس في ٥ قيم ⇒ متمايز **≤ 5**،
+    /// والثلاثة كلها دون أي عتبة معقولة.
+    ///
+    /// **حساب العتبة** (لا تخمين)، على توزيع التصادمات لا تقريب:
+    ///   • `E[متمايز] = N·(1-(1-1/N)^n) = 199.980101` و`sd = 0.205218`.
+    ///   • `P(متمايز ≤ 190) = P(تصادمات ≥ 10) = 7.6e-38` (تكرار ستيرلنغ الدقيق
+    ///     في `ARCHIVE/birthday-calc3.cjs`؛ وبواسون بنفس λ: `2.6e-24`) ⇒
+    ///     احتمال الفشل الكاذب **أصغر من 10⁻¹² بكثير**، والعتبة **190**
+    ///     تفصل بينه وبين ما يمسكه المُفسَد فصلاً واسعاً (5 ⇒ 48 sd).
     #[test]
-    fn consecutive_pairing_codes_never_repeat() {
-        let mut seen = std::collections::HashSet::new();
-        for i in 0..200 {
-            let code = random_code(PAIR_DIGITS);
-            assert!(
-                seen.insert(code.clone()),
-                "رمز مكرَّر عند المحاولة {i}: {code}"
-            );
+    fn pairing_codes_are_not_a_fixed_or_small_pool() {
+        // عيّنة كبيرة عن قصد: العتبة تُحكم باحتمال فشل كاذب ضئيل جبراً.
+        const DRAWS: usize = 200;
+        // انظر حساب العتبة في توثيق الاختبار أعلاه (7.6e-38 فشل كاذب).
+        const MIN_DISTINCT: usize = 190;
+        let mut seen = std::collections::HashSet::with_capacity(DRAWS);
+        for _ in 0..DRAWS {
+            seen.insert(random_code(PAIR_DIGITS));
         }
-        // وكل الرمزين المتتاليين مختلفان (الشرط المنصوص في التقرير).
-        let a = random_code(PAIR_DIGITS);
-        let b = random_code(PAIR_DIGITS);
-        assert_ne!(a, b, "رمزان متتاليان متطابقان");
+        assert!(
+            seen.len() >= MIN_DISTINCT,
+            "المولّد راكد: {} رمزاً متمايزاً من {DRAWS} سحباً (العتبة {MIN_DISTINCT}) — \
+             عيّنة من الرموز: {:?}",
+            seen.len(),
+            seen.iter().take(8).collect::<Vec<_>>()
+        );
     }
 
     /// و-٧ — توزيع الأرقام: ١٢٠٠ رقم مولَّد تستعمل كل الأرقام العشرة. يسقط

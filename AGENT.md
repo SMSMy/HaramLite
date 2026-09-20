@@ -306,19 +306,22 @@
 
 | البوابة | الأمر | ما تحكمه |
 |---|---|---|
-| اختبارات Rust | `cargo test --quiet` (من `src-tauri`) | المحرّك والإعدادات والجسر |
-| clippy | `cargo clippy --all-targets` | خطأ = فشل (التحذيرات موثَّقة) |
+| اختبارات Rust | `cargo test --quiet` (من `src-tauri`) | المحرّك والإعدادات والجسر (٢٤٦ ناجح · ٣ مُهمَل بعد م١) |
+| clippy | `cargo clippy --all-targets` | خطأ = فشل (١٢ تحذيراً موثَّقاً) |
 | TypeScript | `pnpm exec tsc --noEmit` | أنواع الواجهة |
 | **التنسيق** | `cargo fmt --check` (من `src-tauri`) | الشجرة منسَّقة (كانت 410 كتل فرق) |
 | **بناء الواجهة** | `pnpm build:web` | أن الحزمة **تُبنى فعلاً** (tailwind + vite) |
-| **اختبارات الواجهة** | `pnpm test:web` | 65 حالة: عقد مصارف HTML · وحدتان نقيتان · تكافؤ مفاتيح الترجمة |
+| **اختبارات الواجهة** | `pnpm test:web` | ٨٩ حالة: عقد مصارف HTML · وحدات نقية · تطبيع السقف · تكافؤ مفاتيح الترجمة |
 | **حارس الهندسة** | `node scripts/check-layout.cjs` | 18 صندوقاً عائماً في 6 حالات داخل حدود النافذة (**بعد البناء**) |
-| تكافؤ الإعدادات | `pnpm settings:parity` | كل حقل في `Settings` له مقابل في `collectSettings()` |
-| حراسة الإضافة | `pnpm ext:guard` | 473 فحصاً على `content.js` |
+| تكافؤ الإعدادات | `pnpm settings:parity` | كل حقل في `Settings` له مقابل في `collectSettings()` (‏24=24) |
+| حراسة الإضافة | `pnpm ext:guard` | 513 فحصاً على `content.js` |
 | مُفسَدات الإضافة | `pnpm ext:mutants` | بوابة **سلبية**: كل مُفسَد يجب أن يُسقط الحارس |
 | اتساق الإصدار | `pnpm versions:check` | الإصدار في أربعة ملفات |
-| حرّاس الموقع | `pnpm site:check` | CSS · صفحات · وسوم · عربي · روابط |
-| الخط الكامل | `pnpm e2e:release` | E2E بالنموذج وffmpeg (بوابة إصدار، مُهمَل في CI العادي) |
+| حرّاس الموقع | `pnpm site:check` | CSS · صفحات · وسوم · عربي · روابط · التذييل |
+| سجلّ الاختبار اليدوي | `node scripts/matrix-check.cjs` | 20 صفاً إلزامياً في `qa/TEST-MATRIX.md` كلٌّ بتاريخه وجهازه ونتيجته |
+| **حارس مدخل الفصل** | `pnpm separation:entry` | كل مدخل حيّ إلى `process_file` يمرّ عبر الغلاف الواحد (٣ مواضع مسموحة بعده) |
+| **حارس الحرّاس** | `pnpm guards:selfcheck` | لكل حارس: مُفسَد يُسقطه + ضابط يمرّ + صفر مدخل يفشل بصوت عالٍ (11/11 · 39/39 · 11/11) |
+| الخط الكامل (خارج الخمس عشرة) | `pnpm e2e:release` | E2E بالنموذج وffmpeg (بوابة إصدار، مُهمَل في CI العادي) |
 
 **بنية سريعة**: `src-tauri/src/` (Rust: `separator` · `pipeline` · `bridge` ·
 `settings` · `cuda_runtime` · `yt_dlp` · `telegram` · `repair`) · `src/` (واجهة

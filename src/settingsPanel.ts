@@ -111,6 +111,22 @@ export function wireSettings(): void {
     refreshYtdlpUpdateUi();
   }
 
+  // م١: سقف الفصول المتزامنة. القائمة تحمل 1 و2 وحدهما، والقيمة تُطبَّع هنا
+  // أيضاً: قيمة دخيلة في localStorage (نسخة قديمة أو تعديل يدوي) تُصحَّح إلى
+  // **1** (الافتراضيّ الآمن) بدل أن تُدفع إلى الخلف — ولا تُرفع إلى 2 إلا
+  // باختيار صريح محفوظ. **والتطبيع نفسه في `collectSettings`**
+  // (`clampConcurrentJobs` في settings.ts)، فالمعروض = المُرسَل إلى الخلف.
+  const maxJobs = document.getElementById('max-jobs') as HTMLSelectElement | null;
+  if (maxJobs) {
+    maxJobs.value = localStorage.getItem('hl.max_jobs') === '2' ? '2' : '1';
+    maxJobs.addEventListener('change', () => {
+      const v = maxJobs.value === '1' ? '1' : '2';
+      maxJobs.value = v;
+      localStorage.setItem('hl.max_jobs', v);
+      pushSettings();
+    });
+  }
+
   if (btnSettings && menu) {
     let menuRelease: (() => void) | null = null;
     const closeMenu = (): void => {
