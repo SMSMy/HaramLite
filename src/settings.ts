@@ -43,6 +43,20 @@ export function setTelegramApiHash(apiHash: string | null): void {
  *  letting #[serde(default)] silently reset it to false. */
 let autostartAsked = false;
 
+/** سقف الفصول المتزامنة: **مطبَّع في الواجهة أيضاً** لا في الخلف وحده.
+ *
+ *  العطل: القيمة كانت تُمرَّر كما هي من `localStorage` (`Number(...) || 1`)،
+ *  فقيمة دخيلة مثل `'9'` تصل إلى الخلف فيقصّها `slots::clamp_limit` إلى 2 —
+ *  **بينما القائمة تعرض 1** (لأنها تقرأ `'2'` بالتساوي فقط) ⇒ تعرض الواجهة
+ *  غير ما يعمل به التطبيق. فالتطبيع هنا يجعل المعروض = المُرسَل = المُنفَّذ.
+ *
+ *  والمقبول **1 أو 2** وحدهما (نفس مدى `slots::MAX_LIMIT`)، وما خرج عنهما
+ *  يُردّ إلى **1** — وهو الافتراضيّ الآمن نفسه الذي تختاره القائمة لقيمة غير
+ *  صالحة، فلا المفاجأة ولا الرفع الصامت إلى 2. */
+export function clampConcurrentJobs(n: number): 1 | 2 {
+  return n === 2 ? 2 : 1;
+}
+
 /** مرآة autostart_asked: كان main.ts يكتب المتغيّر مباشرة. */
 export function setAutostartAsked(next: boolean): void {
   autostartAsked = next;
@@ -94,9 +108,10 @@ export function collectSettings(): RustSettings {
     watch_max_size_mb: Number(localStorage.getItem('hl.watch_max_mb')) || 2048,
     watch_rescan_secs: Number(localStorage.getItem('hl.watch_rescan')) || 60,
     // م١: سقف الفصول المتزامنة (1..=2). الافتراضي 1 = الطرف الآمن (فصلان
-    // بلغا ذروة 7947 من 8192 م.ب: هامش 245 م.ب)، و2 اختيار صريح، والخلف يقصّ
-    // أي قيمة خارجة (`slots::clamp_limit`) فلا تعتمد الواجهة على نفسها.
-    max_concurrent_jobs: Number(localStorage.getItem('hl.max_jobs')) || 1,
+    // بلغا ذروة 7947 من 8192 م.ب: هامش 245 م.ب)، و2 اختيار صريح. والقصّ هنا
+    // **مطبَّع** لا متروك للخلف: قيمة دخيلة (`'9'`) تُردّ إلى 1 فلا تصل قيمة
+    // تخالف ما تعرضه القائمة (`clampConcurrentJobs` فوق).
+    max_concurrent_jobs: clampConcurrentJobs(Number(localStorage.getItem('hl.max_jobs'))),
   };
 }
 export function pushSettings(): void {
