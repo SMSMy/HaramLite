@@ -899,6 +899,11 @@ mod tests {
     #[test]
     fn three_threads_never_exceed_the_cap() {
         let _lock = registry_lock();
+        // هذا الاختبار يقيس **السقف** لا الافتراضيّ: بعد قرار المالك صار
+        // الافتراضيّ 1 (وله اختبار سلوكيّ مستقلّ أدناه)، فهنا يُرفع السقف
+        // صراحةً إلى `MAX_LIMIT` بالمسار الذي تسلكه الإعدادات (`set_limit`)،
+        // ويُعاد إلى أصله قبل انتهاء القفل.
+        set_limit(MAX_LIMIT);
         let name = unique_name("inproc");
         let events: Arc<Mutex<Vec<(u128, i32)>>> = Arc::new(Mutex::new(Vec::new()));
         let mut threads = Vec::new();
@@ -918,6 +923,7 @@ mod tests {
         for t in threads {
             t.join().expect("لا ذعر في الخيوط");
         }
+        set_limit(DEFAULT_LIMIT); // الإعداد العامّ يعود إلى أصله قبل أي حكم
         let events = events.lock().unwrap().clone();
         assert_eq!(events.len(), 6, "ثلاث بدايات وثلاث نهايات");
         let peak = max_overlap(&events);
@@ -928,8 +934,8 @@ mod tests {
             current_limit()
         );
         assert_eq!(
-            peak, 2,
-            "أقصى تزامن مُقاس يجب أن يساوي السقف (2)، وقياسه {peak} — الأحداث: {events:?}"
+            peak, MAX_LIMIT as usize,
+            "أقصى تزامن مُقاس يجب أن يساوي السقف ({MAX_LIMIT})، وقياسه {peak} — الأحداث: {events:?}"
         );
     }
 
@@ -1264,8 +1270,8 @@ mod tests {
             return; // لا نُعيد إطلاق المساعدين من داخل مساعد
         }
         let _lock = registry_lock();
-        // السقف الافتراضي للثلاثة (بلا ضبط `HELPER_LIMIT`) وبلا تأخير.
-        let raw = run_three_helpers("xproc", [(DEFAULT_LIMIT, 0); HELPERS]);
+        // السقف الكامل صراحةً للثلاثة (لا الافتراضيّ: صار 1) وبلا تأخير.
+        let raw = run_three_helpers("xproc", [(MAX_LIMIT, 0); HELPERS]);
         let events = parse_trace(&raw);
         let (started, ended) = (
             events.iter().filter(|(_, _, d)| *d > 0).count(),
@@ -1285,8 +1291,45 @@ mod tests {
             current_limit()
         );
         assert_eq!(
-            peak, 2,
-            "أقصى تداخل بين العمليات يجب أن يساوي السقف (2)، وقياسه {peak}. \
+            peak, MAX_LIMIT as usize,
+            "أقصى تداخل بين العمليات يجب أن يساوي السقف ({MAX_LIMIT})، وقياسه {peak}. \
+             السطور:\n{raw}"
+        );
+    }
+
+    /// **الافتراضيّ 1** (قرار المالك بعد قياس هامش الفصلين): ثلاث عمليات
+    /// **بلا سقف صريح** — أي بالافتراضيّ وحده — تتسلّس كلّها: أقصى تداخل مُقاس
+    /// **1** لا 2. وهذا هو مُفسَد القرار: إعادة `DEFAULT_LIMIT` إلى 2 تُسقط هذا
+    /// الاختبار (تصير الذروة 2)، فلا يبقى الافتراضيّ رقماً في تعليق بلا ضابط.
+    #[test]
+    fn the_default_cap_serialises_three_helper_processes() {
+        if std::env::var(HELPER_MODE).is_ok() {
+            return;
+        }
+        let _lock = registry_lock();
+        assert_eq!(
+            current_limit(),
+            DEFAULT_LIMIT,
+            "بلا أي ضبط: السقف هو الافتراضيّ"
+        );
+        let raw = run_three_helpers("xdef", [(DEFAULT_LIMIT, 0); HELPERS]);
+        let events = parse_trace(&raw);
+        let (started, ended) = (
+            events.iter().filter(|(_, _, d)| *d > 0).count(),
+            events.iter().filter(|(_, _, d)| *d < 0).count(),
+        );
+        assert_eq!(
+            (started, ended),
+            (HELPERS, HELPERS),
+            "سطور التتبّع ناقصة — القياس باطل. المحتوى:\n{raw}"
+        );
+        let peak = max_overlap(&deltas(&events));
+        eprintln!(
+            "م١/الافتراضيّ: أقصى تداخل مُقاس = {peak} (الافتراضيّ {DEFAULT_LIMIT}) — سطور التتبّع:\n{raw}"
+        );
+        assert_eq!(
+            peak, 1,
+            "بالافتراضيّ 1 يجب أن تتسلّس العمليات الثلاث (الذروة 1)، وقياسها {peak}. \
              السطور:\n{raw}"
         );
     }
@@ -1527,8 +1570,10 @@ mod tests {
         }
         let slot = std::env::var(HELPER_SLOT).expect("اسم الفتحة");
         let log = PathBuf::from(std::env::var(HELPER_LOG).expect("ملف السجلّ"));
-        let first = acquire_named(&slot, DEFAULT_LIMIT, Duration::from_secs(10));
-        let second = acquire_named(&slot, DEFAULT_LIMIT, Duration::from_secs(10));
+        // سقف كامل ⇒ رمز واحد لكل نداء، فنداءان يحجزان **الرمزين** (ولا يُستعمل
+        // الافتراضيّ هنا: صار 1 فيأخذ النداء الأول الرمزين ويفشل الثاني بمهلة).
+        let first = acquire_named(&slot, MAX_LIMIT, Duration::from_secs(10));
+        let second = acquire_named(&slot, MAX_LIMIT, Duration::from_secs(10));
         let ok = first.is_ok() && second.is_ok();
         append_line(&log, &format!("HOG {}\n", if ok { "OK" } else { "FAIL" }));
         assert!(ok, "العملية الحاجزة يجب أن تأخذ الفتحتين");
@@ -1544,8 +1589,8 @@ mod tests {
         }
         let slot = std::env::var(HELPER_SLOT).expect("اسم الفتحة");
         let log = PathBuf::from(std::env::var(HELPER_LOG).expect("ملف السجلّ"));
-        let a = acquire_named(&slot, DEFAULT_LIMIT, Duration::from_secs(5));
-        let b = acquire_named(&slot, DEFAULT_LIMIT, Duration::from_secs(5));
+        let a = acquire_named(&slot, MAX_LIMIT, Duration::from_secs(5));
+        let b = acquire_named(&slot, MAX_LIMIT, Duration::from_secs(5));
         let ok = a.is_ok() && b.is_ok();
         append_line(&log, &format!("PROBE {}\n", if ok { "OK" } else { "FAIL" }));
         assert!(ok, "بعد موت الحاجز يجب أن تُتاح الفتحتان كاملتين");
