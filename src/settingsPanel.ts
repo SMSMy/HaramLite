@@ -112,11 +112,12 @@ export function wireSettings(): void {
   }
 
   // م١: سقف الفصول المتزامنة. القائمة تحمل 1 و2 وحدهما، والقيمة تُطبَّع هنا
-  // أيضاً: قيمة دخيلة في localStorage (نسخة قديمة أو تعديل يدوي) تُصحَّح إلى 2
-  // بدل أن تُدفع إلى الخلف — والخلف يقصّها على أي حال (`slots::clamp_limit`).
+  // أيضاً: قيمة دخيلة في localStorage (نسخة قديمة أو تعديل يدوي) تُصحَّح إلى
+  // **1** (الافتراضيّ الآمن) بدل أن تُدفع إلى الخلف — والخلف يقصّها على أي
+  // حال (`slots::clamp_limit`)، ولا تُرفع إلى 2 إلا باختيار صريح محفوظ.
   const maxJobs = document.getElementById('max-jobs') as HTMLSelectElement | null;
   if (maxJobs) {
-    maxJobs.value = localStorage.getItem('hl.max_jobs') === '1' ? '1' : '2';
+    maxJobs.value = localStorage.getItem('hl.max_jobs') === '2' ? '2' : '1';
     maxJobs.addEventListener('change', () => {
       const v = maxJobs.value === '1' ? '1' : '2';
       maxJobs.value = v;
