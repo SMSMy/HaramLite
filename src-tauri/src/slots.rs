@@ -893,6 +893,45 @@ fn platform_acquire(
 
 // ───────────────────────── مدخل الفصل الواحد ─────────────────────────
 
+/// نتيجة محاولة الاكتساب: الحارس + **هل وقع انتظار فعلي؟**
+///
+/// **ولماذا هذا الحقل**: السطر «بانتظار فتحة فصل…» كان يُطبع **قبل** الطلب
+/// دائماً، فيكذب على مهمّة أخذت الفتحة فوراً — قِيس: مهمّة حرّة انتهت في
+/// **433ms** وطُبع السطران، والحالة الحرّة **9.8ms** مقابل المحجوزة **18.618s**.
+/// فالآن يُحاول **فوراً** أولاً، ولا يُعلَن انتظار **إلا إذا وقع**.
+struct Acquired {
+    /// الحارس — يُحرَّر عند سقوطه.
+    _guard: SlotGuard,
+    /// هل انتُظر؟ (كاذب = أُخذ الرمز من المحاولة الفورية.)
+    waited: bool,
+    /// زمن الانتظار المقيس (صفر إن لم يقع انتظار فعلًا).
+    waited_for: Duration,
+}
+
+/// محاولة **فورية** أولاً (`Duration::ZERO`)، ثم المهلة الكاملة عند الفشل.
+///
+/// والمحاولة الفورية مدعومة على المنصّتين: ويندوز `WaitForMultipleObjects`
+/// بمهلة 0 (استطلاع لا انتظار)، وغير ويندوز `deadline = now` في `local`.
+/// فمهلة الصفر تعني «لا تنتظر» لا «انتهت المهلة خطأً».
+fn acquire_now_or_wait(slot_name: &str, limit: u32, timeout: Duration) -> Result<Acquired, String> {
+    match acquire_named(slot_name, limit, Duration::ZERO) {
+        Ok(guard) => Ok(Acquired {
+            _guard: guard,
+            waited: false,
+            waited_for: Duration::ZERO,
+        }),
+        Err(_) => {
+            let started = std::time::Instant::now();
+            let guard = acquire_named(slot_name, limit, timeout)?;
+            Ok(Acquired {
+                _guard: guard,
+                waited: true,
+                waited_for: started.elapsed(),
+            })
+        }
+    }
+}
+
 /// **النواة الوحيدة**: سِجلّ المهمّة + فتحة الفصل + الجسم، في نقطة واحدة
 /// تمرّ منها كل مهمّة فصل. الترتيب مقصود: التسجيل قبل الانتظار (فتظهر
 /// المهمّة المنتظرة في السِجلّ لا المخدومة وحدها)، والتحرير بترتيب عكسي
@@ -918,10 +957,20 @@ fn run_registered_with<T>(
     body: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
     let _job = register_job(label);
-    // سطر قبل الانتظار: الانتظار كان صامتاً تماماً في السجلّ (قاس المدقّق
-    // 342 ثانية بلا أثر)، فلا يُعرف أمهمّة تنتظر أم تعمل.
-    tracing::info!(target: "slots", "المهمّة ({label}) تنتظر فتحة فصل (سقف {limit})…");
-    let _slot = acquire_named(slot_name, limit, DEFAULT_WAIT)?;
+    // **الإعلان صادق أو لا يكون**: محاولة فورية أولاً، ولا سطر انتظار إطلاقاً
+    // إن أُخذت الفتحة فوراً. وإن وقع انتظار فعلاً أُعلن **قبله** (فالانتظار كان
+    // صامتاً في السجلّ: قاس المدقّق 342 ثانية بلا أثر) ثم يُسجَّل **زمنه
+    // المقيس** بعد الاكتساب — لا تخميناً.
+    let got = acquire_now_or_wait(slot_name, limit, DEFAULT_WAIT).inspect_err(|e| {
+        tracing::warn!(target: "slots", "المهمّة ({label}) لم تحصل على فتحة فصل: {e}");
+    })?;
+    if got.waited {
+        tracing::info!(
+            target: "slots",
+            "انتظرت المهمّة ({label}) فتحة فصل {:.1} ث (سقف {limit})",
+            got.waited_for.as_secs_f64()
+        );
+    }
     body()
 }
 
@@ -1892,6 +1941,59 @@ mod tests {
         assert!(ok, "العملية الحاجزة يجب أن تأخذ الفتحتين");
         // بلا `drop`: الخروج الفوري لا يعمل المدوِّرات.
         std::process::exit(0);
+    }
+
+    /// **ت-ب: الإعلان صادق — لا سطر انتظار بلا انتظار.**
+    ///
+    /// العطل المقيس: السطر كان يُطبع **قبل** الطلب دائماً، فمهمّة حرّة انتهت
+    /// في **433ms** طُبع لها «بانتظار فتحة فصل…» (وقياس المدقّق: الحرّة
+    /// **9.8ms** مقابل المحجوزة **18.618s**). فالقياس هنا على الحقل الذي
+    /// يُبنى عليه الإعلان: فتحة حرّة ⇒ `waited = false`؛ فتحة محجوزة تُحرَّر
+    /// **أثناء** الانتظار ⇒ `waited = true` **وزمن انتظار مقيس > 0**.
+    ///
+    /// **المُفسَد**: جعل الإعلان دائماً (محاولة واحدة بالمهلة الكاملة بلا
+    /// استطلاع فوري) ⇒ الحالة الحرّة ترجع `waited = true` فيسقط الاختبار.
+    #[test]
+    fn a_free_slot_is_taken_without_waiting_and_a_taken_one_reports_its_wait() {
+        let _lock = registry_lock();
+        let name = unique_name("honest-wait");
+
+        // (١) حرّة ⇒ بلا انتظار (ولا إعلان).
+        let free = acquire_now_or_wait(&name, MAX_LIMIT, Duration::from_secs(5))
+            .expect("فتحة حرّة تُؤخذ فوراً");
+        assert!(
+            !free.waited,
+            "فتحة حرّة لا تُعلن انتظاراً — كان السطر يُطبع دائماً فيكذب"
+        );
+        assert_eq!(free.waited_for, Duration::ZERO, "ولا زمن انتظار لها");
+        drop(free);
+
+        // (٢) محجوزة تُحرَّر أثناء الانتظار ⇒ انتظار مُعلَن **بزمنه المقيس**.
+        // الحاجز يُمسَك على خيط آخر مدّةً (800ms) أطول من مهلة القياس (400ms)،
+        // فالتوقيت مضبوط لا رهين مصادفة جدولة: الحاجز موجود قبل بدء القياس
+        // ويبقى بعده.
+        let holder = acquire_held_on_thread(&name, 1, Duration::from_millis(800));
+        std::thread::sleep(Duration::from_millis(60));
+        let started = std::time::Instant::now();
+        let busy = acquire_now_or_wait(&name, MAX_LIMIT, Duration::from_secs(5))
+            .expect("الفتحة تُحرَّر خلال المهلة");
+        let measured = started.elapsed();
+        assert!(busy.waited, "فتحة محجوزة ⇒ انتظار فعلي، ولا بد أن يُعلَن");
+        assert!(
+            busy.waited_for >= Duration::from_millis(200),
+            "زمن الانتظار المقيس يجب أن يكون معتبراً: {:?}",
+            busy.waited_for
+        );
+        assert!(
+            busy.waited_for <= measured,
+            "الزمن المُعلَن لا يتجاوز ما قاسه المستدعي: {:?} > {measured:?}",
+            busy.waited_for
+        );
+        eprintln!(
+            "ت-ب/الإعلان الصادق: حرّة ⇒ waited=false · محجوزة ⇒ waited=true بعد {:?} (المقيس في المستدعي {measured:?})",
+            busy.waited_for
+        );
+        assert!(holder.join().unwrap_or(false), "الحاجز كان يحمل الرمز فعلاً");
     }
 
     /// عملية ثالثة: تتحقّق أن السقف كامل بعد موت الحاجز.
