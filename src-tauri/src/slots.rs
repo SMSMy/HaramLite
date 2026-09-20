@@ -940,7 +940,12 @@ struct Acquired {
 /// والمحاولة الفورية مدعومة على المنصّتين: ويندوز `WaitForMultipleObjects`
 /// بمهلة 0 (استطلاع لا انتظار)، وغير ويندوز `deadline = now` في `local`.
 /// فمهلة الصفر تعني «لا تنتظر» لا «انتهت المهلة خطأً».
-fn acquire_now_or_wait(slot_name: &str, limit: u32, timeout: Duration) -> Result<Acquired, String> {
+fn acquire_now_or_wait(
+    slot_name: &str,
+    limit: u32,
+    timeout: Duration,
+    on_wait: impl FnOnce(),
+) -> Result<Acquired, String> {
     match acquire_named(slot_name, limit, Duration::ZERO) {
         Ok(guard) => Ok(Acquired {
             _guard: guard,
@@ -948,6 +953,11 @@ fn acquire_now_or_wait(slot_name: &str, limit: u32, timeout: Duration) -> Result
             waited_for: Duration::ZERO,
         }),
         Err(_) => {
+            // **الإعلان قبل الحجب لا بعده**: المستخدم يجب أن يعرف أن المهمّة
+            // تنتظر **وهي تنتظر** (قاس المدقّق ٣٤٢ ثانية صمت تامّ)، وزمن
+            // الانتظار المقيس يُسجَّل بعد الاكتساب. ولذلك `on_wait` نداءٌ صريح
+            // يُستدعى هنا، فيُختبر بإغلاق يسجّل **لحظته** لا بالتقاط السجلّ.
+            on_wait();
             let started = std::time::Instant::now();
             let guard = acquire_named(slot_name, limit, timeout)?;
             Ok(Acquired {
@@ -986,9 +996,16 @@ fn run_registered_with<T>(
     let _job = register_job(label);
     // **الإعلان صادق أو لا يكون**: محاولة فورية أولاً، ولا سطر انتظار إطلاقاً
     // إن أُخذت الفتحة فوراً. وإن وقع انتظار فعلاً أُعلن **قبله** (فالانتظار كان
-    // صامتاً في السجلّ: قاس المدقّق 342 ثانية بلا أثر) ثم يُسجَّل **زمنه
-    // المقيس** بعد الاكتساب — لا تخميناً.
-    let got = acquire_now_or_wait(slot_name, limit, DEFAULT_WAIT).inspect_err(|e| {
+    // صامتاً في السجلّ: قاس المدقّق ٣٤٢ ثانية بلا أثر)، ثم يُسجَّل **زمنه
+    // المقيس** بعد الاكتساب — لا تخميناً. (سطران لا سطر: «بانتظار» أثناء
+    // الانتظار، و«انتظرت ٥١.٠ ث» بعده — وكلاهما صادق في لحظته.)
+    let got = acquire_now_or_wait(slot_name, limit, DEFAULT_WAIT, || {
+        tracing::info!(
+            target: "slots",
+            "المهمّة ({label}) بانتظار فتحة فصل (سقف {limit})…"
+        );
+    })
+    .inspect_err(|e| {
         tracing::warn!(target: "slots", "المهمّة ({label}) لم تحصل على فتحة فصل: {e}");
     })?;
     if got.waited {
@@ -2166,32 +2183,60 @@ mod tests {
     ///
     /// **المُفسَد**: جعل الإعلان دائماً (محاولة واحدة بالمهلة الكاملة بلا
     /// استطلاع فوري) ⇒ الحالة الحرّة ترجع `waited = true` فيسقط الاختبار.
+    /// **ومُفسَد ثانٍ**: نقل الإعلان إلى **ما بعد** الاكتساب ⇒ ينقلب ترتيب
+    /// اللحظتين فيسقط (وقد أُسقط فعلاً: فارق 3.4µs بدل ≥200ms).
     #[test]
     fn a_free_slot_is_taken_without_waiting_and_a_taken_one_reports_its_wait() {
         let _lock = registry_lock();
         let name = unique_name("honest-wait");
 
         // (١) حرّة ⇒ بلا انتظار (ولا إعلان).
-        let free = acquire_now_or_wait(&name, MAX_LIMIT, Duration::from_secs(5))
-            .expect("فتحة حرّة تُؤخذ فوراً");
+        let free_announcements = Arc::new(Mutex::new(0usize));
+        let fa = free_announcements.clone();
+        let free = acquire_now_or_wait(&name, MAX_LIMIT, Duration::from_secs(5), || {
+            *fa.lock().unwrap() += 1;
+        })
+        .expect("فتحة حرّة تُؤخذ فوراً");
         assert!(
             !free.waited,
             "فتحة حرّة لا تُعلن انتظاراً — كان السطر يُطبع دائماً فيكذب"
         );
+        assert_eq!(
+            *free_announcements.lock().unwrap(),
+            0,
+            "فتحة حرّة ⇒ صفر إعلان (لا سطر انتظار في الحالة الحرّة)"
+        );
         assert_eq!(free.waited_for, Duration::ZERO, "ولا زمن انتظار لها");
         drop(free);
 
-        // (٢) محجوزة تُحرَّر أثناء الانتظار ⇒ انتظار مُعلَن **بزمنه المقيس**.
-        // الحاجز يُمسَك على خيط آخر مدّةً (800ms) أطول من مهلة القياس (400ms)،
-        // فالتوقيت مضبوط لا رهين مصادفة جدولة: الحاجز موجود قبل بدء القياس
-        // ويبقى بعده.
+        // (٢) محجوزة تُحرَّر أثناء الانتظار ⇒ انتظار مُعلَن **بزمنه المقيس**،
+        // و**الإعلان قبل الحجب لا بعده**: نُسجّل لحظة الإعلان ولحظة الاكتساب
+        // ونقارنهما. الحاجز يُمسَك على خيط آخر مدّةً (800ms) أطول من مهلة
+        // القياس (400ms)، فالتوقيت مضبوط لا رهين مصادفة جدولة.
         let holder = acquire_held_on_thread(&name, 1, Duration::from_millis(800));
         std::thread::sleep(Duration::from_millis(60));
+        let announced_at = Arc::new(Mutex::new(None::<std::time::Instant>));
+        let acquired_at = Arc::new(Mutex::new(None::<std::time::Instant>));
+        let (aa, ac) = (announced_at.clone(), acquired_at.clone());
         let started = std::time::Instant::now();
-        let busy = acquire_now_or_wait(&name, MAX_LIMIT, Duration::from_secs(5))
-            .expect("الفتحة تُحرَّر خلال المهلة");
+        let busy = acquire_now_or_wait(&name, MAX_LIMIT, Duration::from_secs(5), || {
+            *aa.lock().unwrap() = Some(std::time::Instant::now());
+        })
+        .expect("الفتحة تُحرَّر خلال المهلة");
+        *ac.lock().unwrap() = Some(std::time::Instant::now());
         let measured = started.elapsed();
         assert!(busy.waited, "فتحة محجوزة ⇒ انتظار فعلي، ولا بد أن يُعلَن");
+        let ann = announced_at.lock().unwrap().expect("الإعلان وقع");
+        let acq = acquired_at.lock().unwrap().expect("الاكتساب وقع");
+        assert!(
+            ann < acq,
+            "الإعلان يجب أن يسبق الاكتساب (قبل الحجب لا بعده): {ann:?} ≥ {acq:?}"
+        );
+        assert!(
+            acq.duration_since(ann) >= Duration::from_millis(200),
+            "الإعلان وقع والحاجز ما زال ماسكاً (فارق {:?} فقط) ⇒ لم يُعلن أثناء الانتظار",
+            acq.duration_since(ann)
+        );
         assert!(
             busy.waited_for >= Duration::from_millis(200),
             "زمن الانتظار المقيس يجب أن يكون معتبراً: {:?}",
