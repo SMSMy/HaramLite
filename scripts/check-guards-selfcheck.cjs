@@ -491,16 +491,18 @@ CASES.push({
 });
 
 /* ═══ 10) حارس مدخل الفصل الواحد (0.2.9) ═══════════════════════════════════ */
-/* البيئة المصنوعة تحمل المواضع السبعة الحقيقية بأسمائها (خمسة في مسار المنتج
-   واثنان في الاختبارات) ⇒ الضابط يمرّ وقد رأى **سبعة**؛ وكل مُفسَد يضيف مدخلاً
-   ثامناً أو يفرّغ المصادر. والمُفسَدات الثلاثة الأولى تخصّ **المطابقة** لا العدّ:
+/* البيئة المصنوعة تحمل **شكل ما بعد م١**: مدخل المنتج الوحيد يحمله الغلاف
+   (`slots.rs`)، والموضعان المباشران الباقيان في الاختبارات (`pipeline.rs`
+   تعريف+اختبار · `separator.rs`) ⇒ الضابط يمرّ وقد رأى **ثلاثة**. والملفات
+   الخمسة القديمة (`bridge` · `cli` · `lib` · `telegram` · `watch_service`)
+   **لم تعد مسموحة**: بعد نقل مداخلها إلى الغلاف صار أي نداء مباشر فيها مخالفة،
+   وله مُفسَد صريح أدناه. والمُفسَدات الثلاثة الأولى تخصّ **المطابقة** لا العدّ:
    مرادفة (`as p`) ونداء عارٍ بعد `use` ومؤشّر دالة — وكلٌّ منها يُفلت من حارس
    يقيس صيغة `pipeline::process_file(` بعينها. */
 const SEP_CALL = (mod) => 'pub fn run() {\n    let _ = ' + mod + '::process_file(Path::new("a"));\n}\n';
 function sepFixture(dir) {
-  for (const f of ['bridge', 'cli', 'lib', 'telegram', 'watch_service']) {
-    mk(dir, 'src-tauri/src/' + f + '.rs', SEP_CALL('pipeline'));
-  }
+  // الغلاف الوحيد المسموح في مسار المنتج (محدِّد م١).
+  mk(dir, 'src-tauri/src/slots.rs', SEP_CALL('pipeline'));
   // `pipeline.rs` يحمل **التعريف** (لا يُعدّ مدخلاً) واختبار وحدة (يُعدّ).
   mk(dir, 'src-tauri/src/pipeline.rs',
     'pub fn process_file(a: u8) -> u8 { a }\n\n' +
@@ -513,11 +515,14 @@ CASES.push({
   build(dir) { sepFixture(dir); },
   controlArgs: (dir) => ['--root', dir],
   saw: (dir, res) => { const m = res.out.match(/(\d+) مواضع مسموحة/); return m ? Number(m[1]) : 0; },
-  sawExpected: 7,
+  sawExpected: 3,
   mutants: [
     { label: 'مدخل سادس في ملف جديد غير مسموح ⇒ يُسمّى الملف والسطر',
       apply: (dir) => mk(dir, 'src-tauri/src/downloader.rs', SEP_CALL('pipeline')),
       mustMatch: /downloader\.rs:2/ },
+    { label: 'مدخل مباشر في ملف منتج قديم (cli.rs) بعد نقله إلى الغلاف ⇒ مخالفة',
+      apply: (dir) => mk(dir, 'src-tauri/src/cli.rs', SEP_CALL('pipeline')),
+      mustMatch: /cli\.rs:2/ },
     { label: 'مرادفة: use crate::pipeline as p; ثم p::process_file( ⇒ لا تُفلت',
       apply: (dir) => mk(dir, 'src-tauri/src/alias.rs', 'use crate::pipeline as p;\n\n' + SEP_CALL('p')),
       mustMatch: /alias\.rs:4/ },
@@ -525,12 +530,11 @@ CASES.push({
       apply: (dir) => mk(dir, 'src-tauri/src/ptr.rs',
         'pub fn run() {\n    let f = pipeline::process_file;\n    let _ = f;\n}\n'),
       mustMatch: /ptr\.rs:2/ },
-    { label: 'مدخل ثانٍ داخل ملف مسموح (bridge.rs) ⇒ العدد المتوقَّع لا يُتجاوز',
-      apply: (dir) => fs.appendFileSync(path.join(dir, 'src-tauri/src/bridge.rs'), '\n' + SEP_CALL('pipeline')),
-      mustMatch: /bridge\.rs/ },
+    { label: 'نداء ثانٍ داخل ملف مسموح (separator.rs) ⇒ العدد المتوقَّع لا يُتجاوز',
+      apply: (dir) => fs.appendFileSync(path.join(dir, 'src-tauri/src/separator.rs'), '\n' + SEP_CALL('crate::pipeline')),
+      mustMatch: /separator\.rs/ },
     { label: 'غلافان يحملان المدخل (slots.rs وjobs.rs) ⇒ المطلوب غلاف واحد',
       apply: (dir) => {
-        mk(dir, 'src-tauri/src/slots.rs', SEP_CALL('pipeline'));
         mk(dir, 'src-tauri/src/jobs.rs', SEP_CALL('pipeline'));
       },
       mustMatch: /غلاف/ },
