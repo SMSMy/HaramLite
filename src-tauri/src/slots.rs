@@ -7,33 +7,44 @@
 //! **داخل العملية** لا يكفي: مسار `cli.rs` عملية منفصلة تماماً عن الواجهة،
 //! فتتجاوز أي عدّاد في ذاكنة العملية.
 //!
-//! ## أساس السقف (`MAX_LIMIT = 2`) — قياس `nvidia-smi` على جهاز واحد
+//! ## أساس السقف (`MAX_LIMIT = 2`) — قياسات `nvidia-smi` على جهاز واحد
 //!
-//! الأرقام التالية مقيسة **بـ`nvidia-smi` على بطاقة المالك** (RTX 3070 ·
-//! 8192 MiB)، وهي قياس **جهاز واحد بطريقة واحدة** — لا رقم معمَّم على غيره:
+//! **لا رقم واحد هنا بلا قائسه وطريقته**. والقياسات ثلاثة **لتشكيلات مختلفة**
+//! (لا تكرار لقياس واحد) — جهاز واحد (RTX 3070 · 8192 MiB) بثلاثة سطور:
 //!
-//! | الحالة | ذاكرة البطاقة |
-//! |---|---|
-//! | خط الأساس (بلا فصل) | 1419 MiB |
-//! | فصل واحد | 3732 MiB |
-//! | **فصلان متزامنان (الذروة)** | **7947 من 8192 MiB — 97%** |
+//! | القياس | من قاسه · الطريقة | المزوّد | طول المقطع | ذروة فصلين متزامنين | أُعيد إنتاجه؟ |
+//! |---|---|---|---|---|---|
+//! | خط الأساس (بلا فصل) | المالك · `nvidia-smi` | CUDA | — | 1419 MiB | لا |
+//! | فصل واحد | المالك · `nvidia-smi` | CUDA | 180 ث | 3732 MiB | لا (المدقّق: 920 · 2771) |
+//! | فصلان معاً | المالك · `nvidia-smi` | CUDA | 180 ث | **6069 MiB** | لا |
+//! | فصلان معاً | العامل السابق · `nvidia-smi` | CUDA | **12 ث** | **4734 MiB** | لا |
+//! | فصلان معاً | المدقّق · `nvidia-smi` | **DirectML** | 180 ث | **7943 MiB** (هامش **249**) | **نعم** |
+//! | فصلان معاً | العامل السابق · `nvidia-smi` | CUDA | — | **7947 MiB** (هامش **245**) | — |
 //!
-//! ونموّ `BFCArena for Cuda` المقيس ≈ **2.28 GB** لكل جلسة فصل. فهامش الفصلين
-//! **245 MiB فقط** على بطاقة 8 GB: السقف 2 حدّ **بطاقة** لا تفضيل، والثالث
-//! يُنفق هامشاً غير موجود. (والنموذج الخطّي القديم «1419 + n × 2325 ≈ 8.4 GB»
-//! الذي كان يقدّر فصلين بـ6069 MiB **مُبطَل**: قياس الذروة المباشر أعلى منه،
-//! فالحجّة للسقف 2 أقوى لا أضعف.)
+//! **والقراءة المقيسة أهمّ من الأرقام**: الذروة **تتغيّر بطول المقطع وبالمزوّد**
+//! — 4734 عند 12 ثانية مقابل 6069 عند 180 ثانية (كلاهما CUDA)، و7943 على
+//! **مزوّد الاحتياط DirectML**. وهذا **ينقض** فرضاً قديماً مكتوباً في
+//! `docs/BACKLOG-0.3.md:316` («الأرجح أن الذاكرة لا تتغيّر بطول الملف»).
+//! **وحدّ أمانة**: الطول والمزوّد **متداخلان** في هذه القياسات (لم نُجرِ قياساً
+//! يعزل أحدهما عن الآخر)، فليس هذا فصلاً نظيفاً لمتغيّر واحد — والثابت وحده أن
+//! 12 ث ≠ 180 ث على CUDA.
 //!
-//! **وقياس ثانٍ في جولة الإصلاح نفسها** (طريقة: `nvidia-smi --query-gpu` على
-//! مستوى الجهاز، جلستان **حقيقيتان** متزامنتان على CUDA بمقطع 12 ثانية، بناء
-//! debug): خط الأساس **1047 MiB** ← ذروة **4734 MiB** ⇒ نصيب الجلستين
-//! **3687 MiB** (≈1843 لكل جلسة بالتقسيم المتساوي المفترض)، وعادت البطاقة إلى
-//! 1047 بعد الانتهاء. فالرقمان لا يتطابقان (7947 مقابل 4734) — واختلاف الحمل
-//! (طول المقطع، وما يحمله سطح المكتب من سياقات GPU) يفسّره — و**السقف يُبنى
-//! على أسوأ ما قيس (7947) لا على أرحمه**: حدّ البطاقة بأسوأ حالة، وقياس جولة
-//! واحدة لا يُعمَّم. و`--query-compute-apps=pid,used_memory` أعطى `[N/A]` لكل
-//! عملية على هذا الجهاز (قيد WDDM)، فالنصيبان مقيسان على مستوى **الجهاز** لا
-//! لكل عملية.
+//! **وأسوأ حالة معروفة** هي **مزوّد الاحتياط (DirectML) على ملف طويل**:
+//! **7943 من 8192 MiB — هامش 249** — وهذا وحده يبرّر الافتراضيّ **1** ويُبقي
+//! السقف **2** اختياراً واعياً لا افتراضاً مريحاً. وهو أيضاً **أساس `MAX_LIMIT`
+//! = 2**: أسوأ ما قيس، والثالث يُنفق هامشاً غير موجود.
+//!
+//! **وأمانة نسبة**: «3732» و«6069» قياسان سابقان **لم يُعاد إنتاجهما** في هذه
+//! الجولة (المدقّق قاس 920 و2771/2726 على DirectML، و6069 لا يظهر في أي قياس
+//! لهذه الجولة). والفرق **لا يُخفى**: قياس المالك كان على **CUDA** وعلى صوت
+//! **180 ثانية** (‏`BACKLOG-0.3.md:305-309`)، و**مزوّد اليوم DirectML لغياب
+//! مكتبات CUDA من `bin/`** — واختلافُ المزوّد وحده كافٍ لتفسير الفرق.
+//! (و«1419 + n × 2325 ≈ 8.4 GB» كان **توقّعاً للثلاثة لم يُقَس** — لا قياساً.)
+//!
+//! **وطول المقطع «12 ثانية» مُثبَت في الشيفرة**: `separator.rs:1420`
+//! (`let len = sr as usize * 12;`) في اختبار `cuda_full_separation_smoke`
+//! (‏`#[ignore]`، لذلك لا يظهر في سجلات المنتج — وهو سبب إخفاق من نفى وجوده
+//! بفحص السجلات وحدها).
 //!
 //! ## الافتراضيّ **1** والسقف 2 — قرار المالك بعد هذا القياس
 //!
@@ -42,24 +53,58 @@
 //! 2 (`MAX_LIMIT`) لمن يطلبه صراحةً من الواجهة: فأسوأ ما قيس للفصلين هامش
 //! **245 MiB**، فالاثنان **خيار واعٍ** لا افتراض مريح.
 //!
-//! ## الحلّ — **زوج** سيمافورات مسمّاة، سعة كل رمز **1**
+//! ## العطل الثاني المقيس: **الرمز المفقود عند قتل العملية** (وعلاجه)
 //!
-//! سيمافور مسمّى في نواة ويندوز (`CreateSemaphoreW`/`OpenSemaphoreW`) باسم في
-//! نطاق `Global\` يراه كل عمليات الجلسة، والعدّاد محفوظ في النواة لا في أي
-//! عملية. وهذا الملف يستعمل **رمزين** (`<name>-a` و`<name>-b`) سعة كلٍّ منهما
-//! **1**:
+//! **العطل**: السِّيمافور **لا مالك له**. فإذا قُتلت عملية وهي تحمل رمزاً
+//! (`TerminateProcess` · `Ctrl+C` · انهيار) **لا يعود الرمز ما دامت أي عملية
+//! أخرى تحمل مقبضاً للكائن** — ومقابض المنتج **مخزَّنة مدى الحياة** في
+//! `CACHE`، فالواجهة الدائمة (أو CLI أب) تُبقي الكائن حيّاً. **والقياس**
+//! (بمسبارَي المشرف والمدقّق، كلٌّ على حِدة): بعد قتل الحاصر بقي العدّاد
+//! ناقصاً — `TIMEOUT` ولا شيء يعمل — ولم يُستعَد إلا بزوال **آخر** مقبض. ومع
+//! `DEFAULT_LIMIT = 1` صار كل CLI يحتاج الرمزين ⇒ **كل مهمّة لاحقة تنتظر 30
+//! دقيقة ثم تفشل**.
+//!
+//! **والعلاج**: **زوج mutexات مسمّاة** بدل الزوجين السِّيمافوريين. والفرق
+//! الجوهري سطر واحد: **للـmutex مالك** (الخيط الذي اكتسبه).
+//!
+//! * mutex **غير مملوك = متاح** (`CreateMutexW(NULL, FALSE, …)` ينشئه بلا
+//!   مالك)، والاكتساب ملكيّةُ خيط.
+//! * ومن مات مالكه بلا تحرير صار **abandoned = متاح**، والمنتظر التالي يأخذه
+//!   ويرث الملكيّة — و`WaitForMultipleObjects` تُعلمه بذلك:
+//!   **`WAIT_ABANDONED_0` (0x80)** نجاح لا خطأ، ومع `bWaitAll = TRUE` تعني أنه
+//!   **ملك الاثنين** فعلاً (قِيس: `ReleaseMutex` للاثنين بعده أعادت `true`).
+//! * فـ**الاسترجاع فوري** عند موت المالك — **بلا بروتوكول إضافي**، وبلا أثر
+//!   لبقاء مقابض أخرى مفتوحة على الكائن.
+//!
+//! ## الحلّ — **زوج mutexات مسمّاة** في نواة ويندوز
+//!
+//! كائن مسمّى في نطاق `Global\` يراه كل عمليات الجلسة، والملكيّة محفوظة في
+//! النواة لا في أي عملية. وهذا الملف يستعمل **رمزين** (`<name>-a` و
+//! `<name>-b`):
 //!
 //! * مهمّة بسقف 2 تأخذ **رمزاً واحداً** — أيّهما صار متاحاً
 //!   (`WaitForMultipleObjects` بعدّاد 2 و`bWaitAll = FALSE`) ⇒ فتحتان معاً.
 //! * مهمّة بسقف 1 تأخذ **الرمزين معاً** (`bWaitAll = TRUE`) ⇒ **حصرية فعلية**.
 //!
-//! ولماذا زوج لا سيمافور واحد بسعة 2: ويندوز **يتجاهل السقف المطلوب** في
-//! `CreateSemaphoreW` إن كان الكائن قائماً، فكانت السعة سعةَ **أول من أنشأ**
-//! الكائن — فطلبُ إعداد 1 على عملية ثانية يُفتح على سعة 2 ولا يحصر شيئاً.
-//! وبالزوج **لا سعة متغيّرة أصلاً** (1 في كل عملية)، فينتفي «السقف سقف أول من
-//! أنشأ» من أصله. وحارس RAII (`Drop`) يحرّر **ما أُخذ بالضبط** عند الخروج —
-//! حتى مع الخطأ والذعر — ولو انهارت العملية نفسها زال الكائن بزوال آخر مقبض
-//! عليه.
+//! ولماذا زوج لا كائن واحد بعدّاد: كائن واحد كان يجعل «السقف» عدّاداً **متغيّراً**
+//! (ويندوز يتجاهل السقف المطلوب إن كان الكائن قائماً، فتكون السعة سعةَ أول من
+//! أنشأ) — وبالزوج **لا سعة متغيّرة أصلاً**، فينتفي «السقف سقف أول من أنشأ» من
+//! أصله. وحارس RAII (`Drop`) يحرّر **ما أُخذ بالضبط** عند الخروج — حتى مع
+//! الخطأ والذعر.
+//!
+//! **وثلاثة قيود يفرضها الـmutex، وهي مُعالَجة هنا صراحةً**:
+//!
+//! 1. **الملكيّة للخيط لا للعملية**: التحرير **يجب** أن يقع على الخيط الذي
+//!    اكتسب؛ و`ReleaseMutex` من خيط آخر **تفشل** (`ERROR_NOT_OWNER`). ولذلك
+//!    الحارس `WinSem` **`!Send` عن قصد** (`PhantomData<*const ()>`) فيستحيل
+//!    نقله بين الخيوط **عند التصريف** لا في التعليق.
+//! 2. **الاكتساب التراكبي**: لو أخذ الخيط رمزاً ثم طلب اسمه ثانيةً **لمنحه
+//!    ويندوز ملكيّة تراكبية فوراً** (ولا يحجب)، وتحرير واحد لا يكفي ⇒ المنتظر
+//!    الآخر يعبر **بينما الحاصر يعمل** = **ثغرة صامتة في ب٢**. فسجلّ
+//!    `thread_local` لما يحمله هذا الخيط من الأسماء يردّ الطلب بخطأ عربي صريح
+//!    بدل المنح الصامت.
+//! 3. **الاسترجاع لا يزيل المقبض**: المقبض يبقى ما دام الكائن حيّاً، والملكيّة
+//!    وحدها تُرفع بموت المالك. فلا إغلاق مقبض في مسار العمل العادي.
 //!
 //! ## قيد مقيس: الميزانية **لكل اسم كائن**
 //!
@@ -74,15 +119,25 @@
 //!   **لكل مهمّة** فقط، ولا مسار إنتاجي يقرأه في م١ — بند م٢ هو الذي سيقرأه
 //!   ويقتل الشجرة. فحتى الآن الإلغاء الفعلي يمرّ بالعلم العام القائم
 //!   (`AppState::cancel_flag`) كما كان.
-//! * **سقف الكائن لا يُعاد ضبطه على عملية تعمل**: الرمزان سعتهما 1 دائماً،
+//! * **سقف الكائن لا يُعاد ضبطه على عملية تعمل**: الرمزان ملكيّتان لا عدّاد،
 //!   فإعداد هذه العملية (`set_limit`) يغيّر **ما تأخذه مهامّها الجديدة**
 //!   (رمزاً أو رمزين) ولا يمسّ مهاماً جارية ولا كائناً قائماً — وهذا هو
 //!   المضمون الدقيق لـ«الإعداد حيّ»: يُطبَّق على المهامّ الجديدة بلا إعادة
 //!   تشغيل، ولا يُقاطع الجاري.
-//! * **العدّاد لا يُستعاد بموت العملية إن بقي مقبض آخر مفتوحاً**: كائن النواة
-//!   يُدمَّر بزوال **آخر** مقبض. فإن ماتت عملية ماسكة لفتحة وبقيت أخرى تحمل
-//!   مقبضاً للكائن نفسه، بقيت الفتحة محسوبة عليها. (مقيس في
-//!   `a_dead_process_slots_are_reusable_once_its_last_handle_is_gone`.)
+//! * **لا استرجاع قبل موت الخيط المالك**: الاسترجاع التلقائي يعمل **بموت
+//!   المالك** (لا بمرور زمن)، فمهمّة تُعلَّق إلى الأبد داخل الفصل تُبقي رمزها
+//!   إلى الأبد. وذلك سلوك **مقصود** لا عطل: المهلة (`DEFAULT_WAIT`) تحدّ
+//!   الانتظار، ولا تقتل حاصراً بطيئاً.
+//! * **الرمز المفقود بموت العملية صار مُصلَحاً** (كان قيداً في التصميم السابق
+//!   بالسِّيمافور، وهو **عطل مقيس** بمسبارَي المشرف والمدقّق: بقي العدّاد
+//!   ناقصاً حتى زوال آخر مقبض): بالـmutex يصير **abandoned** ويُستعاد فوراً.
+//!   ودليله الدائم `a_killed_owner_releases_its_slots_without_waiting_for_handles`
+//!   (عملية تُقتل بـ`TerminateProcess` **بينما عملية الفحص تحمل مقبضاً**).
+//! * **المسار غير ويندوز** (`mod local`) لا يعرف «المالك الميّت» أصلاً: زوج
+//!   الرموز هناك **داخل العملية** (`Mutex`+`Condvar`)، ولا عبور عمليات — فلا
+//!   عملية أجنبية تموت وهي تحمل رمزاً. وإن مات **خيط** داخل العملية وهو يحمل
+//!   رمزاً بقي الرمز محجوزاً حتى نهاية العملية (الاختبارات لا تُنتج هذه الحالة،
+//!   والمقصود بها `cargo test` على أي منصّة لا الإنتاج).
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
@@ -336,7 +391,7 @@ pub fn cancel_all() -> usize {
     jobs.iter().filter(|j| cancel_job(j.id)).count()
 }
 
-// ─────────────────────── الفتحة (سيمافور نواة/عملية) ───────────────────────
+// ─────────────────────── الفتحة (mutex نواة/عملية) ───────────────────────
 
 /// حارس فتحة. النوع يختلف بحسب المنصّة، والسلوك واحد: `Drop` يحرّر الفتحة.
 #[cfg(windows)]
@@ -350,85 +405,152 @@ type SlotGuard = LocalSem;
 /// يُنتج تحذير `dead_code` — ولا نُضيف `#[allow(dead_code)]` (ممنوع في العقد).
 type AcquireFailure = (bool, String);
 
+/// **سجلّ ما يحمله هذا الخيط** من أسماء الرموز — عدّ مرجعي لكل اسم.
+///
+/// لماذا: ملكيّة الـmutex **تراكبية** بخيطها، فطلبُ الخيط اسمًا يحمله يمنحه
+/// ويندوز ملكيّة ثانية **فوراً بلا حجب**، وتحرير واحد لا يكفي ⇒ منتظر آخر
+/// يعبر والحاصر يعمل = **ثغرة صامتة في ب٢**. فهذا السجلّ يردّ الطلب بخطأ
+/// عربي صريح بدل المنح الصامت.
+///
+/// **يُبنى على ويندوز وحده**: `mod local` لا يعرف الملكيّة التراكبية أصلاً
+/// (رمز محجوز يبقى محجوزاً حتى يُحرَّر، فطلبُ الخيط نفسه يفشل بمهلة كما يفشل
+/// لغيره) — فلا سجلّ هناك ولا حاجة إليه.
+#[cfg(windows)]
+fn held_counts(
+) -> &'static std::thread::LocalKey<std::cell::RefCell<std::collections::HashMap<String, usize>>> {
+    std::thread_local! {
+        static HELD: std::cell::RefCell<std::collections::HashMap<String, usize>> =
+            std::cell::RefCell::new(std::collections::HashMap::new());
+    }
+    &HELD
+}
+
+/// يسجّل اكتساب رمز باسمه (عدّ مرجعي: رمزا المهمّة نفسها = عدّان).
+#[cfg(windows)]
+fn register_held(name: &str) {
+    held_counts().with(|h| *h.borrow_mut().entry(name.to_string()).or_insert(0) += 1);
+}
+
+/// يلغي تسجيل رمز (يُنقص العدّ، ويحذف الاسم عند الصفر).
+#[cfg(windows)]
+fn unregister_held(name: &str) {
+    held_counts().with(|h| {
+        let mut map = h.borrow_mut();
+        if let Some(n) = map.get_mut(name) {
+            *n -= 1;
+            if *n == 0 {
+                map.remove(name);
+            }
+        }
+    });
+}
+
+/// نصّ خطأ الاكتساب التراكبي — **مصدر واحد** للمنصّتين.
+fn reentry_message(name: &str) -> String {
+    format!(
+        "رفض اكتساب تراكبي: هذا الخيط يحمل رمز الفصل «{name}» بالفعل — \
+         لا تُطلب الفتحة نفسها مرّتين على الخيط الواحد (الملكيّة تراكبية في \
+         ويندوز فيمرّ منتظر آخر بلا حجب)"
+    )
+}
+
 #[cfg(windows)]
 mod kernel {
-    //! **زوج سيمافورات نواة مسمّاة** — سعة كل رمز **1** دائماً.
+    //! **زوج mutexات نواة مسمّاة** — ملكيّة خيط، واسترجاع تلقائي بموت المالك.
     //!
-    //! لماذا زوج لا سيمافور واحد بسعة 2: ويندوز يتجاهل السقف المطلوب في
-    //! `CreateSemaphoreW` إن كان الكائن قائماً، فكانت السعة سعة **أول من
-    //! أنشأ** الكائن — فطلبُ إعداد 1 يُفتح على سعة 2 ولا يحصر شيئاً (ع١).
-    //! وبالزوج لا سعة متغيّرة أصلاً (1 في كل عملية)، فينتفي العطل من أصله.
+    //! لماذا **mutex** لا سِّيمافور (وهو جوهر إصلاح العطل الثاني): السِّيمافور
+    //! **لا مالك له**، فقتل حامله لا يُعيد عدّاده ما بقيت أي عملية تحمل مقبضاً
+    //! للكائن. وللـmutex **مالك**، فموته يجعل الكائن **abandoned = متاحاً**
+    //! ويأخذه المنتظر التالي ويرث الملكيّة — بلا بروتوكول إضافي ولا زمن انتظار.
+    //!
+    //! ولماذا زوج لا كائن واحد بعدّاد: كائن واحد يجعل «السقف» عدّاداً متغيّراً
+    //! (ويندوز يتجاهل السقف المطلوب إن كان الكائن قائماً) — وبالزوج لا سعة
+    //! متغيّرة أصلاً، فينتفي العطل من أصله.
     //!
     //! | سقف المهمّة | ما تأخذه | الأثر |
     //! |---|---|---|
     //! | 2 | رمز **واحد**، أيّهما (`bWaitAll = FALSE`) | مهمّتان متزامنتان |
     //! | 1 | **الرمزان معاً** (`bWaitAll = TRUE`) | حصرية: لا شيء معهما |
     //!
-    //! و`bWaitAll = TRUE` **لا يجزّئ الاكتساب**: إما الرمزان وإما لا شيء — وهو
-    //! ما يجعل مسار المهلة نظيفاً (لا رمز معلَّق في يد منتظر فاشل).
+    //! و**أكواد النجاح أربعة لا واحد**: `WAIT_OBJECT_0` و`WAIT_ABANDONED_0`
+    //! (0x80) للحالة «الأول»، و`+1` منهما (1 و0x81) للا-حصرية. والمهلة
+    //! `WAIT_TIMEOUT` (0x102) وحدها مهلة، وما عداها خطأ صريح. و`bWaitAll = TRUE`
+    //! **لا يجزّئ الاكتساب** حتى مع `WAIT_ABANDONED_0` (قِيس: ملك الاثنين).
 
-    use super::{timeout_message, AcquireFailure, Duration, SlotGuard, WinSem, TOKENS};
+    use super::{
+        reentry_message, timeout_message, AcquireFailure, Duration, SlotGuard, WinSem, TOKENS,
+    };
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
     use windows_sys::Win32::Foundation::{
-        GetLastError, BOOL, ERROR_ALREADY_EXISTS, HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT,
+        GetLastError, BOOL, ERROR_ALREADY_EXISTS, HANDLE, WAIT_ABANDONED_0, WAIT_OBJECT_0,
+        WAIT_TIMEOUT,
     };
     use windows_sys::Win32::System::Threading::{
-        CreateSemaphoreW, OpenSemaphoreW, ReleaseSemaphore, WaitForMultipleObjects,
-        SEMAPHORE_ALL_ACCESS,
+        CreateMutexW, OpenMutexW, ReleaseMutex, WaitForMultipleObjects, MUTEX_ALL_ACCESS,
     };
 
-    /// سعة **كل** رمز — ثابت لا يُشتقّ من الإعداد، فلا يختلف طلبان على كائن
-    /// واحد (وهو جوهر إصلاح ع١).
-    const TOKEN_CAP: i32 = 1;
-
     /// لواحق الرموز: رمز لكل فتحة. أسماء **جديدة تماماً** لا كائن قديم بها من
-    /// نسخة سابقة (الاسم القديم كان بلا لاحقة) ⇒ لا يُفتح كائن موروث بسعة
-    /// غير 1. (وهي خاصّة بفضاء أسماء النواة، فمحلّها هذا الوحدة.)
+    /// نسخة سابقة (الاسم القديم كان بلا لاحقة، وكائنه سِّيمافور) ⇒ لا يُفتح
+    /// كائن موروث بنوع أو سعة غير ما نتوقّع. (وهي خاصّة بفضاء أسماء النواة،
+    /// فمحلّها هذا الوحدة.)
     const TOKEN_SUFFIX: [&str; TOKENS] = ["a", "b"];
 
     /// اسم **رمز** من الزوج مشتقّاً من الاسم الأساس: تجاوز البيئة
     /// (`HARAMLITE_SLOTS_NAME`) يكوّن الرمزين معاً، فلا تختلط ميزانيتان.
-    fn token_name(base: &str, i: usize) -> String {
+    /// (`pub(super)` لأن `WinSem::drop` في الوحدة الأم يحتاجه.)
+    pub(super) fn token_name(base: &str, i: usize) -> String {
         format!("{base}-{}", TOKEN_SUFFIX[i])
     }
 
     /// مقابض مفتوحة في هذه العملية، بالاسم — فلا يُعاد الإنشاء مع كل مهمّة،
     /// ولا يُغلق مقبض مستعمل (الإغلاق كان سيُبطل الكائن إن كان آخر مقبض).
+    ///
+    /// **وهذا هو ما كان يجعل العطل ممكناً**: المقبض يعيش مدى الحياة، فالكائن
+    /// لا يزول بموت حامله. وبالـmutex لم يعد ذلك يمنع الاسترجاع (الملكيّة
+    /// تُرفع بموت المالك لا بزوال الكائن) — وهو ما يقيسه
+    /// `a_killed_owner_releases_its_slots_without_waiting_for_handles`.
     fn cache() -> &'static Mutex<HashMap<String, isize>> {
         static CACHE: OnceLock<Mutex<HashMap<String, isize>>> = OnceLock::new();
         CACHE.get_or_init(|| Mutex::new(HashMap::new()))
     }
 
-    /// يفتح رمزاً قائماً، وإلا يُنشئه بسعة 1.
-    fn token_handle(name: &str) -> Result<isize, AcquireFailure> {
+    /// يفتح mutex قائماً، وإلا يُنشئه **غير مملوك** (`bInitialOwner = FALSE`).
+    ///
+    /// (`pub(super)` لأن اختبار «الرمز يعود عند قتل المالك» يحتاج أن يحمل
+    /// **هو** مقبضاً للكائن — وهو تشكيل الإنتاج: الواجهة الدائمة تحمل المقابض.)
+    pub(super) fn token_handle(name: &str) -> Result<isize, AcquireFailure> {
         let mut map = cache().lock().unwrap_or_else(|p| p.into_inner());
         if let Some(h) = map.get(name) {
             return Ok(*h);
         }
         let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
-        // `OpenSemaphoreW` أولاً: العملية الثانية تجد رمز الأولى فلا تُنشئ
-        // ثانياً. والسعة **1 في الحالتين**، فلا يبقى لـ«سقف أول من أنشأ» محلّ.
-        let mut handle = unsafe { OpenSemaphoreW(SEMAPHORE_ALL_ACCESS, 0, wide.as_ptr()) };
+        // `OpenMutexW` أولاً: العملية الثانية تجد كائن الأولى فلا تُنشئ ثانياً.
+        let mut handle = unsafe { OpenMutexW(MUTEX_ALL_ACCESS, 0, wide.as_ptr()) };
         let created = handle.is_null();
         if created {
-            handle =
-                unsafe { CreateSemaphoreW(std::ptr::null(), TOKEN_CAP, TOKEN_CAP, wide.as_ptr()) };
+            // `FALSE` = **بلا مالك**: الإنشاء لا يعني الاكتساب، وإلا صار من
+            // أنشأ الكائن حاصراً له بلا أن يطلبه.
+            handle = unsafe { CreateMutexW(std::ptr::null(), 0, wide.as_ptr()) };
         }
         if handle.is_null() {
             let code = unsafe { GetLastError() };
             return Err((
                 true,
-                format!("تعذر إنشاء/فتح سيمافور الفصل «{name}» (رمز Win32 {code})"),
+                format!("تعذر إنشاء/فتح mutex الفصل «{name}» (رمز Win32 {code})"),
             ));
         }
         if created {
-            // `GetLastError` فوراً بعد `CreateSemaphoreW` (لا نداء Win32 بينهما).
+            // `GetLastError` فوراً بعد `CreateMutexW` (لا نداء Win32 بينهما).
             let existed = unsafe { GetLastError() } == ERROR_ALREADY_EXISTS;
             if existed {
-                tracing::debug!(target: "slots", "رمز الفصل «{name}» كان قائماً — سعته 1 في كل الأحوال");
+                tracing::debug!(target: "slots", "mutex الفصل «{name}» كان قائماً ففُتح بلا إنشاء");
             } else {
-                tracing::info!(target: "slots", "أُنشئ رمز الفصل «{name}» بسعة 1");
+                tracing::info!(
+                    target: "slots",
+                    "أُنشئ mutex الفصل «{name}» **غير مملوك** — ويندوز يمنح الملكيّة لمن ينتظره، \
+                     ويُعيدها فوراً (abandoned) إن مات مالكها"
+                );
             }
         }
         let raw = handle as isize;
@@ -446,77 +568,102 @@ mod kernel {
             token_handle(&token_name(base, 0))?,
             token_handle(&token_name(base, 1))?,
         ];
+        // **رفض الاكتساب التراكبي على الخيط نفسه** قبل أي نداء نواة: لو طلب
+        // الخيط اسماً يحمله لمنحه ويندوز ملكيّة تراكبية فوراً (بلا حجب) —
+        // فتحرير واحد لا يكفي، ويعبر منتظر آخر بينما الحاصر يعمل. والفرعان
+        // كلاهما مرفوض: (١) رمز يملكه هذا الخيط من الزوج (طلب سقف 2)،
+        // (٢) الزوج كامل بيده (طلب حصرية ثانية).
+        let held = super::held_counts().with(|h| h.borrow().clone());
+        let blocked = if tokens >= TOKENS {
+            let c0 = held.get(&token_name(base, 0)).copied().unwrap_or(0);
+            let c1 = held.get(&token_name(base, 1)).copied().unwrap_or(0);
+            (c0 > 0 && c1 > 0) || c0 >= 2
+        } else {
+            held.get(&token_name(base, 0)).copied().unwrap_or(0) > 0
+                || held.get(&token_name(base, 1)).copied().unwrap_or(0) > 0
+        };
+        if blocked {
+            return Err((false, reentry_message(base)));
+        }
         // الرمزان معاً = حصرية (سقف 1). وحسّاس التصريف يضمن ألّا يكون الطلب
         // إلا 1 أو الرمزين، فلا حاجة إلى «k من n» غير قابل للتنفيذ.
         let all = tokens >= TOKENS;
         let raw: [HANDLE; TOKENS] = [handles[0] as _, handles[1] as _];
         // `as_millis` u128 ⇒ قصّ إلى u32-1: `INFINITE` (0xFFFFFFFF) لا يُستعمل
-        // أبداً، فالمهمّة لا تنتظر أبداً حتى لو أُعطي مهلة هائلة.
+        // أبداً، فالمهمّة لا تنتظر أبداً حتى لو أُعطي مهلة هائلة. والمهلة
+        // `Duration::ZERO` مدعومة (استطلاع فوري بلا انتظار).
         let ms = timeout.as_millis().min((u32::MAX - 1) as u128) as u32;
         let rc = unsafe { WaitForMultipleObjects(TOKENS as u32, raw.as_ptr(), all as BOOL, ms) };
-        if rc == WAIT_OBJECT_0 {
+        // **`WAIT_ABANDONED_0` نجاح لا خطأ**: مالك سابق مات بلا تحرير،
+        // والملكيّة آلت إلينا. ومع `bWaitAll = TRUE` تعني أننا **ملكنا
+        // الاثنين** (قِيس: `ReleaseMutex` للاثنين بعده أعادت `true`).
+        let took: Option<[bool; TOKENS]> = if rc == WAIT_OBJECT_0 || rc == WAIT_ABANDONED_0 {
             // `bWaitAll = TRUE`: الرمزان. و`FALSE`: **الأول وحده** (أدنى فهرسةً
             // صار متاحاً) — ويندوز لا يكتسب إلا الرمز الذي أُعيد فهرسه.
-            return Ok(if all {
-                WinSem::all(handles)
-            } else {
-                WinSem::first(handles)
-            });
-        }
-        if !all && rc == WAIT_OBJECT_0 + 1 {
-            return Ok(WinSem::second(handles));
-        }
-        if rc == WAIT_TIMEOUT {
+            Some(if all { [true, true] } else { [true, false] })
+        } else if !all && (rc == WAIT_OBJECT_0 + 1 || rc == WAIT_ABANDONED_0 + 1) {
+            Some([false, true])
+        } else if rc == WAIT_TIMEOUT {
             // **لا شيء أُخذ**: `TRUE` لا يجزّئ الاكتساب، و`FALSE` لا يكتسب عند
             // المهلة ⇒ الزوج كما كان، ومهمّة تالية تجد ما كانت تجده.
             return Err((false, timeout_message(timeout)));
+        } else {
+            return Err((false, format!("فشل انتظار فتحة الفصل (رمز Win32 {rc})")));
+        };
+        let held_now = took.expect("كل كود نجاح صار رمزاً مأخوذاً");
+        for (i, taken) in held_now.iter().enumerate() {
+            if *taken {
+                super::register_held(&token_name(base, i));
+            }
         }
-        Err((false, format!("فشل انتظار فتحة الفصل (رمز Win32 {rc})")))
+        Ok(WinSem::new(base.to_string(), handles, held_now))
     }
 
-    pub(super) fn release(handle: isize) {
-        let ok = unsafe { ReleaseSemaphore(handle as _, 1, std::ptr::null_mut()) };
+    /// يحرّر **ملكيّة** الرمز. `ReleaseMutex` من غير مالكه تفشل
+    /// (`ERROR_NOT_OWNER`) — والسجلّ يكشف ذلك بدل أن يمرّ صامتاً.
+    pub(super) fn release(name: &str, handle: isize) -> bool {
+        let ok = unsafe { ReleaseMutex(handle as _) };
         if ok == 0 {
+            let code = unsafe { GetLastError() };
             tracing::warn!(
                 target: "slots",
-                "تعذر تحرير فتحة الفصل (رمز Win32 {})",
-                unsafe { GetLastError() }
+                "تعذر تحرير ملكيّة mutex الفصل «{name}» (رمز Win32 {code}) — \
+                 الملكيّة للخيط الذي اكتسب، والتحرير من خيط آخر يفشل"
             );
+            return false;
         }
+        super::unregister_held(name);
+        true
     }
 }
 
 /// حارس الفتحة على ويندوز: مقابض رمزَي النواة + **ما أُخذ بالضبط**.
+///
+/// **`!Send` عن قصد**: الحقل `PhantomData<*const ()>` يمنع نقل الحارس بين
+/// الخيوط **عند التصريف**، لأن ملكيّة الـmutex **للخيط** لا للعملية، فتحريره
+/// من خيط آخر يفشل (`ERROR_NOT_OWNER`).
 #[cfg(windows)]
 struct WinSem {
+    /// الاسم الأساس — مفتاح سجلّ «ما يحمله هذا الخيط» (`held_counts`).
+    name: String,
     /// `HANDLE` مؤشّر خام (`*mut c_void`) لا يقبل `Send`/`Sync` تلقائياً.
     /// نخزّنه `isize` ونتحوّل عند النداء: مقابض النواة صالحة من أي خيط في
     /// العملية (ضمان Win32)، والمقبض لا يُغلق أبداً فلا إغلاق مزدوج.
     handles: [isize; TOKENS],
     /// ما أُخذ: رمز واحد (سقف 2) أو الرمزان (سقف 1). التحرير **بقدره**.
     held: [bool; TOKENS],
+    /// يمنع `Send` — انظر توثيق النوع.
+    _not_send: std::marker::PhantomData<*const ()>,
 }
 
 #[cfg(windows)]
 impl WinSem {
-    fn first(handles: [isize; TOKENS]) -> Self {
+    fn new(name: String, handles: [isize; TOKENS], held: [bool; TOKENS]) -> Self {
         Self {
+            name,
             handles,
-            held: [true, false],
-        }
-    }
-
-    fn second(handles: [isize; TOKENS]) -> Self {
-        Self {
-            handles,
-            held: [false, true],
-        }
-    }
-
-    fn all(handles: [isize; TOKENS]) -> Self {
-        Self {
-            handles,
-            held: [true, true],
+            held,
+            _not_send: std::marker::PhantomData,
         }
     }
 }
@@ -524,11 +671,11 @@ impl WinSem {
 #[cfg(windows)]
 impl Drop for WinSem {
     fn drop(&mut self) {
-        // تحرير **ما أُخذ بالضبط**: تحرير غير مأخوذ يزيد عدّاد رمز فوق سعته
-        // (فيفتح فتحة ثالثة)، وتفويت مأخوذ يُجمّد فتحة إلى الأبد.
+        // تحرير **ما أُخذ بالضبط**: تحرير غير مأخوذ يفشل، وتفويت مأخوذ يُجمّد
+        // فتحة إلى الأبد. والتحرير يقع على هذا الخيط (الحارس `!Send`).
         for i in 0..TOKENS {
             if self.held[i] {
-                kernel::release(self.handles[i]);
+                kernel::release(&kernel::token_name(&self.name, i), self.handles[i]);
             }
         }
     }
@@ -822,6 +969,88 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
     use std::process::{Command, Stdio};
+
+    /// **إثبات التملّك قبل الحكم، دائماً**: كائن النواة قد لا يكون موجوداً بعد
+    /// (وإن كان الاسم فريداً)، فننتظر ظهور العلامة في ملف السجلّ بمهلة صريحة —
+    /// وإلا كان الحكم على قياس لم يقع.
+    fn wait_for_marker(log: &Path, marker: &str, timeout: Duration) -> String {
+        let started = std::time::Instant::now();
+        loop {
+            let raw = std::fs::read_to_string(log).unwrap_or_default();
+            if raw.contains(marker) {
+                return raw;
+            }
+            assert!(
+                started.elapsed() < timeout,
+                "لم تظهر العلامة «{marker}» خلال {timeout:?} — القياس باطل. المحتوى:\n{raw}"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[cfg(windows)]
+    fn win_terminate_process(pid: u32) -> std::io::Result<()> {
+        use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, TerminateProcess, PROCESS_TERMINATE,
+        };
+        unsafe {
+            let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
+            if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+                return Err(std::io::Error::last_os_error());
+            }
+            let ok = TerminateProcess(handle, 1);
+            let err = std::io::Error::last_os_error();
+            CloseHandle(handle);
+            if ok == 0 {
+                Err(err)
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    /// يكتسب على **خيط آخر** ويعيد `(هل نجح, الخطأ نصّاً, الزمن المنقضي)`
+    /// **بلا الحارس**: الحارس `!Send` عن قصد (ملكيّة الـmutex للخيط)، فلا يعبر
+    /// الخيوط — وهو ضمان **عند التصريف** يمنع تحريراً من خيط غير مالكه.
+    /// فيُقاس الزمن داخله ويُعاد ما يكفي للحكم.
+    fn acquire_measured_on_thread(
+        name: &str,
+        limit: u32,
+        timeout: Duration,
+    ) -> (bool, String, Duration) {
+        let n = name.to_string();
+        std::thread::spawn(move || {
+            let t = std::time::Instant::now();
+            let r = acquire_named(&n, limit, timeout);
+            let waited = t.elapsed();
+            match r {
+                Ok(_guard) => (true, String::new(), waited), // الحارس يُسقط هنا
+                Err(e) => (false, e, waited),
+            }
+        })
+        .join()
+        .expect("لا ذعر في خيط الاكتساب")
+    }
+
+    /// يكتسب على خيط آخر **ويُبقي** الحارس حيّاً `hold` مدّة، ثم يُسقطه.
+    /// (يُستعمل لترتيب حكم «منتقص ⇒ مهلة» ثم «بعد التحرير ⇒ فوراً».)
+    fn acquire_held_on_thread(
+        name: &str,
+        limit: u32,
+        hold: Duration,
+    ) -> std::thread::JoinHandle<bool> {
+        let n = name.to_string();
+        std::thread::spawn(move || {
+            match acquire_named(&n, limit, Duration::from_secs(10)) {
+                Ok(_guard) => {
+                    std::thread::sleep(hold);
+                    true // الحارس يُسقط عند خروج الخيط
+                }
+                Err(_) => false,
+            }
+        })
+    }
 
     /// اسم فريد لكل اختبار: لا تنازع مع تطبيق المالك ولا مع اختبار آخر.
     fn unique_name(tag: &str) -> String {
@@ -1519,6 +1748,13 @@ mod tests {
     /// تحرير (لا تعمل المدوِّرات)، فيجب أن يعود الكائن كاملاً لمن يأتي بعدها
     /// **ما دام لم يبق مقبض مفتوح**. والتحقّق يجري في عملية ثالثة، لأن أي
     /// مقبض في عملية الفحص نفسه يُبقي الكائن حيّاً بعدد ناقص.
+    ///
+    /// (**الحالة الثانية** — «والفحص يحمل مقبضاً» — في
+    /// `a_killed_owner_releases_its_slots_without_waiting_for_handles`؛ وهما
+    /// حالتان مختلفتان: هنا لا مقبض آخر أصلاً، وهناك المقبض باقٍ في عملية
+    /// الفحص.) وبالـmutex صار المسار هنا يمرّ بـ**abandoned** كذلك، فالاختبار
+    /// يقيس اليوم أن الخروج بـ`exit` لا يُفقد الرمز — وهو ما يعنيه اسمه.
+    #[cfg(windows)]
     #[test]
     fn a_dead_process_slots_are_reusable_once_its_last_handle_is_gone() {
         if std::env::var(HELPER_MODE).is_ok() {
@@ -1563,6 +1799,11 @@ mod tests {
     }
 
     /// عملية تحجز فتحتين ثم تخرج بلا تحرير (`exit` لا يعمل مدوِّرات المكدّس).
+    ///
+    /// والحجز على **خيطين**: الملكيّة صارت ملكيّة **خيط** (mutex)، فالخيط
+    /// الواحد لا يجمع رمزَي الزوج بسقف `MAX_LIMIT` (وطلبه ثانيةً مرفوض
+    /// تراكبياً). فالمطلوب «الرمزان محجوزان» ⇒ خيط لكل رمز.
+    #[cfg(windows)]
     #[test]
     fn slot_hog_process() {
         if std::env::var(HELPER_MODE).is_err() {
@@ -1570,11 +1811,16 @@ mod tests {
         }
         let slot = std::env::var(HELPER_SLOT).expect("اسم الفتحة");
         let log = PathBuf::from(std::env::var(HELPER_LOG).expect("ملف السجلّ"));
-        // سقف كامل ⇒ رمز واحد لكل نداء، فنداءان يحجزان **الرمزين** (ولا يُستعمل
+        // خيط لكل رمز: كلٌّ بسقف `MAX_LIMIT` فيأخذ رمزاً واحداً (ولا يُستعمل
         // الافتراضيّ هنا: صار 1 فيأخذ النداء الأول الرمزين ويفشل الثاني بمهلة).
-        let first = acquire_named(&slot, MAX_LIMIT, Duration::from_secs(10));
-        let second = acquire_named(&slot, MAX_LIMIT, Duration::from_secs(10));
-        let ok = first.is_ok() && second.is_ok();
+        let mut threads = Vec::new();
+        for _ in 0..TOKENS {
+            let slot = slot.clone();
+            threads.push(std::thread::spawn(move || {
+                acquire_named(&slot, MAX_LIMIT, Duration::from_secs(10)).is_ok()
+            }));
+        }
+        let ok = threads.into_iter().all(|t| t.join().unwrap_or(false));
         append_line(&log, &format!("HOG {}\n", if ok { "OK" } else { "FAIL" }));
         assert!(ok, "العملية الحاجزة يجب أن تأخذ الفتحتين");
         // بلا `drop`: الخروج الفوري لا يعمل المدوِّرات.
@@ -1582,6 +1828,9 @@ mod tests {
     }
 
     /// عملية ثالثة: تتحقّق أن السقف كامل بعد موت الحاجز.
+    ///
+    /// والرمزان يُحجزان على **خيطين**: الملكيّة ملكيّة خيط، فالخيط الواحد لا
+    /// يجمع رمزَي الزوج بسقف `MAX_LIMIT` (وطلبه ثانيةً يُرفض تراكبياً).
     #[test]
     fn slot_probe_process() {
         if std::env::var(HELPER_MODE).is_err() {
@@ -1589,24 +1838,224 @@ mod tests {
         }
         let slot = std::env::var(HELPER_SLOT).expect("اسم الفتحة");
         let log = PathBuf::from(std::env::var(HELPER_LOG).expect("ملف السجلّ"));
-        let a = acquire_named(&slot, MAX_LIMIT, Duration::from_secs(5));
+        // خيط يحمل رمزاً **مدّةً** (لا نداءً عابراً يحرّر فوراً)، وهذا الخيط
+        // يأخذ الرمز الآخر — فإن كان أيّهما محجوزاً فشل أحد الطرفين.
+        let slot2 = slot.clone();
+        let other = std::thread::spawn(move || {
+            match acquire_named(&slot2, MAX_LIMIT, Duration::from_secs(5)) {
+                Ok(_guard) => {
+                    std::thread::sleep(Duration::from_millis(300));
+                    true
+                }
+                Err(e) => {
+                    eprintln!("probe: الرمز الأول لم يُتح: {e}");
+                    false
+                }
+            }
+        });
         let b = acquire_named(&slot, MAX_LIMIT, Duration::from_secs(5));
-        let ok = a.is_ok() && b.is_ok();
+        let ok = b.is_ok() && other.join().unwrap_or(false);
         append_line(&log, &format!("PROBE {}\n", if ok { "OK" } else { "FAIL" }));
         assert!(ok, "بعد موت الحاجز يجب أن تُتاح الفتحتان كاملتين");
     }
 
+    /// **ت-جديد-١ [الأهم] — الرمز يعود عند قتل مالكه، وعملية الفحص تحمل مقبضاً.**
+    ///
+    /// هذا **تشكيل الإنتاج**: الواجهة الدائمة تحمل مقابض الكائن مدى الحياة
+    /// (`kernel::cache`)، فبالسِّيمافور كان الرمز **لا يعود أبداً** ما دام أي
+    /// مقبض مفتوحاً — وهو عطل **مقيس** بمسبارَي المشرف والمدقّق. وبالـmutex
+    /// تُرفع الملكيّة **بموت المالك** (abandoned) لا بزوال الكائن، فيعود الرمز
+    /// **فوراً**.
+    ///
+    /// والاختبار يفعل بالترتيب: (١) يفتح هو نفسه مقبضَي الكائن عبر
+    /// `kernel::token_handle` — فيصير «الحامل الآخر للمقبض»، (٢) يُشغّل عملية
+    /// تحجز **الرمزين** وتُعلن ذلك، (٣) **يقتلها بـ`TerminateProcess`** وهي
+    /// حاجزة (لا خروج نظيف)، (٤) مهمّة **بسقف 1** (تحتاج الرمزين) يجب أن تنجح
+    /// **بلا انتظار المهلة**. وبمهلة قصيرة (10 ث) لا 30 دقيقة، فالسقوط سريع
+    /// ومُعلَن لا معلَّق.
+    ///
+    /// **المُفسَد**: (أ) إرجاع السِّيمافور، (ب) تجاهل `WAIT_ABANDONED_0`
+    /// (معاملته خطأً/مهلة) — كلاهما يُسقط هذا الاختبار بمهلة صريحة.
+    #[cfg(windows)]
+    #[test]
+    fn a_killed_owner_releases_its_slots_without_waiting_for_handles() {
+        if std::env::var(HELPER_MODE).is_ok() {
+            return; // لا نُطلق مساعدين من داخل مساعد
+        }
+        let _lock = registry_lock();
+        let dir = tmp_dir("killed");
+        let slot = unique_name("killed");
+        let log = dir.join("probe.log");
+        let exe = std::env::current_exe().expect("مسار ثنائي الاختبار");
+
+        // (١) الفحص نفسه يحمل مقبضاً لكل رمز — وهذا **تشكيل الإنتاج**، ولولاه
+        // لكان الاختبار يقيس حالة أخرى (وهي المُغطّاة بالاختبار القديم).
+        let h0 = kernel::token_handle(&kernel::token_name(&slot, 0)).expect("مقبض الرمز a");
+        let h1 = kernel::token_handle(&kernel::token_name(&slot, 1)).expect("مقبض الرمز b");
+        assert!(h0 != 0 && h1 != 0, "مقبضان صالحان للكائن نفسه");
+
+        // (٢) عملية تحجز الرمزين وتُعلن، ثم تنتظر القتل.
+        let mut hog = Command::new(&exe)
+            .args(["slots::tests::slot_keep_process", "--exact", "--nocapture"])
+            .env(HELPER_MODE, "1")
+            .env(HELPER_SLOT, &slot)
+            .env(HELPER_LOG, &log)
+            .env(HELPER_READY, &dir)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("إطلاق عملية الحجز");
+        let raw = wait_for_marker(&log, "HOLDING", Duration::from_secs(20));
+        assert!(raw.contains("HOLDING OK"), "الحجز فشل: {raw}");
+
+        // (٣) القتل الفوري: لا `Drop` ولا `ReleaseMutex` — مالك ميّت.
+        win_terminate_process(hog.id()).expect("TerminateProcess على الحاجز");
+        let status = hog.wait().expect("انتظار خروج الحاجز");
+        assert!(
+            !status.success(),
+            "العملية يجب أن تموت بالقتل لا أن تخرج بنجاح: {status}"
+        );
+
+        // (٤) الرمزان يعودان **فوراً** لمهمّة بسقف 1 — وهي تحتاج الرمزين معاً.
+        let started = std::time::Instant::now();
+        let exclusive = acquire_named(&slot, 1, Duration::from_secs(10)).unwrap_or_else(|e| {
+            panic!("الرمزان لم يعودا بعد موت مالكهما (والمقابض ما زالت مفتوحة في هذه العملية): {e}")
+        });
+        let waited = started.elapsed();
+        eprintln!(
+            "ت-جديد-١: الرمزان عادا بعد قتل المالك في {waited:?} (المهلة كانت 10s) — \
+             والمقابضان مفتوحان في عملية الفحص: {h0:#x} · {h1:#x}"
+        );
+        assert!(
+            waited < Duration::from_secs(5),
+            "العودة يجب أن تكون فورية لا بعد مهلة ({waited:?})"
+        );
+        drop(exclusive);
+        // وبعد التحرير: تنجح مهمّة بسقف كامل على الرمز الثاني أيضاً (لا رمز ضاع).
+        acquire_named(&slot, MAX_LIMIT, Duration::from_secs(5)).expect("رمز حرّ بعد التحرير");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// مساعد ت-جديد-١: يحجز **الرمزين** (خيط لكل رمز) ويُعلن، ثم ينتظر القتل.
+    #[cfg(windows)]
+    #[test]
+    fn slot_keep_process() {
+        if std::env::var(HELPER_MODE).is_err() {
+            return;
+        }
+        let slot = std::env::var(HELPER_SLOT).expect("اسم الفتحة");
+        let log = PathBuf::from(std::env::var(HELPER_LOG).expect("ملف السجلّ"));
+        let mut threads = Vec::new();
+        for _ in 0..TOKENS {
+            let slot = slot.clone();
+            threads.push(std::thread::spawn(move || {
+                acquire_named(&slot, MAX_LIMIT, Duration::from_secs(10)).is_ok()
+            }));
+        }
+        let ok = threads.into_iter().all(|t| t.join().unwrap_or(false));
+        append_line(
+            &log,
+            &format!("HOLDING {}\n", if ok { "OK" } else { "FAIL" }),
+        );
+        assert!(ok, "المساعد يجب أن يحجز الرمزين");
+        // انتظار القتل: لا خروج ولا تحرير. (المهلة حدّ أمان لا مسار نجاح.)
+        std::thread::sleep(Duration::from_secs(60));
+    }
+
+    /// **ت-جديد-٣ — الاكتساب التراكبي على الخيط نفسه مرفوض بخطأ صريح.**
+    ///
+    /// لأن ملكيّة الـmutex **تراكبية**: لو مرّ الطلب لمنحه ويندوز الملكيّة
+    /// **فوراً بلا حجب**، وتحرير واحد لا يكفي ⇒ منتظر آخر يعبر والحاصر يعمل
+    /// = ثغرة صامتة في ب٢. فيجب أن يكون الردّ **خطأً عربياً** لا نجاحاً صامتاً
+    /// ولا انتظاراً.
+    #[cfg(windows)]
+    #[test]
+    fn recursive_acquisition_on_the_same_thread_is_refused() {
+        let _lock = registry_lock();
+        let name = unique_name("reentry");
+
+        // (أ) الخيط يحمل رمزاً بسقف 2 ثم يطلب رمزاً آخر بالاسم نفسه.
+        let first = acquire_named(&name, MAX_LIMIT, Duration::from_secs(5)).expect("رمز حرّ");
+        let again = acquire_named(&name, MAX_LIMIT, Duration::from_millis(200));
+        let err = again
+            .err()
+            .expect("الطلب الثاني على الخيط نفسه يجب أن يُرفض لا أن يُمنح");
+        assert!(
+            err.contains("رفض اكتساب تراكبي"),
+            "خطأ عربي صريح عن التراكب: {err}"
+        );
+        eprintln!("ت-جديد-٣: رُفض الطلب التراكبي فوراً — {err}");
+
+        // (ب) وبعد إسقاط الأول: الطلب ينجح (الحارس أزال التسجيل فعلاً).
+        drop(first);
+        let re =
+            acquire_named(&name, MAX_LIMIT, Duration::from_secs(5)).expect("بعد التحرير لا تراكب");
+        drop(re);
+
+        // (ج) وبسقف 1: من يحمل **الرمزين** لا يستطيع طلب حصرية ثانية.
+        let both = acquire_named(&name, 1, Duration::from_secs(5)).expect("الرمزان حُرّان");
+        let second_excl = acquire_named(&name, 1, Duration::from_millis(200));
+        assert!(
+            second_excl.is_err(),
+            "حصرية ثانية على الخيط نفسه يجب أن تُرفض"
+        );
+        // والحارس يحرّر الرمزين فعلاً: بعدهما تنجح حصرية أخرى فوراً.
+        drop(both);
+        acquire_named(&name, 1, Duration::from_secs(5)).expect("الرمزان حُرّان بعد الإسقاط");
+    }
+
+    /// **ت-جديد-٤ — التحرير في أربعة مسارات**: النجاح · الخطأ · الذعر · والخروج
+    /// بلا تحرير (`std::process::exit` في عملية أخرى، ويُعالجه abandoned).
+    ///
+    /// الثلاثة الأولى تُقاس **داخل العملية** بمهمّة واحدة بعد كل مسار: لو لم
+    /// يتحرّر الرمز لفشلت بمهلة. والرابع مساره `slot_hog_process` (خروج بلا
+    /// تحرير) + `slot_probe_process`، وهو المُغطّى في اختبار العملية الميتة.
+    #[test]
+    fn a_slot_returns_on_success_error_and_panic() {
+        let _lock = registry_lock();
+        let name = unique_name("paths");
+
+        // ١) النجاح: المهمّة تحمل الرمز ثم تُسقطه.
+        run_registered(&name, "ok", || Ok::<_, String>(())).expect("مهمّة ناجحة");
+
+        // ٢) الخطأ: الجسم يعيد خطأً — الحارس يُسقط الرمز أثناء الانتشار.
+        let failed = run_registered(&name, "err", || Err::<(), String>("عطل مصطنع".into()));
+        assert!(failed.is_err(), "الجسم أعاد خطأً");
+
+        // ٣) الذعر: الحارس يُسقط الرمز أثناء فكّ المكدّس.
+        let previous_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {})); // ذعر متوقَّع: لا نُلوّث الخرج
+        let caught = std::panic::catch_unwind(|| {
+            let _ = run_registered::<()>(&name, "panic", || panic!("ذعر مصطنع"));
+        });
+        std::panic::set_hook(previous_hook);
+        assert!(caught.is_err(), "الذعر وقع فعلاً");
+
+        // الضابط الموجب: بعد الثلاثة، **الرمزين** حُرّان — مهمّة بسقف 1 تنجح
+        // فوراً. ولولا التحرير في مسار واحد منها لبقيت محجوزة وفشل هذا السطر.
+        let started = std::time::Instant::now();
+        let free = acquire_named(&name, 1, Duration::from_secs(5))
+            .expect("الرمزان حُرّان بعد النجاح والخطأ والذعر");
+        let waited = started.elapsed();
+        eprintln!("ت-جديد-٤: الرمزان حُرّان بعد ثلاثة مسارات في {waited:?}");
+        assert!(waited < Duration::from_secs(1), "بلا انتظار ({waited:?})");
+        drop(free);
+    }
+
     /// المُفسَد الآخر: سقف أصغر ⇒ الانتظار يعطي خطأً عربياً صريحاً لا انتظاراً
     /// أبدياً. يُقاس بمهلة قصيرة جداً كي يبقى الاختبار سريعاً.
+    ///
+    /// والانتظار يقع على **خيط آخر**: الملكيّة صارت ملكيّة خيط (mutex)، فطلب
+    /// الخيط نفسه ما يحمله يُرفض **تراكبياً** (لا بمهلة) — وهو مُقاس في
+    /// `recursive_acquisition_on_the_same_thread_is_refused`. فهنا الموضوع
+    /// «فتحة محجوزة» لا «إعادة اكتساب».
     #[test]
     fn a_taken_slot_times_out_with_an_explicit_arabic_error() {
         let _lock = registry_lock();
         let name = unique_name("timeout");
         let _held = acquire_named(&name, 1, Duration::from_secs(5)).expect("فتحة وحيدة");
-        let started = std::time::Instant::now();
-        let denied = acquire_named(&name, 1, Duration::from_millis(300));
-        let waited = started.elapsed();
-        let err = denied.err().expect("لا فتحة ثانية بسقف 1");
+        let (ok, err, waited) = acquire_measured_on_thread(&name, 1, Duration::from_millis(300));
+        assert!(!ok, "لا فتحة ثانية بسقف 1");
         assert!(
             err.contains("انتهت مهلة انتظار فتحة الفصل"),
             "رسالة عربية صريحة: {err}"
@@ -1621,19 +2070,21 @@ mod tests {
     /// تنتهي مهلتها ومهمّة أخرى تحمل رمزاً ⇒ **لا تتغيّر حالة الرمزين**:
     /// مهمّة تالية بسقف 2 تنجح **فوراً**، وبعد تحرير الرمزين تنجح الحصرية فوراً.
     /// (و`bWaitAll = TRUE` لا يجزّئ الاكتساب، فهذا ليس تفصيلاً بل خاصّية.)
+    ///
+    /// وكل طلب يقع على **خيط مستقلّ**: الملكيّة ملكيّة خيط، فطلبُ الخيط نفسه
+    /// ما يحمله يُرفض تراكبياً لا بمهلة (وذلك مُقاس في اختباره الخاصّ).
     #[test]
     fn an_exclusive_timeout_leaves_the_tokens_untouched() {
         let _lock = registry_lock();
         let name = unique_name("excl-timeout");
 
-        // مهمّة بسقف السقف الكامل تحمل رمزاً واحداً (والثاني حرّ).
+        // مهمّة بسقف السقف الكامل تحمل رمزاً واحداً (والثاني حرّ) — على هذا
+        // الخيط، فلا يمنع خيط المنتظر شيئاً.
         let held = acquire_named(&name, MAX_LIMIT, Duration::from_secs(5)).expect("رمز حرّ");
 
         // مهمّة بسقف 1: تحتاج الرمزين ⇒ مهلة صريحة بلا أي أثر على الزوج.
-        let t0 = std::time::Instant::now();
-        let denied = acquire_named(&name, 1, Duration::from_millis(300));
-        let waited = t0.elapsed();
-        let err = denied.err().expect("سقف 1 مع رمز محجوز لا ينجح");
+        let (ok, err, waited) = acquire_measured_on_thread(&name, 1, Duration::from_millis(300));
+        assert!(!ok, "سقف 1 مع رمز محجوز لا ينجح");
         assert!(
             err.contains("انتهت مهلة انتظار فتحة الفصل"),
             "رسالة عربية صريحة: {err}"
@@ -1644,30 +2095,29 @@ mod tests {
         );
 
         // الدليل أن المنتظر الفاشل **لم يأخذ شيئاً**: الرمز الثاني ما زال حرّاً.
-        let t1 = std::time::Instant::now();
-        let second = acquire_named(&name, MAX_LIMIT, Duration::from_secs(5))
-            .expect("الرمز الثاني ما زال حرّاً بعد مهلة الحصرية");
-        assert!(
-            t1.elapsed() < Duration::from_secs(1),
-            "بلا انتظار: الرمز كان حرّاً فعلاً ({:?})",
-            t1.elapsed()
-        );
+        // ويُمسَك على خيط آخر **مدّة** (لا نداءً عابراً): وإلا لتحرّر قبل حكم
+        // «الرمزان محجوزان» فصار الحكم على زوج حرّ — قياس بلا موضوع.
+        let second = acquire_held_on_thread(&name, MAX_LIMIT, Duration::from_millis(600));
+        // ننتظر قليلاً حتى يقع الاكتساب فعلاً قبل الحكم (لا مصادفة جدولة).
+        std::thread::sleep(Duration::from_millis(100));
 
         // وفحص العكس: الرمزان محجوزان الآن ⇒ حصرية ثانية تنتهي مهلتها.
+        // (وطلبها على هذا الخيط مرفوض تراكبياً — فيُقاس على خيط آخر.)
+        let (ok3, err3, waited3) = acquire_measured_on_thread(&name, 1, Duration::from_millis(200));
+        assert!(!ok3, "الرمزان محجوزان ⇒ لا حصرية ثانية (خطأ: {err3})");
         assert!(
-            acquire_named(&name, 1, Duration::from_millis(200)).is_err(),
-            "الرمزان محجوزان ⇒ لا حصرية ثانية"
+            waited3 >= Duration::from_millis(150),
+            "الحصرية انتظرت مهلتها كاملة ({waited3:?})"
         );
 
-        drop(second);
-        drop(held);
         // بعد التحرير: الحصرية تنجح فوراً — لا رمز ضاع ولا رمز زاد.
-        let t2 = std::time::Instant::now();
-        let _excl = acquire_named(&name, 1, Duration::from_secs(5)).expect("الرمزان حُرّان");
+        assert!(second.join().unwrap_or(false), "الرمز الثاني أُخذ فعلاً");
+        drop(held);
+        let (ok4, err4, waited4) = acquire_measured_on_thread(&name, 1, Duration::from_secs(5));
+        assert!(ok4, "الرمزان حُرّان بعد التحرير: {err4}");
         assert!(
-            t2.elapsed() < Duration::from_secs(1),
-            "بلا انتظار بعد التحرير ({:?})",
-            t2.elapsed()
+            waited4 < Duration::from_secs(1),
+            "بلا انتظار بعد التحرير ({waited4:?})"
         );
     }
 
