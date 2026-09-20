@@ -917,7 +917,8 @@ fn set_settings(
     })?;
     watch_service::apply_settings(&new);
     telegram::apply_settings(&new);
-    // م١: سقف الفتحات إعداد حيّ — يُطبَّق فوراً كي لا يحتاج تغييره إعادة تشغيل.
+    // م١: سقف الفتحات إعداد حيّ — يُطبَّق على المهامّ **الجديدة** بلا إعادة
+    // تشغيل، ولا يُقاطع المهامّ الجارية (وهو المضمون المقيس في `slots.rs`).
     slots::set_limit(new.max_concurrent_jobs);
     // Tray labels follow the app language (no-op when nothing moved).
     tray::refresh_lang(&app, &new.lang);
