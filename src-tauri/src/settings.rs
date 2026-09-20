@@ -285,15 +285,20 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// م١: سقف الفصول المتزامنة — الافتراضي 2، والمسموح 1..=2، وما خرج يُقصّ
-    /// **عند القراءة** فلا يبقى سقف 9 في الذاكرة ولا يُعرض في الواجهة ولا
-    /// يُكتب ثانيةً. (القصّ في `normalize` وحدها، و`set_settings` يناديها.)
+    /// م١: سقف الفصول المتزامنة — الافتراضي **1** (قرار المالك بعد قياس هامش
+    /// الفصلين: 245 MiB)، والمسموح 1..=2، وما خرج يُقصّ **عند القراءة** فلا
+    /// يبقى سقف 9 في الذاكرة ولا يُعرض في الواجهة ولا يُكتب ثانيةً. (القصّ في
+    /// `normalize` وحدها، و`set_settings` يناديها.)
     #[test]
-    fn max_concurrent_jobs_defaults_to_two_and_clamps_out_of_range_values() {
+    fn max_concurrent_jobs_defaults_to_one_and_clamps_out_of_range_values() {
         assert_eq!(
             Settings::default().max_concurrent_jobs,
             crate::slots::DEFAULT_LIMIT,
-            "الافتراضي سقف البطاقة لا أقلّ ولا أكثر"
+            "الافتراضي هو DEFAULT_LIMIT نفسه (1) لا رقم مكرَّر هنا"
+        );
+        assert_eq!(
+            crate::slots::DEFAULT_LIMIT, 1,
+            "الافتراضيّ المعلَن للمستخدم: 1 (والسقف المسموح 2 يبقى اختياراً)"
         );
         let dir = tmp("max_jobs");
         std::fs::write(path(&dir), r#"{"max_concurrent_jobs":9}"#).unwrap();
@@ -309,8 +314,8 @@ mod tests {
         std::fs::write(path(&dir), r#"{"lang":"ar"}"#).unwrap();
         assert_eq!(
             load(&dir).max_concurrent_jobs,
-            2,
-            "ملف بناء قديم ⇒ الافتراضي"
+            1,
+            "ملف بناء قديم ⇒ الافتراضي (1)"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
