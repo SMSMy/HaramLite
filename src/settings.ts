@@ -93,9 +93,10 @@ export function collectSettings(): RustSettings {
     watch_out_kind: 'auto',
     watch_max_size_mb: Number(localStorage.getItem('hl.watch_max_mb')) || 2048,
     watch_rescan_secs: Number(localStorage.getItem('hl.watch_rescan')) || 60,
-    // م١: سقف الفصول المتزامنة (1..=2). الافتراضي 2 = سقف ذاكرة الكرت، والخلف
-    // يقصّ أي قيمة خارجة (`slots::clamp_limit`) فلا تعتمد الواجهة على نفسها.
-    max_concurrent_jobs: Number(localStorage.getItem('hl.max_jobs')) || 2,
+    // م١: سقف الفصول المتزامنة (1..=2). الافتراضي 1 = الطرف الآمن (فصلان
+    // بلغا ذروة 7947 من 8192 م.ب: هامش 245 م.ب)، و2 اختيار صريح، والخلف يقصّ
+    // أي قيمة خارجة (`slots::clamp_limit`) فلا تعتمد الواجهة على نفسها.
+    max_concurrent_jobs: Number(localStorage.getItem('hl.max_jobs')) || 1,
   };
 }
 export function pushSettings(): void {
