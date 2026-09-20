@@ -1051,4 +1051,36 @@ mod tests {
             "انتظر المهلة المطلوبة لا أكثر ({waited:?})"
         );
     }
+
+    /// الذعر لا يسرّب **الفتحة** (لا السِجلّ وحده): الحارس يتحرّر أثناء فكّ
+    /// المكدّس، فما بعده يجد السقف كاملاً وفوراً. وهذا هو الفرق العملي بين
+    /// حارس RAII وعلمٍ يُصفَّر في آخر سطر من الدالة — الأخير يُتخطّى بالذعر.
+    #[test]
+    fn a_panicking_job_still_frees_its_slot() {
+        let _lock = registry_lock();
+        let name = unique_name("panic");
+        let previous_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {})); // ذعر متوقَّع: لا نُلوّث الخرج
+        let caught = std::panic::catch_unwind(|| {
+            let _ = run_registered::<()>(&name, "panic-holder", || panic!("ذعر مصطنع"));
+        });
+        std::panic::set_hook(previous_hook);
+        assert!(caught.is_err(), "الذعر وقع فعلاً");
+
+        // السقف كامل من جديد: تُكتسب فتحتان (وهما السقف) بلا انتظار.
+        let started = std::time::Instant::now();
+        let mut held = Vec::new();
+        for i in 0..current_limit() {
+            held.push(
+                acquire_named(&name, current_limit(), Duration::from_secs(5))
+                    .unwrap_or_else(|e| panic!("الفتحة رقم {i} لم تُتح بعد الذعر: {e}")),
+            );
+        }
+        assert_eq!(held.len(), current_limit() as usize, "السقف كامل بعد الذعر");
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "بلا انتظار: الفتحة كانت حرّة فعلاً ({:?})",
+            started.elapsed()
+        );
+    }
 }
