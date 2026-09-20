@@ -445,6 +445,18 @@ fn unregister_held(name: &str) {
     });
 }
 
+/// هل يحمل **هذا الخيط** الرمز بهذا الاسم؟ (يُقرأ في فحص التراكب.)
+#[cfg(windows)]
+fn holds_token(name: &str) -> bool {
+    held_counts().with(|h| h.borrow().get(name).copied().unwrap_or(0) > 0)
+}
+
+/// كم مرّة يحمل **هذا الخيط** الرمز بهذا الاسم؟ (عدّان = رمزا الزوج معاً.)
+#[cfg(windows)]
+fn held_count(name: &str) -> usize {
+    held_counts().with(|h| h.borrow().get(name).copied().unwrap_or(0))
+}
+
 /// نصّ خطأ الاكتساب التراكبي — **مصدر واحد** للمنصّتين.
 fn reentry_message(name: &str) -> String {
     format!(
@@ -573,14 +585,13 @@ mod kernel {
         // فتحرير واحد لا يكفي، ويعبر منتظر آخر بينما الحاصر يعمل. والفرعان
         // كلاهما مرفوض: (١) رمز يملكه هذا الخيط من الزوج (طلب سقف 2)،
         // (٢) الزوج كامل بيده (طلب حصرية ثانية).
-        let held = super::held_counts().with(|h| h.borrow().clone());
         let blocked = if tokens >= TOKENS {
-            let c0 = held.get(&token_name(base, 0)).copied().unwrap_or(0);
-            let c1 = held.get(&token_name(base, 1)).copied().unwrap_or(0);
-            (c0 > 0 && c1 > 0) || c0 >= 2
+            let (a, b) = (token_name(base, 0), token_name(base, 1));
+            (super::holds_token(&a) && super::holds_token(&b))
+                || super::held_count(&a) >= 2
+                || super::held_count(&b) >= 2
         } else {
-            held.get(&token_name(base, 0)).copied().unwrap_or(0) > 0
-                || held.get(&token_name(base, 1)).copied().unwrap_or(0) > 0
+            super::holds_token(&token_name(base, 0)) || super::holds_token(&token_name(base, 1))
         };
         if blocked {
             return Err((false, reentry_message(base)));
@@ -618,7 +629,6 @@ mod kernel {
         }
         Ok(WinSem::new(base.to_string(), handles, held_now))
     }
-
     /// يحرّر **ملكيّة** الرمز. `ReleaseMutex` من غير مالكه تفشل
     /// (`ERROR_NOT_OWNER`) — والسجلّ يكشف ذلك بدل أن يمرّ صامتاً.
     pub(super) fn release(name: &str, handle: isize) -> bool {
@@ -652,6 +662,8 @@ struct WinSem {
     handles: [isize; TOKENS],
     /// ما أُخذ: رمز واحد (سقف 2) أو الرمزان (سقف 1). التحرير **بقدره**.
     held: [bool; TOKENS],
+    /// الخيط الذي أخذ الرموز — الملكيّة له، والتحرير من غيره يفشل.
+    owner: std::thread::ThreadId,
     /// يمنع `Send` — انظر توثيق النوع.
     _not_send: std::marker::PhantomData<*const ()>,
 }
@@ -663,6 +675,7 @@ impl WinSem {
             name,
             handles,
             held,
+            owner: std::thread::current().id(),
             _not_send: std::marker::PhantomData,
         }
     }
@@ -671,14 +684,32 @@ impl WinSem {
 #[cfg(windows)]
 impl Drop for WinSem {
     fn drop(&mut self) {
+        // **على الخيط الذي أخذ**: الملكيّة ملكيّة الخيط، و`ReleaseMutex` من
+        // غيره تفشل (`ERROR_NOT_OWNER`). والحارس `!Send` يمنع النقل عند
+        // التصريف، وهذا الفحص يمسك أي التفاف عليه من داخل العملية (استعارة
+        // عبر `&` مشترك في سياق غير آمن، أو إسقاط في خيط آخر).
+        debug_assert!(
+            self.owner == std::thread::current().id(),
+            "أُسقط حارس الفتحة «{}» على خيط غير الذي أخذها ({} ≠ {}) — \
+             الملكيّة للخيط، والتحرير من غيره يفشل",
+            self.name,
+            fmt_thread(self.owner),
+            fmt_thread(std::thread::current().id())
+        );
         // تحرير **ما أُخذ بالضبط**: تحرير غير مأخوذ يفشل، وتفويت مأخوذ يُجمّد
-        // فتحة إلى الأبد. والتحرير يقع على هذا الخيط (الحارس `!Send`).
+        // فتحة إلى الأبد.
         for i in 0..TOKENS {
             if self.held[i] {
                 kernel::release(&kernel::token_name(&self.name, i), self.handles[i]);
             }
         }
     }
+}
+
+/// صيغة مقروءة لمعرّف خيط (رسائل الفحص).
+#[cfg(windows)]
+fn fmt_thread(id: std::thread::ThreadId) -> String {
+    format!("{id:?}")
 }
 
 #[cfg(not(windows))]
@@ -1061,11 +1092,41 @@ mod tests {
         )
     }
 
+    /// مجلد عمل فريد لكل **تشغيل** (لا لكل مهمّة فقط).
+    ///
+    /// **ولماذا عدّاد لا `pid` وحده**: `tmp_dir` كان يبني الاسم من `pid`+الوسم
+    /// وحدهما، وويندوز **يعيد استعمال المعرّفات** — فتشغيل ثانٍ في العملية نفسها
+    /// (أو معرّف أُعيد) يجد مجلداً من تشغيل سابق. وقد **وقع هذا فعلاً** في هذه
+    /// الجولة: اختبار «الرمز يعود عند قتل المالك» قرأ ملف تتبّع **قديماً** فيه
+    /// `HOLDING OK` من تشغيل سابق، فمرّ في 0.03 ث **دون أن يعمل الحاجز أصلاً**
+    /// (وكاد يُثبت نجاحاً كاذباً). فالاسم يحمل الآن **عدّاداً ذرّياً** لا يتكرّر
+    /// في العملية، ويُتحقَّق قبله أن المجلد **جديد فعلاً**.
     fn tmp_dir(tag: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("hl_slots_{}_{}", std::process::id(), tag));
-        let _ = std::fs::remove_dir_all(&d);
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let n = SEQ.fetch_add(1, Ordering::SeqCst);
+        let d = std::env::temp_dir().join(format!("hl_slots_{}_{}_{}", std::process::id(), tag, n));
+        // حارس ضدّ إعادة الاستعمال: مجلد موجود مسبقاً = قياس على أثر قديم.
+        if d.exists() {
+            let _ = std::fs::remove_dir_all(&d);
+        }
         std::fs::create_dir_all(&d).unwrap();
+        assert!(
+            std::fs::read_dir(&d)
+                .map(|mut i| i.next().is_none())
+                .unwrap_or(false),
+            "مجلد العمل يجب أن يكون فارغاً: {}",
+            d.display()
+        );
         d
+    }
+
+    /// يتحقّق أن ملف التتبّع **لم يكن موجوداً** قبل التشغيل — فلا يُقرأ أثر قديم.
+    fn assert_no_stale_log(log: &Path) {
+        assert!(
+            !log.exists(),
+            "ملف تتبّع قديم موجود قبل التشغيل ({} بايت): القياس سيكون على أثر سابق",
+            std::fs::metadata(log).map(|m| m.len()).unwrap_or(0)
+        );
     }
 
     /// أقصى تداخل من أزواج (طابع زمني, +1 بداية/−1 نهاية).
@@ -1451,6 +1512,8 @@ mod tests {
         let log = dir.join("trace.log");
         let ready = dir.join("ready");
         std::fs::create_dir_all(&ready).unwrap();
+        // **حارس القياس**: سجلّ قديم كان سيُقرأ كأنه تتبّع هذه الجولة.
+        assert_no_stale_log(&log);
 
         let exe = std::env::current_exe().expect("مسار ثنائي الاختبار");
         let slot = unique_name(tag);
@@ -1470,7 +1533,7 @@ mod tests {
                 .env(HELPER_LIMIT, limit.to_string())
                 .env(HELPER_DELAY_MS, delay.to_string())
                 .stdout(Stdio::null())
-                .stderr(Stdio::null())
+                .stderr(Stdio::inherit())
                 .spawn()
                 .expect("إطلاق عملية مساعدة");
             children.push(child);
@@ -1764,6 +1827,7 @@ mod tests {
         let dir = tmp_dir("dead");
         let slot = unique_name("dead");
         let exe = std::env::current_exe().expect("مسار ثنائي الاختبار");
+        assert_no_stale_log(&dir.join("probe.log"));
 
         // ١) عملية تأخذ الفتحتين ثم تموت بلا تحرير.
         let taken = Command::new(&exe)
@@ -1771,6 +1835,9 @@ mod tests {
             .env(HELPER_MODE, "1")
             .env(HELPER_SLOT, &slot)
             .env(HELPER_LOG, dir.join("hog.log"))
+            .env(HELPER_READY, &dir)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
             .env(HELPER_READY, &dir)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -1887,6 +1954,8 @@ mod tests {
         let slot = unique_name("killed");
         let log = dir.join("probe.log");
         let exe = std::env::current_exe().expect("مسار ثنائي الاختبار");
+        // **حارس القياس**: لا ملف تتبّع قديم يُقرأ كأنه إعلان هذه الجولة.
+        assert_no_stale_log(&log);
 
         // (١) الفحص نفسه يحمل مقبضاً لكل رمز — وهذا **تشكيل الإنتاج**، ولولاه
         // لكان الاختبار يقيس حالة أخرى (وهي المُغطّاة بالاختبار القديم).
@@ -1894,7 +1963,8 @@ mod tests {
         let h1 = kernel::token_handle(&kernel::token_name(&slot, 1)).expect("مقبض الرمز b");
         assert!(h0 != 0 && h1 != 0, "مقبضان صالحان للكائن نفسه");
 
-        // (٢) عملية تحجز الرمزين وتُعلن، ثم تنتظر القتل.
+        // (٢) عملية تحجز الرمزين وتُعلن، ثم تنتظر القتل. (خرج الخطأ **موروث**
+        // لا `null`: تشخيص فشل المساعد يجب أن يظهر في مخرجات الاختبار.)
         let mut hog = Command::new(&exe)
             .args(["slots::tests::slot_keep_process", "--exact", "--nocapture"])
             .env(HELPER_MODE, "1")
@@ -1902,7 +1972,7 @@ mod tests {
             .env(HELPER_LOG, &log)
             .env(HELPER_READY, &dir)
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::inherit())
             .spawn()
             .expect("إطلاق عملية الحجز");
         let raw = wait_for_marker(&log, "HOLDING", Duration::from_secs(20));
@@ -1937,6 +2007,65 @@ mod tests {
     }
 
     /// مساعد ت-جديد-١: يحجز **الرمزين** (خيط لكل رمز) ويُعلن، ثم ينتظر القتل.
+    ///
+    /// **ولا يمرّ بصرّاف الاختبارات** (`slot_keep_process` الحقيقي): صرّاف
+    /// `libtest` يُشغّل الاختبار على خيط ثم **ينتظر انتهاءه**، فـ«الانتظار
+    /// الطويل» يُعلّق الصرّاف ولا يُنتج عملية حاجزة. هذا المساعد يأخذ الرمزين
+    /// بمقابض نواة مباشرة (`kernel::token_handle` + `WaitForMultipleObjects`)
+    /// ويُبقيهما مملوكين لهذين الخيطين، ثم ينتظر القتل في `park`.
+    #[cfg(windows)]
+    fn keep_process_main(slot: &str, log: &Path) {
+        use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+        use windows_sys::Win32::Foundation::{BOOL, HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT};
+        use windows_sys::Win32::System::Threading::WaitForMultipleObjects;
+
+        // خيط لكل رمز: الملكيّة ملكيّة خيط، فالرمزان لا يُجمعان على خيط واحد.
+        static ACQUIRED: AtomicUsize = AtomicUsize::new(0);
+        let mut threads = Vec::new();
+        for i in 0..TOKENS {
+            let name = kernel::token_name(slot, i);
+            let h = match kernel::token_handle(&name) {
+                Ok(h) => h,
+                Err((_, e)) => {
+                    append_line(log, &format!("HOLDING FAIL {e}\n"));
+                    return;
+                }
+            };
+            threads.push(std::thread::spawn(move || {
+                let raw: [HANDLE; 1] = [h as _];
+                let rc = unsafe { WaitForMultipleObjects(1, raw.as_ptr(), 0 as BOOL, 10_000) };
+                if rc == WAIT_OBJECT_0 {
+                    ACQUIRED.fetch_add(1, AtomicOrdering::SeqCst);
+                    // بلا `ReleaseMutex` وبلا خروج من الخيط: park للأبد.
+                    std::thread::park();
+                } else if rc == WAIT_TIMEOUT {
+                    eprintln!("keep: مهلة على الرمز {i}");
+                } else {
+                    eprintln!("keep: رمز غير متوقَّع {rc:#x} على الرمز {i}");
+                }
+            }));
+        }
+        // لا ننتظر الخيوط (لا تنتهي): ننتظر وقوع الاكتساب فعلاً.
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while ACQUIRED.load(AtomicOrdering::SeqCst) < TOKENS {
+            if std::time::Instant::now() >= deadline {
+                append_line(
+                    log,
+                    &format!(
+                        "HOLDING FAIL timeout {}\n",
+                        ACQUIRED.load(AtomicOrdering::SeqCst)
+                    ),
+                );
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        append_line(log, &format!("HOLDING OK pid={}\n", std::process::id()));
+        // الحجز قائم على خيطَي المساعد؛ والصرّاف يُبقي العملية حيّة حتى القتل.
+        std::thread::park();
+    }
+
+    /// موجّه المساعد: يُستدعى من `slot_keep_process` بعد فحص `HELPER_MODE`.
     #[cfg(windows)]
     #[test]
     fn slot_keep_process() {
@@ -1945,21 +2074,7 @@ mod tests {
         }
         let slot = std::env::var(HELPER_SLOT).expect("اسم الفتحة");
         let log = PathBuf::from(std::env::var(HELPER_LOG).expect("ملف السجلّ"));
-        let mut threads = Vec::new();
-        for _ in 0..TOKENS {
-            let slot = slot.clone();
-            threads.push(std::thread::spawn(move || {
-                acquire_named(&slot, MAX_LIMIT, Duration::from_secs(10)).is_ok()
-            }));
-        }
-        let ok = threads.into_iter().all(|t| t.join().unwrap_or(false));
-        append_line(
-            &log,
-            &format!("HOLDING {}\n", if ok { "OK" } else { "FAIL" }),
-        );
-        assert!(ok, "المساعد يجب أن يحجز الرمزين");
-        // انتظار القتل: لا خروج ولا تحرير. (المهلة حدّ أمان لا مسار نجاح.)
-        std::thread::sleep(Duration::from_secs(60));
+        keep_process_main(&slot, &log);
     }
 
     /// **ت-جديد-٣ — الاكتساب التراكبي على الخيط نفسه مرفوض بخطأ صريح.**
@@ -2064,6 +2179,66 @@ mod tests {
             waited >= Duration::from_millis(250) && waited < Duration::from_secs(5),
             "انتظر المهلة المطلوبة لا أكثر ({waited:?})"
         );
+    }
+
+    /// **التحرير بقدر ما أُخذ بالضبط — لا أقلّ ولا أكثر.**
+    ///
+    /// مُفسَد «تحرير الرمز الخطأ»: لو حرّر حارسُ سقف 1 **رمزاً واحداً** بدل
+    /// الرمزين، بقي الثاني مملوكاً لخيط **انتهى عملُه** — فلا منتظر عادل يأخذه
+    /// أبداً، وهو **جمود صامت** لا يكشفه اختبار الحصرية (لأن الحصرية انتهت
+    /// فعلاً). ولو حرّر **أكثر** مما أخذ لمرّت مهمّة ثالثة على جهاز يفترض أن
+    /// فيه فتحتين — وهي **ثغرة في ب١**.
+    ///
+    /// فالمقياس مباشر في الاتجاهين: بعد إسقاط حارس الحصرية يأخذ **رمزان**
+    /// (مهمّتان بسقف كامل) في اللحظة نفسها؛ وبعد إسقاط حارس السقف الكامل يبقى
+    /// الرمز الآخر محجوزاً فتفشل الحصرية.
+    #[test]
+    fn releasing_gives_back_exactly_the_tokens_that_were_taken() {
+        let _lock = registry_lock();
+        let name = unique_name("release-exact");
+
+        // (١) حارس سقف 1 أخذ **الرمزين** ⇒ بعد إسقاطه يعودان **كليهما**.
+        drop(acquire_named(&name, 1, Duration::from_secs(5)).expect("الرمزان"));
+        let (ok1, err1, waited1) =
+            acquire_measured_on_thread(&name, MAX_LIMIT, Duration::from_millis(500));
+        assert!(ok1, "الرمز الأول لم يُتح بعد إسقاط الحصرية: {err1}");
+        assert!(
+            waited1 < Duration::from_millis(200),
+            "بلا انتظار ({waited1:?})"
+        );
+        // والثاني يُمسَك على خيط حيّ حتى الحكم (لا نداءً عابراً يحرّر فوراً).
+        // ويُنتظر انتهاؤه **قبل** القسم (٢): لو بقي رمزٌ محجوزاً منه لصار
+        // قياس (٢) على زوج منتقَص لا على زوج كامل — وهو ما أسقط هذا الاختبار
+        // أول كتابته (وقد صُحّح بالانتظار).
+        let holder = acquire_held_on_thread(&name, MAX_LIMIT, Duration::from_millis(400));
+        assert!(
+            holder.join().unwrap_or(false),
+            "الرمز الثاني ليس حرّاً: تحرير ناقص ⇒ جمود صامت على رمز لا مالك له"
+        );
+
+        // (٢) **الرمز الذي بيد غيرك لا يُحرّره حارسك.** ويُقاس مباشرةً لا
+        // بالاستنتاج: الرمزان محجوزان (حارسان على خيطين يحملان حتى الحكم)،
+        // ثم يُطلَب حارس **ثالث** فيفشل بمهلة — وهو عند المهلة **لا يأخذ
+        // شيئاً** (وهذا مشروط أدناه صراحةً) — ثم يُسقَط. فإن حرّر حارسٌ ما ليس
+        // له صار أحد الرمزين حرّاً، فينجح **رابع** ⇒ **ثلاث فتحات على جهاز
+        // سقفه اثنتان** (خرق ب١). فالقياس: بعد إسقاط الثالث لا ينجح أيّ طلب.
+        let a = acquire_held_on_thread(&name, MAX_LIMIT, Duration::from_millis(700));
+        let b = acquire_held_on_thread(&name, MAX_LIMIT, Duration::from_millis(700));
+        std::thread::sleep(Duration::from_millis(150));
+        let third = acquire_named(&name, MAX_LIMIT, Duration::from_millis(150));
+        assert!(
+            third.is_err(),
+            "الرمزان محجوزان ⇒ لا حارس ثالث (وإلا لم يكن مُفسَد التحرير مُقاساً)"
+        );
+        drop(third);
+        let (after, after_err, _) =
+            acquire_measured_on_thread(&name, MAX_LIMIT, Duration::from_millis(250));
+        assert!(
+            !after,
+            "فتحة ثالثة نجحت والرمزان بيد غيرهما ⇒ تحرير ما لم يُؤخذ: {after_err}"
+        );
+        assert!(a.join().unwrap_or(false), "الرمز الأول كان محجوزاً فعلاً");
+        assert!(b.join().unwrap_or(false), "الرمز الثاني كان محجوزاً فعلاً");
     }
 
     /// **مسار المهلة على الزوج** (وهو ما يجعل الحصرية آمنة): مهمّة بسقف 1
