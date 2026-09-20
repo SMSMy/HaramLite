@@ -27,8 +27,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
-use crate::pipeline::{self, Mode, OutFormat, OutKind};
+use crate::pipeline::{Mode, OutFormat, OutKind};
 use crate::settings::Settings;
+use crate::slots;
 
 // ── caps (core.telegram.org/bots/api) ───────────────────────────────────────
 /// Hard cloud cap on anything a bot sends.
@@ -1375,7 +1376,9 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
         };
         status.borrow_mut().set(cfg, ar.to_string(), false);
     };
-    let processed = pipeline::process_file(
+    // م١: مهمّة البوت تأخذ فتحة جهاز مثل كل مدخل آخر.
+    let processed = slots::run_separation(
+        "telegram",
         // Results land in the user's results folder — the same place the
         // browser bridge puts them — NOT in our scratch dir. That was the bug
         // behind the 150MB of "temporary" files the owner found in AppData:

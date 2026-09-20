@@ -18,8 +18,9 @@ use std::time::Duration;
 
 use notify::Watcher;
 
-use crate::pipeline::{self, Mode, OutKind};
+use crate::pipeline::{Mode, OutKind};
 use crate::settings::Settings;
+use crate::slots;
 
 /// Cancel flag for the currently running browser-requested job.
 /// Stored as an Arc so worker/monitor threads can hold it safely.
@@ -893,7 +894,9 @@ fn handle_request(
                 "queue": queued,
                 "last": null
             }));
-            let res = pipeline::process_file(
+            // م١: المدخل الواحد — الطلب القادم من المتصفح يأخذ فتحة جهاز.
+            let res = slots::run_separation(
+                "bridge",
                 &file,
                 &out_dir,
                 mode,
