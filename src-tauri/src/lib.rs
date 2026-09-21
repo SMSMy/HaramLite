@@ -37,6 +37,16 @@ mod v1proto;
 mod watch_service;
 mod yt_dlp;
 
+// حارس تفنيد م٦-ب (مسار `clip`) — اختبارات فقط: لا يصل إلى الإنتاج ولا إلى bins.
+// ورفيقه `m6b_clip_guard_frozen.rs` **غير موصول عمداً** حتى الالتزام المجمَّد
+// (غياب حقل في العقد يجب أن يظهر «غائباً» بنصّ المترجم، لا أن يُسقط كل الحارس).
+#[cfg(test)]
+mod m6b_clip_guard;
+// ملاحظة مقيسة (٢٠٢٦-٠٩-٢١، على `main`): وصل السطر التالي **الآن** يُسقط البناء بنصّ
+// المترجم حرفياً: `error[E0560]: struct `PipelineOutput` has no field named `page_kept``
+// — أي أن غياب حقل العقد يُعلَن «غائباً» ولا يمرّ صامتاً. يُوصَل بعد الالتزام المجمَّد.
+// #[cfg(test)] mod m6b_clip_guard_frozen;
+
 // Audit 2026-09-15 (٨): مانيفست comctl32 **v6** لثنائي اختبار المكتبة وحده.
 //
 // أي اختبار يلمس `watch_service::apply_settings` يسحب `run_watch` → الـpipeline
