@@ -294,6 +294,11 @@ const i18n = {
     ext_more: '+{n} أخرى',
     sep_done_short: '✓ مكتمل',
     sep_done_preview: '✓ مكتمل (عينة)',
+    // عطل ميداني 2026-09-21 (قِيس بتشغيل التطبيق عبر CDP): المهمّة **الملغاة**
+    // كانت تُعرض «✗ فشل» وتُسجَّل ERROR، والخلف يقول `أُلغيت: true`. فالملغى
+    // حالة صريحة بنصّها — والإلغاء ليس خطأً.
+    sep_cancelled_short: '⏹ أُلغيت',
+    batch_cancelled: 'ملغى {n}',
     sep_failed_short: '✗ فشل',
     probe_flag_disguised: '⚠ صوت متنكّر في حاوية فيديو — سنعالجه كصوت',
     probe_flag_cover: 'ℹ الفيديو مجرد صورة غلاف',
@@ -554,6 +559,8 @@ const i18n = {
     ext_more: '+{n} more',
     sep_done_short: '✓ Done',
     sep_done_preview: '✓ Done (preview)',
+    sep_cancelled_short: '⏹ Cancelled',
+    batch_cancelled: 'cancelled {n}',
     sep_failed_short: '✗ Failed',
     probe_flag_disguised: '⚠ Audio disguised inside a video container — we will treat it as audio',
     probe_flag_cover: 'ℹ The video is only cover art',

@@ -255,7 +255,7 @@ export const STOP_CEILING_SECS = 566;
  * لكل الصفوف) — أي أن الشاشة تقول غير ما في الخلفية. وبالعكس: صفٌّ يبقى `run`
  * بنسبته الأخيرة بعد أن ماتت مهمّته لا يُصحّحه شيء، لأن النسبة لا تُرسم إلا
  * على حدث `sep-progress` (`queue.ts:356-374`). */
-export type QueueItemState = 'pending' | 'run' | 'ok' | 'fail';
+export type QueueItemState = 'pending' | 'run' | 'ok' | 'fail' | 'cancelled';
 
 export interface ReconcileResult {
   /** الحالة التي يجب أن تُعرض. */
@@ -270,8 +270,9 @@ export interface ReconcileResult {
  *  الملف ما زال معلّقاً في الواجهة (فبين `markBatchItem('run')` وتسجيل
  *  المهمّة في الخلف نافذة زمنية لا يجوز أن تُقرأ «انتهت»).
  *
- * حالات لا تُمسّ (بصراحة): الصفّ `ok`/`fail` نهائي ولا يُرجَع إلى `run` ولو
- * وُجدت مهمّة بنفس المسار — فقد تكون مهمّة جديدة لمهمّة ملفٍّ أُعيد تشغيله. */
+ * حالات لا تُمسّ (بصراحة): الصفّ `ok`/`fail`/`cancelled` نهائي ولا يُرجَع إلى
+ * `run` ولو وُجدت مهمّة بنفس المسار — فقد تكون مهمّة جديدة لمهمّة ملفٍّ أُعيد
+ * تشغيله. و`cancelled` كذلك: قرار المستخدم لا يُبطله استطلاع. */
 export function reconcileItemState(
   local: QueueItemState,
   hasJob: boolean,

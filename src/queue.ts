@@ -344,8 +344,18 @@ function setJobKnowledge(next: 'unchecked' | 'idle' | 'running' | 'unknown'): vo
 // The queue (+ per-item status) survives close/crash; completion or an
 // explicit stop clears it. Resume re-queues only pending/failed items —
 /// never reprocesses finished ones.
-type BatchItemState = 'pending' | 'run' | 'ok' | 'fail';
+type BatchItemState = 'pending' | 'run' | 'ok' | 'fail' | 'cancelled';
 const batchStatus = new Map<string, BatchItemState>();
+
+/** **من أين جاء الإلغاء؟** — موضع واحد يقرأ العلامة في رسالة الخلف.
+ *
+ *  كان في هذا الملف مسارٌ يميّزها أصلاً (`msg.includes('إلغاء')` في `runOne`)،
+ *  ومسار الدفعة **لا** يميّزها فيُوسم الصفّ `fail` ويُسجَّل ERROR مع أن الخلف
+ *  يقول `أُلغيت: true` (عطل ميداني مقيس بتشغيل التطبيق 2026-09-21). فوُحّد
+ *  التمييز هنا، **والدالّة صافية** (نصّ ⟶ منطقي) فتُختبر بلا DOM ولا تطبيق. */
+export function isCancellation(message: unknown): boolean {
+  return String(message).includes('إلغاء');
+}
 /** الحالة تُخزَّن في **موضعين متلازمين**: الخريطة (المصدر المنطقي) و`data-state`
  *  على الصفّ (المصدر الذي تقرأه `stopBatch` والفحوص). ولا تُكتب إحداهما دون
  *  الأخرى — وإلا صار الحكم على الصفّ بالنصّ المعروض، وهو ما يتفرّق عن الحقيقة
@@ -368,6 +378,16 @@ function saveBatchState(): void {
     } else localStorage.removeItem('hl.batch');
   } catch { /* storage full/blocked — queue simply stays volatile */ }
 }
+/** **الموضع الواحد** لقرار «هل يُستأنف هذا الصفّ عند الإقلاع؟».
+ *
+ *  القاعدة في التخطيط: «الاستئناف يعيد ترتيب **المعلّق والفاشل**، ولا يعيد
+ *  معالجة **المنتهي**». والملغى يقع مع المنتهي **عن قصد**: هو عملٌ أوقفه المستخدم
+ *  بيده، فإعادته عند كل إقلاع تناقض إرادته المعلَنة (وقد تُعيد عملاً أوقفه بلا
+ *  أن يطلبه). ويبقى له **زرّ إعادة المحاولة** فيعيده متى شاء.
+ *  ولو قُلب القرار فالبقية تعمل: `restoreBatchState` تُبني على هذه الدالة وحدها. */
+function restorable(it: { f: string; s: BatchItemState }): boolean {
+  return it.s !== 'ok' && it.s !== 'cancelled';
+}
 export function restoreBatchState(): void {
   let items: { f: string; s: BatchItemState }[] = [];
   try {
@@ -380,10 +400,11 @@ export function restoreBatchState(): void {
           ? { f: it, s: 'pending' as BatchItemState }
           : { f: (it as { f?: unknown }).f, s: (it as { s?: unknown }).s })
         .filter((it): it is { f: string; s: BatchItemState } =>
-          typeof it.f === 'string' && (it.s === 'pending' || it.s === 'run' || it.s === 'fail' || it.s === 'ok'));
+          typeof it.f === 'string'
+          && (it.s === 'pending' || it.s === 'run' || it.s === 'fail' || it.s === 'ok' || it.s === 'cancelled'));
     }
   } catch { items = []; }
-  const files = items.filter((it) => it.s !== 'ok').map((it) => it.f);
+  const files = items.filter(restorable).map((it) => it.f);
   const skipped = items.length - files.length;
   if (!files.length) {
     if (items.length) localStorage.removeItem('hl.batch');
@@ -403,7 +424,7 @@ export function restoreBatchState(): void {
   // ⇒ يبقى يعمل، ولا مهمّة ⇒ `stop_row_stale` («أُعيد إلى الانتظار») — فلا
   // تُدّعى مهمّة ولا يُكتم انقطاع.
   for (const it of items) {
-    if (it.s === 'fail' || it.s === 'run') markBatchItem(it.f, it.s);
+    if (it.s === 'fail' || it.s === 'run' || it.s === 'cancelled') markBatchItem(it.f, it.s);
   }
   setBatchCounter(0, session.getBatchQueue().length);
   // م٢: الصفوف المُستعادة تُبنى «في الانتظار» (`renderBatchList` تكتب pending
@@ -418,7 +439,7 @@ export function restoreBatchState(): void {
   invoke('push_log', { level: 'warn', message: `batch restored after restart: ${files.length} files (${skipped} done skipped)` });
 }
 
-function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?: string): void {
+function markBatchItem(file: string, status: 'ok' | 'fail' | 'run' | 'cancelled', resultPath?: string): void {
   setBatchItemState(file, status);
   const item = document.querySelector<HTMLElement>(`#batch-list div[data-file="${CSS.escape(file)}"]`);
   if (!item) { refreshWaitingPositions(); saveBatchState(); return; }
@@ -484,6 +505,24 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?:
       }
       // Functional gap: a transient failure used to be a dead end — offer
       // a per-item retry instead of forcing a manual queue rebuild.
+      if (actionsDiv) {
+          actionsDiv.innerHTML = `<button class="text-tertiary hover:text-green-300 p-1 bg-surface-container rounded" title="${t('retry')}"><span class="material-symbols-outlined text-sm" data-icon="refresh">refresh</span></button>`;
+          actionsDiv.classList.remove('hidden');
+          actionsDiv.querySelector('button')?.addEventListener('click', () => void retryBatchItem(file));
+      }
+  } else if (status === 'cancelled') {
+      // عطل ميداني 2026-09-21: الإلغاء **ليس فشلاً** — والخلف يقول `أُلغيت: true`.
+      // فاللون محايد (`surface-container`/`on-surface-variant`) لا `error`،
+      // والنصّ «⏹ أُلغيت» لا «✗ فشل». وزرّ إعادة المحاولة كما هو في الفشل:
+      // الإلغاء قرار المستخدم، وإعادة التشغيل قراره أيضاً.
+      item.className = 'batch-item bg-surface-container/40 border border-border-muted rounded p-stack-sm flex flex-col gap-unit relative overflow-hidden transition-all duration-300 opacity-100';
+      item.querySelector('.batch-prog-bg')?.classList.add('hidden');
+      item.querySelector('.batch-pct')?.classList.add('hidden');
+      item.querySelector('.batch-prog-wrap')?.classList.add('hidden');
+      if (statusSpan) {
+          statusSpan.textContent = t('sep_cancelled_short');
+          statusSpan.className = 'status-text font-label-sm text-label-sm text-on-surface-variant relative z-10 flex-1';
+      }
       if (actionsDiv) {
           actionsDiv.innerHTML = `<button class="text-tertiary hover:text-green-300 p-1 bg-surface-container rounded" title="${t('retry')}"><span class="material-symbols-outlined text-sm" data-icon="refresh">refresh</span></button>`;
           actionsDiv.classList.remove('hidden');
@@ -912,6 +951,7 @@ export function wireSeparate(): void {
     batchAbort = false;
     sepBtnEl().textContent = t('toggle_pause');
     const failures: string[] = [];
+    const cancelled: string[] = [];
     const total = session.getBatchQueue().length;
     let done = 0;
     for (const f of session.getBatchQueue()) {
@@ -926,10 +966,19 @@ export function wireSeparate(): void {
         markBatchItem(f, 'ok', resultPath);
         void notify(t('notify_done'), fileBaseName(f));
       } catch (e) {
-        markBatchItem(f, 'fail');
-        failures.push(`${f} — ${e}`);
-        invoke('push_log', { level: 'error', message: `batch item failed: ${f}: ${e}` });
-        void notify(t('notify_fail'), fileBaseName(f));
+        // الإلغاء ليس فشلاً (عطل ميداني 2026-09-21): الخلف يقول `أُلغيت: true`،
+        // فالصفّ يُوسم `cancelled` بنصّه المحايد، **ولا يُحصى في `failures`**،
+        // **ولا يُسجَّل ERROR** — والإلغاء قرار المستخدم لا عطل.
+        if (isCancellation(e)) {
+          markBatchItem(f, 'cancelled');
+          cancelled.push(f);
+          invoke('push_log', { level: 'info', message: `batch item cancelled by user: ${f}` });
+        } else {
+          markBatchItem(f, 'fail');
+          failures.push(`${f} — ${e}`);
+          invoke('push_log', { level: 'error', message: `batch item failed: ${f}: ${e}` });
+          void notify(t('notify_fail'), fileBaseName(f));
+        }
       } finally {
         // النداء انتهى: لا «تشغيل معلَّق» بعد الآن (فلا تُقرأ مهمّة لم تُسجَّل
         // بعد ولا يُمنع وسم صفٍّ ميت بأنه يعمل).
@@ -945,20 +994,28 @@ export function wireSeparate(): void {
       `<span class="material-symbols-outlined transition-transform duration-300 apple-ease group-hover:rotate-12 group-hover:scale-110" data-icon="content_cut">content_cut</span>
        <span id="sep-label" data-i18n="${key}">${t(key)}</span>`;
     if (result) {
-      result.textContent = failures.length
-        ? `${t('batch_done')} ${total - failures.length}/${total}\n${t('batch_failed_list')}\n${failures.join('\n')}`
-        : `${t('batch_done')} ${total}/${total} ✓`;
+      // ملخّص الدفعة يميّز الملغى (عطل ميداني 2026-09-21): كان يقول `1/2` ويُحصي
+      // الملغى **فشلاً**. واليوم يقول المنجَز من المجموع، ويسمّي الملغى وحده في
+      // سطر مستقل، ويسرد الفاشل وحده — فلا يُخلط قرارُ المستخدم بعطل.
+      const parts = [`${t('batch_done')} ${total - failures.length - cancelled.length}/${total}`];
+      if (cancelled.length) parts.push(t('batch_cancelled', { n: cancelled.length }));
+      if (failures.length) parts.push(`${t('batch_failed_list')}\n${failures.join('\n')}`);
+      if (!cancelled.length && !failures.length) parts[0] += ' ✓';
+      result.textContent = parts.join('\n');
       result.classList.remove('hidden');
     }
     invoke('push_log', {
       level: failures.length ? 'warn' : 'info',
-      message: `batch finished: ${total - failures.length}/${total}`,
+      message: `batch finished: ${total - failures.length - cancelled.length}/${total}`
+        + (cancelled.length ? ` · cancelled ${cancelled.length}` : '')
+        + (failures.length ? ` · failed ${failures.length}` : ''),
     });
     // A finished batch (even partially failed — failures keep retry buttons)
     // is no longer "interrupted": drop the persisted queue.
-    if (batchAbort || failures.length === 0) localStorage.removeItem('hl.batch');
+    // (والملغى كذلك: قرار المستخدم أُعلن في السِجلّ، فلا يبقى الطابور «مقاطعاً».)
+    if (batchAbort || (failures.length === 0 && cancelled.length === 0)) localStorage.removeItem('hl.batch');
     else saveBatchState();
-    void notify(t('notify_batch_done'), `${total - failures.length}/${total} ✓`);
+    void notify(t('notify_batch_done'), `${total - failures.length - cancelled.length}/${total} ✓`);
   });
 
 }
@@ -1001,12 +1058,17 @@ async function runOne(
     markBatchItem(path, 'ok', resultPath);
     void notify(t('notify_done'), fileBaseName(path));
   } catch (e) {
-    const msg = String(e);
-    result.textContent = msg.includes('إلغاء') ? t('sep_cancelled') : `${t('sep_failed')} ${e}`;
+    // الإلغاء ليس فشلاً: النصّ موجود أصلاً في هذا المسار (`sep_cancelled`)،
+    // والناقص كان **الحالة والسجلّ** — كان يُوسم `fail` ويُسجَّل ERROR.
+    const cancelled = isCancellation(e);
+    result.textContent = cancelled ? t('sep_cancelled') : `${t('sep_failed')} ${e}`;
     result.classList.remove('hidden');
-    markBatchItem(path, 'fail');
-    invoke('push_log', { level: 'error', message: `separate failed: ${e}` });
-    void notify(t('notify_fail'), fileBaseName(path));
+    markBatchItem(path, cancelled ? 'cancelled' : 'fail');
+    invoke('push_log', {
+      level: cancelled ? 'info' : 'error',
+      message: cancelled ? `separate cancelled by user: ${path}` : `separate failed: ${e}`,
+    });
+    if (!cancelled) void notify(t('notify_fail'), fileBaseName(path));
   } finally {
     session.endRun('single');
     if (runInFlightPath === path) runInFlightPath = null;
