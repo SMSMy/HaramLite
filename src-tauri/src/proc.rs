@@ -10,12 +10,15 @@
 //! * [`CancelToken`] — `Arc<AtomicBool>` واحد **لكل مهمّة**. يسكن سِجلّ المهامّ
 //!   في `slots.rs`، فيراه `cancel_job(id)` و`cancel_all()`، ويُنسخ في الجسم
 //!   فيراه كل حدّ مرحلة وكل نداء أداة. فلا إلغاء بمهمّة إلا بضبط هذا الرمز.
-//! * [`register_phase`] — تسجيل **مقبض** العمليات الفرعية الحيّة في سياق المهمّة
-//!   الجارية **على هذا الخيط**. ولذلك نُسجّل المقبض (`Child`) لا الرقم وحده:
-//!   بين قراءة PID وقتله قد يموت الطفل ويُعاد استخدام المعرّف، فتقع `taskkill`
-//!   على عملية بريئة (الخطر مصرَّح به في `yt_dlp.rs:1103`). والمقبض الذي لم
-//!   يُحصَد بعد (`try_wait() == Ok(None)`) دليل حياة **ملكُنا** لا يشاركنا فيه
-//!   غيرنا.
+//! * [`prepare_child`] + [`register_child`] — تسجيل **قاتل الطفل** (مقبض مملوك +
+//!   **مهمّة نواة** تحيط بشجرته) في سياق المهمّة الجارية **على هذا الخيط**.
+//!   ولذلك نُسجّل المقبض (`Child`) لا الرقم وحده: بين قراءة PID وقتله قد يموت
+//!   الطفل ويُعاد استخدام المعرّف، فتقع `taskkill` على عملية بريئة. والمقبض
+//!   الذي لم يُحصَد بعد (`try_wait() == Ok(None)`) دليل حياة **ملكُنا** لا
+//!   يشاركنا فيه غيرنا. **وأُضيفت مهمّة النواة (م٣/إصلاح٢) لأن `taskkill /T`
+//!   يقيس الشجرة في لحظة وصوله**: قِيس أن `yt-dlp.exe` عمليّتان (مُشغّل +
+//!   عامل)، وأن قتلاً مبكراً يترك العامل حيّاً في **١ من ٤** تشغيلات (انظر
+//!   [`JobGuard`]).
 //! * [`run_cancellable`] — `spawn()` ثم استطلاع `try_wait()` كل [`POLL`]،
 //!   وعند الإلغاء `kill_tree` **فوراً** ثم خطأ عربي. والدلالة على مرحلتين
 //!   (قرار المالك): العمليات المنفصلة تُقتل فوراً، ونداء ONNX داخل العملية
@@ -85,6 +88,13 @@ impl CancelToken {
     pub fn raw(&self) -> &Arc<AtomicBool> {
         &self.0
     }
+
+    /// **رمز من علم قائم** — العلم **نفسه** لا نسخة منه (فمن ضبط العلم أوقف
+    /// هذا الرمز). يُستعمل في مسار التنزيل الذي يملك علماً خاماً
+    /// (`Arc<AtomicBool>`) ويريد تمريره إلى [`run_cancellable_with_cap`].
+    pub fn from_flag(flag: Arc<AtomicBool>) -> Self {
+        Self(flag)
+    }
 }
 
 // ─────────────────── سياق المهمّة على هذا الخيط ───────────────────
@@ -102,24 +112,208 @@ pub struct JobCtx {
     pub phases: Arc<Mutex<Phases>>,
 }
 
-/// **مقبض عملية مملوك لا رقم**: مرجعنا إلى العملية الفرعية هو **مقبض نواة**
-/// مُستنسخ (`DuplicateHandle`)، لا `u32`.
+/// **مهمّة نواة (Job Object) تحيط بشجرة طفل** — العقد الوحيد الذي يضمن موت
+/// **الأحفاد**، لا مجرّد ما تصادفه `taskkill` في لحظتها.
+///
+/// ## العطل الذي وُلدت منه (مقيس ٢٠٢٦-٠٩-٢٤، م٣/إصلاح٢)
+///
+/// `yt-dlp.exe` **عمليّتان لا واحدة**: مُشغّل يبثّ نفسه في مجلد مؤقت ثم يُنشئ
+/// العامل (قِيس بـ`Win32_Process`: `yt-dlp.exe` (٣١١٤٨) ← `yt-dlp.exe` (٧٤٧٢)).
+/// و`taskkill /T /F /PID <المُشغّل>` يقتل الشجرة **التي يراها في تلك اللحظة**:
+/// فإذا وقع القتل أثناء إنشاء العامل نجا العامل، **وصار يتيماً لا يُدرَك بمعرّف
+/// أبيه** — وقِيس ذلك حيّاً: **١ من ٤** تشغيلات عند ٢٠٠ مللي من الإطلاق (صفر
+/// من ٤ عند ١٢٠ و٣٠٠ و٩٠٠ مللي). والعامل الناجي **يبقي أنبوب مخرجات أبيه
+/// مفتوحاً**، فلا يصل `EOF` إلى قارئ المهمّة فتبقى معلّقة بلا نهاية — وهو
+/// العطل الميداني بعينه («المهمّة تبقى حيّة، و0% لا يتغيّر، وyt-dlp حيّ»).
+///
+/// ## ولماذا الـJob تُغلق ذلك بالنواة لا بالتوقيت
+///
+/// العامل يُخلق **داخل** المهمّة (يرثها من أبيه)، فـ[`JobGuard::terminate`]
+/// يقتل **كل أعضاء المهمّة دفعةً واحدة** — ولو مات المُشغّل قبلهم. وبهذا لا
+/// تبقى نافذة سباق أصلاً: لا نُطارِد شجرة تتحرّك، بل نُغلق وعاءها.
+///
+/// ## `KILL_ON_JOB_CLOSE` — شبكة أمان لا زيادة
+///
+/// إغلاق المقبض (في `Drop`) يقتل كل ما بقي في المهمّة: فانهيار التطبيق أو
+/// إغلقه لا يترك تنزيلاً يتيماً يستهلك الشبكة والمعالج.
+///
+/// ## التراجع بأمان
+///
+/// إن فشل أي نداء (أو رفض النظام الإسناد — عملٌ متداخل في بيئات CI مثلاً)
+/// نعود إلى `taskkill /T /F` كما كان، **ويُسجَّل السبب** — لا صمت عن تراجع.
+#[cfg(target_os = "windows")]
+struct JobGuard {
+    handle: isize,
+}
+
+/// الربط الخام لواجهات المهمّة في `kernel32` — بلا علم ميزة جديد في
+/// `Cargo.toml` (النطاق ملفات `src/*.rs`)، وبلا اعتمادية جديدة.
+#[cfg(target_os = "windows")]
+mod job_ffi {
+    use windows_sys::Win32::Foundation::HANDLE;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        pub fn CreateJobObjectW(attrs: *mut core::ffi::c_void, name: *const u16) -> HANDLE;
+        pub fn SetInformationJobObject(
+            job: HANDLE,
+            class: i32,
+            info: *mut core::ffi::c_void,
+            len: u32,
+        ) -> i32;
+        pub fn AssignProcessToJobObject(job: HANDLE, process: HANDLE) -> i32;
+        pub fn TerminateJobObject(job: HANDLE, exit_code: u32) -> i32;
+    }
+}
+
+/// `JobObjectExtendedLimitInformation` = 9.
+#[cfg(target_os = "windows")]
+const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: i32 = 9;
+/// `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` = 0x2000.
+#[cfg(target_os = "windows")]
+const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
+
+/// تخطيط `JOBOBJECT_BASIC_LIMIT_INFORMATION` على x64 — مكتوب حقلاً حقلاً
+/// ليُقابَل بالنصّ الأصلي (٦٤ بايتاً، وحشو صريح في مواضعه).
+#[cfg(target_os = "windows")]
+#[repr(C)]
+#[derive(Default)]
+struct JobBasicLimit {
+    per_process_user_time: i64,
+    per_job_user_time: i64,
+    limit_flags: u32,
+    _pad0: u32,
+    min_working_set: usize,
+    max_working_set: usize,
+    active_process_limit: u32,
+    _pad1: u32,
+    affinity: usize,
+    priority_class: u32,
+    scheduling_class: u32,
+}
+
+/// `IO_COUNTERS` — ستّة عدّادات ٦٤-بت (٤٨ بايتاً).
+#[cfg(target_os = "windows")]
+#[repr(C)]
+#[derive(Default)]
+struct IoCounters {
+    read_ops: u64,
+    write_ops: u64,
+    other_ops: u64,
+    read_bytes: u64,
+    write_bytes: u64,
+    other_bytes: u64,
+}
+
+/// `JOBOBJECT_EXTENDED_LIMIT_INFORMATION` (١٤٤ بايتاً على x64).
+#[cfg(target_os = "windows")]
+#[repr(C)]
+#[derive(Default)]
+struct JobExtendedLimit {
+    basic: JobBasicLimit,
+    io: IoCounters,
+    process_memory_limit: usize,
+    job_memory_limit: usize,
+    peak_process_memory: usize,
+    peak_job_memory: usize,
+}
+
+#[cfg(target_os = "windows")]
+impl JobGuard {
+    /// يُنشئ مهمّةً بحدّ «اقتل الكل عند الإغلاق» ويُسند الطفل إليها.
+    /// `None` = تعذّر (يُسجَّل السبب، ويبقى `taskkill /T /F` بديلاً).
+    fn attach(child: &Child) -> Option<Self> {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+        use windows_sys::Win32::System::Threading::GetCurrentProcess;
+        let _ = GetCurrentProcess;
+        unsafe {
+            let job = job_ffi::CreateJobObjectW(std::ptr::null_mut(), std::ptr::null());
+            if job.is_null() {
+                tracing::warn!(
+                    target: "proc",
+                    "تعذّر إنشاء مهمّة النواة ({}) — القتل سيبقى بـtaskkill /T",
+                    std::io::Error::last_os_error()
+                );
+                return None;
+            }
+            let mut info = JobExtendedLimit::default();
+            info.basic.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let set = job_ffi::SetInformationJobObject(
+                job,
+                JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                &mut info as *mut JobExtendedLimit as *mut core::ffi::c_void,
+                std::mem::size_of::<JobExtendedLimit>() as u32,
+            );
+            if set == 0 {
+                tracing::warn!(
+                    target: "proc",
+                    "تعذّر ضبط حدّ «اقتل عند الإغلاق» ({}) — القتل سيبقى بـtaskkill /T",
+                    std::io::Error::last_os_error()
+                );
+                CloseHandle(job);
+                return None;
+            }
+            let assigned = job_ffi::AssignProcessToJobObject(job, child.as_raw_handle() as HANDLE);
+            if assigned == 0 {
+                tracing::warn!(
+                    target: "proc",
+                    "تعذّر إسناد الطفل (pid={}) إلى مهمّة النواة ({}) — القتل سيبقى بـtaskkill /T",
+                    child.id(),
+                    std::io::Error::last_os_error()
+                );
+                CloseHandle(job);
+                return None;
+            }
+            Some(Self {
+                handle: job as isize,
+            })
+        }
+    }
+
+    /// **يقتل كل أعضاء المهمّة** (الطفل وكل أحفاده) — ولو مات المُشغّل قبلهم.
+    fn terminate(&self) {
+        #[cfg(target_os = "windows")]
+        {
+            use windows_sys::Win32::Foundation::HANDLE;
+            unsafe {
+                job_ffi::TerminateJobObject(self.handle as HANDLE, 1);
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for JobGuard {
+    fn drop(&mut self) {
+        use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+        unsafe {
+            // مع `KILL_ON_JOB_CLOSE`: إغلاق المقبض يقتل ما بقي من أعضاء.
+            CloseHandle(self.handle as HANDLE);
+        }
+    }
+}
+
+/// **مقبض عملية مملوك لا رقم + مهمّة نواة تحيط بشجرته**: مرجعنا إلى العملية
+/// الفرعية هو **مقبض نواة** مُستنسخ (`DuplicateHandle`)، لا `u32`.
 ///
 /// **لماذا هذا هو العلاج الصحيح لخطر إعادة استخدام PID**: `Child` في المكتبة
 /// القياسية **ليس `Clone`**، ومقبضه يُغلق عند حصاده — فلو سجّلنا الرقم وحده
 /// لأمكن أن يموت الطفل ويُعاد استخدام معرّفه قبل وصول `taskkill`، فتقع على
-/// عملية **بريئة** (الخطر مصرَّح به في `yt_dlp.rs:1103`). ومقبض مملوك **يُبقي
-/// معرّف العملية محجوزاً في النواة** ما دام مفتوحاً ⇒ الاستخدام الآمن:
-/// `WaitForSingleObject(handle, 0)` يقول «حيّة» أو «انتهت» بلا أي التباس،
-/// ثم `taskkill /T /F /PID` يقتل الشجرة كاملة.
-#[derive(Clone)]
+/// عملية **بريئة**. ومقبض مملوك **يُبقي معرّف العملية محجوزاً في النواة** ما
+/// دام مفتوحاً ⇒ الاستخدام الآمن: `WaitForSingleObject(handle, 0)` يقول
+/// «حيّة» أو «انتهت» بلا أي التباس.
 pub struct ChildHandle {
     pub pid: u32,
     handle: isize,
+    /// مهمّة النواة إن أُسند الطفل إليها (وإلا `taskkill /T /F`).
+    #[cfg(target_os = "windows")]
+    job: Option<JobGuard>,
 }
 
 impl ChildHandle {
-    /// مقبض من طفل حيّ. `None` إن فشل الاستنساخ (لا قتل عندها — ولا ضرر).
+    /// مقبض من طفل حيّ **ومهمّة تحيط بشجرته**. `None` إن فشل الاستنساخ
+    /// (لا قتل عندها — ولا ضرر؛ وتعذّر المهمّة وحده لا يمنع المقبض).
     pub fn new(child: &Child) -> Option<Self> {
         #[cfg(target_os = "windows")]
         {
@@ -144,6 +338,7 @@ impl ChildHandle {
                 Some(Self {
                     pid: child.id(),
                     handle: dup as isize,
+                    job: JobGuard::attach(child),
                 })
             }
         }
@@ -154,6 +349,22 @@ impl ChildHandle {
                 handle: 0,
             })
         }
+    }
+
+    /// **يقتل الطفل وشجرته كلها** — بالأداة الأقوى المتاحة:
+    /// مهمّة النواة إن أُسند الطفل إليها (فتقتل الأحفاد ولو مات المُشغّل)،
+    /// وإلا `taskkill /T /F /PID` كما كان.
+    ///
+    /// **ولا يُنادي الاثنين**: الـJob تشمل كل الأعضاء، و`taskkill` بعدها
+    /// إطلاق عملية زائدة في كل دورة استطلاع. وإن تعذّر الإسناد فالسجلّ يقول
+    /// ذلك ([`JobGuard::attach`]) والبديل يعمل.
+    pub fn kill(&self) {
+        #[cfg(target_os = "windows")]
+        if let Some(job) = self.job.as_ref() {
+            job.terminate();
+            return;
+        }
+        kill_tree(self.pid);
     }
 
     /// هل العملية **ما زالت تعمل**؟ (`false` عند الفشل — لا نخمّن بحياة.)
@@ -227,7 +438,7 @@ impl Drop for ChildHandle {
 
 #[derive(Default)]
 pub struct Phases {
-    children: Vec<ChildHandle>,
+    children: Vec<Arc<ChildHandle>>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -282,23 +493,29 @@ pub fn current_cancel() -> Option<CancelToken> {
     current().and_then(|c| c.cancel)
 }
 
-/// **تسجيل عملية فرعية قبل تشغيلها**: يضمن أن `cancel_job(id)` يقتل أبناء هذه
-/// المهمّة وحدها. والطفل يبقى مسجَّلاً حتى [`unregister_phase`] بعد حصاده —
-/// فلا نافذة زمنية بين الخروج والتسجيل. وإرجاع `0` يعني «لم يُسجَّل مقبض»
-/// (لا مهمّة على هذا الخيط، أو فشل الاستنساخ) — ولا قتل عندها ولا ضرر.
-pub fn register_phase(child: &Child) -> u32 {
-    let pid = child.id();
-    let Some(handle) = ChildHandle::new(child) else {
-        return 0;
-    };
+/// **يُجهّز قاتل الطفل**: مقبض مملوك + مهمّة نواة تحيط بشجرته. `None` إن فشل
+/// استنساخ المقبض (لا قتل عندها — ولا ضرر).
+///
+/// **لماذا يُفصَل عن التسجيل**: مسار يقرأ مخرجات طفله بنفسه (تنزيل `yt-dlp`
+/// يقرأ التقدّم سطراً سطراً) يحتاج القاتل **في يده** ليقتل به من حلقة
+/// استطلاعه هو، ولو لم يكن على الخيط سياق مهمّة أصلاً (نداءات الجسر/الـCLI).
+pub fn prepare_child(child: &Child) -> Option<Arc<ChildHandle>> {
+    ChildHandle::new(child).map(Arc::new)
+}
+
+/// **تسجيل قاتل في سياق المهمّة الجارية على هذا الخيط**: يضمن أن
+/// `cancel_job(id)` يقتل أبناء هذه المهمّة وحدها. ويبقى مسجَّلاً حتى
+/// [`unregister_phase`] بعد حصاده — فلا نافذة زمنية بين الخروج والتسجيل.
+/// وإرجاع `0` يعني «لم يُسجَّل» (لا مهمّة على هذا الخيط) — ولا قتل عندها ولا
+/// ضرر (والقاتل يبقى بيد مستدعيه فيعمل من حلقته).
+pub fn register_child(killer: &Arc<ChildHandle>) -> u32 {
+    let pid = killer.pid;
     if let Some(ctx) = current() {
         if let Ok(mut p) = ctx.phases.lock() {
-            p.children.push(handle);
+            p.children.push(killer.clone());
             return pid;
         }
     }
-    // لا مهمّة على هذا الخيط ⇒ المقبض يُسقط الآن (لا تسريب مقابض).
-    drop(handle);
     0
 }
 
@@ -326,7 +543,7 @@ pub struct ToolOutput {
 
 /// أنبوب يُقرأ على خيط مستقل — وإلا امتلأ (~64KB) فتعلّق الأداة إلى الأبد،
 /// وهو ما كان `.output()` يفعله ضمنياً.
-fn drain<R: Read + Send + 'static>(mut r: R) -> std::thread::JoinHandle<Vec<u8>> {
+fn drain<R: Read + Send + 'static>(mut r: R, cap: usize) -> std::thread::JoinHandle<Vec<u8>> {
     std::thread::spawn(move || {
         let mut buf = Vec::new();
         let mut chunk = [0u8; 16384];
@@ -335,8 +552,8 @@ fn drain<R: Read + Send + 'static>(mut r: R) -> std::thread::JoinHandle<Vec<u8>>
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
                     // سقف الذكرى: يُحتفظ بالذيل (سبب الفشل في آخره دائماً).
-                    if buf.len() + n > TAIL_CAP {
-                        let drop_n = (buf.len() + n - TAIL_CAP).min(buf.len());
+                    if buf.len() + n > cap {
+                        let drop_n = (buf.len() + n - cap).min(buf.len());
                         buf.drain(..drop_n);
                     }
                     buf.extend_from_slice(&chunk[..n]);
@@ -349,7 +566,7 @@ fn drain<R: Read + Send + 'static>(mut r: R) -> std::thread::JoinHandle<Vec<u8>>
 
 /// **النداء الواحد** الذي يمرّ منه كل تشغيل أداة في مسار المنتج:
 ///
-/// * `spawn()` بمقبض مسجَّل في سِجلّ المهمّة،
+/// * `spawn()` بمقبض مسجَّل في سِجلّ المهمّة (وشجرته في مهمّة نواة)،
 /// * استطلاع [`POLL`] مع فحص رمز الإلغاء ⇒ **قتل فوري للشجرة** ثم خطأ،
 /// * عند النجاح/الفشل العادي: نفس المخرجات التي كانت `.output()` تعيدها.
 ///
@@ -360,13 +577,37 @@ pub fn run_cancellable(
     args: &[&str],
     cancel: Option<&CancelToken>,
 ) -> Result<ToolOutput, String> {
+    run_cancellable_with_cap(program, &[], args, cancel, TAIL_CAP)
+}
+
+/// [`run_cancellable`] بسقف مخرجات صريح **ومتغيّرات بيئة للطفل**.
+///
+/// **ولماذا لزم السقف وسيطاً (مقيس ٢٠٢٦-٠٩-٢٤)**: نداء البيانات الوصفية في
+/// مسار التنزيل (`--dump-single-json`) يُحلَّل **كاملاً** بـ`serde_json`، وسقف
+/// الذيل الافتراضي (٢٥٦KB) يقصّ **أوّله** فيصير JSON غير مقروء. وقِيس على هذه
+/// الآلة أن ردّ فيديو واحد (‏4K بعشرات الترجمات) **٦٦٣٬٤٩٥ بايتاً** ⇒ فتمريره
+/// بالسقف الافتراضي كان سيكسر التنزيل. فالسقف هنا صريح عند المستدعي.
+///
+/// **و`envs` لا زينة**: نداء البيانات الوصفية كان يضبط
+/// `PYTHONIOENCODING=utf-8` على أمره (عناوين عربية من مجرى بايثون)، وإسقاطه
+/// مع نقل النداء كان سيُفسد الترميز — فيُمرَّر صراحةً.
+pub fn run_cancellable_with_cap(
+    program: &Path,
+    envs: &[(&str, &str)],
+    args: &[&str],
+    cancel: Option<&CancelToken>,
+    cap: usize,
+) -> Result<ToolOutput, String> {
     let mut cmd = Command::new(program);
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
-    spawn_and_wait(cmd, args, cancel)
+    for (k, v) in envs {
+        cmd.env(k, v);
+    }
+    spawn_and_wait(cmd, args, cancel, cap)
 }
 
 /// [`run_cancellable`] بوسائط من نوع `OsString` — تستعمله اختبارات اليتيم
@@ -387,13 +628,14 @@ pub fn run_cancellable_cmd(
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     cmd.args(args);
     let child = cmd.spawn().map_err(|e| e.to_string())?;
-    wait_child(child, cancel)
+    wait_child_cap(child, cancel, TAIL_CAP)
 }
 
 fn spawn_and_wait(
     mut cmd: Command,
     args: &[&str],
     cancel: Option<&CancelToken>,
+    cap: usize,
 ) -> Result<ToolOutput, String> {
     // **الحدّ هنا لا في المستدعي**: كل عمليات هذا المستودع تُشغَّل بمخرجات
     // موصولة تقرؤها خيوطنا — فلا طفل يكتب على أنبوب لا يقرؤه أحد.
@@ -401,7 +643,7 @@ fn spawn_and_wait(
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     cmd.args(args);
     let child = cmd.spawn().map_err(|e| e.to_string())?;
-    wait_child(child, cancel)
+    wait_child_cap(child, cancel, cap)
 }
 
 /// الحلقة الواحدة: تسجيل ⇒ استطلاع ⇒ (قتل) ⇒ حصاد ⇒ مخرجات.
@@ -416,10 +658,27 @@ fn spawn_and_wait(
 ///   وحين يسبق القتلُ المباشر الحلقة، يصل الطفل مقتولاً بـ`Ok(Some(_))` ورمز
 ///   الإلغاء مضبوط ⇒ **يُقرأ إلغاءً لا فشلاً**، وإلا صار المُدمِج المقتول
 ///   «خطأ أداة» كاذباً (وهو ما رصده مُفسَد د حرفياً).
-fn wait_child(mut child: Child, cancel: Option<&CancelToken>) -> Result<ToolOutput, String> {
-    let pid = register_phase(&child);
-    let out_thread = child.stdout.take().map(drain);
-    let err_thread = child.stderr.take().map(drain);
+/// الحلقة الواحدة: تسجيل ⇒ استطلاع ⇒ (قتل) ⇒ حصاد ⇒ مخرجات — وبسقف مخرجات
+/// صريح (انظر [`run_cancellable_with_cap`]).
+fn wait_child_cap(
+    mut child: Child,
+    cancel: Option<&CancelToken>,
+    cap: usize,
+) -> Result<ToolOutput, String> {
+    // القاتل **في اليد** لا في السِجلّ وحده: به يُقتل الطفل من هذه الحلقة ولو
+    // لم يكن على الخيط سياق مهمّة (فلا نافذة تعتمد على وجود سياق).
+    let killer = prepare_child(&child);
+    let pid = match killer.as_ref() {
+        Some(k) => register_child(k),
+        None => 0,
+    };
+    // قتل الطفل وشجرته بالأداة الأقوى المتاحة (مهمّة النواة إن أُسند إليها).
+    let kill_now = |pid: u32| match killer.as_ref() {
+        Some(k) => k.kill(),
+        None => kill_tree(pid),
+    };
+    let out_thread = child.stdout.take().map(|s| drain(s, cap));
+    let err_thread = child.stderr.take().map(|s| drain(s, cap));
     let mut killed = false;
     let status = loop {
         match child.try_wait() {
@@ -433,7 +692,7 @@ fn wait_child(mut child: Child, cancel: Option<&CancelToken>) -> Result<ToolOutp
             Ok(None) => {}
             Err(e) => {
                 // مقبض فسد (نادر): لا نُيتّم الطفل — نقتل شجرته ثم نُبلّغ.
-                kill_tree(pid);
+                kill_now(pid);
                 let _ = child.wait();
                 let _ = collect(out_thread, err_thread);
                 unregister_phase(pid);
@@ -444,7 +703,7 @@ fn wait_child(mut child: Child, cancel: Option<&CancelToken>) -> Result<ToolOutp
             // **قتل فوري** للعمليات المنفصلة (قرار المالك): لا انتظار دورة
             // أخرى ولا نهاية الملف.
             tracing::warn!(target: "proc", "إلغاء: قتل شجرة العملية {pid} (ومعها مخدّم مدمجها)");
-            kill_tree(pid);
+            kill_now(pid);
             killed = true;
         }
         std::thread::sleep(POLL);
@@ -549,41 +808,80 @@ fn wait_with_deadline(
 //
 // **ولماذا الحذف لا الملء**: الضمان **قائم فعلاً** في مكانه الصحيح — كل نداء
 // أداة يضمّ خيطَي القراءة بنفسه في `collect` **قبل** `unregister_phase`
-// (انظر `wait_child`: كل مسارات الخروج تمرّ بـ`collect`)، فلا يبقى قارئ على
+// (انظر `wait_child_cap`: كل مسارات الخروج تمرّ بـ`collect`)، فلا يبقى قارئ على
 // أنبوب طفل بعد عودته. وملء `threads` كان سيقتضي تسليم ملكية `JoinHandle` إلى
 // `Phases` ثم سحبها — أي إعادة تصميم لضمانٍ هو اليوم بنيوي. ومن أضاف مساراً
-// يُنشئ قارئاً **خارج** `wait_child` عليه أن يعيد الضمان صراحةً.
+// يُنشئ قارئاً **خارج** `wait_child_cap` عليه أن يعيد الضمان صراحةً.
 
-/// يقتل كل أبناء مهمّة **أحياءً فقط** — يُنادى من `slots::cancel_job` فور ضبط
-/// الرمز. ويُسأل **المقبض المملوك** لا الرقم: `is_alive()` على مقبض مفتوح
-/// بيدنا لا يمكن أن يكون عملية أخرى (PID محجوز ما دام المقبض) ⇒ خطر إعادة
-/// استخدام المعرّف **مُبطَل بالبنية** لا بالاحتياط.
+/// **نتيجة القتل المباشر** — رقمان لا رقم: الأول عمليات حيّة وُجدت وقُتلت،
+/// والثاني مهمّات نواة أُنهيت. **ولماذا رقمان**: `yt-dlp.exe` عمليّتان، وقد
+/// يموت المُشغّل (المقبض المسجَّل) ويبقى العامل حيّاً — فعدّ الأول وحده يقول
+/// «صفر» و`TerminateJobObject` يكون قد قتل عاملاً حيّاً فعلاً (وهو ما قِيس).
+/// فالسطر في السجلّ يجب أن يحمل الحقيقتين لا واحدة.
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub struct KillReport {
+    pub alive_children: usize,
+    pub jobs_terminated: usize,
+}
+
+/// يقتل كل أبناء مهمّة — يُنادى من `slots::cancel_job` فور ضبط الرمز. ويُسأل
+/// **المقبض المملوك** لا الرقم: `is_alive()` على مقبض مفتوح بيدنا لا يمكن أن
+/// يكون عملية أخرى (PID محجوز ما دام المقبض) ⇒ خطر إعادة استخدام المعرّف
+/// **مُبطَل بالبنية** لا بالاحتياط.
 ///
 /// ## **ما هذا المسار بالضبط: تحسين زمن لا الحارس** (توثيق صريح، م٢/إصلاح)
 ///
 /// إن حُذف هذا النداء من `cancel_job` فالإلغاء **يبقى يعمل**: حلقة الاستطلاع في
-/// [`wait_child`] تقرأ الرمز فتُنادي `kill_tree` بنفسها. فالفرق بين الوجودَين
-/// **زمني**: مع القتل المباشر يعود الطلب بعد أن صارت الشجرة ميتة فعلاً
-/// (قِيس 169 مللي = زمن `taskkill /T /F`)، وبدونه يعود الطلب فوراً **والشجرة
-/// حيّة** حتى دورة الاستطلاع التالية ([`POLL`] = 200 مللي) ثم يستغرق قتلها
-/// زمن `taskkill` آخر. ولأن الفرق زمنيّ لا وظيفي، ثُبِّت بقياس زمني صريح
+/// [`wait_child_cap`] (وحلقة مسار التنزيل) تقرأ الرمز فتُنادي القاتل بنفسها. فالفرق
+/// بين الوجودَين **زمني**: مع القتل المباشر يعود الطلب بعد أن صارت الشجرة ميتة
+/// فعلاً (قِيس 169 مللي = زمن `taskkill /T /F`)، وبدونه يعود الطلب فوراً
+/// **والشجرة حيّة** حتى دورة الاستطلاع التالية ([`POLL`] = 200 مللي) ثم يستغرق
+/// قتلها زمن `taskkill` آخر. ولأن الفرق زمنيّ لا وظيفي، ثُبِّت بقياس زمني صريح
 /// (`slots::tests::the_direct_kill_returns_only_after_the_tree_is_dead`) وله
 /// **مُفسَد** يُسقطه: إسقاط هذا النداء ⇒ يفشل عدّاد القتل المباشر وقياس الحياة.
 ///
 /// ## ما لا ينوب عنه (الفرق الذي يجعل المسارَين معاً لازمين)
 ///
 /// مقبضٌ مسجَّل يخصّ **نداءً آخر** من نداءات المهمّة، أو طفلاً وُلد قبل ضبط
-/// الرمز: الحلقة تُنهي أداةً واحدة بعينها، وهذا يقتل كل ما سُجِّل للمهمّة.
-pub fn kill_children(ctx: &JobCtx) -> usize {
-    let handles: Vec<ChildHandle> = match ctx.phases.lock() {
+/// الرمز: حلقة تُنهي أداةً واحدة بعينها، وهذا يقتل كل ما سُجِّل للمهمّة.
+///
+/// ## **والـJob تُنهى دائماً — ولو مات الطفل المسجَّل** (م٣/إصلاح٢)
+///
+/// هذا موضع العطل المقيس: المُشغّل يموت والعامل يبقى، فسؤال «هل المقبض حيّ؟»
+/// يجيب «لا» ولا يقتل شيئاً. فمتى وُجدت مهمّة نواة **تُنهى** — فهي الوعاء الذي
+/// يحمل العامل الناجي، والنواة تقتله بلا حاجة إلى معرّف أبيه.
+pub fn kill_children(ctx: &JobCtx) -> KillReport {
+    let handles: Vec<Arc<ChildHandle>> = match ctx.phases.lock() {
         Ok(mut p) => std::mem::take(&mut p.children),
         Err(p) => std::mem::take(&mut p.into_inner().children),
     };
-    let mut killed = 0;
+    let mut report = KillReport::default();
     for h in handles {
-        if h.is_alive() {
-            kill_tree(h.pid);
-            killed += 1;
+        let alive = h.is_alive();
+        // **الـJob أولاً ودائماً**: قد تحمل عاملاً حيّاً مات مُشغّله.
+        let killed_by_job = {
+            #[cfg(target_os = "windows")]
+            {
+                match h.job.as_ref() {
+                    Some(job) => {
+                        job.terminate();
+                        report.jobs_terminated += 1;
+                        true
+                    }
+                    None => false,
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                false
+            }
+        };
+        if alive {
+            // مهمّة النواة إن وُجدت تكفّلت بالشجرة كلها؛ وإلا `taskkill /T /F`.
+            if !killed_by_job {
+                kill_tree(h.pid);
+            }
+            report.alive_children += 1;
             // **ولا يكفي إصدار الأمر**: ‏`taskkill` يعود قبل أن يموت الهدف،
             // وقِيس (٢٠ تشغيلاً) أن `cancel_job` كان يعود **والابن حيّ** في
             // **٧ منها** (~190 مللي) — وهذا يخالف الوعد المنشور «تُقتل مع شجرتها
@@ -599,12 +897,12 @@ pub fn kill_children(ctx: &JobCtx) -> usize {
                 );
             }
         }
-        // المقبض يسقط هنا (يُغلق) — والحلقة في خيط الأداة ترى الإلغاء فتُكمل
-        // الحصاد وإلغاء التسجيل.
+        // المقبض يسقط هنا (يُغلق، ومعه مهمّة النواة) — والحلقة في خيط الأداة
+        // ترى الإلغاء فتُكمل الحصاد وإلغاء التسجيل.
     }
     #[cfg(test)]
-    DIRECT_KILLS.fetch_add(killed, Ordering::SeqCst);
-    killed
+    DIRECT_KILLS.fetch_add(report.alive_children, Ordering::SeqCst);
+    report
 }
 
 /// **عدّاد قياس للاختبار وحده**: كم طفلاً حيّاً قتله **القتل المباشر** من
