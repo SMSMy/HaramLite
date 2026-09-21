@@ -1,0 +1,7 @@
+{
+  "why": "خطّ أساس مقيس لبوّابات Rust — يُحدَّث بـ--update بعد مراجعة السبب، ولا يُخفَّض لتُمرَّر بوّابة.",
+  "clippy_unique_warnings": 15,
+  "tests_passed": 349,
+  "tests_ignored": 4,
+  "measured_at": "2026-09-21 · main 10bfc2e بعد دمج م٥ (منها تحذير جديد في tg_stats.rs يُصلَح)"
+}

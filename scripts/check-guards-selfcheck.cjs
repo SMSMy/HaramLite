@@ -737,6 +737,76 @@ CASES.push({
     apply: (dir) => fs.rmSync(path.join(dir, 'src-tauri'), { recursive: true, force: true }) },
 });
 
+/* ── بوّابة خطوط أساس Rust: الرقمان المعلَنان (اختبارات · مواضع clippy) صارا باباً ──────
+ *    تُقاس **مقارنتها** لا cargo: بيئة مصنوعة فيها `cargo.cmd` مزيّف يطبع ما تتوقّعه البوّابة،
+ *    فالمُفسَدات تُشغَّل في أجزاء الثانية بدل دقيقتين، ويبقى المقيس منطق البوّابة نفسه
+ *    (القياس من cargo، والحكم منها). ─────────────────────────────────────────── */
+function relFakeCargo(dir, { warnings, passed, failed = 0, ignored = 4, silent = false }) {
+  const jsonLines = [];
+  for (let i = 0; i < warnings; i++) {
+    jsonLines.push(JSON.stringify({
+      reason: 'compiler-message',
+      message: {
+        level: 'warning', code: { code: 'clippy::probe' },
+        spans: [{ is_primary: true, file_name: 'src\\probe' + i + '.rs', line_start: i + 1, column_start: 1 }],
+      },
+    }));
+  }
+  const lines = [
+    '@echo off',
+    'if "%1"=="--version" ( echo cargo 1.95.0-probe & exit /b 0 )',
+    'if "%1"=="clippy" if "%2"=="--version" ( echo clippy 0.1.95-probe & exit /b 0 )',
+    'if "%1"=="clippy" (',
+  ];
+  if (!silent) for (const l of jsonLines) lines.push('  echo ' + l.replace(/\^/g, '^^').replace(/[<>|&]/g, '^$&'));
+  lines.push('  exit /b 0', ')');
+  lines.push('if "%1"=="test" ( echo test result: ok. ' + passed + ' passed; ' + failed + ' failed; ' + ignored + ' ignored & exit /b 0 )');
+  lines.push('exit /b 0');
+  mk(dir, 'fakebin/cargo.cmd', lines.join('\r\n'));
+}
+function relBaseline(dir, clippy, tests) {
+  mk(dir, 'qa/rust-baselines.json',
+    JSON.stringify({ clippy_unique_warnings: clippy, tests_passed: tests, tests_ignored: 4 }, null, 2) + '\n');
+}
+
+CASES.push({
+  name: 'check-rust-baselines.cjs',
+  script: S('check-rust-baselines.cjs'),
+  build(dir) {
+    mk(dir, 'src-tauri/Cargo.toml', '[package]\nname = "probe"\nversion = "0.0.0"\n');
+    relFakeCargo(dir, { warnings: 15, passed: 349 });
+    relBaseline(dir, 15, 349);
+  },
+  controlArgs: (dir) => ['--root', dir],
+  /* `USERPROFILE` موجَّه إلى مجلد مصنوع بلا `.cargo` حتى **يسقط البديل** أيضاً:
+     وإلا فحالة «صفر مدخل» تنادي cargo الحقيقي فتُشغّل clippy والاختبارات (دقيقتان) داخل الحارس. */
+  childEnv: (dir) => ({
+    PATH: path.join(dir, 'fakebin') + path.delimiter + process.env.PATH,
+    USERPROFILE: path.join(dir, 'nohome'),
+  }),
+  saw: (dir, res) => { const m = res.out.match(/(\d+) ناجح/); return m ? Number(m[1]) : 0; },
+  sawExpected: 349,
+  mutants: [
+    { label: 'تحذير clippy جديد فوق الأساس ⇒ يسقط ويسمّي المواضع',
+      apply: (dir) => { relFakeCargo(dir, { warnings: 17, passed: 349 }); },
+      mustMatch: /تحذيرات clippy: 17 .*الأساس 15/ },
+    { label: 'اختبار فاشل ⇒ يسقط ويذكر العدد',
+      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 348, failed: 1 }); },
+      mustMatch: /اختبارات فاشلة: 1/ },
+    { label: 'نقص اختبارات عن الأساس (حُذفت) ⇒ يسقط ولا يمرّ صامتاً',
+      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 340 }); },
+      mustMatch: /اختبارات ناجحة: 340 < الأساس 349/ },
+    { label: 'صفر تشخيص (لا JSON) ⇒ صفر مدخل لا نجاح فارغ',
+      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 349, silent: true }); },
+      mustMatch: /صفر مدخل/ },
+    { label: 'خطّ أساس مفقود ⇒ صفر مدخل يسمّي الملف',
+      apply: (dir) => fs.rmSync(path.join(dir, 'qa', 'rust-baselines.json'), { force: true }),
+      mustMatch: /خطّ الأساس مفقود/ },
+  ],
+  zero: { label: 'لا cargo ولا بديل ⇒ صفر مدخل',
+    apply: (dir) => fs.rmSync(path.join(dir, 'fakebin'), { recursive: true, force: true }) },
+});
+
 /* ═══ التشغيل ═══════════════════════════════════════════════════════════════ */
 
 const results = [];   // { case, kind, label, ok, detail }

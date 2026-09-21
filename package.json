@@ -35,7 +35,8 @@
     "guards:selfcheck": "node scripts/check-guards-selfcheck.cjs",
     "guards:selfcheck:all": "node scripts/check-guards-selfcheck.cjs && node scripts/check-release-assets.cjs --selfcheck && node scripts/check-fetch-redist.cjs && node scripts/check-release-parity.cjs --selfcheck && node scripts/check-site-latest-trust.cjs --selfcheck && node scripts/matrix-check.cjs --selfcheck",
     "ui:live": "node scripts/check-ui-live.mjs",
-    "release:verify": "node scripts/check-release-artifact.cjs"
+    "release:verify": "node scripts/check-release-artifact.cjs",
+    "rust:gates": "node scripts/check-rust-baselines.cjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -55,4 +56,3 @@
     "vitest": "^5.0.1"
   }
 }
-

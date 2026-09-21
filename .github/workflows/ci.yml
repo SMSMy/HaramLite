@@ -87,20 +87,20 @@ jobs:
       - name: Verify the fetched resources against their pinned digests
         run: node scripts/fetch-resources.cjs --verify-only --only=UVR-MDX-NET-Voc_FT.onnx
 
-      - name: Rust tests
-        working-directory: src-tauri
-        run: cargo test --quiet
+      # **رقمان كانا يُقالان بالعين صارا باباً يُغلق البناء** (تدقيق م٥ · 2026-09-21):
+      # `cargo test` كان بلا أي قيد على العدد — فحذف اختبارات يمرّ أخضر و«٣٤٩ ناجحاً» يبقى
+      # صحيحاً حتى اللحظة التي يكفّ فيها؛ و`clippy` بلا `-D warnings` — فتحذير جديد يمرّ أخضر.
+      # وهذه البوّابة تقرأ الرقمين من تشغيل حقيقي وتقابلهما بخطّ أساس **مكتوب ومُراجَع**
+      # (`qa/rust-baselines.json`): مواضع clippy الفريدة · صفر فاشل · والناجح لا يقلّ عن الأساس.
+      # (و`--message-format=json` لأن عدّ أسطر المخرَج يضمّ سطرَي ملخّص cargo — خطأ مقيس.)
+      - name: Rust baseline gate (test count and clippy positions against a reviewed baseline)
+        run: pnpm rust:gates
 
       # التنسيق بوابة لا نصيحة (سبرنت 0.2.7 · هـ-٥ جزء ١): الشجرة كانت **410 كتل فرق**
-      # حتى أغلقها التزام تنسيق واحد لا يمسّ المنطق، وهذا السطر يمنع عودتها. (و«صفر
-      # تحذيرات» و`-D warnings` موجة تالية — 10 تحذيرات قائمة لا تُصلَح في إصدار فيه منتج.)
+      # حتى أغلقها التزام تنسيق واحد لا يمسّ المنطق، وهذا السطر يمنع عودتها.
       - name: Rust formatting
         working-directory: src-tauri
         run: cargo fmt --check
-
-      - name: Clippy (errors only)
-        working-directory: src-tauri
-        run: cargo clippy --all-targets
 
       # بوابات الاعتماديات (سبرنت 0.2.7 · د-١ · د-٢): رخص · نسخ مكرّرة · مصادر · وتنبيهات
       # أمنية. والإعداد في `deny.toml` **مشتقّ من الرسم الفعلي** (597 حزمة)، و`advisories`
