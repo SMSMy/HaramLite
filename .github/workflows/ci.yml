@@ -251,8 +251,14 @@ jobs:
       # (يجب أن يُسقطه) و**ضابط** (يجب أن يمرّ عليه وقد رأى مدخلاً غير صفري)
       # و**صفر مدخل** (يجب أن يفشل بصوت عالٍ). تفشل إن مرّ مُفسَد أو فشل ضابط.
       # لا اعتماديات خارجية: Node + git، وخادم المعاينة على منفذ 0 يُوقَف بعد القياس.
-      - name: Guard self-check gate (mutant + control per guard)
-        run: pnpm guards:selfcheck
+      #
+      # و`guards:selfcheck:all` يضمّ إلى الحارسة العامة **الفحوص الذاتية للحرّاس الذين
+      # يحملونها داخلياً**: بوّابة قناة الإصلاح · الجالب · تكافؤ أصول الإصدار · ثقة
+      # الموقع بـ`latest` · بوّابة المصفوفة (٢٧ حالة، ومقيس أنها تمرّ **بلا ثنائي
+      # وبلا آثار** فلا تصلح عذراً لعدّاء CI). وبهذا لا يبقى حارسٌ في المستودع
+      # بمُفسَدات لا تُشغَّل في أي مكان.
+      - name: Guard self-check gate (mutant + control per guard, generic and internal)
+        run: pnpm guards:selfcheck:all
 
   # ── Release gate (ARCHIVE/ROADMAP.md §٧.ب بند ٥ · §6) — workflow_dispatch ONLY ──
   #
