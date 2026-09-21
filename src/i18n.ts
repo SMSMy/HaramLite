@@ -243,6 +243,21 @@ const i18n = {
     ext_bridge_detail: 'تنزيل/فصل عبر المتصفح…',
     ext_bridge_queued: ' (في الطابور: {n})',
     ext_watch_detail: 'معالجة ملف مراقب…',
+    // م٣ — مهامّ بوت تيليجرام في «وظائف خارجية». ثلاثة قيود في هذه النصوص:
+    //   • «قائمة الانتظار» و«دورك: N» (المالك رفض كلمة «طابور»)، والموضع هو
+    //     `position` من العقد (1 = التالي) — لا رقم مُخترع. و`queue_wait_*`
+    //     مفتاح **واحد** تشترك فيه صفوف قائمة انتظار الواجهة ومهامّ تلغرام،
+    //     فلا تفترق الصياغة بين السطحين.
+    //   • `ext_tg_running` بلا نسبة، و`ext_tg_running_pct` بالنسبة: فـ`pct: null`
+    //     لا يُطبع «0%» أبداً (والنصّان مفتاحان لا نصّ واحد بنسبة اختيارية).
+    //   • `ext_more` إشارة الاختصار حين تتجاوز الصفوف حدّ العرض (٥).
+    queue_wait_position: 'في قائمة الانتظار — دورك: {n}',
+    queue_wait_unknown: 'في قائمة الانتظار',
+    ext_tg_running: 'جارٍ المعالجة',
+    ext_tg_running_pct: 'جارٍ المعالجة — {pct}%',
+    ext_tg_done: '✓ اكتملت المعالجة',
+    ext_tg_failed: '✗ فشلت المعالجة',
+    ext_more: '+{n} أخرى',
     sep_done_short: '✓ مكتمل',
     sep_done_preview: '✓ مكتمل (عينة)',
     sep_failed_short: '✗ فشل',
@@ -478,6 +493,16 @@ const i18n = {
     ext_bridge_detail: 'Downloading/separating through the browser…',
     ext_bridge_queued: ' (queued: {n})',
     ext_watch_detail: 'Processing a watched file…',
+    // م٣ — same contract as the Arabic block: waiting-list wording and «your
+    // turn: N» for the measured position, one key shared by the UI queue rows
+    // and the Telegram rows, and no percentage at all when `pct` is null.
+    queue_wait_position: 'Waiting in line — your turn: {n}',
+    queue_wait_unknown: 'Waiting in line',
+    ext_tg_running: 'Processing now',
+    ext_tg_running_pct: 'Processing now — {pct}%',
+    ext_tg_done: '✓ Processing finished',
+    ext_tg_failed: '✗ Processing failed',
+    ext_more: '+{n} more',
     sep_done_short: '✓ Done',
     sep_done_preview: '✓ Done (preview)',
     sep_failed_short: '✗ Failed',
