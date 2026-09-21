@@ -88,6 +88,10 @@ fn locks_dir() -> PathBuf {
     crate::paths::data_dir().join("locks")
 }
 
+/// اسم القفل للملف — **مستعمل في الاختبارات وحدها**: مسار الإنتاج يمرّ بـ
+/// `claim_processing_in` الذي يبني الاسم من مجلده الصريح، ولا ينادي هذه أبداً.
+/// والوسم هنا **صادق** لا تسكيت: لا مستدعي في المنتج.
+#[cfg(test)]
 fn lock_name_for(input: &Path) -> PathBuf {
     lock_name_in(&locks_dir(), input)
 }
@@ -831,7 +835,7 @@ mod tests {
             "الاسترجاع فوري، وقياسه {reclaim:?}"
         );
         assert!(
-            (reclaim.as_secs() as u64) < STALE_LOCK_SECS,
+            reclaim.as_secs() < STALE_LOCK_SECS,
             "الاسترجاع لم ينتظر الطابع الزمني (١٢ ساعة)"
         );
         eprintln!(
