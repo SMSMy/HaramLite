@@ -645,6 +645,51 @@ CASES.push({
     apply: (dir) => fs.rmSync(path.join(dir, 'src-tauri'), { recursive: true, force: true }) },
 });
 
+/* ═══ ١١) مُقيِّم صفوف المتصفّح (م٧ — الطبقة ج) ══════════════════════════════
+ * البيئة المصنوعة تحمل **ملفات الإضافة المشحونة نفسها** (‏المقيس هو المشحون لا
+ * نسخة منه)، والحارس يُنادى بـ`--root=<البيئة>` و`--engine=jsdom` فلا يلزم
+ * متصفّح في البوّابة (والمسار الافتراضيّ CDP يُقاس في تشغيل المُقيِّم نفسه،
+ * ومُفسَداته الكاملة في `--self-check`).
+ * والضابط يشترط أن **يرى** مدخلاً غير صفري: عدد الصفوف المطبوعة (٣).
+ * والمُفسَدات هنا **مستقلّة** عن مُفسَدات المُقيِّم الداخلية: هذه تُثبت أن
+ * البوّابة ترى المُقيِّم يسقط، وتلك تُثبت أن المُقيِّم يرى العيب. */
+const EXT_SHIPPED = ['popup.html', 'popup.js', 'content.js', 'background.js', 'manifest.json'];
+function editExt(dir, file, from, to) {
+  const p = path.join(dir, 'browser-extension', file);
+  const before = fs.readFileSync(p, 'utf8');
+  const n = before.split(from).length - 1;
+  if (n !== 1) throw new Error(`مُفسَد لم يطابق مرة واحدة في ${file} (طابق ${n}): ${from}`);
+  fs.writeFileSync(p, before.replace(from, to));
+}
+CASES.push({
+  name: 'check-browser-rows.mjs',
+  script: S('check-browser-rows.mjs'),
+  build(dir) {
+    for (const f of EXT_SHIPPED) {
+      copyInto(dir, 'browser-extension/' + f, path.join(REPO, 'browser-extension', f));
+    }
+  },
+  controlArgs: (dir) => ['--root', dir, '--engine=jsdom'],
+  saw: (dir, res) => { const m = res.out.match(/صفوف: (\d+)/); return m ? Number(m[1]) : 0; },
+  sawExpected: 3,
+  mutants: [
+    { label: 'قلب `acc` في mapFullToCut (مُفسَد الطبقة) ⇒ keptSum والموضع النهائي يسقطان',
+      apply: (dir) => editExt(dir, 'content.js', 'acc += Math.min(t, b) - a;', 'acc -= Math.min(t, b) - a;'),
+      mustMatch: /audioFinal=-57\.5/ },
+    { label: 'إزاحة isGap نصف ثانية ⇒ عدد القفزات يخالف عدد الفجوات',
+      apply: (dir) => editExt(dir, 'content.js', 'if (t >= a && t < b) return false;', 'if (t >= a - 0.5 && t < b) return false;'),
+      mustMatch: /عدد القفزات/ },
+    { label: 'رفع بوّابة الوضعين في background.js ⇒ وضع مُفسَد يعبر',
+      apply: (dir) => editExt(dir, 'background.js', "if (msg.mode === 'song' || msg.mode === 'clip') link.mode = msg.mode;", 'if (msg.mode) link.mode = msg.mode;'),
+      mustMatch: /القيمتان المقبولتان/ },
+    { label: 'تثبيت الاتجاه LTR في popup.js ⇒ العربية تفقد rtl',
+      apply: (dir) => editExt(dir, 'popup.js', "const RTL = LANG === 'ar';", 'const RTL = false;'),
+      mustMatch: /direction=rtl/ },
+  ],
+  zero: { label: 'browser-extension غائب عن البيئة',
+    apply: (dir) => fs.rmSync(path.join(dir, 'browser-extension'), { recursive: true, force: true }) },
+});
+
 /* ── نسب نسخة الإصدار: الثنائي المُسلَّم يثبت أنه من هذه الشيفرة (درس 2026-09-21).
  *
  *    والدرس الثاني في اليوم نفسه: أول صورة لهذا الحارس بحثت عن الأعلام **بايتاً
