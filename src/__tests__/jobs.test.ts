@@ -318,10 +318,13 @@ describe('م٢ · نصوص الحالات الجديدة في الجدولين',
     expect(i18n.en.stop_note_wait).toContain('{secs}');
   });
 
-  it('the ceiling is at least the longest measured inference call (140208 ms)', () => {
-    // القياس: inference_ms=140208 (سجلّ المالك، منقول في ARCHIVE/m2-design.md:15)
-    // ⇒ السقف المعلن لا يجوز أن يقلّ عن 141 ث، وإلا صار الوعد أقصر من المقيس.
-    expect(STOP_CEILING_SECS).toBeGreaterThanOrEqual(141);
+  it('the ceiling is at least the longest measured engine call (565451 ms)', () => {
+    // القياس (م٢/إصلاح): أطول نداء محرّك في سجلّ المالك 2026-09-21 هو
+    // inference_ms=565451 ⇒ 566 ث. والسقف المعلن لا يجوز أن يقلّ عن المقيس،
+    // وإلا صار الوعد أقصر من الواقع (وهو ما كان: 141 و150 مقابل 565).
+    expect(STOP_CEILING_SECS).toBeGreaterThanOrEqual(566);
+    // ولا يجوز أن يقفز بلا قياس جديد: الفارق عن المقيس ثانية ترفيع واحدة.
+    expect(STOP_CEILING_SECS).toBeLessThanOrEqual(600);
   });
 
   it('the success message is in the progressive, not a completion claim', () => {
