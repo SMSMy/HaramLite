@@ -427,9 +427,32 @@ impl std::fmt::Display for YtError {
     }
 }
 
+/// **منفذ الاختبار الوحيد في هذا الملف**: مسار ثنائيّ مزيّف لدور yt-dlp.
+///
+/// **ولماذا هو أمين ولا يقيس تمثيلاً**: لا يغيّر إلا **من أين يُقرأ الثنائي** —
+/// وكل ما بعده كود الإنتاج بعينه: بناء الأمر · `spawn` · **تسجيل المقبض** ·
+/// حلقة الإلغاء · قراءة التقدّم · الحصاد. فالحارس الذي يستعمله يمرّ من
+/// `download_media` نفسها (نقطة العبور الوحيدة لكل تنزيل رابط)، لا من بديل
+/// يشبهها — وهو الدرس المقيس في م٣/إصلاح٢: الحارس القديم شغّل `ping` عبر
+/// `proc::run_cancellable` (المسار **المسجَّل**) بينما yt-dlp يسلك مساراً
+/// آخر ⇒ حارس أخضر ومنتج معطوب.
+///
+/// **ولا يُقرأ في الإنتاج**: `#[cfg(test)]` كاملاً، فلا يصل إلى بناء الإصدار.
+#[cfg(test)]
+pub(crate) fn ytdlp_test_override() -> &'static Mutex<Option<PathBuf>> {
+    static OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
+    &OVERRIDE
+}
+
 /// Resolve bundled/local yt-dlp.exe. Order mirrors ffmpeg resolver plus the
 /// per-user tools dir used by updates.
 pub fn resolve_ytdlp() -> Option<PathBuf> {
+    #[cfg(test)]
+    if let Ok(g) = ytdlp_test_override().lock() {
+        if let Some(p) = g.as_ref() {
+            return Some(p.clone());
+        }
+    }
     let exe = ASSET_NAME;
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Ok(dir) = std::env::var("HARAMLITE_TOOLS_DIR") {
@@ -815,22 +838,53 @@ struct VideoMeta {
     title: String,
 }
 
+/// سقف قراءة بيانات الفيديو الوصفية: الردّ **يُحلَّل كاملاً** بـ`serde_json`،
+/// وقِيس على هذه الآلة أن فيديو واحداً (‏4K بعشرات الترجمات) أعاد
+/// **٦٦٣٬٤٩٥ بايتاً** ⇒ فالسقف الافتراضي لذيل الأدوات (٢٥٦KB) كان سيقصّ أوّله
+/// فيصير غير مقروء. والحدّ هنا **معلن وواسع** (٢٤ ضعف المقيس) لا بلا حدّ.
+const META_CAP: usize = 16 * 1024 * 1024;
+
 /// One metadata-only call. Cheap (~1s) and it decides everything downstream:
 /// without a trustworthy id there is no safe slot, so fail here loudly
 /// instead of downloading blindly into a name we cannot re-identify.
-fn fetch_meta(exe: &Path, url: &str) -> Result<VideoMeta, YtError> {
-    let out = make_cmd(exe)
-        .args([
+///
+/// **وقابليتها للقتل (م٣/إصلاح٢)**: كانت `.output()` — حجبٌ أعمى **بلا مقبض
+/// وبلا رمز إلغاء**، وهي **أوّل عملية في مهمّة الرابط**: إلغاءٌ يقع فيها لم يكن
+/// يوقف شيئاً حتى تنتهي (‏`--socket-timeout 20` لكل عملية شبكة، ومهلة النداء
+/// كاملاً قد تطول على شبكة متعثّرة). فصارت تمرّ بـ
+/// [`crate::proc::run_cancellable_with_cap`]: مقبض مسجَّل ⇒ `cancel_job` يقتلها
+/// مع شجرتها، وحلقة استطلاع تقرأ الرمز.
+fn fetch_meta(
+    exe: &Path,
+    url: &str,
+    cancel: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> Result<VideoMeta, YtError> {
+    let token = crate::proc::CancelToken::from_flag(cancel.clone());
+    let out = crate::proc::run_cancellable_with_cap(
+        exe,
+        // Arabic titles: force yt-dlp's stdout to UTF-8 instead of the Windows
+        // console codepage (cp1256 on this machine) — keeps logs exact.
+        &[("PYTHONIOENCODING", "utf-8")],
+        &[
             "--no-playlist",
             "--skip-download",
             "--socket-timeout",
             "20",
             "--dump-single-json",
-        ])
-        .arg(url)
-        .env("PYTHONIOENCODING", "utf-8")
-        .output()
-        .map_err(|e| YtError::Net(e.to_string()))?;
+            url,
+        ],
+        Some(&token),
+        META_CAP,
+    )
+    .map_err(|e| {
+        // الإلغاء ليس فشل شبكة: نصّه العربي يصل كما هو (والمستدعي يختار نصّ
+        // «🛑 أُلغيت» بعلم الإلغاء لا بنصّ الخطأ).
+        if e == crate::proc::CANCELLED {
+            YtError::Io(e)
+        } else {
+            YtError::Net(e)
+        }
+    })?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
         let lines: Vec<&str> = stderr.lines().collect();
@@ -1041,7 +1095,7 @@ fn download_media_inner(
     tracing::info!(target: "ytdlp", "download start: {}", url);
 
     // 1) metadata first: no id → no safe slot → fail loudly before downloading.
-    let meta = fetch_meta(&exe, url)?;
+    let meta = fetch_meta(&exe, url, cancel)?;
 
     // 2) fast paths with zero network beyond metadata: a usable slot from an
     // earlier run, or a legacy title-named file from the pre-slot era.
@@ -1065,6 +1119,18 @@ fn download_media_inner(
     // is id-safe by construction, so yt-dlp's sanitizer has nothing to mangle.
     let args: Vec<String> = vec![
         "--newline".into(),
+        // **`--no-quiet` ليس تزييناً — وهو عطل مقيس (م٣/إصلاح٢)**:
+        // `--print` في yt-dlp **يعني `--quiet`**، فكان stdout فارغاً تماماً
+        // طوال التنزيل. قِيس على هذه الآلة بنفس الأمر ونفس الرابط ونفس المدة
+        // (٤٥ ث): **٠ سطراً** بالأمر الإنتاجي مقابل **٢٥٨ سطراً** بـ`--no-quiet`،
+        // ومنها ١٩٨ سطر `[download]  x%` في ٤٠ ث. وأثره ثلاثة:
+        //   (أ) رسالة الحالة تبقى «📥 جارٍ التنزيل… 0%» **طوال التنزيل** (وهو
+        //       بعينه ما رصده المدقّق)، والواجهة لا يصلها `dl-progress`؛
+        //   (ب) فرع الإلغاء داخل قراءة التقدّم (`if !progress(p)`) لا يُنفَّذ أبداً؛
+        //   (ج) حارس الجمود يقيس «آخر مخرج» ⇒ لا يرى مخرجاً **إطلاقاً** فيقتل
+        //       تنزيلاً سليماً بعد `STALL_SECS` (١٥ دقيقة) كجمود كاذب —
+        //       وذيل الفشل الذي من أجله أُضيف `--print` يصير فارغاً أيضاً.
+        "--no-quiet".into(),
         "--no-playlist".into(),
         "-f".into(),
         format_selector(audio_only).into(),
@@ -1092,16 +1158,40 @@ fn download_media_inner(
         .spawn()
         .map_err(|e| YtError::Io(e.to_string()))?;
 
-    // Audit: `child.kill()` on Windows only kills yt-dlp.exe itself — the
-    // ffmpeg merger child becomes an orphan burning CPU. A monitor thread
-    // polls the cancel flag and kills the WHOLE process tree, which also
-    // makes cancel responsive during the merge phase (no progress lines).
+    // ── **التسجيل + القاتل: عطل م٣/إصلاح٢** ────────────────────────────────
     //
-    // Audit 2026-09-03: the monitor's lifetime is the CHILD's, not the
-    // flag's — the old loop exited only on cancel, leaking one sleeper
-    // thread per successful download (callers pass process-lifetime flags)
-    // and taskkilling a possibly-recycled PID on the NEXT cancel.
+    // كان هنا `spawn()` مباشر **بلا تسجيل**: فالطفل خارج `ctx.children`،
+    // فيجد `proc::kill_children` صفراً ويعود `/kill` بـ«قُتلت 0 عملية فرعية
+    // حيّة» — والحارس الداخلي وحده يحمل عبء القتل.
+    //
+    // **والقاتل [`proc::ChildHandle`] يحمل معه مهمّة نواة** تحيط بشجرة yt-dlp،
+    // وهذا هو ما يغلق العطل الميداني: `yt-dlp.exe` **عمليّتان** (مُشغّل + عامل،
+    // مقيس)، و`taskkill /T /F /PID <المُشغّل>` قد يقتل المُشغّل وحده إن وقع في
+    // لحظة إنشاء العامل (قِيس: ١ من ٤ تشغيلات عند ٢٠٠ مللي) — والعامل الناجي
+    // يبقي الأنبوب مفتوحاً فتبقى المهمّة معلّقة بلا نهاية. والـJob تقتل **كل
+    // أعضاءها** ولو مات المُشغّل.
     let child_pid = child.id();
+    let killer = crate::proc::prepare_child(&child);
+    let registered = match killer.as_ref() {
+        Some(k) => crate::proc::register_child(k),
+        None => 0,
+    };
+    // **متى ينصرف الحارس: عند انتهاء هذه الدالة** — لا عند خروج الطفل المباشر.
+    //
+    // **ولماذا (م٣/إصلاح٢)**: `yt-dlp.exe` عمليّتان، والمُشغّل يخرج أحياناً قبل
+    // عامله (أو يُقتل وحده في نافذة سباق مقيسة) — فانصرافُ الحارس عند موت
+    // المُشغّل يترك **عاملاً حيّاً بلا حارس** يمسك الأنبوب، فتبقى المهمّة معلّقة
+    // والإلغاء بعدها لا يجده أحد. وهذا هو مسار الواجهة بعينه: `download_media_cmd`
+    // ينادي `download_media` على خيط `spawn_blocking` **بلا سياق مهمّة**، فلا
+    // يسجّل مقبضاً ولا يجد `cancel_job` ما يقتله — فالحارس وحده هو القاتل هناك.
+    let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let _unregister = UnregisterOnDrop(registered, finished.clone());
+    // **القاتل الواحد** لكل أبواب هذه الدالة: مهمّة النواة (تقتل الشجرة
+    // والأحفاد)، وإلا `taskkill /T /F` — لا نسختان تفترقان.
+    let kill_now = || match killer.as_ref() {
+        Some(k) => k.kill(),
+        None => crate::proc::kill_tree(child_pid),
+    };
     let child = Arc::new(Mutex::new(child));
     // Last stdout line instant — the stall watchdog below kills a download
     // that goes silent for STALL_SECS (no output at all, not even slow
@@ -1112,33 +1202,61 @@ fn download_media_inner(
         // the monitor holds its OWN Arc — the flag stays alive for as long
         // as the watcher runs, whatever the caller does afterwards
         let cancel_flag = cancel.clone();
-        let watched = child.clone();
+        let watch_killer = killer.clone();
         let watch_activity = activity.clone();
         let watch_stalled = stalled.clone();
+        let watch_finished = finished.clone();
         std::thread::Builder::new()
             .name("ytdlp-cancel-watch".into())
-            .spawn(move || loop {
-                std::thread::sleep(std::time::Duration::from_millis(200));
-                let alive = watched
-                    .lock()
-                    .map(|mut c| matches!(c.try_wait(), Ok(None)))
-                    .unwrap_or(false);
-                if !alive {
-                    break; // child reaped/exited — nothing left to watch
-                }
-                if cancel_flag.load(Ordering::SeqCst) {
-                    kill_tree(child_pid);
-                    break;
-                }
-                let idle = watch_activity
-                    .lock()
-                    .map(|t| t.elapsed().as_secs() >= STALL_SECS)
-                    .unwrap_or(false);
-                if idle {
-                    tracing::warn!(target: "ytdlp", "جمود التنزيل (لا مخرجات منذ {STALL_SECS} ثانية) — قتل العملية");
-                    watch_stalled.store(true, Ordering::SeqCst);
-                    kill_tree(child_pid);
-                    break;
+            .spawn(move || {
+                // **سبب واحد يُثبَّت مرّة** (وإلا تكرّر السطر كل ٢٠٠ مللي)،
+                // **وسطر صريح يقول أيّ الفرعين عمل** — كان فرع الإلغاء بلا سطر
+                // أصلاً (ع٣) فلا يُعرف من السجلّ أيّهما فشل.
+                let mut reason: Option<&'static str> = None;
+                let mut attempts: u32 = 0;
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                    if watch_finished.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    if reason.is_none() {
+                        if cancel_flag.load(Ordering::SeqCst) {
+                            reason = Some("إلغاء المستخدم");
+                        } else {
+                            let idle = watch_activity
+                                .lock()
+                                .map(|t| t.elapsed().as_secs() >= STALL_SECS)
+                                .unwrap_or(false);
+                            if idle {
+                                watch_stalled.store(true, Ordering::SeqCst);
+                                reason = Some("جمود التنزيل (لا مخرجات)");
+                            }
+                        }
+                        if let Some(why) = reason {
+                            tracing::warn!(
+                                target: "ytdlp",
+                                "قتل بسبب «{why}»: شجرة yt-dlp {child_pid} (مهمّة نواة تحيط بها: {})",
+                                watch_killer.is_some()
+                            );
+                        }
+                    }
+                    if reason.is_some() {
+                        // **يُعاد القتل كل دورة حتى تنتهي الدالة** — لا `break`
+                        // بعد محاولة واحدة (تلك كانت نافذة الفلتان المقيسة)،
+                        // **ويُنادى بعد موت المُشغّل أيضاً**: فقد يحمل الوعاء
+                        // عاملاً ناجياً لا يُدرَك بمعرّف أبيه.
+                        attempts += 1;
+                        match watch_killer.as_ref() {
+                            Some(k) => k.kill(),
+                            None => crate::proc::kill_tree(child_pid),
+                        }
+                        if attempts % 25 == 0 {
+                            tracing::warn!(
+                                target: "ytdlp",
+                                "الشجرة (pid={child_pid}) لم تمت بعد {attempts} محاولة قتل — تُعاد المحاولة"
+                            );
+                        }
+                    }
                 }
             })
             .ok();
@@ -1169,7 +1287,7 @@ fn download_media_inner(
         Some(s) => s,
         None => {
             if let Ok(mut c) = child.lock() {
-                kill_tree(c.id());
+                kill_now();
                 let _ = c.wait();
             }
             return Err(YtError::Io("stdout غير موصول — راجع stdio في spawn".into()));
@@ -1191,7 +1309,7 @@ fn download_media_inner(
                 // Never orphan the child (yt-dlp + its ffmpeg merger) —
                 // the old code returned here and leaked both burning CPU.
                 if let Ok(mut c) = child.lock() {
-                    kill_tree(c.id());
+                    kill_now();
                     let _ = c.wait();
                 }
                 return Err(YtError::Io(e.to_string()));
@@ -1226,7 +1344,7 @@ fn download_media_inner(
                 let p = (p / 100.0).clamp(0.0, 1.0);
                 if !progress(p) {
                     if let Ok(mut c) = child.lock() {
-                        kill_tree(c.id());
+                        kill_now();
                         let _ = c.wait();
                     }
                     return Err(YtError::Io("أُلغي التنزيل من قبل المستخدم".into()));
@@ -1272,21 +1390,16 @@ fn download_media_inner(
         })
 }
 
-/// Kill a process and its WHOLE tree (Windows: taskkill /T /F; Unix: kill).
-/// Plain `child.kill()` leaves yt-dlp's ffmpeg merger orphaned.
-fn kill_tree(pid: u32) {
-    #[cfg(target_os = "windows")]
-    {
-        let _ = std::process::Command::new("taskkill")
-            .args(["/T", "/F", "/PID", &pid.to_string()])
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .output();
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = std::process::Command::new("kill")
-            .args(["-9", &pid.to_string()])
-            .output();
+/// **حارس نهاية التنزيل**: يُخرج مقبض التنزيل من سِجلّ المهمّة ويُعلن انتهاء
+/// الدالة على **كل باب خروج** (نجاح · خطأ · ذعر) — فلا يقتل إلغاءٌ لاحق مقبضاً
+/// ميتاً، ولا يبقى حارس يستطلع بعد انتهاء التنزيل. وهو أيضاً ما يُغلق **مهمّة
+/// النواة** (وعندها يُقتل كل من بقي فيها بـ`KILL_ON_JOB_CLOSE`).
+struct UnregisterOnDrop(u32, std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for UnregisterOnDrop {
+    fn drop(&mut self) {
+        crate::proc::unregister_phase(self.0);
+        self.1.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -1302,7 +1415,7 @@ fn now_secs() -> u64 {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -1555,5 +1668,635 @@ mod tests {
             matches!(err, YtError::Rejected(_)),
             "الرفض يجب أن يسبق أي عمل شبكي: {err:?}"
         );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // مسار التنزيل: الإلغاء يقتل yt-dlp **فعلاً** (م٣/إصلاح٢)
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// مصدر الثنائي المزيّف الذي يقوم بدور yt-dlp:
+    /// * دور البيانات الوصفية (`--dump-single-json`) ⇒ JSON صالح على stdout،
+    /// * دور التنزيل ⇒ يسجّل معرّفه ثم **ينام ٦٠٠ ث** — فالمهمّة جارية في
+    ///   التنزيل، وهي الحالة التي يقع فيها الإلغاء المقيس.
+    ///
+    /// **وصورتان لمسار التنزيل** — تختارهما **أسماء المجلدات** لا وسيط في
+    /// المنتج (فلا يُغيَّر شيء في المنتج لأجل الاختبار):
+    /// * مجلد عادي ⇒ **عملية واحدة** (نموذج مبسّط)،
+    /// * مجلد اسمه يحوي `twoproc` ⇒ **عمليّتان كما في yt-dlp الحقيقي** (مقيس
+    ///   بـ`Win32_Process`: مُشغّل ← عامل): المُشغّل يُنشئ عاملاً يرث الأنبوب
+    ///   **ثم يخرج فوراً** — وهي بعينها الصورة التي نجا فيها العامل بعد
+    ///   `taskkill /T /F` (١ من ٤ تشغيلات، مقيسة على yt-dlp الحقيقي).
+    ///
+    /// بلا اعتماديات (يُبنى بـ`rustc` مباشرةً) وبلا شبكة: الحارس محكم على أي جهاز.
+    #[cfg(windows)]
+    const FAKE_YTDLP_SRC: &str = r#"
+use std::io::Write;
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let has = |needle: &str| args.iter().any(|a| a == needle);
+
+    // ① البيانات الوصفية: ما يقرؤه fetch_meta.
+    if has("--dump-single-json") {
+        print!("{{\"id\":\"faketest1\",\"title\":\"Fake\"}}");
+        let _ = std::io::stdout().flush();
+        return;
+    }
+
+    // مجلد الخرج من قالب `-o` (وسيط إنتاجي، لا وسيط اختبار).
+    let mut tmpl: Option<String> = None;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if a == "-o" {
+            tmpl = it.next().cloned();
+        }
+    }
+    let dir = tmpl
+        .as_deref()
+        .and_then(|t| std::path::Path::new(t).parent().map(|p| p.to_path_buf()));
+
+    // **محاكاة `--quiet` المقيسة في yt-dlp**: `--print` يعني `--quiet`، فلا
+    // أسطر تقدّم أصلاً. فالمزيّف يحاكيها: لا يُخرج `[download]` إلا مع
+    // `--no-quiet` — فيصير غياب العلم عطلاً يراه الحارس لا نصّاً يُقرأ.
+    let quiet = !has("--no-quiet");
+    let progress = |label: &str| {
+        if !quiet {
+            println!("[download]  {:>5.1}% of ~1.00MiB {label}", 5.0);
+            let _ = std::io::stdout().flush();
+        }
+    };
+
+    // اسم مجلد الثنائي يقرّر الصورة: عملية واحدة أم مُشغّل+عامل.
+    let two_proc = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .and_then(|d| d.file_name().map(|n| n.to_string_lossy().contains("twoproc")))
+        .unwrap_or(false);
+
+    // ② **العامل** في الصورة ذات العمليتين: يسجّل معرّفه وينام (يمسك الأنبوب
+    //    الموروث من مُشغّله — ولهذا تبقى المهمّة معلّقة إن نجا).
+    if has("--hl-worker") {
+        if let Some(d) = dir.as_ref() {
+            let _ = std::fs::write(d.join("worker.pid"), std::process::id().to_string());
+        }
+        for i in 1..=3 {
+            progress(&format!("step {i}"));
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        std::thread::sleep(std::time::Duration::from_secs(600));
+        return;
+    }
+
+    // ③ **المُشغّل** في الصورة ذات العمليتين: يُنشئ العامل ثم **يخرج فوراً**
+    //    (لا ينتظره) — فيبقى العامل حيّاً بعد موت مُشغّله، وهو العطل المقيس.
+    if two_proc {
+        if let Some(d) = dir.as_ref() {
+            let _ = std::fs::write(d.join("launcher.pid"), std::process::id().to_string());
+        }
+        // مهلة قصيرة **تحاكي زمن بثّ yt-dlp نفسه** (مقيس ≥٢٠٠ مللي)، وفيها
+        // يُسند المنفذ الطفل إلى مهمّة النواة قبل أن يُنشئ عامله.
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        if let Ok(exe) = std::env::current_exe() {
+            let mut c = std::process::Command::new(exe);
+            c.args(std::env::args().skip(1)).arg("--hl-worker");
+            c.stdin(std::process::Stdio::null());
+            let _ = c.spawn();
+        }
+        return;
+    }
+
+    // ④ الصورة المبسّطة: العملية نفسها هي التي تنزّل.
+    if let Some(d) = dir.as_ref() {
+        let _ = std::fs::write(d.join("fake.pid"), std::process::id().to_string());
+    }
+    for i in 1..=3 {
+        progress(&format!("step {i}"));
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+    std::thread::sleep(std::time::Duration::from_secs(600));
+}
+"#;
+
+    /// هل العملية بهذا المعرّف حيّة الآن؟ بنفس البدائية التي يستعملها
+    /// [`crate::proc::ChildHandle`] (`WaitForSingleObject` على مقبض مفتوح) —
+    /// فالحكم على العملية نفسها لا على اسم ولا على ملف.
+    #[cfg(windows)]
+    fn pid_is_alive(pid: u32) -> bool {
+        use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, WAIT_TIMEOUT};
+        use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject};
+        const SYNCHRONIZE: u32 = 0x0010_0000;
+        unsafe {
+            let h: HANDLE = OpenProcess(SYNCHRONIZE, 0, pid);
+            if h.is_null() {
+                return false; // لا مقبض ⇒ لا عملية (أو انتهت)
+            }
+            let alive = WaitForSingleObject(h, 0) == WAIT_TIMEOUT;
+            CloseHandle(h);
+            alive
+        }
+    }
+
+    /// مسار `rustc` — يُبنى به الثنائي المزيّف. `None` ⇒ الحارس **يفشل بصوت
+    /// عالٍ** ولا يتخطّى صامتاً (حارس يتخطّى نفسه ليس حارساً).
+    #[cfg(windows)]
+    fn find_rustc() -> Option<PathBuf> {
+        let mut cands: Vec<PathBuf> = Vec::new();
+        if let Ok(cargo) = std::env::var("CARGO") {
+            if let Some(dir) = Path::new(&cargo).parent() {
+                cands.push(dir.join("rustc.exe"));
+            }
+        }
+        if let Ok(ch) = std::env::var("CARGO_HOME") {
+            cands.push(Path::new(&ch).join("bin").join("rustc.exe"));
+        }
+        for key in ["USERPROFILE", "HOME"] {
+            if let Ok(h) = std::env::var(key) {
+                cands.push(Path::new(&h).join(".cargo").join("bin").join("rustc.exe"));
+            }
+        }
+        if let Some(found) = cands.into_iter().find(|c| c.is_file()) {
+            return Some(found);
+        }
+        // آخر ما يُجرَّب: `PATH` نفسه.
+        let ok = Command::new("rustc")
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        ok.then(|| PathBuf::from("rustc"))
+    }
+
+    /// **يقتل العملية عند سقوط الاختبار** — فلا يتسرّب عامل نائم ٦٠٠ ث إذا
+    /// سقط الحارس (والسقوط هو الحالة التي نريد قياسها، فلا نُلوّث الجهاز بها).
+    #[cfg(windows)]
+    struct KillOnDrop(u32);
+
+    #[cfg(windows)]
+    impl Drop for KillOnDrop {
+        fn drop(&mut self) {
+            if self.0 != 0 {
+                crate::proc::kill_tree(self.0);
+            }
+        }
+    }
+
+    /// قياس واحد لدورة إلغاء في **مسار التنزيل الإنتاجي**.
+    #[cfg(windows)]
+    struct CancelProbe {
+        /// العملية التي نراقب موتها (العاملة في صورة العمليتين).
+        watched: u32,
+        /// كم مقبضاً حيّاً وجده القتل المباشر (`proc::DIRECT_KILLS`).
+        direct: usize,
+        /// زمن انتهاء المهمّة من لحظة طلب الإلغاء.
+        ended: std::time::Duration,
+        /// هل عادت `download_media` بخطأ (لا نجاح كاذب)؟
+        failed: bool,
+        /// كم مرّة نودي نداء التقدّم (`progress`) — يقيس أن yt-dlp **يتكلّم**:
+        /// بصدفه الفارغة (‏`--print` يعني `--quiet`) يبقى صفراً، فتبقى رسالة
+        /// الحالة عند 0% ويفقد حارس الجمود إشارته.
+        progress_calls: usize,
+    }
+
+    /// **دورة إلغاء كاملة على مسار المنتج**: ثنائي مزيّف ⇒ `download_media`
+    /// ⇒ إلغاء (من السِجلّ كما يفعل تلغرام/`/kill`، أو بالعلم وحده كما تفعل
+    /// الواجهة) ⇒ قياس.
+    ///
+    /// `with_ctx=false` يحاكي **مسار الواجهة**: `lib.rs::download_media_cmd`
+    /// ينادي `download_media` على خيط `spawn_blocking` **بلا `register_early`**
+    /// (لا سياق مهمّة ⇒ لا تسجيل)، وإلغاؤه ضبطُ علم الإلغاء وحده.
+    #[cfg(windows)]
+    fn cancel_probe(fake: &Path, tag: &str, with_ctx: bool) -> CancelProbe {
+        use std::sync::atomic::Ordering;
+        use std::time::{Duration, Instant};
+
+        let tmp = std::env::temp_dir().join(format!("hl_ytdlp_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("مجلد القياس");
+        let out_dir = tmp.join("out");
+        std::fs::create_dir_all(&out_dir).expect("مجلد الخرج");
+
+        // المنفذ الوحيد: **مسار الثنائي** — وكل ما بعده كود المنتج.
+        *ytdlp_test_override().lock().unwrap_or_else(|p| p.into_inner()) = Some(fake.to_path_buf());
+
+        let (tx_id, rx_id) = std::sync::mpsc::channel::<u64>();
+        let (tx_done, rx_done) = std::sync::mpsc::channel::<()>();
+        let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag_in = flag.clone();
+        let progress_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let progress_in = progress_calls.clone();
+        let worker_out = out_dir.clone();
+        let worker = std::thread::spawn(move || {
+            // التسجيل **على خيط المهمّة** (كما يفعل تلغرام/الجسر) حين نطلب
+            // ذلك؛ ومسار الواجهة لا يسجّل شيئاً (لا سياق على خيطه).
+            let early = with_ctx.then(|| crate::slots::register_early("telegram:cancel-probe", None));
+            let _ = tx_id.send(early.as_ref().map(|e| e.id()).unwrap_or(0));
+            let cancel = match early.as_ref() {
+                Some(e) => e.cancel_flag(),
+                None => flag_in,
+            };
+            let dl = |_p: f32| {
+                progress_in.fetch_add(1, Ordering::SeqCst);
+                true
+            };
+            let r = download_media(
+                "https://www.youtube.com/watch?v=faketest1",
+                &worker_out,
+                &dl,
+                &cancel,
+            );
+            let _ = tx_done.send(());
+            r.is_err()
+        });
+        let job_id = rx_id
+            .recv_timeout(Duration::from_secs(120))
+            .expect("معرّف المهمّة");
+
+        // انتظر دخول مرحلة التنزيل فعلاً: العاملة تسجّل معرّفها، والمُشغّل كذلك.
+        let watched_file = out_dir.join("worker.pid");
+        let single_file = out_dir.join("fake.pid");
+        let wait_by = Instant::now() + Duration::from_secs(120);
+        while !watched_file.is_file() && !single_file.is_file() && Instant::now() < wait_by {
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let pid_file = if watched_file.is_file() {
+            watched_file
+        } else {
+            single_file
+        };
+        assert!(
+            pid_file.is_file(),
+            "المزيّف لم يبدأ التنزيل خلال ١٢٠ ث — القياس باطل (لا مهمّة جارية في التنزيل)"
+        );
+        let watched: u32 = std::fs::read_to_string(&pid_file)
+            .unwrap_or_default()
+            .trim()
+            .parse()
+            .expect("معرّف المزيّف");
+        let _cleanup = KillOnDrop(watched);
+        assert!(pid_is_alive(watched), "المزيّف يجب أن يكون حيّاً قبل الإلغاء");
+
+        // الإلغاء: من السِجلّ (تلغرام/`/kill`) أو بالعلم (الواجهة).
+        let before = crate::proc::DIRECT_KILLS.load(Ordering::SeqCst);
+        let t_cancel = Instant::now();
+        if with_ctx {
+            assert!(crate::slots::cancel_job(job_id), "cancel_job على مهمّة جارية");
+        } else {
+            flag.store(true, Ordering::SeqCst);
+        }
+        let direct = crate::proc::DIRECT_KILLS.load(Ordering::SeqCst) - before;
+
+        // المهمّة تنتهي (وهذا **قلب العطل**: بلا قتل تبقى معلّقة على الأنبوب).
+        rx_done.recv_timeout(Duration::from_secs(60)).expect(
+            "المهمّة لم تنتهِ بعد الإلغاء (العطل الأصلي: تنتظر خروج yt-dlp إلى الأبد)",
+        );
+        let ended = t_cancel.elapsed();
+        let failed = worker.join().expect("خيط المهمّة");
+
+        // الحكم على العملية: موت فعلي في مهلة.
+        let dead_by = Instant::now() + Duration::from_secs(10);
+        while pid_is_alive(watched) && Instant::now() < dead_by {
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let probe = CancelProbe {
+            watched,
+            direct,
+            ended,
+            failed,
+            progress_calls: progress_calls.load(Ordering::SeqCst),
+        };
+        eprintln!(
+            "م٣/إلغاء التنزيل [{tag}]: المراقَب pid={} حيّ بعد الإلغاء: {} · قتل مباشر: {} مقبضاً · \
+             زمن انتهاء المهمّة: {:?} · نداءات التقدّم: {}",
+            probe.watched,
+            pid_is_alive(probe.watched),
+            probe.direct,
+            probe.ended,
+            probe.progress_calls
+        );
+        *ytdlp_test_override().lock().unwrap_or_else(|p| p.into_inner()) = None;
+        let _ = std::fs::remove_dir_all(&tmp);
+        probe
+    }
+
+    /// يبني الثنائي المزيّف **مرّة** وينسخه إلى مجلدين: صورة عملية واحدة،
+    /// وصورة العمليتين (اسم المجلد هو الذي يختار الصورة).
+    #[cfg(windows)]
+    fn build_fake_ytdlp(root: &Path) -> (PathBuf, PathBuf) {
+        let rustc = find_rustc().expect(
+            "rustc غير موجود — لا يُبنى الثنائي المزيّف. الحارس يفشل بصوت عالٍ ولا يتخطّى صامتاً",
+        );
+        std::fs::create_dir_all(root).expect("مجلد البناء");
+        let src = root.join("fake_ytdlp.rs");
+        std::fs::write(&src, FAKE_YTDLP_SRC).expect("كتابة مصدر المزيّف");
+        let built_exe = root.join(ASSET_NAME);
+        let built = Command::new(&rustc)
+            .arg("--edition=2021")
+            .arg("-A")
+            .arg("warnings")
+            .arg("-o")
+            .arg(&built_exe)
+            .arg(&src)
+            .status()
+            .expect("تشغيل rustc");
+        assert!(built.success(), "بناء الثنائي المزيّف فشل ({built})");
+        let mut out = Vec::new();
+        for name in ["single", "twoproc"] {
+            let dir = root.join(name);
+            std::fs::create_dir_all(&dir).expect("مجلد الصورة");
+            let dest = dir.join(ASSET_NAME);
+            std::fs::copy(&built_exe, &dest).expect("نسخ الثنائي المزيّف");
+            out.push(dest);
+        }
+        (out[0].clone(), out[1].clone())
+    }
+
+    /// **قياس زمن الإلغاء في مسار التنزيل الإنتاجي** — بالثواني.
+    ///
+    /// **لمن**: حارس نصّ الإلغاء في `telegram.rs`
+    /// (`the_prepare_phase_cancel_reply_carries_a_measured_number`) ينادي هذه
+    /// لا أداةً نائمة خارج المسار — وهو **إعادة بناء الحارس** بعد أن قِيس أن
+    /// القديم شغّل `ping` (‏المسار المسجَّل) بينما yt-dlp كان يسلك مساراً آخر.
+    ///
+    /// **ولا يأخذ `registry_test_lock`**: مستدعيه يملكه (‏Mutex غير تراكبي).
+    #[cfg(windows)]
+    pub(crate) fn measure_download_cancel_secs() -> f64 {
+        let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
+        let (single, _two) = build_fake_ytdlp(&root);
+        let probe = cancel_probe(&single, "measure", true);
+        assert!(
+            !pid_is_alive(probe.watched),
+            "القياس باطل: العملية المزيّفة لم تمت (pid={})",
+            probe.watched
+        );
+        assert!(probe.failed, "الإلغاء عاد نجاحاً كاذباً");
+        probe.ended.as_secs_f64()
+    }
+
+    /// **حارس مسار التنزيل (١): الإلغاء يقتل yt-dlp فعلاً — بقياس على العملية.**
+    ///
+    /// **العطل (م٣/إصلاح٢، مُثبَت حيّاً بمدقّق مستقلّ)**: `download_media` كانت
+    /// تُشغّل yt-dlp بـ`Command::spawn()` مباشرةً ⇒ الطفل **لا يُسجَّل** في
+    /// `ctx.children` فيجد `proc::kill_children` صفراً، وحارسها الداخلي
+    /// (`ytdlp-cancel-watch`) يقتل **مرّة واحدة ثم `break`** ⇒ بقيت `yt-dlp`
+    /// حيّة والمهمّة بلا نهاية (قِيس: `/status` بعد ١٤٣ ث «▶ يعمل الآن… طُلب
+    /// إلغاؤها»، والسجلّ «قُتلت 0 عملية فرعية حيّة»).
+    ///
+    /// **ولماذا هذا الحارس يرى العطل والقديم لا يراه**: القديم شغّل `ping` عبر
+    /// `proc::run_cancellable` — وهو **المسار المسجَّل المُستطلَع** — بينما
+    /// yt-dlp يسلك مساراً آخر. فهذا الحارس **يسلك مسار المنتج**: يبني ثنائياً
+    /// مزيّفاً بدور yt-dlp، ثم ينادي **`download_media` نفسها**، ثم يُلغي **من
+    /// السِجلّ** (`slots::cancel_job` — نفس ما يفعله زرّ تلغرام و`/kill`).
+    ///
+    /// **وما يُثبته بأربعة قيود**:
+    /// (أ) العملية المزيّفة **ماتت فعلاً** بمعرّفها (`WaitForSingleObject`)،
+    /// (ب) والقتل المباشر **وجد مقبضاً مسجَّلاً** (`proc::DIRECT_KILLS` يزيد) —
+    ///     وهذا هو القيد الذي **يسقط بإسقاط التسجيل**،
+    /// (ج) والمهمّة **انتهت** في زمن محدود،
+    /// (د) والنتيجة **ليست نجاحاً** (إلغاء لا نجاة).
+    #[cfg(windows)]
+    #[test]
+    fn a_cancelled_url_download_really_kills_ytdlp() {
+        use std::time::Duration;
+        let _reg = crate::slots::registry_test_lock();
+        let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
+        let (single, _two) = build_fake_ytdlp(&root);
+
+        let probe = cancel_probe(&single, "single", true);
+        assert!(
+            !pid_is_alive(probe.watched),
+            "yt-dlp ما زال حيّاً (pid={}) بعد الإلغاء — العطل الأصلي بعينه",
+            probe.watched
+        );
+        assert!(
+            probe.direct >= 1,
+            "القتل المباشر لم يجد مقبضاً مسجَّلاً (قتل {}) — الطفل غير مسجَّل في سياق المهمّة",
+            probe.direct
+        );
+        assert!(
+            probe.ended < Duration::from_secs(20),
+            "المهمّة لم تنتهِ في زمن الإلغاء: {:?}",
+            probe.ended
+        );
+        assert!(probe.failed, "الإلغاء عاد نجاحاً كاذباً");
+        // **حارس التقدّم**: المزيّف يحاكي `--quiet` المقيسة في yt-dlp (`--print`
+        // يعنيها) فلا يُخرج `[download]` إلا مع `--no-quiet`؛ فسقوط العلم يُصفّر
+        // هذا العدّ ⇒ رسالة حالة واقفة عند 0% وحارس جمود أعمى.
+        assert!(
+            probe.progress_calls > 0,
+            "لا نداء تقدّم واحد: yt-dlp يبقى صامتاً (‏`--print` يعني `--quiet`) — \
+             الحالة تبقى 0% وحارس الجمود لا يرى مخرجاً"
+        );
+    }
+
+    /// **حارس مسار التنزيل (٢): عاملٌ يبقى حيّاً بعد موت مُشغّله.**
+    ///
+    /// **وهذا هو العطل المقيس على الأداة الحقيقية**: `yt-dlp.exe` **عمليّتان**
+    /// (مُشغّل ← عامل)، و`taskkill /T /F /PID <المُشغّل>` يقتل الشجرة **التي
+    /// يراها في لحظتها**: قِيس على هذه الآلة أن قتلاً بعد **٢٠٠ مللي** من
+    /// الإطلاق يترك العامل حيّاً في **١ من ٤** تشغيلات (وصفر من ٤ عند ١٢٠ و٣٠٠
+    /// و٩٠٠ مللي). والعامل الناجي يمسك الأنبوب الموروث فيبقى قارئ المهمّة
+    /// محجوباً **بلا نهاية** — وهو ما رصده المدقّق حيّاً بعد ١٤٣ ث.
+    ///
+    /// والحارس يثبّت تلك الصورة **حتميّاً** لا بالسباق: المُشغّل يخرج فوراً بعد
+    /// إنشاء عامله، فالطفل المسجَّل ميت والعامل حيّ — فمُطاردة الشجرة بمعرّف
+    /// أبيه لا تُدركه، ولا يُدركه إلا **وعاء النواة** (مهمّة الـJob).
+    ///
+    /// (مُفسَد محروس: إسقاط الـJob من [`crate::proc::ChildHandle`] ⇒ يبقى العامل
+    /// حيّاً ولا تنتهي المهمّة ⇒ يسقط هذا الاختبار.)
+    #[cfg(windows)]
+    #[test]
+    fn a_cancelled_url_download_kills_the_worker_that_outlives_its_launcher() {
+        use std::time::Duration;
+        let _reg = crate::slots::registry_test_lock();
+        let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
+        let (_single, two) = build_fake_ytdlp(&root);
+
+        let probe = cancel_probe(&two, "twoproc", true);
+        assert!(
+            !pid_is_alive(probe.watched),
+            "عامل yt-dlp الناجي من موت مُشغّله ما زال حيّاً (pid={}) — نافذة الفلتان مفتوحة",
+            probe.watched
+        );
+        assert!(
+            probe.ended < Duration::from_secs(20),
+            "المهمّة لم تنتهِ بعد الإلغاء: {:?} — العامل الناجي يمسك الأنبوب",
+            probe.ended
+        );
+        assert!(probe.failed, "الإلغاء عاد نجاحاً كاذباً");
+    }
+
+    /// **حارس مسار التنزيل (٣): مسار الواجهة — بلا سياق مهمّة، والعلم وحده.**
+    ///
+    /// `lib.rs::download_media_cmd` ينادي `download_media` على خيط
+    /// `spawn_blocking` **بلا `slots::register_early`** ⇒ لا سياق ⇒
+    /// `register_child` يعيد صفراً ولا يجد `cancel_job` ما يقتله، وإلغاء
+    /// الواجهة **ضبطُ علم** (`state.cancel_flag`) لا نداء سِجلّ.
+    ///
+    /// فهذا الحارس يفصل **الحارس الداخلي** عن التسجيل: هو وحده من يقتل هنا.
+    /// ومع صورة العمليتين (مُشغّل يخرج وعامل يبقى) لا يكفي حارسٌ ينصرف عند موت
+    /// الطفل المباشر — وهو ما كان يقع.
+    ///
+    /// (مُفسَد محروس: إعادة الانصراف عند موت الطفل المباشر، أو إسقاط القتل بعد
+    /// موته ⇒ يبقى العامل حيّاً ولا تنتهي المهمّة ⇒ يسقط هذا الاختبار.)
+    #[cfg(windows)]
+    #[test]
+    fn the_gui_path_cancel_kills_ytdlp_without_any_job_context() {
+        use std::time::Duration;
+        let _reg = crate::slots::registry_test_lock();
+        let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
+        let (_single, two) = build_fake_ytdlp(&root);
+
+        let probe = cancel_probe(&two, "twoproc_nogui", false);
+        assert_eq!(
+            probe.direct, 0,
+            "مسار الواجهة لا يمرّ بـcancel_job — فتسجيل مقبض هنا يعني أن القياس ليس قياسه"
+        );
+        assert!(
+            !pid_is_alive(probe.watched),
+            "عامل yt-dlp ما زال حيّاً (pid={}) — الحارس الداخلي وحده كان يجب أن يقتله",
+            probe.watched
+        );
+        assert!(
+            probe.ended < Duration::from_secs(20),
+            "المهمّة لم تنتهِ بعد إلغاء الواجهة: {:?}",
+            probe.ended
+        );
+        assert!(probe.failed, "الإلغاء عاد نجاحاً كاذباً");
+    }
+
+    /// أبناء `yt-dlp.exe` الأحياء الآن (بالاسم — جرد حقيقي لا استنتاج).
+    #[cfg(windows)]
+    fn ytdlp_pids() -> Vec<u32> {
+        let out = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                "(Get-Process yt-dlp -ErrorAction SilentlyContinue).Id",
+            ])
+            .output();
+        match out {
+            Ok(o) => String::from_utf8_lossy(&o.stdout)
+                .split_whitespace()
+                .filter_map(|t| t.parse::<u32>().ok())
+                .collect(),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// **معايرة الرقم: زمن الإلغاء الحقيقي في مرحلة التنزيل — على الأداة
+    /// الحقيقية وشبكة حقيقية.**
+    ///
+    /// **لماذا معزول (`#[ignore]`)**: يحتاج شبكة، فلا يصلح بوابةً تمرّ في CI.
+    /// ويُشغَّل صراحةً بـ:
+    /// `cargo test --lib live_cancel -- --ignored --nocapture --test-threads=1`
+    ///
+    /// **وما يقيسه**: مهمّة رابط **جارية فعلاً في التنزيل** (شاهدها: عملية
+    /// `yt-dlp.exe` حيّة، وأول سطر تقدّم وصل) ⇒ إلغاء من السِجلّ
+    /// (`slots::cancel_job` — نفس مسار زرّ تلغرام و`/kill`) ⇒ **زمن انتهاء
+    /// المهمّة**، و**جرد** العمليات بعدها.
+    ///
+    /// **وحارس على القياس نفسه**: إن لم تكن `yt-dlp` حيّة قبل الإلغاء فالقياس
+    /// باطل (لعلّه خرج بخطأ شبكة — وهي العلّة التي أبطلت الرقم السابق ٣.٦ ث:
+    /// قِيس أنه كان **خروجاً طبيعياً** لا قتلاً).
+    #[cfg(windows)]
+    #[ignore = "يحتاج شبكة: تنزيل حقيقي من يوتيوب"]
+    #[test]
+    fn live_cancel_during_a_real_download_measures_the_true_kill_time() {
+        use std::sync::atomic::Ordering;
+        use std::time::{Duration, Instant};
+
+        let _reg = crate::slots::registry_test_lock();
+        let real = resolve_ytdlp().expect("yt-dlp حقيقي (‏../bin/yt-dlp.exe من src-tauri)");
+        assert!(
+            !real.to_string_lossy().contains("hl_ytdlp"),
+            "الثنائي المُقاس هو الحقيقي لا المزيّف: {}",
+            real.display()
+        );
+        let tmp = std::env::temp_dir().join(format!("hl_live_cancel_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("مجلد القياس");
+        let out_dir = tmp.join("out");
+        std::fs::create_dir_all(&out_dir).expect("مجلد الخرج");
+
+        let (tx_id, rx_id) = std::sync::mpsc::channel::<u64>();
+        // يُرسل عند **أول سطر تقدّم** (أي: التنزيل جارٍ فعلاً).
+        let (tx_started, rx_started) = std::sync::mpsc::channel::<()>();
+        let (tx_done, rx_done) = std::sync::mpsc::channel::<String>();
+        let worker_out = out_dir.clone();
+        let worker = std::thread::spawn(move || {
+            let early = crate::slots::register_early("telegram:live-cancel", None);
+            let _ = tx_id.send(early.id());
+            let cancel = early.cancel_flag();
+            let announced = std::sync::atomic::AtomicBool::new(false);
+            let dl = |p: f32| {
+                // أي سطر تقدّم = التنزيل بدأ فعلاً (أول سطر يقول 0.0%).
+                if !announced.swap(true, Ordering::SeqCst) {
+                    let _ = tx_started.send(());
+                }
+                let _ = p;
+                true
+            };
+            let r = download_media(
+                "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                &worker_out,
+                &dl,
+                &cancel,
+            );
+            let _ = tx_done.send(match &r {
+                Ok(p) => format!("نجح: {}", p.display()),
+                Err(e) => format!("{e}"),
+            });
+            r
+        });
+        let job_id = rx_id
+            .recv_timeout(Duration::from_secs(180))
+            .expect("معرّف المهمّة");
+
+        if rx_started.recv_timeout(Duration::from_secs(300)).is_err() {
+            let why = rx_done
+                .recv_timeout(Duration::from_secs(30))
+                .unwrap_or_else(|_| "(لا نتيجة)".into());
+            panic!("التنزيل لم يبدأ خلال ٥ دقائق — القياس باطل. نتيجة download_media: {why}");
+        }
+        let before = ytdlp_pids();
+        assert!(
+            !before.is_empty(),
+            "لا عملية yt-dlp حيّة قبل الإلغاء — القياس باطل (لعله خرج بخطأ شبكة: وهو ما أبطل الرقم ٣.٦ ث)"
+        );
+
+        let t0 = Instant::now();
+        assert!(crate::slots::cancel_job(job_id), "cancel_job على مهمّة جارية");
+        let killed_at_cancel = ytdlp_pids();
+        let outcome = rx_done
+            .recv_timeout(Duration::from_secs(120))
+            .expect("المهمّة لم تنتهِ بعد الإلغاء");
+        let measured = t0.elapsed();
+        let _ = worker.join();
+        // الجرد بعد الانتهاء: لا yt-dlp من هذه العمليّة.
+        let mut after = ytdlp_pids();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !after.is_empty() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+            after = ytdlp_pids();
+        }
+        eprintln!(
+            "م٣/قياس حيّ: yt-dlp قبل الإلغاء {before:?} · عند عودة cancel_job {killed_at_cancel:?} · \
+             بعد الانتهاء {after:?} · الزمن المقيس من طلب الإلغاء إلى انتهاء المهمّة: {measured:?} \
+             ({:.0} مللي) · نتيجة المهمّة: {outcome}",
+            measured.as_secs_f64() * 1000.0
+        );
+        assert!(
+            after.is_empty(),
+            "بقيت عمليات yt-dlp حيّة بعد الإلغاء: {after:?} — العطل الأصلي بعينه"
+        );
+        // **والرقم المعلن في نصّ البوت يغطّي هذا القياس الحقيقي** (وهو مرجعه).
+        assert!(
+            measured.as_secs_f64() <= crate::telegram::CANCEL_PREPARE_WORST_SECS,
+            "القياس الحيّ {measured:?} تجاوز الرقم المعلَن {} ث",
+            crate::telegram::CANCEL_PREPARE_WORST_SECS
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }
