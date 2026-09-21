@@ -363,6 +363,14 @@ fn spawn_and_wait(
 }
 
 /// الحلقة الواحدة: تسجيل ⇒ استطلاع ⇒ (قتل) ⇒ حصاد ⇒ مخرجات.
+///
+/// **ومساران للإلغاء لا مسار واحد** — وهذا مُفسَدٌ كشفه القياس لا تصميم نظري:
+/// * الحلقة تقرأ الرمز فتقتل (**وإلا لانتظر الملف حتى نهايته** — مُفسَد ب)،
+/// * و`cancel_job` يقتل مباشرةً في لحظة الطلب (**وإلا لبقي المُدمِج حيّاً**
+///   حين يقتل الرمزُ الحلقةَ قبل أن تصل إليها — مُفسَد د).
+///   وحين يسبق القتلُ المباشر الحلقة، يصل الطفل مقتولاً بـ`Ok(Some(_))` ورمز
+///   الإلغاء مضبوط ⇒ **يُقرأ إلغاءً لا فشلاً**، وإلا صار المُدمِج المقتول
+///   «خطأ أداة» كاذباً (وهو ما رصده مُفسَد د حرفياً).
 fn wait_child(mut child: Child, cancel: Option<&CancelToken>) -> Result<ToolOutput, String> {
     let pid = register_phase(&child);
     let out_thread = child.stdout.take().map(drain);
@@ -370,7 +378,13 @@ fn wait_child(mut child: Child, cancel: Option<&CancelToken>) -> Result<ToolOutp
     let mut killed = false;
     let status = loop {
         match child.try_wait() {
-            Ok(Some(st)) => break st,
+            Ok(Some(st)) => {
+                // قُتل من `cancel_job` (أو من خارجنا) والرمز مضبوط ⇒ إلغاء.
+                if cancel.map(|c| c.is_cancelled()).unwrap_or(false) {
+                    killed = true;
+                }
+                break st;
+            }
             Ok(None) => {}
             Err(e) => {
                 // مقبض فسد (نادر): لا نُيتّم الطفل — نقتل شجرته ثم نُبلّغ.
