@@ -29,7 +29,7 @@ vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) })
 
 vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
 
-import { wireTelegram } from '../integration';
+import { identityVerdict, wireTelegram } from '../integration';
 import { i18n } from '../i18n';
 
 function mountApp(): void {
@@ -40,8 +40,18 @@ const note = (): HTMLElement => document.getElementById('tg-identity-note') as H
 const cmdNote = (): HTMLElement => document.getElementById('tg-commands-note') as HTMLElement;
 const statsBody = (): HTMLElement => document.getElementById('tg-stats-body') as HTMLElement;
 
-/** حالة تلغرام بشكلها المدموج (`telegram.rs:2464`). */
-function status(identity: { applied: boolean; name: string; error: string }): unknown {
+/** حالة تلغرام بشكلها المدموج (`telegram.rs` · `identity_payload`).
+ *  والحقول الجديدة (`target_name` · `matches` · `photo_applied`) اختيارية هنا
+ *  لأن الردود الأقدم لا تحملها — والواجهة يجب أن تحتمل غيابها. */
+function status(identity: {
+  applied: boolean;
+  name: string;
+  error?: string;
+  target_name?: string;
+  matches?: boolean | null;
+  photo_applied?: boolean;
+  verified_secs_ago?: number | null;
+}): unknown {
   return { running: true, last_error: '', last_activity: '', processed: 0, queue: 0,
     paired_id: 7, pairing_code_active: false, identity };
 }
@@ -269,5 +279,96 @@ describe('م٥ · الترميز والترجمة', () => {
     expect(hint).toContain('@BotFather');
     expect(hint).toContain('وحده');
     expect(hint).not.toMatch(/يُغيَّر المعرّف|تغيير المعرّف/);
+  });
+
+  it('ولا يَعِد بعكسٍ للصورة لا وجود له (قِيس حيّاً على الـAPI)', () => {
+    // خرج القبول الحيّ: `revert: {"applied":false,"photo_bytes":0,"name":"Haramlite"}`
+    // ⇒ الاسم يُعاد، والصورة **تُزال ولا تُعاد** (لا `getMyProfilePhoto` في الـAPI).
+    const ar = i18n.ar.tg_identity_hint;
+    const en = i18n.en.tg_identity_hint;
+    expect(ar, 'الصورة تُزال ولا تُعاد').toContain('ولا تُعاد');
+    expect(ar).toContain('الاسم يُعاد');
+    expect(ar).toContain('@BotFather');
+    expect(en).toContain('not restored');
+    expect(en).toContain('@BotFather');
+    // ولا وعداً بإطلاق العكس بعد اليوم.
+    expect(ar, 'وعد بعكس الصورة').not.toContain('وقابل للعكس');
+    expect(en).not.toContain('reversible');
+  });
+});
+
+/* ── ٦) الحالات الدقيقة: الحيّ مقابل الهدف، والنصف، واللاتش ─────────────────
+ * النواة تفصل `name` (الحيّ كما قاله الخادم) عن `target_name` (ما نريده)،
+ * وتُعطي `matches` (`false` = مختلف · **`null` = لم تُقابَل** — والفرق جوهري)
+ * و`photo_applied` (يفترق عن `applied` عند فشلٍ جزئي). والحمولات هنا **مصنوعة
+ * من قراءة الشيفرة** (`telegram.rs` · `identity_payload`) لا من نداء حقيقي. */
+describe('م٥ · الحالات الدقيقة للهوية', () => {
+  it('الحكم دالّة نقيّة: خمس حالات مفصولة', () => {
+    const base = { applied: true, photo_applied: true, name: 'HaramLite', target_name: 'HaramLite' };
+    expect(identityVerdict({ ...base, matches: true }).state).toBe('on');
+    expect(identityVerdict({ ...base, matches: false }).state, 'الحيّ مخالف').toBe('mismatch');
+    expect(identityVerdict({ applied: false, photo_applied: true, name: 'Haramlite', matches: null }).state,
+      'تطبيقٌ نصفيّ').toBe('partial');
+    expect(identityVerdict({ applied: false, photo_applied: false, name: 'Haramlite', matches: null }).state).toBe('off');
+    expect(identityVerdict({ applied: false, name: '', error: 'توكن مرفوض' }).state).toBe('error');
+    // `null` ليست `false`: «لم تُقابَل» لا تُقرأ اختلافاً.
+    expect(identityVerdict({ ...base, matches: null }).state, 'null ≠ false').toBe('on');
+    // وحمولة غائبة ⇒ لا ادّعاء معرفة.
+    expect(identityVerdict(null).known).toBe(false);
+  });
+
+  it('matches:false ⇒ لا يُعرض «مطبَّق» بل الاسم الحيّ والهدف (في DOM)', async () => {
+    h.invoke.mockImplementation(async (cmd) => (cmd === 'telegram_status' ? status({
+      applied: true, photo_applied: true, name: 'MyOwnBot', target_name: 'HaramLite', matches: false,
+    }) : null));
+    await mountWired();
+
+    expect(box().checked, 'لا ادّعاء تطبيق والاسم مخالف').toBe(false);
+    const noteText = note().textContent ?? '';
+    expect(noteText, 'الحيّ مذكور').toContain('MyOwnBot');
+    expect(noteText, 'الهدف مذكور').toContain('HaramLite');
+    expect(noteText, 'لا يُقال مطبَّق').not.toContain('مطبَّق:');
+    expect(noteText).toContain('⚠');
+  });
+
+  it('applied:false مع photo_applied:true ⇒ «تطبيقٌ نصفيّ» لا «غير مطبَّق»', async () => {
+    h.invoke.mockImplementation(async (cmd) => (cmd === 'telegram_status' ? status({
+      applied: false, photo_applied: true, name: 'Haramlite', target_name: 'HaramLite', matches: null,
+    }) : null));
+    await mountWired();
+
+    expect(box().checked).toBe(false);
+    expect(note().textContent).toContain(i18n.ar.tg_identity_partial);
+    // ولا يُقال «غير مطبَّق» بإطلاقٍ بلا ذكر الصورة المعلّقة.
+    expect(note().textContent).not.toBe(i18n.ar.tg_identity_off);
+    expect(note().textContent).toContain('الصورة');
+  });
+
+  it('وضابط: matches:true ⇒ «مطبَّق» بالاسم الحيّ', async () => {
+    h.invoke.mockImplementation(async (cmd) => (cmd === 'telegram_status' ? status({
+      applied: true, photo_applied: true, name: 'HaramLite', target_name: 'HaramLite', matches: true,
+    }) : null));
+    await mountWired();
+    expect(box().checked).toBe(true);
+    expect(note().textContent).toContain('HaramLite');
+    expect(note().textContent).not.toContain('⚠');
+  });
+
+  it('وردّ التطبيق يُحكم بالحكم نفسه (نصفٌ في الردّ يُعرض نصفاً)', async () => {
+    h.invoke.mockImplementation(async (cmd) => {
+      if (cmd === 'telegram_status') return status({ applied: false, photo_applied: false, name: 'Haramlite', matches: null });
+      if (cmd === 'telegram_set_bot_identity') {
+        return { applied: false, photo_applied: true, changed: true, name: 'Haramlite', target_name: 'HaramLite', matches: null };
+      }
+      return null;
+    });
+    await mountWired();
+    box().checked = true;
+    box().dispatchEvent(new Event('change'));
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(box().checked, 'نصف التطبيق ليس تطبيقاً').toBe(false);
+    expect(note().textContent).toContain(i18n.ar.tg_identity_partial);
   });
 });

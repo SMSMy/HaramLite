@@ -128,7 +128,15 @@ const i18n = {
     // م٥: هوية البوت والأوامر والإحصاءات. والنصوص **لا تَعِد بما لم يُنفَّذ**:
     // المربّع يعرض واقع `identity.applied`، وتغيير `@…` يُذكر كحدّ.
     tg_identity: 'استخدم اسم HaramLite وصورته للبوت',
-    tg_identity_hint: 'يُغيَّر الاسم والصورة من هنا وقابل للعكس. أما معرّف البوت نفسه (@…) فمن @BotFather وحده.',
+    // صدق العكس (قِيس حيّاً على الـAPI · 2026-09-21): **الاسم يُعاد، والصورة
+    // تُزال ولا تُعاد** — لا سبيل في الـAPI لقراءة صورة البوت الحالية، فمن
+    // كانت لبوتها صورة مخصّصة يعيدها من @BotFather. وكان النصّ يقول «قابل
+    // للعكس» بإطلاقٍ فيَعِد بعكسٍ للصورة لا وجود له.
+    tg_identity_hint: 'الاسم يُعاد إلى ما كان عند الإلغاء. أما الصورة فتُزال عند الإلغاء ولا تُعاد — إذ لا سبيل لقراءة صورة البوت الحالية، فإن كانت لبوتك صورة تريدها فأعِدها من @BotFather. ومعرّف البوت نفسه (@…) لا يُغيَّر من هنا بل من @BotFather وحده.',
+    // حالات دقيقة (النواة تفصل الحيّ عن الهدف): اسمٌ على الخادم مخالفٌ لهدفنا
+    // ليس «مطبَّقاً»، وصورةٌ معلّقة بلا اسم ليست نجاحاً ولا فشلاً مطلقاً.
+    tg_identity_mismatch: '⚠ الاسم على تلغرام الآن «{live}» — والتطبيق يريد «{target}». غيّره من هنا أو اضبطه في @BotFather.',
+    tg_identity_partial: '⚠ تطبيقٌ نصفيّ: الصورة رُفعت والاسم لم يُضبط. أعد المحاولة أو اضبط الاسم من @BotFather.',
     tg_identity_working: 'جارٍ التطبيق…',
     tg_identity_on: 'مطبَّق: الاسم الآن «{name}»',
     tg_identity_off: 'غير مطبَّق: الاسم الأصلي للبوت',
@@ -424,7 +432,9 @@ const i18n = {
     tg_owner: 'Allowed user id (optional)',
     tg_audio_only: 'Always send audio only (MP3)',
     tg_identity: 'Use the HaramLite name and photo for the bot',
-    tg_identity_hint: 'The name and photo change from here and are reversible. The bot handle itself (@…) comes from @BotFather alone.',
+    tg_identity_hint: 'The name is restored to what it was when you turn this off. The photo, however, is removed and not restored — the API offers no way to read the bot\'s current photo, so if your bot had a photo you want back, set it again from @BotFather. The bot handle itself (@…) is changed from @BotFather, not here.',
+    tg_identity_mismatch: '⚠ The name on Telegram is now "{live}" — the app wants "{target}". Change it here, or set it in @BotFather.',
+    tg_identity_partial: '⚠ Partially applied: the photo was uploaded but the name was not set. Retry, or set the name from @BotFather.',
     tg_identity_working: 'Applying…',
     tg_identity_on: 'Applied: the name is now "{name}"',
     tg_identity_off: 'Not applied: the bot keeps its original name',

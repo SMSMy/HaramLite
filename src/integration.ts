@@ -230,6 +230,27 @@ export function wireExtJobs(): void {
 
 /* ── browser integration (Sprint E3: persistent checkbox) ───────────── */
 /* ── Telegram bot (Sprint T1) ───────────────────────────────────────── */
+/** م٥: هوية البوت كما تُرسلها النواة (`telegram.rs` · `identity_payload`).
+ *
+ *  والأسماء **دقيقة لا مترادفة** (وهو ما فصلته النواة بعد عطلين مقيسين):
+ *  • `applied` = **ما فعلناه** (راية القرص) — لا «الاسم مطابق الآن»؛
+ *  • `name` = الاسم **الحيّ** كما قاله الخادم (أو الهدف إن طبّقنا، وإلا السابق)؛
+ *  • `target_name` = ما تُطبِّقه الضغطة («HaramLite») — مفصولاً عن الحيّ؛
+ *  • `matches` = هل الحيّ = الهدف؟ و**`null` = لم تُقابَل بعد** (لا «لا» — والفرق
+ *    مهمّ: `null` لا يعني اختلافاً)؛
+ *  • `verified_secs_ago` = عمر المقابلة (`null` = لا مقابلة)؛
+ *  • `photo_applied` = هل صورتنا مرفوعة — **يفترق عن `applied` عند فشلٍ جزئي**. */
+interface TgIdentity {
+  applied: boolean;
+  photo_applied?: boolean;
+  name: string;
+  target_name?: string;
+  previous_name?: string;
+  /** `null` صريحة: لم تُقابَل بعد. (والحقل قد يغيب في ردود أقدم ⇒ `undefined`.) */
+  matches?: boolean | null;
+  verified_secs_ago?: number | null;
+  error?: string;
+}
 interface TgStatus {
   running: boolean;
   last_error: string;
@@ -238,18 +259,12 @@ interface TgStatus {
   queue: number;
   paired_id: number | null;
   pairing_code_active: boolean;
-  /** م٥: هوية البوت — **الواقع من القرص** (`refresh_identity_status` في الخلف)
-   *  لا نيّة الواجهة. و`error` آخر خطأ تطبيق إن وقع. */
-  identity?: { applied: boolean; name: string; error: string };
+  /** م٥: هوية البوت — **الواقع** لا نيّة الواجهة. */
+  identity?: TgIdentity;
 }
-/** م٥: عائد `telegram_set_bot_identity` عند النجاح (والفشل `Err` بنصّ عربي). */
-interface TgIdentityResult {
-  applied: boolean;
-  changed: boolean;
-  name: string;
-  previous_name?: string;
-  photo_bytes?: number;
-}
+/** م٥: عائد `telegram_set_bot_identity` عند النجاح (والفشل `Err` بنصّ عربي).
+ *  وصار بنفس حمولة `identity` (النواة تُعيد `identity_payload` في الفرعين). */
+type TgIdentityResult = TgIdentity & { changed: boolean; photo_bytes?: number };
 /** م٥: عائد `telegram_set_commands` عند النجاح. */
 interface TgCommandsResult {
   commands: number;
@@ -269,6 +284,39 @@ interface TgPairCode {
   expires_in_secs: number;
   fails_left: number;
   paired: boolean;
+}
+
+/** **حكم الهوية** — دالّة **نقيّة** (حمولة ⟶ حالة عرض) فتُقاس بلا DOM ولا IPC.
+ *
+ *  الغرض أن يكون للواجهة **حكم واحد** بدل شروط متناثرة، ولأن الفروق هنا دقيقة
+ *  ويخطئ فيها العرض بسهولة:
+ *   • `applied` رايتنا (ما فعلناه)، و`matches` مقابلة الاسم الحيّ بالهدف؛
+ *     فرايةٌ مرفوعة **واسمٌ على الخادم غيره** (أُعيدت التسمية من @BotFather)
+ *     ليست «مطبَّقاً» — ولا يجوز أن تُعرض كذلك.
+ *   • `applied:false` مع `photo_applied:true` = **تطبيقٌ نصفيّ**: صورتنا مرفوعة
+ *     والاسم لم يُضبط. لا نجاح ولا فشل مطلق — ولا يُقال «غير مطبَّق» بلا ذكرها.
+ *   • و`matches:null` **ليست `false`**: «لم تُقابَل بعد» ≠ «مختلف».
+ *  والترتيب مقصود: المقابلة أوّلاً (لأنها تقول **ما على الخادم الآن**)، ثم
+ *  النصف، ثم الحالتان الصريحتان. */
+export interface IdentityVerdict {
+  state: 'error' | 'mismatch' | 'partial' | 'on' | 'off';
+  /** الاسم الحيّ كما قاله الخادم (وقد يكون فارغاً). */
+  live: string;
+  /** الهدف الذي نريده. */
+  target: string;
+  /** `false` ⇒ **لا تدّعِ معرفة** (لا يُقرأ `applied` كحكم). */
+  known: boolean;
+}
+export function identityVerdict(id: TgIdentity | null | undefined): IdentityVerdict {
+  const target = String(id?.target_name ?? 'HaramLite');
+  const live = String(id?.name ?? '');
+  if (!id) return { state: 'off', live: '', target, known: false };
+  if (id.error) return { state: 'error', live, target, known: false };
+  // المقابلة أوّلاً: `false` صريحة تعني «الاسم على الخادم ليس ما نريده»،
+  // و`null`/`undefined` تعني «لم تُقابَل» فلا تُبنى عليها أحكام.
+  if (id.matches === false) return { state: 'mismatch', live, target, known: true };
+  if (!id.applied && id.photo_applied) return { state: 'partial', live, target, known: true };
+  return { state: id.applied ? 'on' : 'off', live, target, known: true };
 }
 
 /** حجم مقروء — بالوحدات العربية كما في `tg_stats::human_size` بالخلف.
@@ -382,17 +430,37 @@ export function wireTelegram(): void {
         ? 'font-label-sm text-label-sm text-error leading-relaxed'
         : 'font-label-sm text-label-sm text-on-surface-variant leading-relaxed';
     };
-    const setBox = (applied: boolean, error: string | null, name: string): void => {
-      box.checked = applied;
-      if (error) { setNote(t('tg_identity_failed', { err: error.slice(0, 120) }), true); return; }
-      setNote(applied ? t('tg_identity_on', { name }) : t('tg_identity_off'));
+    /** يعرض حمولة الهوية بحكم `identityVerdict` — **موضع واحد** لكل الحالات.
+     *  والمربّع يتبع `applied` (ما فعلناه) في كل الحالات إلا «المختلف»
+     *  و«المجهول»: فيهما يتبع **الحيّ** لأن الراية وحدها قد تكذب. */
+    const renderIdentity = (id: TgIdentity | null | undefined): void => {
+      const v = identityVerdict(id);
+      switch (v.state) {
+        case 'error':
+          box.checked = !!id?.applied;
+          setNote(t('tg_identity_failed', { err: String(id?.error ?? '').slice(0, 120) }), true);
+          return;
+        case 'mismatch':
+          // الاسم على الخادم ليس هدفنا: **لا ندّعي التطبيق** حتى لو رُفعت رايتنا.
+          box.checked = false;
+          setNote(t('tg_identity_mismatch', { live: v.live, target: v.target }), true);
+          return;
+        case 'partial':
+          // صورتنا مرفوعة والاسم لم يُضبط ⇒ **لا نجاح ولا فشل مطلق**.
+          box.checked = false;
+          setNote(t('tg_identity_partial'), true);
+          return;
+        default:
+          box.checked = !!id?.applied;
+          setNote(id?.applied ? t('tg_identity_on', { name: v.live }) : t('tg_identity_off'));
+      }
     };
 
     // الواقع عند التركيب — من قراءة الخلف وحدها، لا من التخزين.
     void (async () => {
       try {
         const st = await invoke<TgStatus>('telegram_status');
-        setBox(!!st.identity?.applied, st.identity?.error || null, String(st.identity?.name ?? ''));
+        renderIdentity(st.identity);
       } catch {
         // لا قراءة ⇒ لا ادّعاء: المربّع مُعطَّل حتى تُعرف الحقيقة.
         box.checked = false;
@@ -411,8 +479,8 @@ export function wireTelegram(): void {
           const r = await invoke<TgIdentityResult>('telegram_set_bot_identity', { enabled: want });
           localStorage.setItem('hl.tg_identity', r.applied ? '1' : '0');
           pushSettings();
-          // **والحكم للواقع**: `applied` من الردّ، ويُعاد تأكيده من الحالة.
-          setBox(!!r.applied, null, String(r.name ?? ''));
+          // **والحكم للواقع**: الحمولة من الخلف، و`identityVerdict` تحكمها.
+          renderIdentity(r);
         } catch (e) {
           // تفاؤل كاذب ممنوع: يُعاد المربّع إلى حالته السابقة ويُعلن السبب.
           box.checked = before;
