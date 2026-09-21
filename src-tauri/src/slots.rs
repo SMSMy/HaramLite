@@ -276,12 +276,38 @@ fn now_ms() -> u128 {
         .unwrap_or(0)
 }
 
+/// **مرحلة المهمّة** كما يعرفها السِجلّ — إعلانٌ صريح لا استنتاج.
+///
+/// * [`JobPhase::Preparing`]: عمل تحضيري خارج المحرّك (تنزيل رابط، استلام ملف).
+///   أدواته (yt-dlp/ffmpeg) عمليات فرعية مسجَّلة في سياق المهمّة، فيقتلها
+///   `cancel_job` **فوراً** — فالإلغاء هنا وقفته قصيرة (أطول ما قيس ٣.٦ ث،
+///   وقارئه نصّ الإلغاء في `telegram::cancel_reply`).
+/// * [`JobPhase::Processing`]: دخلت جسم الفصل — إمّا تنتظر فتحة جهاز
+///   ([`DEFAULT_WAIT`]، والانتظار **لا يقرأ رمز الإلغاء**)، وإمّا داخل نداء
+///   محرّك (ONNX) لا يُقطع داخل العملية. فالإلغاء هنا يُهجر عند أول حدّ بعده.
+///
+/// **ولماذا إعلانٌ لا استنتاج من `path`**: المسار (`None` قبل أن يُعرف المدخل)
+/// يُثبَّت لأجل الواجهة (مطابقة عنصر الطابور بالمهمّة)، فلا يُبنى عليه نصٌّ
+/// يُقال للمستخدم. والإعلان يقع في **النواة الواحدة** ([`run_body_in`])، فلا
+/// يُنسى في مسار جديد.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum JobPhase {
+    /// تحضير: جلب المدخل. لا نداء محرّك بعد.
+    #[default]
+    Preparing,
+    /// معالجة: انتظار فتحة جهاز أو نداء محرّك.
+    Processing,
+}
+
 struct JobEntry {
     label: String,
     /// مسار الإدخال (م٢): الواجهة تُطابق عنصر الطابور بالمهمّة **عبر المسار**،
     /// و`None` لمهمّة بلا ملف (نداءات التشخيص في الاختبارات).
     path: Option<String>,
     started_ms: u128,
+    /// المرحلة المُعلَنة ([`JobPhase`]) — تصير `Processing` عند دخول
+    /// `run_body_in` ولا ترجع.
+    phase: JobPhase,
     /// **سياق المهمّة**: الرمز الذي تقرؤه حدود المراحل ونداءات الأدوات،
     /// ومقابض العمليات الفرعية الحيّة (فيقتلها `cancel_job` فوراً).
     ctx: Arc<JobCtx>,
@@ -397,6 +423,7 @@ fn register_job(label: &str, path: Option<&str>) -> JobGuard {
                 label: label.to_string(),
                 path: path.map(str::to_string),
                 started_ms,
+                phase: JobPhase::Preparing,
                 ctx: ctx.clone(),
             },
         ));
@@ -468,6 +495,53 @@ impl EarlyJob {
                 self.guard.id
             ),
         }
+    }
+
+    /// **يُعلن دخول مرحلة المعالجة** ([`JobPhase::Processing`]) ولا يرجع عنها.
+    ///
+    /// يُنادى من [`run_body_in`] — النواة الواحدة — **قبل** انتظار الفتحة، لأن
+    /// الانتظار نفسه لا يقرأ رمز الإلغاء (فالمهمّة فيه ليست في مرحلةٍ يُقتل
+    /// فيها أداة). ويعيد `false` إن كانت المهمّة قد خرجت من السِجلّ (لا مرحلة
+    /// لمهمّة منتهية).
+    pub fn mark_processing(&self) -> bool {
+        let mut jobs = registry().lock().unwrap_or_else(|p| p.into_inner());
+        match jobs.iter_mut().find(|(id, _)| *id == self.guard.id) {
+            Some((_, e)) => {
+                e.phase = JobPhase::Processing;
+                true
+            }
+            None => false,
+        }
+    }
+}
+
+/// مرحلة مهمّة بعينها، أو `None` إن لم تكن في السِجلّ (انتهت أو معرّف خاطئ) —
+/// فلا يُدَّعى أن مهمّة منتهية «في المعالجة».
+///
+/// **للاختبار وحده**: يفرّق «مسجَّلة في التحضير» من «غير مسجَّلة»، والمنتج يقرأ
+/// [`phase_of`] وحده لأن المعرّفات تأتيه من السِجلّ أصلاً (`active_jobs`).
+#[cfg(test)]
+fn job_phase(id: u64) -> Option<JobPhase> {
+    let jobs = registry().lock().unwrap_or_else(|p| p.into_inner());
+    jobs.iter()
+        .find(|(jid, _)| *jid == id)
+        .map(|(_, e)| e.phase)
+}
+
+/// المرحلة **الأشدّ** بين مهامّ بعينها: `Processing` إن كانت أيٌّ منها في
+/// المعالجة، وإلا `Preparing`.
+///
+/// الأشدّ لا المتوسّط: من يخاطِب المستخدم عن مهمّةٍ ينتظر خلاصها يجب أن يذكر
+/// أسوأ ما يمكن أن ينتظره (نداء محرّك لا يُقطع) لا أسرعه.
+pub fn phase_of(ids: &[u64]) -> JobPhase {
+    let jobs = registry().lock().unwrap_or_else(|p| p.into_inner());
+    let processing = jobs
+        .iter()
+        .any(|(jid, e)| ids.contains(jid) && e.phase == JobPhase::Processing);
+    if processing {
+        JobPhase::Processing
+    } else {
+        JobPhase::Preparing
     }
 }
 
@@ -1199,6 +1273,11 @@ fn run_body_in<T>(
 ) -> Result<T, String> {
     let token = job.token();
     let label = job.guard.label.clone();
+    // **المرحلة تُعلَن هنا — قبل انتظار الفتحة**: من هذه اللحظة قد تنتظر
+    // المهمّة فتحة جهاز (والانتظار لا يقرأ رمز الإلغاء)، ثم تدخل نداء محرّك لا
+    // يُقطع داخل العملية. فالنصّ الذي يُقال للمستخدم عن إلغائها يجب أن يكون
+    // نصّ هذه المرحلة لا نصّ التحضير (تفصيله في `JobPhase`).
+    let _ = job.mark_processing();
     // **الإعلان صادق أو لا يكون**: محاولة فورية أولاً، ولا سطر انتظار إطلاقاً
     // إن أُخذت الفتحة فوراً. وإن وقع انتظار فعلاً أُعلن **قبله** (فالانتظار كان
     // صامتاً في السجلّ: قاس المدقّق ٣٤٢ ثانية بلا أثر)، ثم يُسجَّل **زمنه
@@ -1449,6 +1528,65 @@ mod tests {
             active_jobs().iter().find(|j| j.id == id).unwrap().cancelled,
             "الحالة المعروضة تقول إن الإلغاء مطلوب"
         );
+    }
+
+    /// **المرحلة تُعلَن في النواة الواحدة** — وهي ما يبني عليه نصّ الإلغاء
+    /// حقيقته: مهمّة مُسجَّلة مبكراً تبقى `Preparing` (قتل أدواتها فوريّ ⇒
+    /// الإلغاء فيها قصير مقيس) حتى تدخل جسم الفصل فتصير `Processing` (فتحة
+    /// جهاز ينتظرها، أو نداء محرّك لا يُقطع). وبسقوط الحارس تخرج من السِجلّ
+    /// فلا مرحلة لمهمّة منتهية.
+    ///
+    /// (مُفسَد محروس: نقل الإعلان إلى ما بعد اكتساب الفتحة أو حذفه ⇒ يسقط
+    /// الفحص على `Processing` داخل الجسم.)
+    #[test]
+    fn a_job_is_preparing_until_it_enters_the_separation_body() {
+        let name = unique_name("m3-phase");
+        let early = register_early("m3-phase", None);
+        let id = early.id();
+        assert_eq!(
+            job_phase(id),
+            Some(JobPhase::Preparing),
+            "مهمّة لم تدخل الجسم بعد توصَف بالمعالجة"
+        );
+        assert_eq!(phase_of(&[id]), JobPhase::Preparing);
+        // ومعرّف لا وجود له لا يُعدّ معالجةً (لا مرحلة لمهمّة منتهية).
+        assert_eq!(job_phase(u64::MAX), None);
+        assert_eq!(phase_of(&[u64::MAX]), JobPhase::Preparing);
+
+        let inside = std::cell::Cell::new(None);
+        let out: Result<(), String> = run_body_in(early, &name, MAX_LIMIT, |_| {
+            inside.set(Some((job_phase(id), phase_of(&[id]))));
+            Ok(())
+        });
+        assert!(out.is_ok(), "الجسم سقط: {out:?}");
+        assert_eq!(
+            inside.get(),
+            Some((Some(JobPhase::Processing), JobPhase::Processing)),
+            "المرحلة لم تُعلَن عند دخول الجسم"
+        );
+        assert_eq!(job_phase(id), None, "مهمّة منتهية بقيت في السِجلّ");
+        assert_eq!(
+            phase_of(&[id]),
+            JobPhase::Preparing,
+            "معرّف منتهٍ يُقرأ معالجةً"
+        );
+    }
+
+    /// **الأشدّ لا الأخفّ**: بين مهمّتين إحداهما في المعالجة، المرحلة المعروضة
+    /// هي `Processing` — فلا يُوعَد المستخدم بوقفةٍ قصيرة وهو ينتظر نداء محرّك.
+    #[test]
+    fn the_worst_phase_wins_when_two_jobs_are_mixed() {
+        let preparing = register_early("m3-phase-prep", None);
+        let other = register_early("m3-phase-proc", None);
+        let mix = [preparing.id(), other.id()];
+        assert_eq!(phase_of(&mix), JobPhase::Preparing, "لا معالجة بعد");
+        other.mark_processing();
+        assert_eq!(phase_of(&mix), JobPhase::Processing, "الأشدّ لم يُقرأ");
+        assert_eq!(job_phase(preparing.id()), Some(JobPhase::Preparing));
+        // وبعد خروج مهمّة المعالجة يعود الحكم إلى الباقي.
+        drop(other);
+        assert_eq!(phase_of(&mix), JobPhase::Preparing);
+        drop(preparing);
     }
 
     /// والنواة: الجسم يؤدّى **داخل التسجيل القائم نفسه** (لا تسجيل ثانٍ)، والفتحة
