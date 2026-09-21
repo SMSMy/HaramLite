@@ -332,7 +332,7 @@ describe('م٢ · نصوص الحالات الجديدة في الجدولين',
 
   it('every new key of the stop bar exists in both tables', () => {
     const keys = [
-      'stop_bar_title', 'stop_count', 'stop_target_line', 'stop_button_label',
+      'stop_bar_title', 'stop_count', 'stop_target_line', 'stop_target_none', 'stop_button_label',
       'stop_button_hint', 'stop_all_button_label', 'stop_all_hint', 'stop_note_wait',
       'stop_requested', 'stop_job_gone', 'stop_local_queued', 'stop_registry_failed',
       'stop_cancel_failed', 'stop_all_result', 'stop_all_none', 'stop_all_failed',
