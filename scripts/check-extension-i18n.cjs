@@ -1,8 +1,5 @@
 #!/usr/bin/env node
-/* حارس تعريب الإضافة — node scripts/check-extension-i18n.cjs [--file <مسار>]
- *
- * الخطة: ARCHIVE/0.2.9PLAN.md §٩-أ. والمانيفست **لا يفحصه هذا الحارس** — المقيس
- * `browser-extension/content.js` وحده (كما في check-extension-sync.cjs:16).
+/* حارس تعريب الإضافة — node scripts/check-extension-i18n.cjs
  *
  * ثلاث طبقات، وكلٌّ منها تُسقط الحارس برسالة **تسمّي الملف والسطر**:
  *
@@ -20,13 +17,34 @@
  * واختيار اللغة يُقاس سلوكياً: تُستخرج `pickLang` النقية وتُختبر بمدخلات مصنوعة
  * بلا متصفّح، فيُثبت أن الاختيار مشتغل وأن غير العربية/الإنجليزية ينتهي للإنجليزية.
  *
- * **مُفسَدات هذا الحارس** بيد المستخدم في `ARCHIVE`؟ لا — بل في
- * `scripts/check-extension-i18n-mutants.cjs`، تُشغَّل في الذاكرة بلا ملفات مؤقتة،
- * ويُسجّلها `pnpm guards:selfcheck` كحالة مستقلة (ضابط + مُفسَدات + صفر مدخل).
+ * **نطاق المسح (توسيع م٦-ب)**: كان الحارس يقيس `content.js` وحده (كما في
+ * `check-extension-sync.cjs:16`). والآن يقيس **كل ملفات تشغيل الإضافة**، ولكل
+ * نوع قواعده المُعلَنة:
  *
- * `--file` للتشغيل على نسخة أخرى (يستعمله اختبار «الشيفرة قبل التعريب»). ويُقبل
- * `--root` أيضاً على نمط بقية الحرّاس. والأعلام **معلنة كلها** فوسيط مجهول يُسقط
- * الحارس بـ2 ولا يُتجاهل صامتاً.
+ *   · `content.js` · `popup.js` · `background.js` — الطبقات ①②③ كما هي، **وبقي
+ *     `content.js` على ٢٣ فحصاً بالضبط**: القيود الجديدة تُعلَن لكل ملف على حِدة
+ *     (`opts.declared`) و`content.js` لا يُعلن منها شيئاً، فلم يُحذف ولم يُغيَّر
+ *     فحص واحد من فحوصه.
+ *   · `popup.html` — **صفر محرف عربي خارج تعليقات HTML** (لا جدول فيه أصلاً:
+ *     كل نصّ واجهة مربوط بمفتاح `data-i18n`)، وكل مفتاح مربوط **يُفحص وجوده في
+ *     جدول `popup.js`** في اللغتين، وعدد مواضع الربط **بعدد معلَن** — فموضع ربط
+ *     جديد أو مفتاح مجهول يُسقط الحارس مسمّياً الملف والمفتاح.
+ *   · `manifest.json` + `_locales/<لغة>/messages.json` — الاتجاه معكوس: المانيفست
+ *     **صفر عربية**، والعربية في جدول `_locales`. ويُقاس: تكافؤ مفاتيح اللغات في
+ *     الاتجاهين · لا عربية في قيم `en` · عربية في قيم `ar` · كل `__MSG_x__` في
+ *     المانيفست **معرَّف** في كل لغة (وإلا عرض المتصفّح `__MSG_x__` حرفياً) · وكل
+ *     مفتاح في `messages.json` **مستعمل** (`__MSG_x__` غير معرَّف = عطب، ومفتاح
+ *     غير مستعمل = وهم تغطية) · `default_locale` قائم فعلاً.
+ *
+ * **وموضعان محسوبان لـ`t(` في `popup.js`** (قارئا `data-i18n`) مسموحان بعدد
+ * وتعليل — على نمط `DYN_SITES` نفسه: المحسوب هناك **مجموعة مغلقة** يفحص
+ * `auditHtml` وجود كل عنصرها في الجدول، فلا يُخترق بمفتاح لم يُفكَّر به.
+ *
+ * **ووضعان للتوافق** يُبقيان المقيس الواحد كما كان حرفياً، لأنهما يستعملهما
+ * `check-guards-selfcheck.cjs` و`check-extension-i18n-mutants.cjs`:
+ *   `--file <مسار>` ملف واحد · `--root <مجلد>` ⇒ `<المجلد>/browser-extension/content.js`.
+ * والمسح الموسَّع هو **الافتراضي** (بلا علم) — وهو ما يشغّله `pnpm ext:guard`.
+ * والأعلام **معلنة كلها** فوسيط مجهول يُسقط الحارس بـ2 ولا يُتجاهل صامتاً.
  */
 const fs = require('fs');
 const path = require('path');
@@ -40,6 +58,10 @@ const AR = /[\u0600-\u06FF]/;
 const MAIN = require.main === module;
 const REPO = path.resolve(__dirname, '..');
 let FILE = path.join(REPO, 'browser-extension', 'content.js');
+/* هل طُلب **المقيس الواحد** صراحةً؟ (`--file` أو `--root`). وإن لم يُطلب فالمسح
+ * الموسَّع على كل ملفات التشغيل هو الافتراضي — فبوّابة `pnpm ext:guard` لا تبقى
+ * عمياء عن `popup.js`/`popup.html`/`background.js`/`manifest.json`. */
+let EXPLICIT = false;
 
 if (MAIN) {
   const argv = process.argv.slice(2);
@@ -57,6 +79,7 @@ if (MAIN) {
       process.exit(2);
     }
   }
+  EXPLICIT = !!(fileArg || rootArg);
   FILE = fileArg
     ? path.resolve(fileArg)
     : path.join(rootArg ? path.resolve(rootArg) : REPO, 'browser-extension', 'content.js');
@@ -281,6 +304,24 @@ function stripComments(text) {
   return out;
 }
 
+/** مفاتيح `localStorage` في نصّ **بلا تعليقات** — تُقرأ **بالاسم** لا بالعدد،
+ *  وإلا مرّ استبدال مفتاح بمفتاح. والمفتاح نصّ حرفيّ مباشر أو ثابت
+ *  (`const MODE_KEY = 'hl.popup.mode'`) يُحلّ إلى قيمته؛ وما لم يُحلّ يظهر في
+ *  الرسالة باسمه (`<UNRESOLVED:…>`) فلا يمرّ صامتاً كأنه لا مفتاح. */
+function storageKeys(noCom) {
+  const out = [];
+  const add = (k) => { if (!out.includes(k)) out.push(k); };
+  const lit = /localStorage\s*\.\s*(?:get|set|remove)Item\s*\(\s*(['"])((?:\\.|(?!\1).)*)\1/g;
+  let m;
+  while ((m = lit.exec(noCom)) !== null) add(m[2]);
+  const idr = /localStorage\s*\.\s*(?:get|set|remove)Item\s*\(\s*([A-Za-z_$][\w$]*)/g;
+  while ((m = idr.exec(noCom)) !== null) {
+    const cm = new RegExp('(?:const|let|var)\\s+' + m[1] + '\\s*=\\s*([\'"])((?:\\\\.|(?!\\1).)*)\\1').exec(noCom);
+    add(cm ? cm[2] : '<UNRESOLVED:' + m[1] + '>');
+  }
+  return out;
+}
+
 /** كتلة بموازنة الأقواس — **مع تجاوز النصوص والتعليقات** (خلافاً لنسخة
  *  sync التي تعمل على نصّ بلا تعليقات). تُستعمل لالتقاط جسم `I18N` كاملاً. */
 function balancedBlock(text, openIdx) {
@@ -345,9 +386,16 @@ function commentRanges(text) {
   return out;
 }
 
-/* ══ النواة: تُقاس على نصّ مُمرَّر (فتعمل المُفسَدات في الذاكرة) ═════════════ */
-function audit(text, label) {
+/* ══ النواة: تُقاس على نصّ مُمرَّر (فتعمل المُفسَدات في الذاكرة) ═════════════
+ * `opts.declared` = القيود **المُعلَنة لهذا الملف** (مفاتيح تخزين · اتجاه ومصدر
+ * اللغة · عدد مواضع `t(` المحسوبة). وملف بلا `opts` — وهو `content.js` — يمرّ على
+ * الطبقات ①②③ وحدها بعدد فحوصه القديم **بالضبط**.
+ * `opts.externalKeys` = مفاتيح تُستعمل **خارج هذا الملف** (‏`data-i18n` في
+ * `popup.html`) فتُحسب استعمالاً وتُخرج صاحبها من عداد المفاتيح الميتة. */
+function audit(text, label, opts) {
   const res = { checks: 0, failures: [], counts: {}, langs: [], arabic: 0 };
+  const D = (opts && opts.declared) || null;
+  const externalKeys = (opts && opts.externalKeys) || [];
 
   const table = findTable(text);
   if (!table) {
@@ -449,7 +497,17 @@ function audit(text, label) {
       phMismatch.join(' · ') + ' — كل عنصر في إحدى اللغتين يجب أن يقابله مثله في الأخرى.');
   }
   res.counts.placeholderKeys = arKeys.filter((k) => holders(ar[k]).size > 0).length;
-  if (res.counts.placeholderKeys === 0) {
+  /* «صفر عنصر نائب» **عطب** في ملف يستعملها (`content.js` يستعمل `{pct}` و`{s}`)،
+   * و**وضع مشروع** في ملف لا يستعملها (`background.js`: ثلاثة عناوين قائمة بلا
+   * رقم واحد). فصار العدد **مُعلَناً لكل ملف**؛ وملف بلا إعلان يبقى على السلوك
+   * القديم حرفياً (صفر ⇒ فشل بصوت عالٍ) فلا يرخى شيء في `content.js`. */
+  if (D && D.placeholders) {
+    if (res.counts.placeholderKeys !== D.placeholders.n) {
+      res.failures.push('✗ عدد المفاتيح ذات العناصر النائبة في ' + label + ': المتوقَّع ' +
+        D.placeholders.n + ' ووُجد ' + res.counts.placeholderKeys +
+        ' — تعليل المُعلَن: ' + D.placeholders.why + '.');
+    }
+  } else if (res.counts.placeholderKeys === 0) {
     res.failures.push('✗ صفر مدخل: لا مفتاح واحد بعنصر نائب في ' + label +
       ' — فحص التطابق لم يقس شيئاً (والملف يستعمل {pct} و{s}).');
   }
@@ -618,9 +676,16 @@ function audit(text, label) {
     while (j < noCom.length && (noCom[j] === ' ' || noCom[j] === '\t' || noCom[j] === '\n')) j++;
     if (noCom[j] !== "'" && noCom[j] !== '"') computed.push(lineOf(text, i));
   }
-  if (computed.length) {
-    res.failures.push('✗ ' + computed.length + ' نداءً لـ`t(` بمفتاح غير نصّ حرفي — ' + label +
-      ' (أسطر: ' + computed.join(' · ') + ') — المفتاح المحسوب يخالف §٢٦ ويُخفي النصّ عن الحارس.');
+  /* المواضع المحسوبة **بعدد معلَن وتعليل** — نمط `DYN_SITES`: موضع جديد أو عدد
+   * متغيّر يُسقط الحارس. والمسوّغ الوحيد المشروع اليوم هو قارئا `data-i18n` في
+   * `popup.js`، ومفاتيحهما مجموعة مغلقة يفحصها `auditHtml` وجوداً في الجدول. */
+  const computedAllow = (D && D.computedT) ? D.computedT.n : 0;
+  if (computed.length !== computedAllow) {
+    res.failures.push('✗ نداءات `t(` بمفتاح غير نصّ حرفي — ' + label + ': المتوقَّع ' +
+      computedAllow + ' ووُجد ' + computed.length +
+      (computed.length ? ' (أسطر: ' + computed.join(' · ') + ')' : '') +
+      (computedAllow && D && D.computedT ? ' — تعليل المسموح: ' + D.computedT.why : '') +
+      ' — المفتاح المحسوب يخالف §٢٦ ويُخفي النصّ عن الحارس إن لم يكن مجموعة مغلقة مُتحقَّقاً منها.');
   }
 
   res.counts.commentArabic = commentArabic;
@@ -725,7 +790,13 @@ function audit(text, label) {
   if (tKeys.length === 0) {
     res.failures.push('✗ صفر مدخل: لا نداء `t(` واحد في ' + label + ' — فحص وجود المفاتيح لم يقس شيئاً.');
   }
-  const dead = arKeys.filter((k) => !tKeys.some((x) => x.key === k));
+  /* المفاتيح المستعملة = نداءات `t(` الحرفية **زائد** ما يُستعمل من خارج الملف
+   * (‏`data-i18n` في الصفحة). وبلا هذا الجمع كان كل نصّ واجهة في `popup.html`
+   * يُتّهم بالموت — وهو حكم كاذب على تغطية قائمة فعلاً. */
+  const usedKeys = new Set(tKeys.map((x) => x.key));
+  for (const k of externalKeys) usedKeys.add(k);
+  res.counts.externalKeys = externalKeys.length;
+  const dead = arKeys.filter((k) => !usedKeys.has(k));
   res.counts.deadKeys = dead.length;
   res.checks++;
   if (dead.length) {
@@ -733,6 +804,59 @@ function audit(text, label) {
       dead.join(' · ') + ' — مفتاح ميت يُوهم بتغطية غير قائمة.');
   }
 
+  /* ── ⑭–⑰ قيود **مُعلَنة لكل ملف** (ولا يمرّ عليها `content.js` فلا يتغيّر
+   * عدد فحوصه). كل قيد يُعلن في `TARGETS` بجانب الملف، فإضافة مفتاح تخزين أو
+   * نزع اشتقاق الاتجاه تُسقط الحارس بدل أن تمرّ صامتة. */
+  if (D) {
+    /* ⑭ لا مفتاح `localStorage` جديد: المجموعة تُقارن بالمُعلَن **بالاسم** لا
+     * بالعدد وحده، وإلا مرّ استبدال مفتاح بمفتاح. */
+    res.checks++;
+    const found = storageKeys(noCom);
+    const want = (D.storage && D.storage.keys) || [];
+    const added = found.filter((k) => !want.includes(k));
+    const gone = want.filter((k) => !found.includes(k));
+    res.counts.storageKeys = found.length;
+    if (added.length || gone.length) {
+      res.failures.push('✗ مفاتيح `localStorage` مخالفة للمُعلَن في ' + label + ': ' +
+        (added.length ? 'زائد [' + added.join(' · ') + ']' : '') +
+        (added.length && gone.length ? ' · ' : '') +
+        (gone.length ? 'ناقص [' + gone.join(' · ') + ']' : '') +
+        ' — المُعلَن [' + (want.join(' · ') || 'لا شيء') + ']؛ أي مفتاح جديد يُعلَن هنا أولاً (§٢٧).');
+    }
+
+    /* ⑮ الاتجاه مشتقّ من اللغة المُختارة، لا من الصفحة ولا من قيمة ثابتة. */
+    if (D.direction) {
+      res.checks++;
+      if (!/const\s+RTL\s*=\s*LANG\s*===\s*'ar'\s*;/.test(noCom)) {
+        res.failures.push('✗ الاتجاه غير مشتقّ من اللغة في ' + label +
+          ' — المطلوب `const RTL = LANG === \'ar\';` حرفياً.');
+      }
+      /* ⑯ ويُسند فعلاً إلى المستند: اشتقاقٌ لا يُستعمل لا يُعرّب شيئاً. */
+      res.checks++;
+      const hasDir = /documentElement\s*\.\s*dir\s*=\s*RTL\s*\?\s*'rtl'\s*:\s*'ltr'/.test(noCom);
+      const hasLang = /documentElement\s*\.\s*lang\s*=\s*LANG/.test(noCom);
+      if (!hasDir || !hasLang) {
+        res.failures.push('✗ الاتجاه/اللغة لا يُسندان إلى المستند في ' + label + ': ' +
+          (hasDir ? '' : '`documentElement.dir = RTL ? \'rtl\' : \'ltr\'` مفقود') +
+          (hasDir && !hasLang ? ' · ' : '') +
+          (hasLang ? '' : '`documentElement.lang = LANG` مفقود') +
+          ' — نصّ معرَّب في مستند باتجاه الصفحة يبقى مقلوباً.');
+      }
+    }
+
+    /* ⑰ اللغة تُقرأ من **لغة واجهة المتصفّح** (`navigator.languages`) لا من
+     * لغة الصفحة المعروضة. */
+    if (D.navigatorLang) {
+      res.checks++;
+      if (!/navigator\s*\.\s*languages/.test(noCom)) {
+        res.failures.push('✗ اللغة لا تُقرأ من `navigator.languages` في ' + label +
+          ' — لغة الصفحة ليست لغة الواجهة (مستخدم إنجليزي يشاهد فيديو عربياً يجب أن يرى واجهة إنجليزية).');
+      }
+    }
+  }
+
+  res.arKeys = arKeys;
+  res.enKeys = enKeys;
   return res;
 }
 
@@ -782,6 +906,459 @@ function unitsOf(src) {
     }
   }
   return out;
+}
+
+/* ══ HTML: صفر عربية، وكل مفتاح مربوط موجود في جدول الصفحة ═════════════════ */
+
+/** يُفرّغ `<!-- … -->` **بمسافات** (الطول ثابت ⇒ أرقام الأسطر تبقى صالحة). */
+function stripHtmlComments(text) {
+  return text.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, ' '));
+}
+
+/** مواضع الربط في صفحة: `data-i18n="مفتاح"` و`data-i18n-attr="سمة:مفتاح"`. */
+function htmlBindings(text) {
+  const out = { text: [], attr: [] };
+  let m;
+  const reText = /\bdata-i18n="([^"]*)"/g;
+  while ((m = reText.exec(text)) !== null) out.text.push({ key: m[1], at: m.index });
+  const reAttr = /\bdata-i18n-attr="([^"]*)"/g;
+  while ((m = reAttr.exec(text)) !== null) out.attr.push({ key: m[1], at: m.index });
+  return out;
+}
+
+/** قارئ `data-i18n-attr` يفصل السمة عن المفتاح (`alt:header.iconAlt`). */
+const attrKeyOf = (spec) => (spec.indexOf(':') >= 0 ? spec.slice(spec.indexOf(':') + 1) : spec);
+
+function auditHtml(text, label, opts) {
+  const res = { checks: 0, failures: [], counts: {} };
+  const arKeys = (opts && opts.arKeys) || [];
+  const enKeys = (opts && opts.enKeys) || [];
+  const decl = (opts && opts.declared) || {};
+  const noCom = stripHtmlComments(text);
+
+  /* ① صفر محرف عربي خارج تعليقات HTML — **ولا جدول في هذه الصفحة أصلاً**:
+   * كل نصّ واجهة مربوط بمفتاح، فالمقيس هنا أضيق من «لا عربية خارج الجدول». */
+  res.checks++;
+  const offenders = [];
+  for (let i = 0; i < noCom.length; i++) {
+    if (AR.test(noCom[i])) offenders.push(lineOf(text, i) + ':' + noCom.slice(i, i + 22).replace(/\n/g, '\\n'));
+  }
+  res.counts.htmlArabic = offenders.length;
+  if (offenders.length) {
+    res.failures.push('✗ ' + offenders.length + ' محرفاً عربياً خارج تعليقات HTML في ' + label +
+      ' (سطر:النصّ): ' + offenders.slice(0, 8).join(' · ') +
+      ' — الصفحة تحمل **مفاتيح** `data-i18n` وحدها، ونصوصها في جدول popup.js.');
+  }
+
+  const b = htmlBindings(noCom);
+  res.counts.htmlBindings = b.text.length;
+  res.counts.htmlAttrBindings = b.attr.length;
+
+  /* ② صفر مدخل: صفحة بلا موضع ربط واحد ⇒ لا شيء يُقاس، فلا نجاح. */
+  res.checks++;
+  if (b.text.length === 0 && b.attr.length === 0) {
+    res.failures.push('✗ صفر مدخل: لا موضع `data-i18n` ولا `data-i18n-attr` في ' + label +
+      ' — فحص وجود المفاتيح لم يقس شيئاً.');
+  }
+
+  /* ③ العدد **مُعلَن** — موضع ربط جديد يُسقط الحارس ولا يمرّ صامتاً. */
+  res.checks++;
+  const wantT = decl.bindings ? decl.bindings.text : 0;
+  const wantA = decl.bindings ? decl.bindings.attr : 0;
+  if (b.text.length !== wantT || b.attr.length !== wantA) {
+    res.failures.push('✗ عدد مواضع الربط مخالف للمُعلَن في ' + label + ': `data-i18n` المتوقَّع ' + wantT +
+      ' ووُجد ' + b.text.length + ' · `data-i18n-attr` المتوقَّع ' + wantA + ' ووُجد ' + b.attr.length +
+      (decl.bindings && decl.bindings.why ? ' — تعليل المُعلَن: ' + decl.bindings.why : '') +
+      ' — سجّل الموضع الجديد في الحارس مع تعليله.');
+  }
+
+  /* ④ كل مفتاح مربوط **موجود في الجدول باللغتين** — وهذا بعينه ما يجعل الموضعين
+   * المحسوبين في `popup.js` (قارئَي `data-i18n`) **مجموعةً مغلقة** لا مجهولة. */
+  res.checks++;
+  const bad = [];
+  for (const x of b.text.concat(b.attr)) {
+    const key = attrKeyOf(x.key);
+    if (!arKeys.includes(key) || !enKeys.includes(key)) bad.push('سطر ' + lineOf(text, x.at) + ': ' + x.key);
+  }
+  if (bad.length) {
+    res.failures.push('✗ ' + bad.length + ' مفتاحاً مربوطاً في ' + label +
+      ' وغير موجود في جدول popup.js (أو في إحدى اللغتين): ' + bad.join(' · ') +
+      ' — `t()` تُرجع undefined فيبقى العنصر فارغاً بلا أيّ خطأ.');
+  }
+
+  /* ⑤ المصدر الثابت للّغة والاتجاه على `<html>`: يُصحّحه الكود عند الإقلاع، لكن
+   * غيابه يعني أن تعذّر تنفيذ السكربت يترك الصفحة بلا لغة ولا اتجاه معلَنين. */
+  res.checks++;
+  const hasLang = /<html[^>]*\blang="[^"]+"/.test(noCom);
+  const hasDir = /<html[^>]*\bdir="(?:rtl|ltr)"/.test(noCom);
+  if (!hasLang || !hasDir) {
+    res.failures.push('✗ وسم `<html>` في ' + label + ' بلا `lang` و`dir` ثابتين (' +
+      (hasLang ? '' : 'lang مفقود') + (!hasLang && !hasDir ? ' · ' : '') + (hasDir ? '' : 'dir مفقود') +
+      ') — القيمة الثابتة هي ما يراه المستخدم إن لم يُنفَّذ السكربت.');
+  }
+
+  /* ⑥ وسم الإصدار الثابت: `scripts/pack-extension.js` (سطر 136) يقرأ
+   * `class="version-tag">v?([^<\s]+)<` ويرفض حزم المتجر إن خالف إصدارَ
+   * المانيفست — فشكلُ الوسم **عقد** مع الحازم لا تفصيل تجميلي: أي سمة تُضاف بعد
+   * `class` تُفسد النمط فيسقط الحزم. (وقد كُسر فعلاً في هذه الجولة: أُضيف `id`
+   * بعد `class` فرفض `pack:ext` العمل — أُعلن وأُصلح، وهذا الفحص يمنع تكراره.)
+   * والوسم **ديناميكي أصلاً** (`popup.js` يكتبه من `getManifest().version`)،
+   * فالمقيس هنا هو القيمة الثابتة التي يقرؤها الحازم قبل التشغيل. */
+  res.checks++;
+  const vm = text.match(/class="version-tag">v?([^<\s]+)</);
+  const mfv = opts && opts.manifestVersion;
+  if (!vm) {
+    res.failures.push('✗ `popup.html` بلا وسم إصدار بالشكل `class="version-tag">v…<` — ' +
+      'و`pack-extension.js` يرفض الحزم بدونه (ولا تُضاف سمة بعد `class` وإلا تغيّر الشكل).');
+  } else if (typeof mfv === 'string' && vm[1] !== mfv) {
+    res.failures.push('✗ وسم الإصدار في popup.html = «' + vm[1] + '» وإصدار المانيفست «' + mfv +
+      '» — الحزمة المرفوعة كانت ستعرض رقماً غير المنشور.');
+  }
+
+  return res;
+}
+
+/* ══ المانيفست + `_locales`: العربية في الجدول، والمانيفست صفر عربية ════════ */
+
+/** عناصر `_locales` النائبة بصيغة كروم: `$1` · `$NAME$` · `$$`. */
+const msgHolders = (s) => {
+  const m = new Map();
+  for (const x of String(s).matchAll(/\$(?:\$|\d|[A-Za-z_][A-Za-z0-9_]*\$)/g)) m.set(x[0], (m.get(x[0]) || 0) + 1);
+  return m;
+};
+
+function auditManifest(text, label, opts) {
+  const res = { checks: 0, failures: [], counts: {} };
+  const decl = (opts && opts.declared) || {};
+  const locales = (opts && opts.locales) || [];
+
+  /* ① المانيفست نفسه: **صفر عربية**. لا تعليقات في JSON، فكل محرف عربي فيه
+   * نصّ يعرضه المتصفّح — ومكانه `_locales`. */
+  res.checks++;
+  const offenders = [];
+  for (let i = 0; i < text.length; i++) {
+    if (AR.test(text[i])) offenders.push(lineOf(text, i) + ':' + text.slice(i, i + 22).replace(/\n/g, '\\n'));
+  }
+  res.counts.manifestArabic = offenders.length;
+  if (offenders.length) {
+    res.failures.push('✗ ' + offenders.length + ' محرفاً عربياً في ' + label +
+      ' (سطر:النصّ): ' + offenders.slice(0, 6).join(' · ') +
+      ' — ما يعرضه المتصفّح من المانيفست يُعرَّب بـ`_locales` و`__MSG_x__`، لا بنصّ عربي هنا.');
+  }
+
+  let mf = null, perr = null;
+  try { mf = JSON.parse(text); } catch (e) { perr = e && e.message ? e.message : String(e); }
+  res.checks++;
+  if (!mf || typeof mf !== 'object') {
+    res.failures.push('✗ تعذّر تحليل ' + label + ' كـJSON' + (perr ? ' — ' + perr : '') + ' — لا شيء يُقاس.');
+    return res;
+  }
+
+  /* ② مراجع `__MSG_x__` — بعدد معلَن، والاسم لا يُبنى ولا يُخمَّن. */
+  const refs = [];
+  for (const m of text.matchAll(/__MSG_([A-Za-z0-9_]+)__/g)) if (!refs.includes(m[1])) refs.push(m[1]);
+  res.counts.msgRefs = refs.length;
+  res.checks++;
+  const wantRefs = decl.msgRefs ? decl.msgRefs.n : 0;
+  if (refs.length !== wantRefs) {
+    res.failures.push('✗ مراجع `__MSG_x__` في ' + label + ': المتوقَّع ' + wantRefs + ' ووُجد ' + refs.length +
+      ' [' + (refs.join(' · ') || 'لا شيء') + ']' +
+      (decl.msgRefs && decl.msgRefs.why ? ' — تعليل المُعلَن: ' + decl.msgRefs.why : '') +
+      ' — يُعرَّب من المانيفست ما يعرضه المتصفّح وحده، ويُسجَّل الحقل هنا.');
+  }
+
+  /* ③ `default_locale` معلَن وقائم فعلاً في `_locales/`. */
+  res.checks++;
+  const def = mf.default_locale;
+  if (typeof def !== 'string' || !locales.some((l) => l.locale === def)) {
+    res.failures.push('✗ `default_locale` في ' + label + ' = ' + JSON.stringify(def) +
+      ' وليس لغة قائمة في `_locales` (القائم: ' + (locales.map((l) => l.locale).join(' · ') || 'لا شيء') +
+      ') — وبدونه يرفض المتصفّح `__MSG_` كلياً.');
+  }
+
+  /* ④ كل لغة: تُحلَّل، ومدخلاتها غير فارغة. */
+  res.checks++;
+  const L = [];
+  for (const loc of locales) {
+    let j = null, e = null;
+    try { j = JSON.parse(loc.text); } catch (err) { e = err && err.message ? err.message : String(err); }
+    if (!j || typeof j !== 'object' || Array.isArray(j)) {
+      res.failures.push('✗ تعذّر تحليل `_locales/' + loc.locale + '/messages.json`' + (e ? ' — ' + e : '') + '.');
+      continue;
+    }
+    const keys = Object.keys(j);
+    const blank = keys.filter((k) => !j[k] || typeof j[k].message !== 'string' || j[k].message.trim() === '');
+    if (blank.length) {
+      res.failures.push('✗ `_locales/' + loc.locale + '`: ' + blank.length + ' مدخلاً بلا `message` نصّي غير فارغ: ' +
+        blank.join(' · '));
+    }
+    L.push({ locale: loc.locale, keys, table: j });
+  }
+  if (L.length !== locales.length) return res;
+
+  /* ⑤ صفر مدخل: لا مفتاح واحد في أي لغة ⇒ لا شيء يُقاس. */
+  res.checks++;
+  if (L.every((l) => l.keys.length === 0)) {
+    res.failures.push('✗ صفر مدخل: `_locales` في ' + label + ' فارغة من كل اللغات — لا شيء قيس.');
+    return res;
+  }
+
+  /* ⑥ تكافؤ المفاتيح بين اللغات **في الاتجاهين**. */
+  res.checks++;
+  const first = L[0];
+  const mism = [];
+  for (const l of L.slice(1)) {
+    const missingHere = first.keys.filter((k) => !l.keys.includes(k));
+    const extraHere = l.keys.filter((k) => !first.keys.includes(k));
+    if (missingHere.length) mism.push('في ' + l.locale + ' بلا مقابل من ' + first.locale + ': ' + missingHere.join(' · '));
+    if (extraHere.length) mism.push('في ' + l.locale + ' زائد على ' + first.locale + ': ' + extraHere.join(' · '));
+  }
+  if (mism.length) {
+    res.failures.push('✗ تكافؤ مفاتيح `_locales` مخالف في ' + label + ': ' + mism.join(' · ') +
+      ' — مفتاح بلا مقابل في لغة يعني نصّاً مفقوداً لمستخدم تلك اللغة.');
+  }
+  res.counts.localeKeys = first.keys.length;
+
+  /* ⑦ كل `__MSG_x__` **معرَّف في كل لغة** — وإلا عرض المتصفّح `__MSG_x__` حرفياً. */
+  res.checks++;
+  const undef = [];
+  for (const k of refs) for (const l of L) if (!l.keys.includes(k)) undef.push('__MSG_' + k + '__ في المانيفست وغير معرَّف في ' + l.locale);
+  if (undef.length) {
+    res.failures.push('✗ ' + undef.length + ' مرجعاً غير معرَّف في ' + label + ': ' + undef.join(' · ') +
+      ' — المتصفّح يعرض `__MSG_x__` حرفياً اسماً للإضافة.');
+  }
+
+  /* ⑧ وكل مفتاح في `_locales` **مستعمل** — مفتاح زائد وهم تغطية. */
+  res.checks++;
+  const unused = [];
+  for (const l of L) for (const k of l.keys) if (!refs.includes(k)) unused.push(l.locale + '.' + k);
+  if (unused.length) {
+    res.failures.push('✗ ' + unused.length + ' مفتاحاً في `_locales` ولا يستعمله المانيفست في ' + label + ': ' +
+      unused.join(' · ') + ' — ترجمة لا يراها أحد توهم بتغطية غير قائمة.');
+  }
+
+  /* ⑨ عناصر نائبة متطابقة بين اللغات (‏`$1` · `$NAME$`)، وبعدد معلَن. */
+  res.checks++;
+  const phBad = [];
+  for (const k of first.keys) {
+    const a = msgHolders(first.table[k].message);
+    for (const l of L.slice(1)) {
+      if (!l.table[k]) continue;
+      const b = msgHolders(l.table[k].message);
+      const names = new Set([...a.keys(), ...b.keys()]);
+      const bad = [...names].filter((x) => (a.get(x) || 0) !== (b.get(x) || 0))
+        .map((x) => x + ' (' + first.locale + '×' + (a.get(x) || 0) + ' · ' + l.locale + '×' + (b.get(x) || 0) + ')');
+      if (bad.length) phBad.push(k + ': ' + bad.join(' · '));
+    }
+  }
+  if (phBad.length) {
+    res.failures.push('✗ عناصر نائبة غير متطابقة بين لغات `_locales` في ' + label + ': ' + phBad.join(' · '));
+  }
+  const phCount = first.keys.reduce((n, k) => n + msgHolders(first.table[k].message).size, 0);
+  res.counts.msgPlaceholders = phCount;
+  res.checks++;
+  const wantPh = decl.placeholders ? decl.placeholders.n : 0;
+  if (phCount !== wantPh) {
+    res.failures.push('✗ عناصر نائبة في `_locales` — ' + label + ': المتوقَّع ' + wantPh + ' ووُجد ' + phCount +
+      (decl.placeholders && decl.placeholders.why ? ' — تعليل المُعلَن: ' + decl.placeholders.why : '') +
+      ' — سجّل الموضع بعدده وتعليله.');
+  }
+
+  /* ⑩ لا عربية في لغة غير العربية، وعربية في العربية (عموم اللغات لا `en` وحدها). */
+  res.checks++;
+  const scriptBad = [];
+  for (const l of L) {
+    for (const k of l.keys) {
+      const v = l.table[k].message;
+      if (l.locale === 'ar') { if (!AR.test(v)) scriptBad.push('ar.' + k + ' بلا أيّ محرف عربي'); }
+      else if (AR.test(v)) scriptBad.push(l.locale + '.' + k + ' = «' + String(v).slice(0, 40) + '» يحمل عربية');
+    }
+  }
+  if (scriptBad.length) {
+    res.failures.push('✗ كتابة مخالفة في `_locales` — ' + label + ': ' + scriptBad.join(' · ') +
+      ' — قيمة إنجليزية تحمل عربية (ترجمة ناقصة)، أو قيمة عربية بلا عربية (نقل خاطئ).');
+  }
+
+  return res;
+}
+
+/* ══ الملفات المُعلَنة: ما يمسحه المسح الموسَّع، ومعه قيود كل ملف ═════════════
+ * كل قيد هنا **بعدد وتعليل** على نمط `DYN_SITES`: إضافة مفتاح تخزين، أو نزع
+ * اشتقاق الاتجاه، أو موضع ربط جديد في الصفحة، أو حقل `__MSG_` جديد — كلها
+ * تُسقط الحارس حتى تُسجَّل هنا. و`content.js` **بلا `declared`** عمداً: جولته
+ * (م٦-أ) قِيست وأُغلقت، فبقي على ٢٣ فحصاً بالضبط ولم يُحذف منه فحص واحد. */
+const TARGETS = [
+  { rel: 'browser-extension/content.js', kind: 'js', label: 'content.js' },
+  {
+    rel: 'browser-extension/popup.js', kind: 'js', label: 'popup.js',
+    externalKeysFrom: 'browser-extension/popup.html',
+    declared: {
+      /* §٢٧ يقفل مفتاح التخزين: `MODE_KEY` وحده كما كان قبل هذه الجولة. */
+      storage: { keys: ['hl.popup.mode'], why: 'تفضيل الوضع الوحيد؛ صفر مفتاح تخزين جديد في م٦-ب' },
+      direction: true,
+      navigatorLang: true,
+      placeholders: { n: 3, why: '{q} في الطابور · {s} الثواني · {e} نصّ الخطأ' },
+      computedT: {
+        n: 2,
+        why: 'موضعان في applyI18n() يقرآن المفتاح من data-i18n/data-i18n-attr؛ والمفاتيح مجموعة مغلقة يفحص auditHtml وجود كل عنصرها في الجدول باللغتين',
+      },
+    },
+  },
+  {
+    rel: 'browser-extension/background.js', kind: 'js', label: 'background.js',
+    declared: {
+      storage: { keys: [], why: 'عامل الخدمة لا يخزّن شيئاً' },
+      direction: false,   // لا واجهة يرسمها: عناوين قائمة النقر الأيمن يرسمها المتصفّح باتجاهه
+      navigatorLang: true,
+      placeholders: { n: 0, why: 'ثلاثة عناوين قائمة لا تحمل رقماً ولا متغيّراً — فلا عنصر نائب أصلاً' },
+      computedT: { n: 0, why: 'ثلاثة نداءات كلها بمفتاح نصّ حرفيّ' },
+    },
+  },
+  {
+    rel: 'browser-extension/popup.html', kind: 'html', label: 'popup.html',
+    tableFrom: 'browser-extension/popup.js',
+    declared: {
+      bindings: {
+        text: 21, attr: 1,
+        why: 'كل نصّ واجهة في الصفحة مربوط بمفتاح: ٢١ نصّاً وسمة alt واحدة (‏`alt:header.iconAlt`)',
+      },
+    },
+  },
+  {
+    rel: 'browser-extension/manifest.json', kind: 'manifest', label: 'manifest.json',
+    locales: [
+      { locale: 'ar', rel: 'browser-extension/_locales/ar/messages.json' },
+      { locale: 'en', rel: 'browser-extension/_locales/en/messages.json' },
+    ],
+    declared: {
+      msgRefs: { n: 2, why: 'الحقلان الوحيدان اللذان يعرضهما المتصفّح من المانيفست: الاسم والوصف' },
+      placeholders: { n: 0, why: 'اسم الإضافة ووصفها بلا عناصر نائبة (لا $1 ولا $NAME$)' },
+    },
+  },
+];
+
+/* ══ المسح الموسَّع — **دالّة نقية على خريطة ملفات** ═════════════════════════
+ * تُقاس **في الذاكرة**: `mainMulti` تقرأ من القرص ثم تناديها، ومُفسَدات م٦-ب
+ * تناديها على خريطة مُفسَدة بلا ملف مؤقت ولا كتابة على القرص ولا عملية فرعية. */
+function auditAll(texts) {
+  const res = { checks: 0, failures: [], results: [], missing: [] };
+
+  /* صفر مدخل: كل ملف مُعلَن — ومعه ملفات `_locales` — موجود وغير فارغ، وإلا
+   * **فشل بصوت عالٍ** لا تخطٍّ صامت. */
+  const need = [];
+  for (const t of TARGETS) {
+    need.push(t.rel);
+    for (const l of t.locales || []) need.push(l.rel);
+  }
+  for (const rel of need) {
+    const s = texts[rel];
+    if (typeof s !== 'string' || s.trim() === '') res.missing.push(rel);
+  }
+  if (res.missing.length) {
+    res.failures.push('✗ صفر مدخل: ' + res.missing.length + ' ملفاً مُعلَناً مفقوداً أو فارغاً (' +
+      res.missing.join(' · ') + ') — المسح الموسَّع لا يعلن نجاحاً ناقصاً.');
+    return res;
+  }
+
+  /* محتوى الصفحة يُقرأ أولاً: مفاتيحه هي ما يجعل موضعَي `t(` المحسوبين في
+   * popup.js مجموعةً مغلقة، فهي **مدخل** لقياس popup.js لا نتيجة له. */
+  const html = texts['browser-extension/popup.html'];
+  const htmlKeys = htmlBindings(stripHtmlComments(html));
+  const externalKeys = htmlKeys.text.concat(htmlKeys.attr).map((x) => attrKeyOf(x.key));
+
+  /* إصدار المانيفست يُقرأ أولاً ليُقارَن به وسم الإصدار الثابت في الصفحة — وهو
+   * العقد نفسه الذي يفحصه `scripts/pack-extension.js` قبل الحزم. */
+  let mfVersion = null;
+  try { mfVersion = JSON.parse(texts['browser-extension/manifest.json']).version; } catch (e) { mfVersion = null; }
+
+  const add = (rel, r) => { res.results.push({ rel, r }); };
+  for (const t of TARGETS) {
+    const text = texts[t.rel];
+    if (t.kind === 'js') {
+      add(t.rel, audit(text, t.label, {
+        declared: t.declared,
+        externalKeys: t.externalKeysFrom ? externalKeys : [],
+      }));
+    } else if (t.kind === 'html') {
+      const src = res.results.find((x) => x.rel === t.tableFrom);
+      add(t.rel, auditHtml(text, t.label, {
+        declared: t.declared,
+        manifestVersion: typeof mfVersion === 'string' ? mfVersion : undefined,
+        arKeys: (src && src.r.arKeys) || [],
+        enKeys: (src && src.r.enKeys) || [],
+      }));
+    } else if (t.kind === 'manifest') {
+      const locales = (t.locales || []).map((l) => ({ locale: l.locale, rel: l.rel, text: texts[l.rel] }));
+      add(t.rel, auditManifest(text, t.label, { declared: t.declared, locales }));
+    }
+  }
+
+  for (const { r } of res.results) {
+    res.checks += r.checks;
+    for (const f of r.failures) res.failures.push(f);
+  }
+  return res;
+}
+
+/* ══ التشغيل الموسَّع (الافتراضي) ═══════════════════════════════════════════ */
+function mainMulti() {
+  console.log('=== حارس تعريب الإضافة: مسح موسَّع على ملفات التشغيل ===');
+  console.log('  الملفات المُعلَنة: ' + TARGETS.length + ' (' +
+    TARGETS.map((t) => t.label).join(' · ') + ')');
+
+  const texts = {};
+  const all = [];
+  for (const t of TARGETS) {
+    all.push(t.rel);
+    for (const l of t.locales || []) all.push(l.rel);
+  }
+  for (const rel of all) {
+    const p = path.join(REPO, rel);
+    if (fs.existsSync(p)) texts[rel] = fs.readFileSync(p, 'utf8');
+  }
+
+  const r = auditAll(texts);
+  if (r.missing.length) {
+    for (const m of r.missing) console.error('✗ صفر مدخل: الملف المُعلَن ' + m + ' مفقود أو فارغ.');
+    console.error('✗ حارس التعريب (مسح موسَّع): ' + r.missing.length + ' ملفاً مُعلَناً لم يُقَس.');
+    process.exit(1);
+  }
+
+  console.log('');
+  for (const { rel, r: x } of r.results) {
+    const c = x.counts || {};
+    const bits = [];
+    if (c.tableAr !== undefined) {
+      bits.push('نصّ عربي **داخل الجدول** (المدخل المقيس): ' + c.tableAr);
+      bits.push('مواضع عربية خارج الجدول (المطلوب 0): ' + (c.outsideUnits === undefined ? '—' : c.outsideUnits));
+      bits.push('مفاتيح ar=' + c.ar + ' · en=' + c.en + ' · ميتة=' + c.deadKeys +
+        ' · نداءات t()=' + c.tCalls + ' · مفاتيح من خارج الملف=' + c.externalKeys +
+        ' · مفاتيح تخزين=' + c.storageKeys);
+    }
+    if (c.htmlBindings !== undefined) {
+      bits.push('مواضع ربط: data-i18n=' + c.htmlBindings + ' · data-i18n-attr=' + c.htmlAttrBindings +
+        ' · محارف عربية خارج التعليقات=' + c.htmlArabic);
+    }
+    if (c.manifestArabic !== undefined) {
+      bits.push('عربية في المانيفست (المطلوب 0): ' + c.manifestArabic + ' · مراجع __MSG_=' + c.msgRefs +
+        ' · مفاتيح _locales=' + c.localeKeys + ' · عناصر نائبة=' + c.msgPlaceholders);
+    }
+    console.log('--- ' + rel + ' — ' + x.checks + ' فحصاً · ' + x.failures.length + ' فاشل ---');
+    for (const s of bits) console.log('  ' + s);
+  }
+
+  console.log('\n=== الأحكام ===');
+  if (r.failures.length) {
+    for (const f of r.failures) console.error(f);
+    console.error('✗ حارس التعريب (مسح موسَّع): فشل ' + r.failures.length + ' من ' + Math.max(r.checks, 1) + ' فحصاً.');
+    process.exit(1);
+  }
+  if (r.checks === 0) {
+    console.error('✗ صفر مدخل: لم يُنفَّذ فحص واحد — لا نجاح فارغ.');
+    process.exit(1);
+  }
+  console.log('✓ ' + r.checks + ' فحصاً ناجحاً / 0 فاشل على ' + r.results.length + ' ملفات (' +
+    r.results.map((x) => x.rel.replace('browser-extension/', '') + ' ' + x.r.checks).join(' · ') + ')');
 }
 
 /* ══ التشغيل ═══════════════════════════════════════════════════════════════ */
@@ -846,6 +1423,12 @@ function main() {
     r.counts.ar + ' مفتاحاً)، والنصوص داخل التعليقات لا تُحسب.');
 }
 
-module.exports = { audit, scanLiterals, stripComments, balancedBlock, commentRanges, findTable, AR };
+module.exports = {
+  audit, auditAll, auditHtml, auditManifest, htmlBindings, stripHtmlComments, storageKeys, attrKeyOf,
+  TARGETS, scanLiterals, stripComments, balancedBlock, commentRanges, findTable, AR,
+};
 
-if (MAIN) main();
+if (MAIN) {
+  /* `--file`/`--root` = المقيس الواحد (توافقاً مع مُفسَدات م٦-أ وبوّابة الحرّاس). */
+  if (EXPLICIT) main(); else mainMulti();
+}

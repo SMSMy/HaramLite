@@ -224,12 +224,16 @@
       font-size: 11px;
       color: var(--text-dim);
       direction: ltr;
-      text-align: right;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
       font-family: 'Plus Jakarta Sans', monospace;
     }
+
+    /* الرابط لاتيني فيُعرض LTR دائماً، ومحاذاته تتبع **اتجاه الواجهة** المشتقّ
+       من اللغة: يمين في RTL (وهو ما كان بالضبط قبل التعريب) ويسار في LTR. */
+    [dir='rtl'] .target-url { text-align: right; }
+    [dir='ltr'] .target-url { text-align: left; }
 
     /* Mode Selector inside popup */
     .mode-toggle-grid {

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="utf-8" />
   <title>HaramLite Bridge</title>
@@ -12,14 +12,14 @@
     <header class="popup-header">
       <div class="brand-wrap">
         <div class="app-icon-badge">
-          <img src="icon48.png" alt="أيقونة HaramLite" width="32" height="32" />
+          <img src="icon48.png" alt="" data-i18n-attr="alt:header.iconAlt" width="32" height="32" />
         </div>
         <div class="brand-titles">
           <h1>HaramLite <span class="brand-accent">Bridge</span></h1>
-          <p class="sub">الجسر المحلي للمتصفح</p>
+          <p class="sub" data-i18n="header.sub"></p>
         </div>
       </div>
-      <span class="version-tag">v1.1.6</span>
+      <span class="version-tag">v1.1.7</span>
     </header>
 
     <div class="popup-content">
@@ -28,7 +28,7 @@
       <div class="status-card" id="card-status">
         <div class="status-left">
           <span class="status-dot ok" id="status-indicator"></span>
-          <span class="status-label" id="status-title">جارٍ الفحص…</span>
+          <span class="status-label" id="status-title" data-i18n="status.checking"></span>
         </div>
         <span class="status-host" id="status-channel">Native Messaging</span>
       </div>
@@ -37,12 +37,12 @@
       <div class="offline-box hidden" id="card-offline">
         <h3>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
-          تطبيق HaramLite المكتبي غير متصل
+          <span data-i18n="offline.title"></span>
         </h3>
         <ol class="offline-steps">
-          <li>شغّل برنامج HaramLite على حاسوبك.</li>
-          <li>من الإعدادات: فعّل <code>التكامل مع المتصفح</code>.</li>
-          <li>أعد فتح هذه القائمة للاتصال الفوري بالجسر.</li>
+          <li data-i18n="offline.step1"></li>
+          <li><span data-i18n="offline.step2"></span> <code data-i18n="offline.step2code"></code>.</li>
+          <li data-i18n="offline.step3"></li>
         </ol>
       </div>
 
@@ -50,7 +50,7 @@
       <div class="target-page-card" id="card-target">
         <div class="target-label">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-          التبويب النشط حالياً:
+          <span data-i18n="target.label"></span>
         </div>
         <div class="target-title" id="target-title">—</div>
         <div class="target-url" id="target-url"></div>
@@ -59,12 +59,12 @@
       <!-- 3) اختيار الوضع -->
       <div class="mode-toggle-grid" id="card-modes">
         <div class="mode-item selected" id="mode-clip" role="button" tabindex="0" aria-pressed="true">
-          <div class="mode-title"><span>🎬</span> مقطع عادي</div>
-          <div class="mode-desc">إزالة الموسيقى فقط وحفظ صفاء الحوار</div>
+          <div class="mode-title"><span>🎬</span> <span data-i18n="mode.clip.title"></span></div>
+          <div class="mode-desc" data-i18n="mode.clip.desc"></div>
         </div>
         <div class="mode-item" id="mode-song" role="button" tabindex="0" aria-pressed="false">
-          <div class="mode-title"><span>🎵</span> وضع أغنية</div>
-          <div class="mode-desc">فصل كامل + تحسين الصوت + قصّ الصمت</div>
+          <div class="mode-title"><span>🎵</span> <span data-i18n="mode.song.title"></span></div>
+          <div class="mode-desc" data-i18n="mode.song.desc"></div>
         </div>
       </div>
 
@@ -72,7 +72,7 @@
       <div class="actions-card" id="card-action">
         <button class="btn-primary" id="btn-send-page">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-          أرسل هذه الصفحة إلى HaramLite
+          <span data-i18n="send.button"></span>
         </button>
         <p class="action-hint hidden" id="send-result"></p>
       </div>
@@ -91,26 +91,26 @@
           <span class="hw-badge" id="job-hw-mode"></span>
         </div>
         <div class="progress-actions">
-          <button class="btn-danger-outline" id="btn-cancel">⏹ إلغاء المعالجة</button>
+          <button class="btn-danger-outline" id="btn-cancel" data-i18n="cancel.button"></button>
         </div>
       </div>
 
       <!-- 6) الاكتمال والنتيجة -->
       <div class="result-pill hidden" id="card-completed">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-        <span id="completed-text">اكتملت المعالجة بنجاح.</span>
+        <span id="completed-text" data-i18n="done.text"></span>
       </div>
 
       <div class="progress-actions hidden" id="card-completed-actions">
-        <button class="btn-primary" id="btn-watch" style="flex: 2; height: 34px; font-size: 12px;">▶ تشغيل المشاهدة المفلترة</button>
-        <button class="btn-secondary" id="btn-open-folder" style="flex: 1; height: 34px; font-size: 12px;">📂 النتائج</button>
+        <button class="btn-primary" id="btn-watch" style="flex: 2; height: 34px; font-size: 12px;" data-i18n="done.watch"></button>
+        <button class="btn-secondary" id="btn-open-folder" style="flex: 1; height: 34px; font-size: 12px;" data-i18n="done.results"></button>
       </div>
 
       <!-- 7) تنبيه أزرار يوتيوب -->
       <div class="yt-notice" id="card-yt-notice">
         <svg width="14" height="14" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
         <div>
-          <strong>ملاحظة:</strong> أزرار التحكم المباشر (عالج هذا الفيديو / شاهد بعد إزالة الموسيقى) مدمجة تلقائياً في شريط يوتيوب داخل الصفحة.
+          <strong data-i18n="yt.title"></strong> <span data-i18n="yt.body"></span>
         </div>
       </div>
 
@@ -119,9 +119,9 @@
     <footer class="popup-footer">
       <div class="privacy-tag">
         <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
-        <span>معالجة محلية 100% · بلا سحابة</span>
+        <span data-i18n="footer.privacy"></span>
       </div>
-      <a href="https://haramlite.com/bridge.html#install" target="_blank" rel="noreferrer" class="footer-link">دليل التثبيت ⚙</a>
+      <a href="https://haramlite.com/bridge.html#install" target="_blank" rel="noreferrer" class="footer-link" data-i18n="footer.install"></a>
     </footer>
 
   </div>
