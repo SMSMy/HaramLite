@@ -3458,24 +3458,32 @@ pub fn verify_identity_name(cfg: &TgConfig, data: &Path) -> Result<String, BotSe
     Ok(name)
 }
 
+/// **هل يحين وقت مقابلةٍ جديدة؟** — نقيّة على الزمن (تُقاس بلا شبكة).
+fn verify_due(last_ms: u64, now_ms: u64) -> bool {
+    now_ms.saturating_sub(last_ms) >= IDENTITY_VERIFY_TTL.as_millis() as u64
+}
+
+/// **يحجز محاولة مقابلة**: يكتب وقت المحاولة، ويعيد `true` إن حجزها.
+///
+/// **والترتيب هنا موضع عطل حقيقي كشفه القياس لا النظر**: نسخةٌ كتبت الختم ثم
+/// فحصت المدة كانت **تُصفِّر المؤقّت مع كل نداء** — وواجهةٌ تستطلع الحالة كل
+/// ٥ ثوانٍ تُبقي الفرق ٥ ثوانٍ أبداً، فلا تقع مقابلةٌ أبداً. فالفحص **قبل**
+/// الكتابة، ولا يُكتب الختم إلا حين تُحجز المحاولة فعلاً.
+fn claim_verify_slot(last: &AtomicU64, now_ms: u64) -> bool {
+    if !verify_due(last.load(Ordering::SeqCst), now_ms) {
+        return false;
+    }
+    last.store(now_ms, Ordering::SeqCst);
+    true
+}
+
 /// **هل حالة القرص كافية؟** تُقرأ الحالة، فإن كان آخر تحقّق أقدم من
 /// [`IDENTITY_VERIFY_TTL`] أُطلق **خيطٌ واحد** يُقابلها بالخادم ولا يُحجَب أي
 /// مسار. ولا يُنتظر الخيط: القارئ يرى الحالة الحالية، والمقابلة تصل بعدها
 /// بالنتيجة (وفيها `server_name` و`checked_ms`).
 fn spawn_identity_verify_if_stale(cfg: &TgConfig, data: &Path) {
     static LAST_ATTEMPT: AtomicU64 = AtomicU64::new(0);
-    let now = epoch_ms() as u64;
-    let ttl_ms = IDENTITY_VERIFY_TTL.as_millis() as u64;
-    // سباقٌ واعٍ: من كسب الـCAS أطلق المحاولة، وحده — فلا سيل خيوط.
-    let Ok(prev) = LAST_ATTEMPT.compare_exchange(
-        LAST_ATTEMPT.load(Ordering::SeqCst),
-        now,
-        Ordering::SeqCst,
-        Ordering::SeqCst,
-    ) else {
-        return;
-    };
-    if now.saturating_sub(prev) < ttl_ms {
+    if !claim_verify_slot(&LAST_ATTEMPT, epoch_ms() as u64) {
         return;
     }
     let cfg = cfg.clone();
@@ -10982,6 +10990,42 @@ mod tests {
         assert!(!after.applied && !after.photo_applied, "أثرٌ باقٍ في الحالة");
         assert!(!identity_needs_call(&after, false), "نداءٌ بلا أثر");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **جولة التفنيد — ساعة المقابلة الدورية**: نداءُ حالةٍ متكرّر **لا
+    /// يصفّر المؤقّت**، والمقابلة تقع مرّة كل [`IDENTITY_VERIFY_TTL`].
+    ///
+    /// والمُفسَد الذي يُسقطه: كتابةُ الختم **قبل** فحص المدة (وهو ما كتبته
+    /// أولاً وكشفه هذا القياس) ⇒ كل نداءٍ يصفّر المؤقّت، فلا تقع مقابلة أبداً
+    /// مع واجهةٍ تستطلع كل ٥ ثوانٍ — يسقط الشقّ الثالث هنا.
+    #[test]
+    fn repeated_status_reads_do_not_reset_the_verify_clock() {
+        let ttl = IDENTITY_VERIFY_TTL.as_millis() as u64;
+        let t0 = 1_700_000_000_000u64; // زمنٌ حقيقي المقدار (‏epoch ms)
+        assert!(verify_due(1_000, 1_000 + ttl), "بعد المدة يحين الوقت");
+        assert!(!verify_due(1_000, 1_000 + ttl - 1), "وقبلها لا");
+
+        // ① المحاولة الأولى تُحجز (الختم صفر ⇒ الوقت حان).
+        let clock = AtomicU64::new(0);
+        assert!(claim_verify_slot(&clock, t0), "المحاولة الأولى لم تُحجز");
+        // ② وإحدى عشرة قراءة كل ٥ ثوانٍ (٥٥ ثانية) **لا تحجز** واحدة: الختم
+        //    لم يتقدّم، فالوقت لم يحن بعد.
+        for step in 1..12u64 {
+            assert!(
+                !claim_verify_slot(&clock, t0 + step * 5_000),
+                "نداء حالةٍ في الثانية {} حجز محاولة — المؤقّت يُصفَّر مع كل قراءة",
+                step * 5
+            );
+        }
+        // ③ وعند الدقيقة تماماً تُحجز مرّة واحدة، ثم يُقفل الباب من جديد.
+        assert!(
+            claim_verify_slot(&clock, t0 + ttl),
+            "بعد المدة لم تُحجز محاولة — المؤقّت توقّف عن التقدّم"
+        );
+        assert!(
+            !claim_verify_slot(&clock, t0 + ttl + 1),
+            "محاولتان في اللحظة نفسها"
+        );
     }
 
     /// **ت١٠ — لا `/stop` في أي نطاق**: لا في القائمة المُسجَّلة على الخادم
