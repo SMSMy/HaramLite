@@ -2399,10 +2399,9 @@ struct Status {
     processed: u64,
     queue: usize,
     paired_id: Option<i64>,
-    /// م٥: هوية البوت كما نعرفها من حالتنا المخزَّنة — تُعرَض في الواجهة لتكون
-    /// **حالةُ المربّع واقعاً** لا نيّة (‏`m5-brief` §٢-الواجهة ١).
-    identity_applied: bool,
-    /// آخر خطأ في ضبط الهوية/الأوامر — يُعرَض بنصّه بدل فشلٍ صامت (ت١١).
+    /// م٥: **آخر خطأ** في ضبط الهوية/الأوامر — يُعرَض بنصّه بدل فشلٍ صامت
+    /// (ت١١). أمّا «مُطبَّق أم لا» فيُقرأ من القرص عند كل طلب، فليس صورةً
+    /// مخبَّأة تقدم (عطل ٤).
     identity_error: String,
 }
 
@@ -2447,36 +2446,92 @@ pub fn status_json() -> Value {
         .as_ref()
         .map(|c| c.issued.elapsed() <= PAIR_TTL)
         .unwrap_or(false);
-    let s = status().lock().unwrap_or_else(|p| p.into_inner());
+    // **صورةٌ ثم إسقاط القفل**: `identity_now()` يأخذ قفل `Status` بنفسه، فلو
+    // بقي مأخوذاً هنا لصار **جموداً على النفس** (‏`Mutex` غير تراكبي) — وقد
+    // وقع فعلاً عند أول تشغيل لهذا الفحص (علق الاختبار حتى المهلة).
+    let (running, last_error, last_activity, processed, queue, paired_id) = {
+        let s = status().lock().unwrap_or_else(|p| p.into_inner());
+        (
+            s.running,
+            s.last_error.clone(),
+            s.last_activity.clone(),
+            s.processed,
+            s.queue,
+            s.paired_id,
+        )
+    };
     json!({
-        "running": s.running,
-        "last_error": s.last_error,
-        "last_activity": s.last_activity,
-        "processed": s.processed,
-        "queue": s.queue,
-        "paired_id": s.paired_id,
+        "running": running,
+        "last_error": last_error,
+        "last_activity": last_activity,
+        "processed": processed,
+        "queue": queue,
+        "paired_id": paired_id,
         "pairing_code_active": code_active,
         "local_server_hint": LOCAL_SERVER_HINT,
         "cloud_send_max_mb": CLOUD_SEND_MAX_BYTES / (1024 * 1024),
         "cloud_download_max_mb": CLOUD_DOWNLOAD_MAX_BYTES / (1024 * 1024),
-        // م٥: هوية البوت — الحالة المخزَّنة وخطؤها إن كان (‏مفتاحٌ جديد في
-        // عقد الحالة، والحقول القديمة كما هي).
-        "identity": {
-            "applied": s.identity_applied,
-            "name": BOT_DISPLAY_NAME,
-            "error": s.identity_error,
-        },
+        // م٥: هوية البوت — **تُقرأ من القرص عند كل طلب** (عطل ٤: كانت صورةً
+        // مخبَّأة في `Status` فلا تتحرّك حتى نداء `apply_settings`)، ومعها
+        // مقابلةٌ بالخادم تُطلَق في الخلف إن قدمت (عطل ٣).
+        "identity": identity_now(),
     })
 }
 
-/// يقرأ حالة الهوية من القرص ويُحدِّث ما تعرضه الواجهة — **الواقع لا النيّة**.
-fn refresh_identity_status() {
-    let applied = load_identity_state(&crate::paths::data_dir())
-        .map(|s| s.applied)
-        .unwrap_or(false);
-    if let Ok(mut st) = status().lock() {
-        st.identity_applied = applied;
+/// حالة الهوية كما تُعرَض الآن: قراءةٌ طازجة من القرص + إطلاق مقابلةٍ بالخادم
+/// **إن قدمت** (بلا حجب: الخيط يُطلَق ويُنسى، والنتيجة تظهر في الطلب التالي).
+fn identity_now() -> Value {
+    let data = crate::paths::data_dir();
+    let st = load_identity_state(&data).unwrap_or_default();
+    let error = status()
+        .lock()
+        .map(|s| s.identity_error.clone())
+        .unwrap_or_default();
+    if let Some(cfg) = live_cfg() {
+        spawn_identity_verify_if_stale(&cfg, &data);
     }
+    identity_payload(&st, false, &error)
+}
+
+/// حمولة هوية البوت كما تُعرَض في الواجهة — **بأسماء دقيقة** (عطلان ٣ و٥):
+///
+/// * `applied` = **ما فعلناه** (راية القرص). ليست «الاسم مطابق الآن»؛
+/// * `name` = الاسم كما **قاله الخادم** آخر مرّة، وإلا فالهدف إن كنّا طبّقنا
+///   (فنحن نعلم ما ضبطناه) وإلا فالاسم السابق. ولا يُخلط الهدفُ بالحيّ؛
+/// * `target_name` = ما تُطبِّقه الضغطة («HaramLite») — مفصولاً عن `name`؛
+/// * `matches` = هل الاسم الحيّ هو هدفنا؟ (`null` = لم تُقابَل بعد)؛
+/// * `verified_secs_ago` = عُمر المقابلة بالثواني (`null` = لا مقابلة)؛
+/// * `photo_applied` = هل صورتنا مرفوعة (يفترق عن `applied` عند فشلٍ جزئي).
+fn identity_payload(st: &BotIdentityState, changed: bool, error: &str) -> Value {
+    let verified = st.checked_ms > 0;
+    let name = if !st.server_name.is_empty() {
+        st.server_name.clone()
+    } else if st.applied {
+        BOT_DISPLAY_NAME.to_string()
+    } else {
+        st.previous_name.clone()
+    };
+    let matches = if verified {
+        Some(st.server_name.trim() == BOT_DISPLAY_NAME)
+    } else {
+        None
+    };
+    let age = if verified {
+        Some((epoch_ms().saturating_sub(st.checked_ms) / 1000) as u64)
+    } else {
+        None
+    };
+    json!({
+        "applied": st.applied,
+        "photo_applied": st.photo_applied,
+        "name": name,
+        "target_name": BOT_DISPLAY_NAME,
+        "previous_name": st.previous_name,
+        "matches": matches,
+        "verified_secs_ago": age,
+        "changed": changed,
+        "error": error,
+    })
 }
 
 /// م٥: «اضبط الأوامر» من الواجهة — نداءٌ صريح بنتيجة صريحة.
@@ -2487,45 +2542,6 @@ pub fn set_commands_now() -> Result<Value, BotSetupError> {
         st.identity_error.clear();
     }
     Ok(json!({ "commands": n, "scope_chat": cfg.owner_id }))
-}
-
-/// م٥: هوية البوت من الواجهة — **مُزامَنة**: لا نداء إن كان الواقع مطابقاً
-/// للمطلوب (فلا رفعُ صورةٍ في كل ضغطةِ حفظ)، والفشل يُعلَن بنصّه.
-pub fn set_identity_now(enabled: bool) -> Result<Value, BotSetupError> {
-    let cfg = live_cfg().ok_or_else(|| BotSetupError::NotConfigured("لا توكن للبوت".into()))?;
-    let data = crate::paths::data_dir();
-    let outcome = sync_bot_identity(&cfg, &data, enabled);
-    match outcome {
-        None => {
-            if let Ok(mut st) = status().lock() {
-                st.identity_error.clear();
-            }
-            Ok(json!({
-                "applied": load_identity_state(&data).map(|s| s.applied).unwrap_or(false),
-                "changed": false,
-                "name": BOT_DISPLAY_NAME,
-            }))
-        }
-        Some(Ok(o)) => {
-            if let Ok(mut st) = status().lock() {
-                st.identity_applied = o.applied;
-                st.identity_error.clear();
-            }
-            Ok(json!({
-                "applied": o.applied,
-                "changed": true,
-                "name": o.name,
-                "previous_name": o.previous_name,
-                "photo_bytes": o.photo_bytes,
-            }))
-        }
-        Some(Err(e)) => {
-            if let Ok(mut st) = status().lock() {
-                st.identity_error = e.to_string();
-            }
-            Err(e)
-        }
-    }
 }
 
 /// الإعداد الحيّ للبوت (توكن + مالك) من العامل القائم — ومصدره الإعدادات إن
@@ -2552,25 +2568,23 @@ pub fn apply_settings(s: &Settings) {
     let want = TgConfig::from_settings(s);
     let enabled = s.telegram_enabled && want.usable();
     // م٥: هوية البوت تتبع الإعداد **بالمزامنة لا بالتخمين** (‏`m5-brief` §٢-الواجهة ١):
-    // الحالة تُقرأ من القرص فوراً (فتعرض الواجهة الواقع)، والتطبيق/العكس يقع
-    // **مرة واحدة عند اختلاف المطلوب عن الواقع** — في خيطٍ مستقل لأن النداء
-    // شبكي ولا يجوز أن يحجب مسار حفظ الإعدادات.
-    refresh_identity_status();
+    // والتطبيق/العكس يقع **مرة واحدة عند اختلاف المطلوب عن الواقع** — في خيطٍ
+    // مستقل لأن النداء شبكي ولا يجوز أن يحجب مسار حفظ الإعدادات.
+    // (**ولا قراءةَ حالةٍ هنا**: الواجهة تقرأها من `telegram_status` عند كل
+    // طلب مباشرةً من القرص، فلا صورة مخبَّأة تحتاج تحديثاً.)
     if want.usable() {
         let cfg = want.clone();
         let wanted = s.telegram_bot_identity;
         let data = crate::paths::data_dir();
-        let needs = load_identity_state(&data)
-            .map(|st| st.applied)
-            .unwrap_or(false)
-            != wanted;
-        if needs {
+        // `photo_applied` جزءٌ من «هل هناك أثر لنا؟»: تطبيقٌ فشل نصفه يترك
+        // صورةً بلا اسم، وإلغاءُ المربّع يجب أن يُزيلها (عطل ٦).
+        let st = load_identity_state(&data).unwrap_or_default();
+        if identity_needs_call(&st, wanted) {
             let _ = std::thread::Builder::new()
                 .name("tg-identity".into())
                 .spawn(move || match sync_bot_identity(&cfg, &data, wanted) {
                     Some(Ok(o)) => {
                         if let Ok(mut st) = status().lock() {
-                            st.identity_applied = o.applied;
                             st.identity_error.clear();
                         }
                         tracing::info!(
@@ -2581,13 +2595,10 @@ pub fn apply_settings(s: &Settings) {
                         );
                     }
                     Some(Err(e)) => {
-                        // **الفشل يُعلَن** ولا يُسكَت عنه: يُحفظ نصّه وتُعرَض
-                        // رايةُ التطبيق كما هي على القرص (لا ادّعاء نجاح).
+                        // **الفشل يُعلَن** ولا يُسكَت عنه: يُحفظ نصّه، والحالة
+                        // تُقرأ من القرص عند العرض (لا ادّعاء نجاح).
                         if let Ok(mut st) = status().lock() {
                             st.identity_error = e.to_string();
-                            st.identity_applied = load_identity_state(&data)
-                                .map(|s| s.applied)
-                                .unwrap_or(false);
                         }
                         tracing::warn!(target: "telegram", "تعذّر ضبط هوية البوت: {e}");
                     }
@@ -3106,7 +3117,29 @@ struct BotIdentityState {
     /// الاسم الذي كان على البوت قبلنا. وفراغُه معناه «لم يكن له اسم مخصّص»،
     /// وإعادتُه فراغاً هي الصدق نفسه لا نقصٌ في العكس.
     previous_name: String,
+    /// **هل صورةُ HaramLite مرفوعة الآن؟** (جولة التفنيد، عطل ٦.)
+    ///
+    /// `applied` لا يكفي: فشلُ `setMyName` **بعد** نجاح الرفع يترك صورةً بلا
+    /// اسم، ولو كان الحقل الوحيد `applied=false` لصار العكسُ لا يعرف أن عليه
+    /// إزالة صورة. فالحقلان يفترقان، والعكس يعمل إن كان أحدهما صحيحاً.
+    ///
+    /// **وحدّ الـAPI**: لا تُقرأ صورة البوت الحالية (لا دالّة لها) ⇒ «العكس»
+    /// **يُزيل** الصورة ولا يُعيد ما كان عليها قبلنا.
+    #[serde(default)]
+    photo_applied: bool,
+    /// آخر اسمٍ **قاله الخادم** (`getMyName`) أو تأكّد بنداء `setMyName` ناجح.
+    /// وهو أساس «مطابق الآن» — لا رايتنا المحلّية وحدها (عطل ٣).
+    #[serde(default)]
+    server_name: String,
+    /// متى قُوبل الاسم مع الخادم (ميلي ثانية منذ الحقبة) — به يُقاس عُمر
+    /// التحقّق، ويُعرَض «قبل كم ثانية» بدل ادّعاء معرفةٍ حالية.
+    #[serde(default)]
+    checked_ms: u128,
 }
+
+/// كم يبقى التحقّق من الخادم صالحاً قبل إعادة قراءته في الخلف — **اختيارنا**
+/// المعلَن: نداء `getMyName` واحد في الدقيقة كحدّ أقصى، ولا حجب لأي مسار.
+const IDENTITY_VERIFY_TTL: Duration = Duration::from_secs(60);
 
 /// ملف حالة الهوية — بجانب `telegram-access.json` في جذر مجلد البيانات (نفس
 /// نمط جيرانه من ملفات حالة تيليجرام).
@@ -3306,15 +3339,43 @@ pub fn apply_bot_identity(
         &BotIdentityState {
             applied: false,
             previous_name: previous.clone(),
+            photo_applied: false,
+            server_name: previous.clone(),
+            checked_ms: epoch_ms(),
         },
     )?;
     let photo_bytes = upload_bot_photo(cfg)?;
-    set_bot_name(cfg, BOT_DISPLAY_NAME)?;
+    // **الصورة صارت مرفوعة فعلاً** — يُدوَّن فوراً (عطل ٦): فشلُ الاسم بعدها كان
+    // يترك صورةً بلا اسم بلا أثرٍ في الحالة، فيصير العكس أعمى عنها.
+    save_identity_state(
+        data,
+        &BotIdentityState {
+            applied: false,
+            previous_name: previous.clone(),
+            photo_applied: true,
+            server_name: previous.clone(),
+            checked_ms: epoch_ms(),
+        },
+    )?;
+    if let Err(e) = set_bot_name(cfg, BOT_DISPLAY_NAME) {
+        // **لا نجاح نصفيّ صامت**: النصّ يقول ما نجح وما فشل، والحالة تحمل
+        // `photo_applied:true` فيعمل العكس (يُزيل الصورة ويُعيد الاسم).
+        return Err(match e {
+            BotSetupError::Name(m) => BotSetupError::Name(format!(
+                "{m} — ⚠ الصورة **رُفعت فعلاً** والاسم لم يُضبط؛ \
+                 ألغِ المربّع لإزالة الصورة وإعادة الاسم «{previous}»"
+            )),
+            other => other,
+        });
+    }
     save_identity_state(
         data,
         &BotIdentityState {
             applied: true,
             previous_name: previous.clone(),
+            photo_applied: true,
+            server_name: BOT_DISPLAY_NAME.to_string(),
+            checked_ms: epoch_ms(),
         },
     )?;
     Ok(BotIdentityOutcome {
@@ -3330,6 +3391,9 @@ pub fn apply_bot_identity(
 ///
 /// وبلا حالةٍ مخزَّنة **لا يُعكَس شيء**: `revert` بلا سابقٍ كان سيمحو اسم البوت
 /// الحقيقي — والامتناع هنا أصدق من فعلٍ لا يُعرَف مرجعه.
+///
+/// **وحدّ الـAPI يُعلَن**: لا دالّة تقرأ صورة البوت الحالية ⇒ العكس **يُزيل**
+/// الصورة ولا يُعيد ما كانت عليه قبلنا؛ وما يُعاد نصّاً هو **الاسم** وحده.
 pub fn revert_bot_identity(
     cfg: &TgConfig,
     data: &Path,
@@ -3342,12 +3406,33 @@ pub fn revert_bot_identity(
     };
     let previous = st.previous_name.clone();
     remove_bot_photo(cfg)?;
-    set_bot_name(cfg, &previous)?;
+    // الصورة أُزيلت فعلاً (عطل ٦ بالاتجاه المعاكس): يُدوَّن قبل محاولة الاسم.
     save_identity_state(
         data,
         &BotIdentityState {
             applied: false,
-            previous_name: String::new(),
+            previous_name: previous.clone(),
+            photo_applied: false,
+            server_name: BOT_DISPLAY_NAME.to_string(),
+            checked_ms: epoch_ms(),
+        },
+    )?;
+    if let Err(e) = set_bot_name(cfg, &previous) {
+        return Err(match e {
+            BotSetupError::Name(m) => BotSetupError::Name(format!(
+                "{m} — ⚠ الصورة **أُزيلت فعلاً** والاسم لم يُعَد إلى «{previous}»"
+            )),
+            other => other,
+        });
+    }
+    save_identity_state(
+        data,
+        &BotIdentityState {
+            applied: false,
+            previous_name: previous.clone(),
+            photo_applied: false,
+            server_name: previous.clone(),
+            checked_ms: epoch_ms(),
         },
     )?;
     Ok(BotIdentityOutcome {
@@ -3358,18 +3443,66 @@ pub fn revert_bot_identity(
     })
 }
 
+/// **يُقابل حالتنا بالخادم** (`getMyName`) ويُدوِّن ما قاله — عطل ٣: الراية
+/// المحلّية تقول «طبّقنا»، ولا تقول «مطابق الآن»؛ ومن أعاد الاسم من BotFather
+/// لا يُكتشَف برايةٍ وحدها.
+///
+/// ويُعيد الاسم كما رآه الخادم، أو خطأ `Read` إن تعذّر النداء (ولا يُخمَّن).
+pub fn verify_identity_name(cfg: &TgConfig, data: &Path) -> Result<String, BotSetupError> {
+    let _g = identity_lock();
+    let name = bot_current_name(cfg)?;
+    let mut st = load_identity_state(data).unwrap_or_default();
+    st.server_name = name.clone();
+    st.checked_ms = epoch_ms();
+    save_identity_state(data, &st)?;
+    Ok(name)
+}
+
+/// **هل حالة القرص كافية؟** تُقرأ الحالة، فإن كان آخر تحقّق أقدم من
+/// [`IDENTITY_VERIFY_TTL`] أُطلق **خيطٌ واحد** يُقابلها بالخادم ولا يُحجَب أي
+/// مسار. ولا يُنتظر الخيط: القارئ يرى الحالة الحالية، والمقابلة تصل بعدها
+/// بالنتيجة (وفيها `server_name` و`checked_ms`).
+fn spawn_identity_verify_if_stale(cfg: &TgConfig, data: &Path) {
+    static LAST_ATTEMPT: AtomicU64 = AtomicU64::new(0);
+    let now = epoch_ms() as u64;
+    let ttl_ms = IDENTITY_VERIFY_TTL.as_millis() as u64;
+    // سباقٌ واعٍ: من كسب الـCAS أطلق المحاولة، وحده — فلا سيل خيوط.
+    let Ok(prev) = LAST_ATTEMPT.compare_exchange(
+        LAST_ATTEMPT.load(Ordering::SeqCst),
+        now,
+        Ordering::SeqCst,
+        Ordering::SeqCst,
+    ) else {
+        return;
+    };
+    if now.saturating_sub(prev) < ttl_ms {
+        return;
+    }
+    let cfg = cfg.clone();
+    let data = data.to_path_buf();
+    let _ = std::thread::Builder::new()
+        .name("tg-identity-verify".into())
+        .spawn(move || {
+            if let Err(e) = verify_identity_name(&cfg, &data) {
+                tracing::debug!(target: "telegram", "تعذّرت مقابلة اسم البوت بالخادم: {e}");
+            }
+        });
+}
+
 /// يُزامن الهوية مع المطلوب **مرة واحدة عند اللزوم**: لا نداء إن كان الواقع
 /// مطابقاً للمطلوب، فلا رفعُ صورةٍ في كل حفظِ إعدادات ولا في كل إقلاع.
 /// `None` = لا شيء يستحق نداءً.
+///
+/// **وهذا المسار (الإقلاع/دفع الإعدادات) لا يسأل الخادم**: نداء `getMyName` في
+/// كل حفظِ إعدادات كلفةٌ بلا مقابل — والمقابلة بالخادم تقع في مسار الضغطة
+/// ([`set_identity_now`]) وفي التحقّق الدوري.
 pub fn sync_bot_identity(
     cfg: &TgConfig,
     data: &Path,
     wanted: bool,
 ) -> Option<Result<BotIdentityOutcome, BotSetupError>> {
-    let applied = load_identity_state(data)
-        .map(|s| s.applied)
-        .unwrap_or(false);
-    if applied == wanted {
+    let st = load_identity_state(data).unwrap_or_default();
+    if !identity_needs_call(&st, wanted) {
         return None;
     }
     Some(if wanted {
@@ -3377,6 +3510,134 @@ pub fn sync_bot_identity(
     } else {
         revert_bot_identity(cfg, data)
     })
+}
+
+/// **هل يلزم نداء؟** حكمٌ بلا شبكة: راية القرص و`photo_applied`، **وما قاله
+/// الخادم في آخر مقابلة**.
+///
+/// * مطلوبُ التطبيق: يلزم إن لم تكن الراية مرفوعة، **أو** كانت مرفوعة وآخر
+///   مقابلةٍ تقول إن الاسم على الخادم ليس اسمنا (إعادةُ تسميةٍ من `@BotFather`
+///   ⇒ يُعاد التطبيق عند أول حفظِ إعدادات، من دون نداءٍ إضافي: المقابلة
+///   مسجَّلة أصلاً)؛
+/// * مطلوبُ العكس: يلزم إن كان لنا **أثر** — اسمٌ مطبَّق أو صورة معلّقة من
+///   تطبيقٍ فشل نصفه (عطل ٦). ورايةٌ منزوعة بلا صورة ⇒ لا نداء.
+fn identity_needs_call(st: &BotIdentityState, wanted: bool) -> bool {
+    if wanted {
+        !st.applied || (st.checked_ms > 0 && st.server_name.trim() != BOT_DISPLAY_NAME)
+    } else {
+        st.applied || st.photo_applied
+    }
+}
+
+/// **قرار الضغطة، مقابَلاً بالخادم** (عطل ٣): يُقرأ الاسم الحقيقي من `getMyName`
+/// أولاً، ثم يُقرَّر:
+///
+/// * مطلوب التطبيق والاسم على الخادم **هو** اسمنا ⇒ لا شيء (لا رفعَ صورة ثانياً)؛
+/// * مطلوب التطبيق والاسم غيره (أعاده المالك من BotFather مثلاً) ⇒ **يُعاد
+///   التطبيق** ولو كانت رايتنا تقول «مطبَّق»؛
+/// * مطلوب العكس ولنا أثر (اسمٌ أو صورة) ⇒ عكس.
+pub fn set_identity_now(enabled: bool) -> Result<Value, BotSetupError> {
+    let cfg = live_cfg().ok_or_else(|| BotSetupError::NotConfigured("لا توكن للبوت".into()))?;
+    let data = crate::paths::data_dir();
+    match decide_identity_action(&cfg, &data, enabled) {
+        IdentityAction::None => {
+            let st = load_identity_state(&data).unwrap_or_default();
+            if let Ok(mut s) = status().lock() {
+                s.identity_error.clear();
+            }
+            Ok(identity_payload(&st, false, ""))
+        }
+        IdentityAction::Apply => finish_identity(apply_bot_identity(&cfg, &data), &data),
+        IdentityAction::Revert => finish_identity(revert_bot_identity(&cfg, &data), &data),
+    }
+}
+
+/// ما يجب فعله عند ضغطة المربّع — حكمٌ **مقيس بالخادم** لا بالراية وحدها.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IdentityAction {
+    None,
+    Apply,
+    Revert,
+}
+
+/// **القرار** — دالّة نقيّة تُغذّى بما قاله الخادم (فتُقاس بلا شبكة):
+/// `server_name` هو ما ردّ به `getMyName`، و`state` ما عندنا على القرص.
+fn identity_action(server_name: &str, state: &BotIdentityState, wanted: bool) -> IdentityAction {
+    let ours_now = server_name.trim() == BOT_DISPLAY_NAME;
+    if wanted {
+        // مطبَّقٌ فعلاً: رايتنا مرفوعة **والخادم يقول اسمنا**. وغير ذلك يلزمه
+        // نداء: رايةٌ منزوعة، أو اسمٌ غيّره المالك، أو صورةٌ معلّقة بلا اسم.
+        if state.applied && ours_now {
+            IdentityAction::None
+        } else {
+            IdentityAction::Apply
+        }
+    } else if state.applied || state.photo_applied || ours_now {
+        // `ours_now` وحدها سببٌ للعكس: اسمُنا على الخادم أثرٌ لنا ولو ضاعت
+        // رايتنا (ملف حالة حُذف) — وإلا بقي الاسم غريباً عن صاحبه.
+        IdentityAction::Revert
+    } else {
+        IdentityAction::None
+    }
+}
+
+/// يقرأ الخادم ثم يحكم — و**الفشل في القراءة يُعلَن** ولا يُخمَّن: بلا معرفة
+/// اسم الخادم لا يُقال «لا شيء يستحق نداءً».
+fn decide_identity_action(cfg: &TgConfig, data: &Path, wanted: bool) -> IdentityAction {
+    let state = load_identity_state(data).unwrap_or_default();
+    match bot_current_name(cfg) {
+        Ok(name) => {
+            let mut st = state.clone();
+            st.server_name = name.clone();
+            st.checked_ms = epoch_ms();
+            let _ = save_identity_state(data, &st);
+            identity_action(&name, &state, wanted)
+        }
+        Err(e) => {
+            if let Ok(mut s) = status().lock() {
+                s.identity_error = e.to_string();
+            }
+            tracing::warn!(target: "telegram", "تعذّرت قراءة اسم البوت قبل القرار: {e}");
+            // بلا قراءةٍ لا ادّعاء: يُحكَم بالراية المحلّية وحدها (أضيق مسار)
+            // — وهذا أصدق من ردّ نجاحٍ بلا فعل.
+            if wanted {
+                if state.applied {
+                    IdentityAction::None
+                } else {
+                    IdentityAction::Apply
+                }
+            } else if state.applied || state.photo_applied {
+                IdentityAction::Revert
+            } else {
+                IdentityAction::None
+            }
+        }
+    }
+}
+
+/// يُنهي مسار الضغطة: نجاحٌ ⇒ **حمولةُ واقع** كاملة (ومعها بايتات الصورة
+/// المرفوعة و`changed:true`)، وفشلٌ ⇒ نصّه محفوظاً ليعرضه `telegram_status`.
+fn finish_identity(
+    outcome: Result<BotIdentityOutcome, BotSetupError>,
+    data: &Path,
+) -> Result<Value, BotSetupError> {
+    match outcome {
+        Ok(o) => {
+            let st = load_identity_state(data).unwrap_or_default();
+            if let Ok(mut s) = status().lock() {
+                s.identity_error.clear();
+            }
+            let mut v = identity_payload(&st, true, "");
+            v["photo_bytes"] = json!(o.photo_bytes);
+            Ok(v)
+        }
+        Err(e) => {
+            if let Ok(mut s) = status().lock() {
+                s.identity_error = e.to_string();
+            }
+            Err(e)
+        }
+    }
 }
 
 // ── م٤: رسالة التعريف المثبَّتة ونصيحة المعالج ──────────────────────────────
@@ -6118,6 +6379,12 @@ mod tests {
                 .lock()
                 .unwrap_or_else(|p| p.into_inner())
                 .clone()
+        }
+
+        /// **يُغيّر اسم البوت على الخادم من خارجنا** — محاكاة إعادة التسمية من
+        /// `@BotFather`، وهي الحالة التي لا تكشفها رايتنا المحلّية (عطل ٣).
+        fn rename_on_server(&self, name: &str) {
+            *self.my_name.lock().unwrap_or_else(|p| p.into_inner()) = name.to_string();
         }
 
         /// يجعل الخادم يرفض كل طلبٍ يحمل هذا النصّ في جسمه — وهو الشكل الحقيقي
@@ -10355,6 +10622,9 @@ mod tests {
         assert_eq!(bot.current_name(), "HaramLite", "الاسم على الخادم لم يتغيّر");
         let stored = load_identity_state(&dir).expect("حالة مخزَّنة بعد التطبيق");
         assert!(stored.applied, "راية التطبيق لم تُرفع");
+        assert!(stored.photo_applied, "الصورة رُفعت ولم تُدوَّن");
+        assert_eq!(stored.server_name, "HaramLite", "اسم الخادم لم يُدوَّن");
+        assert!(stored.checked_ms > 0, "زمن المقابلة لم يُدوَّن");
         assert_eq!(
             stored.previous_name, original,
             "الاسم السابق لم يُخزَّن على القرص"
@@ -10387,7 +10657,15 @@ mod tests {
         assert_eq!(bot.count("setMyProfilePhoto"), 0, "العكس رفع صورة");
         let after = load_identity_state(&dir).expect("حالة بعد العكس");
         assert!(!after.applied, "راية التطبيق لم تُنزَل");
-        assert!(after.previous_name.is_empty(), "الاسم السابق لم يُفرَّغ");
+        assert!(!after.photo_applied, "الصورة أُزيلت وبقيت الراية مرفوعة");
+        assert_eq!(
+            after.server_name, original,
+            "اسم الخادم بعد العكس ليس الاسم المُعاد"
+        );
+        assert_eq!(
+            after.previous_name, original,
+            "الاسم السابق يبقى معروفاً بعد العكس (عكسٌ ثانٍ لا يصير أعمى)"
+        );
 
         // ③ وبلا حالةٍ مخزَّنة **لا عكس**: كان سيمحو اسم البوت الحقيقي.
         let fresh = temp_dir("m5_identity_none");
@@ -10444,6 +10722,265 @@ mod tests {
         let ok = apply_bot_identity(&cfg, &dir).expect("بعد زوال السبب");
         assert!(ok.applied, "لم يُطبَّق بعد زوال سبب الرفض");
         assert_eq!(bot.current_name(), "HaramLite");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **جولة التفنيد، عطل ٣ — الراية المحلّية لا تكفي: الحقيقة تُقرأ من
+    /// الخادم.** من أعاد الاسم من `@BotFather` تُبقيه رايتُنا «مطبَّقاً»،
+    /// والقرار يجب أن يرى الاسم الحقيقي.
+    ///
+    /// والمُفسَد: قرارٌ بالراية وحدها (`applied == wanted`) ⇒ يسقط الشقّ الأول
+    /// (إعادة تسمية خارجية لا تُكتشَف)، وإرجاعُ الهدف مكان الاسم الحيّ في
+    /// الحمولة يسقط في [`the_identity_payload_names_the_live_name_not_the_target`].
+    #[test]
+    fn t13_a_rename_outside_us_is_seen_and_reapplied() {
+        let _g = state_lock();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let dir = temp_dir("m5_rename");
+        apply_bot_identity(&cfg, &dir).expect("تطبيق أوّلي");
+        let applied_state = load_identity_state(&dir).unwrap();
+        assert!(applied_state.applied);
+
+        // ① الاسم على الخادم اسمُنا ⇒ **لا شيء يستحق نداءً** (لا رفعَ صورة ثانية).
+        assert_eq!(
+            identity_action(&bot.current_name(), &applied_state, true),
+            IdentityAction::None
+        );
+
+        // ② المالك أعاد الاسم من @BotFather: الراية تقول «مطبَّق» والخادم يقول غير ذلك.
+        bot.rename_on_server("Haramlite");
+        assert_eq!(
+            identity_action(&bot.current_name(), &applied_state, true),
+            IdentityAction::Apply,
+            "إعادة تسمية خارجية لم تُكتشَف — القرار بالراية وحدها"
+        );
+
+        // ③ والمقابلة الفعلية بالخادم تُدوَّن: الاسم وزمنُه (لا ادّعاء معرفةٍ حالية).
+        bot.clear();
+        let seen = verify_identity_name(&cfg, &dir).expect("مقابلة الاسم");
+        assert_eq!(seen, "Haramlite");
+        let st = load_identity_state(&dir).unwrap();
+        assert_eq!(st.server_name, "Haramlite", "اسم الخادم لم يُحدَّث");
+        assert!(st.checked_ms > 0, "زمن المقابلة لم يُحدَّث");
+        assert_eq!(bot.count("getMyName"), 1, "المقابلة تطلب الاسم مرّة واحدة");
+        let payload = identity_payload(&st, false, "");
+        assert_eq!(
+            payload["matches"],
+            json!(false),
+            "الحمولة تدّعي مطابقةً والخادم يقول غير ذلك: {payload}"
+        );
+
+        // ④ والعكس مطلوبٌ لأن لنا أثراً (اسمُنا كان عليه، وصورتنا مرفوعة).
+        assert_eq!(
+            identity_action(&bot.current_name(), &st, false),
+            IdentityAction::Revert
+        );
+
+        // ④ب **وإصلاحٌ ذاتيّ بلا نداء إضافي**: رايتنا مرفوعة وآخر مقابلةٍ تقول
+        //     إن الاسم على الخادم غيره ⇒ أول حفظِ إعدادات يُعيد التطبيق.
+        let mut mismatch = applied_state.clone();
+        mismatch.server_name = "Haramlite".into();
+        mismatch.checked_ms = 1;
+        assert!(
+            identity_needs_call(&mismatch, true),
+            "مقابلةٌ تقول إن الاسم تغيّر ولم تُوجب إعادة التطبيق"
+        );
+        assert!(
+            !identity_needs_call(&applied_state, true),
+            "مقابلةٌ مطابقة أوجبت نداءً — رفعُ صورةٍ بلا سبب"
+        );
+        // ⑤ وبعد عكسٍ كامل لا أثر لنا ⇒ لا نداء (ولا نداءَ في كل حفظ إعدادات).
+        let clean = BotIdentityState {
+            applied: false,
+            photo_applied: false,
+            previous_name: "HaramLite Bot".into(),
+            server_name: "HaramLite Bot".into(),
+            checked_ms: 1,
+        };
+        assert!(
+            !identity_needs_call(&clean, false),
+            "عكسٌ بلا أثر = نداء زائد"
+        );
+        assert!(
+            identity_needs_call(
+                &BotIdentityState {
+                    photo_applied: true,
+                    ..clean.clone()
+                },
+                false
+            ),
+            "صورةٌ معلّقة من تطبيقٍ فاشل يجب أن تُوجب العكس"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **جولة التفنيد، عطل ٥ — الاسم في الحمولة هو الحيّ لا الهدف.**
+    ///
+    /// والمُفسَد: `name` تُعاد دائماً `BOT_DISPLAY_NAME` ⇒ الشقّ الثاني يسقط
+    /// (الحمولة تقول «HaramLite» والحالة تقول «Haramlite»).
+    #[test]
+    fn the_identity_payload_names_the_live_name_not_the_target() {
+        // مطبَّق: الحيّ = الهدف.
+        let applied = BotIdentityState {
+            applied: true,
+            photo_applied: true,
+            previous_name: "Haramlite".into(),
+            server_name: "HaramLite".into(),
+            checked_ms: 1_700_000_000_000,
+        };
+        let p = identity_payload(&applied, false, "");
+        assert_eq!(p["name"], json!("HaramLite"));
+        assert_eq!(p["target_name"], json!("HaramLite"));
+        assert_eq!(p["matches"], json!(true));
+        assert_eq!(p["applied"], json!(true));
+        assert_eq!(p["photo_applied"], json!(true));
+        assert!(p["verified_secs_ago"].is_u64(), "عُمر المقابلة ليس رقماً");
+
+        // **بعد العكس**: الحيّ هو الاسم المُعاد، والهدف يبقى مذكوراً بوصفه هدفاً.
+        let reverted = BotIdentityState {
+            applied: false,
+            photo_applied: false,
+            previous_name: "Haramlite".into(),
+            server_name: "Haramlite".into(),
+            checked_ms: 1_700_000_000_000,
+        };
+        let p = identity_payload(&reverted, true, "");
+        assert_eq!(
+            p["name"],
+            json!("Haramlite"),
+            "الاسم المعروض بعد العكس هو الهدف لا الحيّ: {p}"
+        );
+        assert_eq!(p["target_name"], json!("HaramLite"), "الهدف ضاع: {p}");
+        assert_eq!(p["matches"], json!(false), "المطابقة كاذبة بعد العكس: {p}");
+        assert_eq!(p["applied"], json!(false));
+        assert_eq!(p["changed"], json!(true));
+
+        // ولم تُقابَل بعد: لا يُدَّعى اسمٌ حيّ ولا مطابقة.
+        let unverified = BotIdentityState::default();
+        let p = identity_payload(&unverified, false, "");
+        assert_eq!(p["matches"], Value::Null, "مطابقةٌ بلا مقابلة: {p}");
+        assert_eq!(p["verified_secs_ago"], Value::Null);
+        assert_eq!(p["name"], json!(""), "اسمٌ مُختلق بلا مقابلة: {p}");
+    }
+
+    /// **جولة التفنيد، عطل ٤ — الحالة تُقرأ عند كل طلب لا صورةً مخبَّأة.**
+    ///
+    /// يُكتب ملف الحالة **من خارجنا** (كما لو كتبته عملية أخرى) ثم يُسأل
+    /// `telegram_status` مباشرةً — بلا `apply_settings` بينهما. والمُفسَد:
+    /// إعادة الحقل المخبَّأ (`Status.identity_applied`) ⇒ يسقط.
+    #[test]
+    fn a_state_file_written_outside_is_reflected_on_the_next_status_read() {
+        let _serial = crate::paths::serial_guard();
+        let _env = crate::paths::env_restore("HARAMLITE_DATA_DIR");
+        let _g = state_lock();
+        let base = temp_dir("m5_status_fresh");
+        std::env::set_var("HARAMLITE_DATA_DIR", &base);
+
+        // ① لا ملف ⇒ لا ادّعاء: راية منزوعة ولا مطابقة (لا مقابلة).
+        let first = status_json();
+        assert_eq!(first["identity"]["applied"], json!(false));
+        assert_eq!(first["identity"]["matches"], Value::Null);
+
+        // ② ملفٌ يُكتب من الخارج (بلا أي نداء منّا).
+        save_identity_state(
+            &base,
+            &BotIdentityState {
+                applied: true,
+                photo_applied: true,
+                previous_name: "Haramlite".into(),
+                server_name: "HaramLite".into(),
+                checked_ms: epoch_ms(),
+            },
+        )
+        .unwrap();
+        let second = status_json();
+        assert_eq!(
+            second["identity"]["applied"],
+            json!(true),
+            "القراءة التالية لم ترَ الملف — الحالة صورة مخبَّأة: {second}"
+        );
+        assert_eq!(second["identity"]["photo_applied"], json!(true));
+        assert_eq!(second["identity"]["name"], json!("HaramLite"));
+        assert_eq!(
+            second["identity"]["target_name"],
+            json!(BOT_DISPLAY_NAME),
+            "الهدف مفقود من الحمولة"
+        );
+        assert_eq!(second["identity"]["matches"], json!(true));
+        assert!(
+            second["identity"]["verified_secs_ago"].is_u64(),
+            "عُمر المقابلة ليس رقماً: {second}"
+        );
+
+        // ③ وحذفُ الملف يُرى فوراً كذلك (لا بقايا من القراءة السابقة).
+        std::fs::remove_file(identity_path(&base)).unwrap();
+        let third = status_json();
+        assert_eq!(
+            third["identity"]["applied"],
+            json!(false),
+            "حذفُ الملف لم يظهر — رايةٌ باقية بلا سند: {third}"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// **جولة التفنيد، عطل ٦ — لا نجاح نصفيّ صامت**: الاسمُ يرفضه الـAPI **بعد**
+    /// نجاح رفع الصورة ⇒ خطأٌ يقول ما نجح وما فشل، وحالةٌ تحمل `photo_applied`
+    /// ليعمل العكس.
+    ///
+    /// والمُفسَد: ابتلاعُ فشل الاسم، أو عدم تدوين `photo_applied` بعد الرفع ⇒
+    /// يسقط هذا الاختبار (ويبقى أثرٌ لا يعرفه العكس).
+    #[test]
+    fn t14_a_name_failure_after_the_photo_is_declared_and_reversible() {
+        let _g = state_lock();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let dir = temp_dir("m5_partial");
+        let original = bot.current_name();
+
+        bot.reject_method("setMyName");
+        let err = apply_bot_identity(&cfg, &dir).expect_err("فشل الاسم يجب أن يُعلَن");
+        assert!(
+            matches!(err, BotSetupError::Name(_)),
+            "الخطأ ليس مُسمّى بالاسم: {err:?}"
+        );
+        let text = err.to_string();
+        assert!(
+            text.contains("رُفعت فعلاً"),
+            "نصّ الخطأ لا يقول إن الصورة رُفعت: {text}"
+        );
+
+        // **الصورة رُفعت فعلاً** على الخادم، والاسم لم يتغيّر — والحالة تقول ذلك.
+        assert_eq!(bot.count("setMyProfilePhoto"), 1, "الصورة لم تُرفع");
+        assert_eq!(bot.current_name(), original, "الاسم تغيّر رغم فشل النداء");
+        let st = load_identity_state(&dir).expect("حالة بعد فشلٍ جزئي");
+        assert!(!st.applied, "ادُّعي التطبيق");
+        assert!(
+            st.photo_applied,
+            "الصورة مرفوعة والحالة لا تعرف — العكس يصير أعمى"
+        );
+        assert_eq!(st.previous_name, original);
+        assert_eq!(
+            identity_payload(&st, false, "")["photo_applied"],
+            json!(true),
+            "الحمولة لا تُعلن الصورة المعلّقة"
+        );
+        // وقرارُ العكس يعرف أن عليه إزالة صورة (عطل ٦ في مسار القرار).
+        assert!(
+            identity_needs_call(&st, false),
+            "صورةٌ معلّقة بلا اسم لا تُوجب العكس"
+        );
+
+        // **والعكس ينظّف الأثر كاملاً**: تُزال الصورة ويعود الاسم.
+        bot.accept_method("setMyName");
+        bot.clear();
+        let back = revert_bot_identity(&cfg, &dir).expect("عكس نصف تطبيق");
+        assert!(!back.applied);
+        assert_eq!(bot.count("removeMyProfilePhoto"), 1, "الصورة لم تُزَل");
+        assert_eq!(bot.current_name(), original, "الاسم لم يعد");
+        let after = load_identity_state(&dir).unwrap();
+        assert!(!after.applied && !after.photo_applied, "أثرٌ باقٍ في الحالة");
+        assert!(!identity_needs_call(&after, false), "نداءٌ بلا أثر");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
