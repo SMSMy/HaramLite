@@ -49,6 +49,11 @@ function scheduleLogPaint(): void {
     logFrameQueued = false;
     if (!logOpen) return;
     if (renderedUpTo > logTotal) { renderLogs(logBuffer); return; }
+    // جولة ثالثة (الجاسوس): سطر حالة («⚠ تعذّر قراءة السجلّ») يبقى أبداً لأن
+    // هذا المسار **يُضيف ولا يُزيل**، فكان يناقض سطراً حقيقياً تحته:
+    // `P3 afterLine {"noticeStillSaysUnavailable":true}`. فالوسم يُزاح هنا
+    // قبل إضافة أي سطر حقيقي — والوعد في تعليق `showNotice` صار منفَّذاً.
+    view.querySelector('[data-log-notice]')?.remove();
     const stick = nearBottom();
     const have = logTotal - renderedUpTo;
     const inBuf = Math.min(have, logBuffer.length);

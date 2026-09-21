@@ -204,6 +204,11 @@ const i18n = {
     // الحقيقة بدل أن يناقضها.
     queue_empty_running: 'لا ملفات في الطابور — ومهمّة جارية في الخلفية',
     queue_empty_running_hint: 'المهمّة الجارية تتابع في الخلفية؛ وأفلت ملفات أو أضف رابطاً لإضافة عمل جديد.',
+    // الجولة الثالثة: فشل قراءة السِجلّ ⇒ **لا نعرف**. ولا «لا ملفات … لتبدأ
+    // المعالجة» (قد تكون ثمّة مهمّة) ولا «مهمّة جارية» (لم نُثبتها) — بل تصريح
+    // بالجهل. فالخمول **ادّعاء معرفة** كالعمل، ولا يُطلق بلا دليل.
+    queue_empty_unknown: '⚠ تعذّر قراءة حالة المهامّ — لا نعرف إن كان شيء يعمل',
+    queue_empty_unknown_hint: 'تعذّرت قراءة سِجلّ المهامّ من الخلفية؛ انتظر قليلاً أو أعد المحاولة قبل بدء عمل جديد.',
     queue_processing: 'جاري المعالجة...',
     queue_pending: 'في الانتظار',
     ext_title: 'وظائف خارجية',
@@ -469,6 +474,8 @@ const i18n = {
     queue_empty_add: 'Drop files on the window or add a link to start processing.',
     queue_empty_running: 'No files in the queue — a job is running in the background',
     queue_empty_running_hint: 'The running job continues in the background; drop files or add a link to queue more work.',
+    queue_empty_unknown: '⚠ Could not read the job state — we do not know whether anything is running',
+    queue_empty_unknown_hint: 'The backend job registry could not be read; wait a moment or retry before starting new work.',
     queue_processing: 'Processing...',
     queue_pending: 'Waiting',
     ext_title: 'External jobs',

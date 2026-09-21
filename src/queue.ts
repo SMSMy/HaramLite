@@ -292,24 +292,51 @@ function updateBatchEmptyState(): void {
   if (!empty) return;
   const noQueue = session.getBatchQueue().length === 0;
   const noRows = visibleBatchRows().length === 0;
-  const busy = noQueue && noRows && liveBackendJob;
+  // **ثلاث حالات لا ثنائية** (جولة ثالثة): «يعمل» / «خامل» / **«مجهول»**.
+  // كان `liveBackendJob` منطقياً يُبنى على قراءة ناجحة، فالشرط الثلاثي يتقلّص
+  // إلى شرطين حين تُفقد المعرفة ⇒ تُعلن اللوحة «لا ملفات … لتبدأ المعالجة» في
+  // اللحظة التي يقول فيها شريط الإيقاف «✗ تعذّرت قراءة المهامّ النشطة». والخمول
+  // **ادّعاء معرفة** لا يجوز إطلاقه بلا دليل، كما لا يجوز إطلاق «يعمل».
+  const busy = noQueue && noRows && jobKnowledge === 'running';
+  const unknown = noQueue && noRows && jobKnowledge === 'unknown';
   empty.classList.toggle('hidden', !(noQueue && noRows));
   const main = empty.querySelector<HTMLElement>('[data-i18n="queue_empty"]');
   const add = empty.querySelector<HTMLElement>('[data-i18n="queue_empty_add"]');
-  if (main) main.textContent = t(busy ? 'queue_empty_running' : 'queue_empty');
-  if (add) add.textContent = t(busy ? 'queue_empty_running_hint' : 'queue_empty_add');
+  // والمجهول لا يَعِد بشيء: لا دعوة لبدء المعالجة (قد تكون هناك مهمّة)، ولا
+  // ادّعاء عمل (لم نُثبته) — بل نصّ يقول إن الحالة غير معروفة.
+  const mainKey = unknown ? 'queue_empty_unknown' : busy ? 'queue_empty_running' : 'queue_empty';
+  const addKey = unknown ? 'queue_empty_unknown_hint' : busy ? 'queue_empty_running_hint' : 'queue_empty_add';
+  if (main) main.textContent = t(mainKey);
+  if (add) add.textContent = t(addKey);
 }
 /** صفوف الطابور المرسومة فعلاً — **تُقرأ من DOM**، فلا تفترق عن الشاشة. */
 function visibleBatchRows(): HTMLElement[] {
   const list = document.getElementById('batch-list');
   return list ? [...list.querySelectorAll<HTMLElement>('div[data-file]')] : [];
 }
-/** هل في السِجلّ مهمّة حيّة؟ يُحدَّث من استطلاع المهامّ (`startJobsPolling`)
- *  فلا يقرأ استدعاءٌ متزامن قيمةً قديمة، والافتراض `false` (لا ادّعاء عمل). */
-let liveBackendJob = false;
-function setBackendJobRunning(next: boolean): void {
-  if (liveBackendJob === next) return;
-  liveBackendJob = next;
+/** ما نعرفه عن مهامّ الخلفية — **أربع حالات**، والمعروض ثلاث:
+ *
+ *  • `'unchecked'` — **الابتداء**: لم نقرأ بعد. لا ادّعاء عمل ولا ادّعاء جهل:
+ *    «لا ملفات … ابدأ المعالجة» صادقة عن **طابور الواجهة** (وهو ما يقيسه هذا
+ *    السطر)، ولا تُناقض شيئاً لأن الشريط لم يقل شيئاً بعد.
+ *  • `'idle'`    — قراءة **ناجحة** قالت: لا مهامّ.
+ *  • `'running'` — قراءة **ناجحة** قالت: ثمّة مهامّ.
+ *  • `'unknown'` — **فشلت قراءة** (بعد أن كان ثمّة محاولة) ⇒ لا «لا ملفات» ولا
+ *    «مهمّة جارية»، بل تصريح بالجهل.
+ *
+ *  والفرق بين `'unchecked'` و`'unknown'` جوهري ومقيس: الأول لا يعلم أحدٌ أنه
+ *  سُئل، والثاني **سُئل وفشل** — والشريط حينها يقول «✗ تعذّرت قراءة المهامّ»،
+ *  فلا يجوز أن تناقضه اللوحة. (وكان الأول يُعرض «مجهول» فيُفزع كل إقلاع سليم —
+ *  أسقطه الحارس فأُصلح.)
+ *
+ *  ولا يُحفظ شيء من قراءة قديمة: كل دورة استطلاع **تكتب** هذه القيمة من نتيجتها
+ *  (نجاح ⇒ idle/running، فشل ⇒ unknown)، فزوال المعرفة يُعلَن في الدورة نفسها
+ *  ولا يبقى ادّعاء عمل أبديّاً بعد أن رُئيت مهمّة مرّة (وهو لاتش مقيس في الجولة
+ *  الثالثة: `P2c failing {"claimsRunning":true}`). */
+let jobKnowledge: 'unchecked' | 'idle' | 'running' | 'unknown' = 'unchecked';
+function setJobKnowledge(next: 'unchecked' | 'idle' | 'running' | 'unknown'): void {
+  if (jobKnowledge === next) return;
+  jobKnowledge = next;
   updateBatchEmptyState();
 }
 
@@ -585,7 +612,9 @@ async function syncJobsOnce(): Promise<void> {
   // ع٢ (جولة الجاسوس): الحالة الفارغة تُشتقّ من **الطابور والسِجلّ معاً** —
   // فمهمّة حيّة بطابور واجهة فارغ (تلغرام/الجسر/إعادة تحميل أثناء عمل Rust)
   // لا يجوز أن تُقرأ «لا ملفات في الطابور بعد … ابدأ المعالجة».
-  if (reg.ok) setBackendJobRunning(reg.jobs.length > 0);
+  // والجولة الثالثة: **كل دورة تكتب المعرفة من نتيجتها** — فشل ⇒ «مجهول»
+  // (لا «خامل»)، فلا يتقلّص الشرط الثلاثي إلى شرطين عند فقد المعرفة.
+  setJobKnowledge(reg.ok ? (reg.jobs.length > 0 ? 'running' : 'idle') : 'unknown');
   if (reg.ok && !reg.jobs.length && session.isIdle() && !runInFlightPath) {
     stopJobsPolling();
   } else if (!reg.ok && failedPolls >= FAILED_POLL_LIMIT && session.isIdle() && !runInFlightPath) {
