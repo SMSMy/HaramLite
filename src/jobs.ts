@@ -281,3 +281,17 @@ export function reconcileItemState(
   if (!hasJob && local === 'run' && !inFlight) return { state: 'pending', changed: true, stale: true };
   return { state: local, changed: false, stale: false };
 }
+
+/* ── موضع الصفّ المنتظر في قائمة انتظار الواجهة (م٣) ─────────────────────
+ * المالك رفض كلمة «طابور» وطلب أن يُقال الموضع صراحةً («دورك: N») — في قائمة
+ * الواجهة كما في مهامّ تلغرام. والموضع هنا **مقيس من القائمة نفسها**: ترتيب
+ * `session.getBatchQueue()` هو ترتيب البدء، فأول صفٍّ منتظر هو التالي (1).
+ *
+ * **حدّ صريح**: هذا موضع في قائمة **الواجهة** لا في مُجدوِل الخلفية: مع
+ * `max_jobs > 1` قد تبدأ مهمّتان معاً، فالرقم يعني «كم صفّاً منتظراً قبلك في
+ * هذه القائمة» لا «متى ستبدأ بالضبط». ولذلك لا يُطبع رقمٌ لصفٍّ يعمل أو انتهى
+ * (`null`)، ولا يُطبع شيء حين لا قائمة. */
+export function pendingQueuePositions(states: readonly QueueItemState[]): Array<number | null> {
+  let rank = 0;
+  return states.map((s) => (s === 'pending' ? ++rank : null));
+}
