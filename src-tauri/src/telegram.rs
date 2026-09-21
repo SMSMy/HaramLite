@@ -25,6 +25,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::pipeline::{Mode, OutFormat, OutKind};
@@ -123,6 +124,45 @@ pub const GROUP_MIN_GAP: Duration = Duration::from_secs(1);
 pub const MAX_BOT_COMMANDS: usize = 100;
 pub const MAX_COMMAND_NAME: usize = 32;
 pub const MAX_COMMAND_DESC: usize = 256;
+
+// ── م٥: هوية البوت (الاسم والصورة) ──────────────────────────────────────────
+
+/// الاسم الذي يُطبَّق عند تفعيل «استخدم اسم HaramLite وصورته للبوت».
+pub const BOT_DISPLAY_NAME: &str = "HaramLite";
+
+/// حدّ `setMyName`: **٠–٦٤ حرفاً**، والفراغ **يزيل** الاسم المخصّص لتلك اللغة
+/// ولا يُرجع الافتراضي — فلذلك يُخزَّن السابق صراحةً قبل أي تبديل.
+pub const MAX_BOT_NAME: usize = 64;
+
+/// اسم المرفق في جسم `multipart`، **ويُذكر في `attach://` نفسه**: حقل `photo`
+/// في `InputProfilePhotoStatic` **نصٌّ** لا ملف، فالصورة تُرفع باسمٍ ويُشار
+/// إليها بـ`attach://<الاسم>`. وشرطان بحرفٍ واحد يفترقان ⇒ يرفض تلغرام الطلب.
+const BOT_PHOTO_ATTACH: &str = "photo_file";
+
+/// صورة البوت: **JPG** لأن `InputProfilePhotoStatic` «a static profile photo
+/// in the .JPG format» — والأصل في الخطة PNG فلا يُقبل.
+///
+/// **أمر التحويل** (‏`bin/ffmpeg.exe` · مقيس 2026-09-21):
+/// ```text
+/// ffmpeg -i IMG/haramless-app-icon.png -filter_complex
+///   "[0:v]format=rgba,scale=512:512:flags=lanczos[fg];color=white:s=512x512[bg];[bg][fg]overlay=format=auto:shortest=1,format=yuvj420p"
+///   -frames:v 1 -q:v 3 IMG/haramless-app-icon.jpg
+/// ```
+/// **البصمات (SHA-256)**: الأصل `IMG/haramless-app-icon.png` =
+/// `07968EB2…C62145` (‏239,141 بايت · ‎1024×1024‎ · ‎rgba) · والناتج
+/// `IMG/haramless-app-icon.jpg` = `6461F475…6ADC7C` (‏18,950 بايت · ‎512×512‎
+/// · ‎yuvj420p). والأصل فيه شفافية حقيقية (‏`alphaextract`+`signalstats`:
+/// ‏YMIN=0 · YAVG=246.245) وJPEG لا يحمل قناة ألفا، فرُكِّب على **أبيض
+/// صريح** — وإلا صارت الزوايا الشفافة سوداء وتُرى في العرض الدائري.
+///
+/// **ولا يُدَّعى حدّ حجم/أبعاد للصورة الشخصية**: التوثيق لا يذكره (`m5-facts`
+/// ١.٨)، والقياس الحقّ هو استجابة الـAPI عند أول رفع حقيقي. وما هنا **اختيارنا
+/// المعلَن**: ‎512×512‎ لأن الصورة تُعرض صغيرة، و‎19KB‎ أقلّ من قاعدة الرفع
+/// العامّة للصور (‎10MB‎) — وهي قاعدة **عامّة غير منصوصة** على هذه الدالّة.
+const BOT_PHOTO_JPG: &[u8] = include_bytes!("../../IMG/haramless-app-icon.jpg");
+
+/// اسم ملف الصورة في الرفع (‎.jpg‎ لأن الصيغة المطلوبة هي `.JPG`).
+const BOT_PHOTO_NAME: &str = "haramless-app-icon.jpg";
 
 /// **شكلان للرسالة الفانية لا شكل واحد**:
 /// * 10.2 (١٤ يوليو ٢٠٢٦): `receiver_user_id` **مسطّحاً**؛
@@ -1578,20 +1618,24 @@ impl MultipartBody {
     }
 }
 
-/// POST one file. Content-Length is declared explicitly (and asserted by a
-/// unit test) so the request is never chunked — Telegram's edge is happier with
-/// a known length, and progress/retry semantics stay predictable.
-fn post_file(
+/// POST one multipart body. Content-Length is declared explicitly (and asserted
+/// by a unit test) so the request is never chunked — Telegram's edge is happier
+/// with a known length, and progress/retry semantics stay predictable.
+///
+/// `content` is generic over the reader: a file on disk for media (streamed —
+/// a 2 GB local-server upload must never be loaded into memory) or an in-memory
+/// slice for the bot's own profile photo (‎19KB‎ compiled into the binary).
+fn post_multipart<R: Read>(
     url: &str,
     body: &MultipartBody,
-    file: std::fs::File,
-    file_len: u64,
+    content: R,
+    content_len: u64,
     timeout: Duration,
     token: &str,
 ) -> Result<Value, String> {
-    let total = body.head.len() as u64 + file_len + body.tail.len() as u64;
+    let total = body.head.len() as u64 + content_len + body.tail.len() as u64;
     let reader = Cursor::new(body.head.clone())
-        .chain(file)
+        .chain(content)
         .chain(Cursor::new(body.tail.clone()));
     let resp = ureq::post(url)
         .timeout(timeout)
@@ -1616,6 +1660,18 @@ fn post_file(
         },
         Err(e) => Err(redact(token, e.to_string())),
     }
+}
+
+/// POST one file from disk — الغلاف الذي تستعمله مسارات الوسائط.
+fn post_file(
+    url: &str,
+    body: &MultipartBody,
+    file: std::fs::File,
+    file_len: u64,
+    timeout: Duration,
+    token: &str,
+) -> Result<Value, String> {
+    post_multipart(url, body, file, file_len, timeout, token)
 }
 
 fn nanos() -> u128 {
@@ -1753,6 +1809,10 @@ struct Job {
     /// **صاحب الطلب** (م٤): مفتاح الطابور (‏FIFO لكل مستخدم) ووسم المهمّة في
     /// السِجلّ (`telegram:<chat>:<user>`) ومصادقة الضغطات — ثلاثةٌ بمصدر واحد.
     user_id: i64,
+    /// **الاسم المعروض لصاحب الطلب** (م٥): يسافر مع المهمّة إلى نهايتها، فيُكتب
+    /// في سجلّ الإحصاءات **بلا قراءةٍ ثانية من الشبكة** — والاسم يتغيّر، والسجلّ
+    /// مفتاحه الـID فلا يتفرّق.
+    user: String,
     source: Source,
     mode: Mode,
     /// رسالة المستخدم الأصلية — كل ردٍّ لهذه المهمّة يقع تحتها (م٣).
@@ -1807,6 +1867,8 @@ struct Pending {
     chat_id: i64,
     /// **صاحب الملف** (م٤): أزرارُه لا تُقبل من غيره — ولا يرى غيرُه ملفاته.
     user_id: i64,
+    /// اسمه المعروض (م٥): ينتقل إلى `Job` فيصل سجلَّ الإحصاءات.
+    user: String,
     /// رمز هذا الملف: زرُّه لا يصلح لملفٍ آخر.
     token: String,
     source: Source,
@@ -1906,6 +1968,8 @@ struct Oversize {
     /// **صاحب الناتج** (م٤): ضغطةٌ من غيره تُرفض ولا تستهلك السؤال — فالناتج
     /// يُرسَل إلى صاحبه، ومن ضغط زرَّ غيره كان سيُرسل ناتجَ غيره إليه.
     user_id: i64,
+    /// اسمه المعروض (م٥): يُكتب في سجلّ الإحصاءات لحظة تسليم المضغوط.
+    user: String,
     /// رسالة السؤال — **مفتاح المدخل**، وتُحرَّر بالنتيجة.
     msg_id: i64,
     /// رسالة المستخدم الأصلية (الردّ يقع تحتها).
@@ -2335,6 +2399,11 @@ struct Status {
     processed: u64,
     queue: usize,
     paired_id: Option<i64>,
+    /// م٥: هوية البوت كما نعرفها من حالتنا المخزَّنة — تُعرَض في الواجهة لتكون
+    /// **حالةُ المربّع واقعاً** لا نيّة (‏`m5-brief` §٢-الواجهة ١).
+    identity_applied: bool,
+    /// آخر خطأ في ضبط الهوية/الأوامر — يُعرَض بنصّه بدل فشلٍ صامت (ت١١).
+    identity_error: String,
 }
 
 struct Runtime {
@@ -2390,7 +2459,91 @@ pub fn status_json() -> Value {
         "local_server_hint": LOCAL_SERVER_HINT,
         "cloud_send_max_mb": CLOUD_SEND_MAX_BYTES / (1024 * 1024),
         "cloud_download_max_mb": CLOUD_DOWNLOAD_MAX_BYTES / (1024 * 1024),
+        // م٥: هوية البوت — الحالة المخزَّنة وخطؤها إن كان (‏مفتاحٌ جديد في
+        // عقد الحالة، والحقول القديمة كما هي).
+        "identity": {
+            "applied": s.identity_applied,
+            "name": BOT_DISPLAY_NAME,
+            "error": s.identity_error,
+        },
     })
+}
+
+/// يقرأ حالة الهوية من القرص ويُحدِّث ما تعرضه الواجهة — **الواقع لا النيّة**.
+fn refresh_identity_status() {
+    let applied = load_identity_state(&crate::paths::data_dir())
+        .map(|s| s.applied)
+        .unwrap_or(false);
+    if let Ok(mut st) = status().lock() {
+        st.identity_applied = applied;
+    }
+}
+
+/// م٥: «اضبط الأوامر» من الواجهة — نداءٌ صريح بنتيجة صريحة.
+pub fn set_commands_now() -> Result<Value, BotSetupError> {
+    let cfg = live_cfg().ok_or_else(|| BotSetupError::NotConfigured("لا توكن للبوت".into()))?;
+    let n = apply_bot_commands(&cfg)?;
+    if let Ok(mut st) = status().lock() {
+        st.identity_error.clear();
+    }
+    Ok(json!({ "commands": n, "scope_chat": cfg.owner_id }))
+}
+
+/// م٥: هوية البوت من الواجهة — **مُزامَنة**: لا نداء إن كان الواقع مطابقاً
+/// للمطلوب (فلا رفعُ صورةٍ في كل ضغطةِ حفظ)، والفشل يُعلَن بنصّه.
+pub fn set_identity_now(enabled: bool) -> Result<Value, BotSetupError> {
+    let cfg = live_cfg().ok_or_else(|| BotSetupError::NotConfigured("لا توكن للبوت".into()))?;
+    let data = crate::paths::data_dir();
+    let outcome = sync_bot_identity(&cfg, &data, enabled);
+    match outcome {
+        None => {
+            if let Ok(mut st) = status().lock() {
+                st.identity_error.clear();
+            }
+            Ok(json!({
+                "applied": load_identity_state(&data).map(|s| s.applied).unwrap_or(false),
+                "changed": false,
+                "name": BOT_DISPLAY_NAME,
+            }))
+        }
+        Some(Ok(o)) => {
+            if let Ok(mut st) = status().lock() {
+                st.identity_applied = o.applied;
+                st.identity_error.clear();
+            }
+            Ok(json!({
+                "applied": o.applied,
+                "changed": true,
+                "name": o.name,
+                "previous_name": o.previous_name,
+                "photo_bytes": o.photo_bytes,
+            }))
+        }
+        Some(Err(e)) => {
+            if let Ok(mut st) = status().lock() {
+                st.identity_error = e.to_string();
+            }
+            Err(e)
+        }
+    }
+}
+
+/// الإعداد الحيّ للبوت (توكن + مالك) من العامل القائم — ومصدره الإعدادات إن
+/// كان العامل متوقفاً: نداءات الواجهة تسبق تشغيل العامل عادةً.
+fn live_cfg() -> Option<TgConfig> {
+    if let Some(rt) = handle()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .as_ref()
+        .map(|rt| rt.cfg.clone())
+    {
+        if rt.usable() {
+            return Some(rt);
+        }
+    }
+    let s = crate::settings::load(&crate::paths::data_dir());
+    let cfg = TgConfig::from_settings(&s);
+    cfg.usable().then_some(cfg)
 }
 
 /// Start/stop/restart the worker to match the settings. Called from
@@ -2398,6 +2551,50 @@ pub fn status_json() -> Value {
 pub fn apply_settings(s: &Settings) {
     let want = TgConfig::from_settings(s);
     let enabled = s.telegram_enabled && want.usable();
+    // م٥: هوية البوت تتبع الإعداد **بالمزامنة لا بالتخمين** (‏`m5-brief` §٢-الواجهة ١):
+    // الحالة تُقرأ من القرص فوراً (فتعرض الواجهة الواقع)، والتطبيق/العكس يقع
+    // **مرة واحدة عند اختلاف المطلوب عن الواقع** — في خيطٍ مستقل لأن النداء
+    // شبكي ولا يجوز أن يحجب مسار حفظ الإعدادات.
+    refresh_identity_status();
+    if want.usable() {
+        let cfg = want.clone();
+        let wanted = s.telegram_bot_identity;
+        let data = crate::paths::data_dir();
+        let needs = load_identity_state(&data)
+            .map(|st| st.applied)
+            .unwrap_or(false)
+            != wanted;
+        if needs {
+            let _ = std::thread::Builder::new()
+                .name("tg-identity".into())
+                .spawn(move || match sync_bot_identity(&cfg, &data, wanted) {
+                    Some(Ok(o)) => {
+                        if let Ok(mut st) = status().lock() {
+                            st.identity_applied = o.applied;
+                            st.identity_error.clear();
+                        }
+                        tracing::info!(
+                            target: "telegram",
+                            "هوية البوت: {} (الاسم {})",
+                            if o.applied { "طُبِّقت" } else { "عُكست" },
+                            o.name
+                        );
+                    }
+                    Some(Err(e)) => {
+                        // **الفشل يُعلَن** ولا يُسكَت عنه: يُحفظ نصّه وتُعرَض
+                        // رايةُ التطبيق كما هي على القرص (لا ادّعاء نجاح).
+                        if let Ok(mut st) = status().lock() {
+                            st.identity_error = e.to_string();
+                            st.identity_applied = load_identity_state(&data)
+                                .map(|s| s.applied)
+                                .unwrap_or(false);
+                        }
+                        tracing::warn!(target: "telegram", "تعذّر ضبط هوية البوت: {e}");
+                    }
+                    None => {}
+                });
+        }
+    }
     let mut guard = handle().lock().unwrap_or_else(|p| p.into_inner());
     if let Some(rt) = guard.as_ref() {
         let same = rt.cfg == want;
@@ -2605,6 +2802,7 @@ fn pending_full_text() -> String {
 /// لحالة واحدة، ولا أمرٌ يُعلَن ولا يفعل شيئاً.
 const COMMANDS: &[(&str, &str)] = &[
     ("status", "ما يعمل الآن ولِمَن"),
+    ("stats", "إحصاءاتك: عدد الملفات والحجم"),
     ("mode", "إعادة أزرار اختيار الوضع للملفات المنتظرة"),
     ("lang", "لغة رسائل البوت (العربية وحدها متاحة الآن)"),
     ("kill", "إلغاء مهمّة هذه المحادثة"),
@@ -2737,6 +2935,41 @@ fn lang_text(arg: Option<&str>) -> String {
     }
 }
 
+// ── م٥: الإحصاءات (من الملف وحده) ───────────────────────────────────────────
+
+/// زرّ **«📊 إحصاءات»**. وضغطةٌ عليه ⇒ **رسالة واحدة** لا تعديلٌ لرسالة قائمة:
+/// مسار التعديل التجميلي (`status_push`) يخصّ تقدّم مهمّة، والزرّ ليس تقدّماً —
+/// ورسالةٌ واحدة لكل ضغطة تحترم سقف المجموعة (٢٠/دقيقة) بلا استهلاكه بأزرار.
+/// ومعرّف الزرّ **ثابت**: لا يحمل معرّفاً لأن ما يُعرَض سجلُّ الضاغط نفسه.
+const STATS_CALLBACK: &str = "stats";
+
+fn stats_keyboard() -> Value {
+    json!({ "inline_keyboard": [[{ "text": "📊 إحصاءات", "callback_data": STATS_CALLBACK }]] })
+}
+
+/// نصّ الإحصاءات لصاحبها — **من ملفه وحده**: لا عدّ مهامّ ولا طابور ولا
+/// معلَّقات (تلك في `/status`)، وهذا سجلٌّ تراكمي يُقرأ من القرص.
+fn stats_reply(data: &Path, id: i64) -> String {
+    crate::tg_stats::text_for(id, crate::tg_stats::load(data, id).as_ref())
+}
+
+/// يُرسل الإحصاءات **رسالةً واحدة** مربوطةً بالزرّ نفسه، وردّاً على رسالة
+/// الطالب (`reply_to`) فلا تظهر في ذيل المحادثة بلا سياق.
+fn send_stats(cfg: &TgConfig, chat_id: i64, user_id: i64, reply_to: i64) -> bool {
+    let text = stats_reply(&crate::paths::data_dir(), user_id);
+    send_message(cfg, chat_id, &text, Some(stats_keyboard()), Some(reply_to)).is_ok()
+}
+
+/// يدوّن تسليماً ناجحاً في سجلّ صاحبه (م٥) — **بأفضل جهد مع إعلان الفشل**:
+/// تعذّرُ الكتابة لا يُسقط مهمّةً نجحت، ولا يُسكَت عنه (يُسجَّل تحذير)، ولا
+/// يُخترع رقم.
+fn note_stats_delivery(user_id: i64, user: &str, bytes: u64) {
+    if let Err(e) = crate::tg_stats::note_delivery(&crate::paths::data_dir(), user_id, user, bytes)
+    {
+        tracing::warn!(target: "telegram", "تعذّر تدوين إحصاءات {user_id}: {e}");
+    }
+}
+
 /// يسجّل قوائم الأوامر في تلغرام — **بنطاقٍ لكل محادثة** (م٤/٣): «ما يظهر يعمل».
 ///
 /// ١) **النطاق الافتراضي: صفر أوامر** — تُحذف صراحةً بـ`deleteMyCommands`، فلا
@@ -2745,21 +2978,37 @@ fn lang_text(arg: Option<&str>) -> String {
 ///    وحدها `/kill` و`/status`. والنطاق «محادثة بعينها» **ولا يقبل القنوات**،
 ///    فالمعرّف موجب (محادثة المالك الخاصة) وإلا لم يُرسَل أصلاً.
 ///
-/// **وبأفضل جهد**: فشلُ التسجيل لا يُسقط البوت (يُسجَّل تحذير).
+/// **وبأفضل جهد**: فشلُ التسجيل لا يُسقط البوت (يُسجَّل تحذير). ومسار الإقلاع
+/// هذا هو نفسه الذي تستعمله «اضبط الأوامر» في الواجهة ([`apply_bot_commands`]):
+/// **فعلٌ واحد بنتيجتين مُعلَنتين** — تحذيرٌ في السجل هنا، وخطأٌ مُسمّى هناك.
 fn register_commands(cfg: &TgConfig) {
-    match call(
+    match apply_bot_commands(cfg) {
+        Ok(n) => tracing::info!(
+            target: "telegram",
+            "سُجّلت أوامر المالك في محادثته وحدها: {n} أمراً"
+        ),
+        Err(e) => tracing::warn!(target: "telegram", "تعذّر ضبط الأوامر: {e}"),
+    }
+}
+
+/// **م٥/٤ — «اضبط الأوامر»**: نفس ما بناه م٤ حرفاً بحرف (لا نسخة ثانية منه):
+/// `deleteMyCommands` للنطاق الافتراضي ⇒ **صفر أوامر عامة**، و`setMyCommands`
+/// بنطاق محادثة المالك ⇒ **ما يظهر يعمل**.
+///
+/// والفرق عن [`register_commands`] فرقُ **إعلانٍ لا فعل**: هذه تُعيد عددَ ما
+/// سُجّل أو **خطأً مُسمّى بالسبب**، فيُعرَض في الواجهة «نجح/فشل» بصدق بدل
+/// نجاحٍ مُفترَض. ولذلك تُنفَّذ المحاولتان **معاً** ثم يُبلَّغ أول فشل: تعليقُ
+/// الثانية على نجاح الأولى كان يجعل فشلَ الإفراغ يمنع تسجيل قائمة المالك وهي
+/// نافعةٌ في نفسها.
+pub fn apply_bot_commands(cfg: &TgConfig) -> Result<usize, BotSetupError> {
+    let cleared = call(
         cfg,
         "deleteMyCommands",
         &json!({ "scope": { "type": "default" } }),
         Duration::from_secs(20),
-    ) {
-        Ok(_) => tracing::info!(target: "telegram", "لا أوامر عامة: أُفرغ النطاق الافتراضي"),
-        Err(e) => tracing::warn!(target: "telegram", "تعذّر إفراغ الأوامر الافتراضية: {e}"),
-    }
-    let Some(owner) = cfg.owner_id.filter(|id| *id > 0) else {
-        tracing::warn!(target: "telegram", "لا معرّف مالك ⇒ لا نطاق محادثة تُسجَّل فيه الأوامر");
-        return;
-    };
+    )
+    .map_err(|e| BotSetupError::Commands(format!("deleteMyCommands: {e}")));
+
     // **وحدود الـAPI تُفحص قبل الإرسال**: قائمةٌ مخالفة يرفضها تلغرام **كاملةً**
     // فيصير الفشل صامتاً ويظنّ المستخدم أن الأوامر سُجّلت. فالفحص هنا صريح،
     // والأرقام هي أرقام التوثيق المعلَنة في رأس الملف لا أرقاماً مخترعة.
@@ -2774,14 +3023,22 @@ fn register_commands(cfg: &TgConfig) {
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
     });
     if too_long || bad.is_some() {
-        tracing::error!(
-            target: "telegram",
-            "قائمة الأوامر مخالفة لحدود Bot API ({} أمراً · المخالف {:?}) — لم تُسجَّل",
-            COMMANDS.len(),
-            bad
-        );
-        return;
+        return Err(BotSetupError::Limits(format!(
+            "قائمة الأوامر مخالفة لحدود Bot API ({} أمراً · المخالف {bad:?}) — لم تُسجَّل",
+            COMMANDS.len()
+        )));
     }
+
+    // النطاق «محادثة بعينها»: بلا معرّف مالك **موجب** لا نطاق — والإفراغ وحده
+    // هو الصواب، ولا يُدَّعى تسجيلٌ لم يقع. **ويُعلَن ذلك خطأً لا نجاحاً**:
+    // «نجح، صفر أوامر» في الواجهة يوهم بأن شيئاً سُجّل، والصحيح أنّ لا نطاق
+    // محادثة أصلاً — فيُقال السبب (وهو نفس ما كان يُسجَّل تحذيراً في مسار الإقلاع).
+    let Some(owner) = cfg.owner_id.filter(|id| *id > 0) else {
+        cleared?;
+        return Err(BotSetupError::NotConfigured(
+            "لا معرّف مالك — لا نطاق محادثة تُسجَّل فيه الأوامر (اقترن أولاً)".to_string(),
+        ));
+    };
     let cmds: Vec<Value> = COMMANDS
         .iter()
         .map(|(c, d)| json!({ "command": c, "description": d }))
@@ -2790,14 +3047,336 @@ fn register_commands(cfg: &TgConfig) {
         "commands": cmds,
         "scope": { "type": "chat", "chat_id": owner },
     });
-    match call(cfg, "setMyCommands", &body, Duration::from_secs(20)) {
-        Ok(_) => tracing::info!(
-            target: "telegram",
-            "سُجّلت أوامر المالك في محادثته وحدها: {} أمراً",
-            COMMANDS.len()
-        ),
-        Err(e) => tracing::warn!(target: "telegram", "تعذّر تسجيل أوامر المالك: {e}"),
+    let listed = call(cfg, "setMyCommands", &body, Duration::from_secs(20))
+        .map_err(|e| BotSetupError::Commands(format!("setMyCommands: {e}")));
+
+    // الاثنتان جُرِّبتا؛ والفشل يُعلَن (الأولوية للإفراغ: هو الذي يمنع ظهور
+    // أمرٍ عامّ سيُرفض في المجموعة).
+    cleared?;
+    listed?;
+    Ok(COMMANDS.len())
+}
+
+// ── م٥: هوية البوت — الاسم والصورة، وقابلة للعكس ────────────────────────────
+
+/// خطأ **مُسمّى** لإعداد البوت: كلُّ فرعٍ يقول **أيُّ نداءٍ** فشل وبأي نصّ —
+/// فلا `bool` غامض يُخفي فشلاً، ولا `let _ =` يجعل الرفض نجاحاً.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BotSetupError {
+    /// `getMyName` — بلا قراءة الاسم الحالي لا يُخزَّن سابقٌ، وبلا سابقٍ يكون
+    /// العكس كذباً؛ فالفشل هنا **يوقف** التطبيق ولا يُكمَل على أمل.
+    Read(String),
+    /// `setMyName`.
+    Name(String),
+    /// `setMyProfilePhoto` / `removeMyProfilePhoto` (ومنه رفض الصيغة).
+    Photo(String),
+    /// `setMyCommands` / `deleteMyCommands`.
+    Commands(String),
+    /// قيمة مخالفة لحدود الـAPI: **لم تُرسَل أصلاً** (وتلغرام كان سيرفضها).
+    Limits(String),
+    /// حالة العكس على القرص — بلا تخزينِ الاسم السابق لا عكس صادق.
+    State(String),
+    /// لا بوت مُهيَّأ (لا توكن): لا نداء أصلاً ولا ادّعاء نجاح.
+    NotConfigured(String),
+}
+
+impl std::fmt::Display for BotSetupError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Read(e) => write!(f, "تعذّرت قراءة اسم البوت (getMyName): {e}"),
+            Self::Name(e) => write!(f, "تعذّر تعيين اسم البوت (setMyName): {e}"),
+            Self::Photo(e) => write!(f, "تعذّر ضبط صورة البوت: {e}"),
+            Self::Commands(e) => write!(f, "تعذّر ضبط الأوامر: {e}"),
+            Self::Limits(e) => write!(f, "قيمة مخالفة لحدود Bot API: {e}"),
+            Self::State(e) => write!(f, "حالة الهوية: {e}"),
+            Self::NotConfigured(e) => write!(f, "لا بوت مُهيَّأ: {e}"),
+        }
     }
+}
+
+impl std::error::Error for BotSetupError {}
+
+/// حالة الهوية على القرص: **الاسم السابق يُخزَّن صراحةً** لأن `setMyName("")`
+/// يزيل الاسم المخصّص لتلك اللغة ولا يُرجع الافتراضي — فبلا تخزينٍ صريح يصير
+/// «العكس» محواً للاسم لا إعادةً له.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+struct BotIdentityState {
+    /// هل الهوية مطبَّقة الآن؟ (يُرفع **بعد** نجاح نداءَي التطبيق لا قبله.)
+    applied: bool,
+    /// الاسم الذي كان على البوت قبلنا. وفراغُه معناه «لم يكن له اسم مخصّص»،
+    /// وإعادتُه فراغاً هي الصدق نفسه لا نقصٌ في العكس.
+    previous_name: String,
+}
+
+/// ملف حالة الهوية — بجانب `telegram-access.json` في جذر مجلد البيانات (نفس
+/// نمط جيرانه من ملفات حالة تيليجرام).
+fn identity_path(data: &Path) -> PathBuf {
+    data.join("telegram-identity.json")
+}
+
+/// `None` يعني **لا ملف**: لم نمسّ هوية هذا البوت قطّ، فلا عكسَ بلا سابق.
+fn load_identity_state(data: &Path) -> Option<BotIdentityState> {
+    let raw = std::fs::read_to_string(identity_path(data)).ok()?;
+    serde_json::from_str::<BotIdentityState>(&raw).ok()
+}
+
+fn save_identity_state(data: &Path, st: &BotIdentityState) -> Result<(), BotSetupError> {
+    let path = identity_path(data);
+    let body = serde_json::to_string(st).map_err(|e| BotSetupError::State(e.to_string()))?;
+    crate::atomic::write_atomic_str(&path, &body, "json")
+        .map_err(|e| BotSetupError::State(format!("{}: {e}", path.display())))
+}
+
+/// قفل التطبيق/العكس: نداءان متوازيان كانا يرفعان الصورة مرّتين ويتباريان على
+/// الاسم السابق. والقفل يجعل «مُطبَّقٌ بالفعل» حكماً يُقرأ **بعد** انتهاء الآخر.
+fn identity_lock() -> std::sync::MutexGuard<'static, ()> {
+    static L: OnceLock<Mutex<()>> = OnceLock::new();
+    L.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+}
+
+/// نتيجة تطبيق/عكس الهوية — أرقامٌ تقول ما جرى فعلاً.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BotIdentityOutcome {
+    /// هل الهوية مطبَّقة الآن؟
+    pub applied: bool,
+    /// الاسم الذي صار على البوت الآن.
+    pub name: String,
+    /// الاسم الذي كان قبله (وهو ما يُعاد عند العكس).
+    pub previous_name: String,
+    /// بايتات الصورة المرفوعة (صفر في العكس).
+    pub photo_bytes: usize,
+}
+
+/// أبعاد JPEG **من الملف نفسه**: أول وسم `SOF`. قراءةُ مقاطع مباشرة بلا
+/// اعتمادية، والغرض أن يكون الحارس على الصورة حكماً على بايتاتها لا على امتداد
+/// اسمِها.
+fn jpeg_size(b: &[u8]) -> Option<(u32, u32)> {
+    let mut i = 2usize; // بعد SOI (FF D8)
+    while i + 3 < b.len() {
+        if b[i] != 0xFF {
+            i += 1;
+            continue;
+        }
+        let marker = b[i + 1];
+        if marker == 0xFF {
+            i += 1; // حشو: FF متكرّرة قبل الوسم
+            continue;
+        }
+        if marker == 0xD8 || (0xD0..=0xD9).contains(&marker) {
+            i += 2; // وسوم بلا طول
+            continue;
+        }
+        let len = ((b[i + 2] as usize) << 8) | b[i + 3] as usize;
+        if len < 2 {
+            return None;
+        }
+        // SOF0..SOF3 · SOF5..SOF7 · SOF9..SOF11 · SOF13..SOF15 (بلا DHT/DAC…)
+        if matches!(marker, 0xC0..=0xC3 | 0xC5..=0xC7 | 0xC9..=0xCB | 0xCD..=0xCF)
+            && i + 9 < b.len()
+        {
+            let h = ((b[i + 5] as u32) << 8) | b[i + 6] as u32;
+            let w = ((b[i + 7] as u32) << 8) | b[i + 8] as u32;
+            return Some((w, h));
+        }
+        i += 2 + len;
+    }
+    None
+}
+
+/// **حارس الصورة قبل الرفع**: ملف JPEG صالح (ترويسة `FFD8FF` ونهاية `FFD9`)
+/// وأبعادٌ معقولة. وهذا حكمٌ على **البايتات التي ستُرسَل** لا على نيّةٍ في
+/// تعليق — فصورةٌ مرفوضة تُعلَن قبل أن تُرسَل، وإن رفضها الـAPI فالخطأ مُسمّى.
+///
+/// **ولا يُدَّعى حدُّ تلغرام**: الحدّان هنا (‎16..4096‎) حدّانا لمنع ملفٍ عبثي،
+/// لا نقلُ حدٍّ من توثيقٍ لا يذكره.
+fn photo_problem(jpg: &[u8]) -> Result<(u32, u32), String> {
+    if jpg.len() < 4 || jpg[..3] != [0xFF, 0xD8, 0xFF] {
+        return Err(format!(
+            "ليس JPEG صالحاً: ترويسة FFD8FF مفقودة ({} بايت)",
+            jpg.len()
+        ));
+    }
+    if jpg[jpg.len() - 2..] != [0xFF, 0xD9] {
+        return Err("ملف JPEG بلا نهاية FFD9 (ملف مقطوع)".to_string());
+    }
+    let (w, h) = jpeg_size(jpg).ok_or_else(|| "تعذّرت قراءة أبعاد JPEG (لا وسم SOF)".to_string())?;
+    if !(16..=4096).contains(&w) || !(16..=4096).contains(&h) {
+        return Err(format!("أبعاد الصورة خارج المعقول: {w}×{h}"));
+    }
+    Ok((w, h))
+}
+
+/// الاسم الحالي للبوت (`getMyName`).
+fn bot_current_name(cfg: &TgConfig) -> Result<String, BotSetupError> {
+    let v = call(cfg, "getMyName", &json!({}), Duration::from_secs(20))
+        .map_err(|e| BotSetupError::Read(format!("getMyName: {e}")))?;
+    Ok(v.get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string())
+}
+
+/// `setMyName` — والفراغ مقبول **بمعناه الموثَّق**: إزالة الاسم المخصّص.
+fn set_bot_name(cfg: &TgConfig, name: &str) -> Result<(), BotSetupError> {
+    let len = name.chars().count();
+    if len > MAX_BOT_NAME {
+        return Err(BotSetupError::Limits(format!(
+            "اسم البوت {len} حرفاً وحدّ setMyName {MAX_BOT_NAME}"
+        )));
+    }
+    call(
+        cfg,
+        "setMyName",
+        &json!({ "name": name }),
+        Duration::from_secs(20),
+    )
+    .map_err(|e| BotSetupError::Name(format!("setMyName: {e}")))?;
+    Ok(())
+}
+
+/// يرفع صورة البوت: **`multipart/form-data` إلزاماً** («can only be uploaded as
+/// a new file» — لا `file_id` ولا رابط)، وحقل `photo` **نصٌّ** فيه
+/// `{"type":"static","photo":"attach://<اسم المرفق>"}`، والصورة في جزءٍ باسم ذلك
+/// المرفق نفسه.
+fn upload_bot_photo(cfg: &TgConfig) -> Result<usize, BotSetupError> {
+    let (w, h) = photo_problem(BOT_PHOTO_JPG).map_err(BotSetupError::Photo)?;
+    let fields = [(
+        "photo",
+        format!(r#"{{"type":"static","photo":"attach://{BOT_PHOTO_ATTACH}"}}"#),
+    )];
+    let body = MultipartBody::build(&fields, BOT_PHOTO_ATTACH, BOT_PHOTO_NAME, "image/jpeg");
+    let url = format!("{}/setMyProfilePhoto", cfg.api());
+    let len = BOT_PHOTO_JPG.len() as u64;
+    post_multipart(
+        &url,
+        &body,
+        Cursor::new(BOT_PHOTO_JPG),
+        len,
+        Duration::from_secs(120),
+        &cfg.token,
+    )
+    .map_err(|e| BotSetupError::Photo(format!("setMyProfilePhoto: {e}")))?;
+    tracing::info!(target: "telegram", "صورة البوت رُفعت ({w}×{h} · {len} بايت)");
+    Ok(BOT_PHOTO_JPG.len())
+}
+
+/// `removeMyProfilePhoto` (متاح منذ Bot API 9.4) — عكسُ رفع الصورة.
+fn remove_bot_photo(cfg: &TgConfig) -> Result<(), BotSetupError> {
+    call(
+        cfg,
+        "removeMyProfilePhoto",
+        &json!({}),
+        Duration::from_secs(60),
+    )
+    .map_err(|e| BotSetupError::Photo(format!("removeMyProfilePhoto: {e}")))?;
+    Ok(())
+}
+
+/// **يُطبِّق هوية HaramLite**: الاسم والصورة — وأي فشلٍ خطأٌ مُسمّى.
+///
+/// والترتيب مقصود:
+/// ① يُقرأ الاسم الحالي (وفشلُه يوقف كل شيء: بلا سابقٍ لا عكس صادق)،
+/// ② ويُخزَّن السابق على القرص **قبل** أي تبديل،
+/// ③ ثم **الصورة** — وهي الخطوة التي تُرفض (صيغة) فلا يبقى نصفُ تطبيق،
+/// ④ ثم الاسم،
+/// ⑤ وتُرفع راية «مُطبَّق» **بعد** نجاح النداءين لا قبلهما.
+pub fn apply_bot_identity(
+    cfg: &TgConfig,
+    data: &Path,
+) -> Result<BotIdentityOutcome, BotSetupError> {
+    let _g = identity_lock();
+    let current = bot_current_name(cfg)?;
+    let stored = load_identity_state(data);
+    // إعادةُ تطبيقٍ على هوية مطبَّقة: لا يُستبدل السابق بالتسمية نفسها (وإلا
+    // صار العكس إعادةَ «HaramLite» مكان «HaramLite»).
+    let previous = match &stored {
+        Some(st) if current.trim() == BOT_DISPLAY_NAME => st.previous_name.clone(),
+        _ => current,
+    };
+    if previous.chars().count() > MAX_BOT_NAME {
+        return Err(BotSetupError::Limits(format!(
+            "الاسم السابق {} حرفاً فوق حدّ setMyName {MAX_BOT_NAME}",
+            previous.chars().count()
+        )));
+    }
+    save_identity_state(
+        data,
+        &BotIdentityState {
+            applied: false,
+            previous_name: previous.clone(),
+        },
+    )?;
+    let photo_bytes = upload_bot_photo(cfg)?;
+    set_bot_name(cfg, BOT_DISPLAY_NAME)?;
+    save_identity_state(
+        data,
+        &BotIdentityState {
+            applied: true,
+            previous_name: previous.clone(),
+        },
+    )?;
+    Ok(BotIdentityOutcome {
+        applied: true,
+        name: BOT_DISPLAY_NAME.to_string(),
+        previous_name: previous,
+        photo_bytes,
+    })
+}
+
+/// **يعكس الهوية**: يُزيل الصورة ويُعيد **الاسم المخزَّن** نصّاً — ولو كان
+/// فارغاً، لأن الفراغ هو ما كان (إزالة الاسم المخصّص لا إرجاع الافتراضي).
+///
+/// وبلا حالةٍ مخزَّنة **لا يُعكَس شيء**: `revert` بلا سابقٍ كان سيمحو اسم البوت
+/// الحقيقي — والامتناع هنا أصدق من فعلٍ لا يُعرَف مرجعه.
+pub fn revert_bot_identity(
+    cfg: &TgConfig,
+    data: &Path,
+) -> Result<BotIdentityOutcome, BotSetupError> {
+    let _g = identity_lock();
+    let Some(st) = load_identity_state(data) else {
+        return Err(BotSetupError::State(
+            "لا هوية مطبَّقة مخزَّنة — لا اسم سابق يُعاد".to_string(),
+        ));
+    };
+    let previous = st.previous_name.clone();
+    remove_bot_photo(cfg)?;
+    set_bot_name(cfg, &previous)?;
+    save_identity_state(
+        data,
+        &BotIdentityState {
+            applied: false,
+            previous_name: String::new(),
+        },
+    )?;
+    Ok(BotIdentityOutcome {
+        applied: false,
+        name: previous.clone(),
+        previous_name: previous,
+        photo_bytes: 0,
+    })
+}
+
+/// يُزامن الهوية مع المطلوب **مرة واحدة عند اللزوم**: لا نداء إن كان الواقع
+/// مطابقاً للمطلوب، فلا رفعُ صورةٍ في كل حفظِ إعدادات ولا في كل إقلاع.
+/// `None` = لا شيء يستحق نداءً.
+pub fn sync_bot_identity(
+    cfg: &TgConfig,
+    data: &Path,
+    wanted: bool,
+) -> Option<Result<BotIdentityOutcome, BotSetupError>> {
+    let applied = load_identity_state(data)
+        .map(|s| s.applied)
+        .unwrap_or(false);
+    if applied == wanted {
+        return None;
+    }
+    Some(if wanted {
+        apply_bot_identity(cfg, data)
+    } else {
+        revert_bot_identity(cfg, data)
+    })
 }
 
 // ── م٤: رسالة التعريف المثبَّتة ونصيحة المعالج ──────────────────────────────
@@ -2984,6 +3563,8 @@ struct OversizeAsk<'a> {
     chat_id: i64,
     /// **صاحب الناتج** (م٤): ضغطةٌ من غيره تُرفض قبل أن تستهلك السؤال.
     user_id: i64,
+    /// اسمه المعروض (م٥): يُكتب في سجلّ الإحصاءات عند تسليم المضغوط.
+    user: &'a str,
     src_msg_id: i64,
     /// الناتج في **مجلد النتائج** — لا وسيطاً في مجلد مؤقّت يُمحى.
     produced: &'a Path,
@@ -3022,6 +3603,7 @@ fn ask_oversize(
         .insert(Oversize {
             chat_id: ask.chat_id,
             user_id: ask.user_id,
+            user: ask.user.to_string(),
             msg_id: qid,
             src_msg_id: ask.src_msg_id,
             path: ask.produced.to_path_buf(),
@@ -3135,6 +3717,9 @@ fn run_oversize_action(
     );
     match send_media(cfg, chat_id, &small, &caption, Some(entry.src_msg_id)) {
         Ok(()) => {
+            // م٥: المضغوط ملفٌّ **وصل** أيضاً — يُدوَّن مثل كل تسليم ناجح، وإلا
+            // نقص العدّ في أكثر الحالات إلحاحاً (ناتجٌ كبير سأل صاحبه).
+            note_stats_delivery(entry.user_id, &entry.user, bytes);
             let _ = edit_message_kb(
                 cfg,
                 chat_id,
@@ -3332,6 +3917,17 @@ fn handle_update(
             handle_oversize_action(cfg, oversize, action, chat_id, msg_id, from_id, cb_id);
             return;
         }
+        // ── زرّ الإحصاءات (م٥): **رسالة واحدة لكل ضغطة**، وإحصاءاتُ الضاغط
+        //    وحده من ملفه. ولا مصادقة زائدة: ما يُعرَض هو سجلّ الضاغط نفسه،
+        //    ولا يُكشف سجلّ غيره — والزرّ لا يُرسَل إلا في سياقٍ مسموح
+        //    (خاصّ المالك، أو مجموعةٌ مرّت بوابة قائمة السماح).
+        if data == STATS_CALLBACK {
+            answer_callback(cfg, cb_id, "📊");
+            if send_stats(cfg, chat_id, from_id, msg_id) {
+                set_activity(format!("إحصاءات {from_id}@{chat_id}"));
+            }
+            return;
+        }
         let Some((token, mode)) = parse_mode_action(data) else {
             answer_callback(cfg, cb_id, "");
             return;
@@ -3371,6 +3967,7 @@ fn handle_update(
             src_msg_id,
             file,
             row_id,
+            user,
             ..
         } = p;
         // الدور يُقرأ من العدّادات **قبل** إضافة هذه المهمّة، ثم يُقال `ahead+1`.
@@ -3385,6 +3982,7 @@ fn handle_update(
                 // **صاحب الملف لا الضاغط**: المالك قد يضغط نيابةً عن عضو،
                 // والمهمّة تبقى للعضو (وسمها وطابورها وزرّها).
                 user_id: owner_of_file,
+                user,
                 source,
                 mode,
                 src_msg_id,
@@ -3682,6 +4280,14 @@ fn handle_update(
                 "lang" => {
                     let _ = send_message(cfg, chat_id, &lang_text(arg), None, Some(src_msg_id));
                 }
+                // ── `/stats` (م٥): إحصاءات **صاحب الأمر** من ملفه وحده ──
+                //    (وملفٌّ لكل مستخدم مفتاحه الـID، فتغيّر الاسم لا يُنشئ
+                //    سجلاً ثانياً). ويُرسَل معها زرّها ليعاد بضغطة.
+                "stats" => {
+                    if send_stats(cfg, chat_id, from_id, src_msg_id) {
+                        set_activity(format!("إحصاءات {from_id}@{chat_id}"));
+                    }
+                }
                 // ── `/help` (و`/start` الذي يرسله كل عميل): القائمة نفسها التي
                 //    سُجّلت في `setMyCommands` — لا قائمتان تفترقان. **ولكلٍّ
                 //    قائمته**: المالك يرى `/kill` و`/status`، وغيره لا يراهما
@@ -3691,7 +4297,9 @@ fn handle_update(
                         cfg,
                         chat_id,
                         &help_text_for(is_owner),
-                        None,
+                        // م٥: زرّ الإحصاءات يُرسَل مع القائمة — فما يظهر يعمل،
+                        // وضغطته رسالةٌ واحدة.
+                        Some(stats_keyboard()),
                         Some(src_msg_id),
                     );
                 }
@@ -3765,6 +4373,7 @@ fn offer_mode_question(
     let inserted = poll.pending.insert(Pending {
         chat_id,
         user_id,
+        user: user.to_string(),
         token: token.clone(),
         source,
         src_msg_id,
@@ -4736,6 +5345,7 @@ fn run_job(
     let Job {
         chat_id,
         user_id,
+        user: job_user,
         source,
         mode,
         src_msg_id,
@@ -5080,6 +5690,7 @@ fn run_job(
         let ask = OversizeAsk {
             chat_id,
             user_id,
+            user: &job_user,
             src_msg_id,
             produced: &produced,
             duration_secs: duration,
@@ -5122,6 +5733,10 @@ fn run_job(
     match send_media(cfg, chat_id, &to_send, &caption, Some(src_msg_id)) {
         Ok(()) => {
             row.ok();
+            // م٥: الإحصاء يُدوَّن **عند التسليم الناجح وحده** — ملفٌّ واحد
+            // بحجمه، بعد أن وصل صاحبه فعلاً. والفشل لا يُدوَّن (فلا رقم يكذب)
+            // ولا يُكتب سطر (فلا ملفّ ينمو)، والفشلُ نفسه يُعلَن في الحالة أعلاه.
+            note_stats_delivery(user_id, &job_user, bytes_out);
             status.borrow_mut().end(
                 cfg,
                 format!(
@@ -5205,6 +5820,15 @@ mod tests {
     struct SeenCall {
         method: String,
         body: String,
+        /// **الجسم بايتاتٍ** (م٥): نصُّ `body` أعلاه يمرّ بـ`from_utf8_lossy`
+        /// فتصير كل بايتةٍ غير صالحة UTF-8 **ثلاث** بايتات (`U+FFFD`) — ورَفْعُ
+        /// صورة JPEG كلُّه بايتاتٌ كذلك. فما يُقاس على الطول أو على حمولة
+        /// الصورة يُقاس هنا، وما يُقرأ JSON يُقرأ من `body`.
+        raw: Vec<u8>,
+        /// **ترويسات الطلب الخام** (م٥): بها وحدها يُقاس أن جسم `multipart`
+        /// معلَنٌ بـ`Content-Type: multipart/form-data; boundary=…`، وأن الحدّ
+        /// المكتوب في الترويسة هو **نفسه** الذي في الجسم حرفاً بحرف.
+        head: String,
         /// **ردّ الخادم الوهمي** كما أُرسل — ومنه تُقرأ المعرّفات التي وزّعها
         /// (`message_id`) بلا تخمين رقمٍ متسلسل يبدأ من 1000.
         reply: String,
@@ -5226,10 +5850,18 @@ mod tests {
         reject_body: Arc<Mutex<Vec<String>>>,
         /// معرّفات محادثات يرفضها الخادم (‏`chat_id`).
         reject_chat: Arc<Mutex<Vec<i64>>>,
+        /// **دوالّ يرفضها الخادم** (م٥): الرفض على **اسم الدالّة** لا على نصٍّ
+        /// في جسمها — فحارس ت١١ لا يعتمد على شكل جسم الـmultipart، ويبقى
+        /// صالحاً لو تغيّر شكله.
+        reject_method: Arc<Mutex<Vec<String>>>,
+        /// **الاسم الحالي للبوت** على الخادم الوهمي (م٥): `getMyName` يقرؤه
+        /// و`setMyName` يكتبه. فالعكس يُقاس على **حالة الخادم** («رجع الاسم»)
+        /// لا على نصّ طلبٍ أرسلناه («أرسلنا الاسم») — وهما ليسا سواء.
+        my_name: Arc<Mutex<String>>,
     }
 
-    /// يقرأ طلب HTTP واحد: (اسم الدوال، الجسم الخام).
-    fn read_http_request(sock: &mut std::net::TcpStream) -> (String, String) {
+    /// يقرأ طلب HTTP واحد: (اسم الدالّة، الترويسات الخام، الجسم بايتات).
+    fn read_http_request(sock: &mut std::net::TcpStream) -> (String, String, Vec<u8>) {
         let mut buf: Vec<u8> = Vec::new();
         let mut chunk = [0u8; 8192];
         let mut split: Option<usize> = None;
@@ -5273,8 +5905,8 @@ mod tests {
             .unwrap_or("")
             .to_string();
         let body_start = (p + 4).min(buf.len());
-        let body = String::from_utf8_lossy(&buf[body_start..]).to_string();
-        (method, body)
+        let body = buf[body_start..].to_vec();
+        (method, head, body)
     }
 
     /// ردّ الخادم الوهمي. **والرفض يُحاكي Bot API حرفاً**: `ok:false` مع
@@ -5286,7 +5918,19 @@ mod tests {
         next_msg_id: &mut i64,
         reject_body: &[String],
         reject_chat: &[i64],
+        reject_method: &[String],
+        my_name: &mut String,
     ) -> String {
+        if reject_method.iter().any(|m| m == method) {
+            let err = format!(
+                "{{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: {method} rejected by the fixture\"}}"
+            );
+            return format!(
+                "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                err.len(),
+                err
+            );
+        }
         if reject_body
             .iter()
             .any(|needle| body.contains(needle.as_str()))
@@ -5318,6 +5962,19 @@ mod tests {
             "sendMessage" => {
                 *next_msg_id += 1;
                 json!({ "message_id": *next_msg_id }).to_string()
+            }
+            // م٥: اسم البوت **حالةً على الخادم** لا نصّاً في طلبنا: `getMyName`
+            // يقرؤه و`setMyName` يكتبه — فالعكس يُقاس على ما رجع فعلاً.
+            "getMyName" => json!({ "name": my_name.as_str() }).to_string(),
+            "setMyName" => {
+                if let Ok(v) = serde_json::from_str::<Value>(body) {
+                    *my_name = v
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
+                }
+                "true".to_string()
             }
             // تأخير قصير يمثّل long-polling، فلا تدور حلقة الاستطلاع بلا توقّف.
             "getUpdates" => {
@@ -5351,11 +6008,16 @@ mod tests {
             let stop = Arc::new(AtomicBool::new(false));
             let reject_body: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
             let reject_chat: Arc<Mutex<Vec<i64>>> = Arc::new(Mutex::new(Vec::new()));
+            let reject_method: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+            // **اسم البوت المُهيَّأ في BotFather** — ما يجب أن يعود بعد العكس.
+            let my_name: Arc<Mutex<String>> = Arc::new(Mutex::new("HaramLite Bot".to_string()));
             let handle = {
                 let seen = seen.clone();
                 let stop = stop.clone();
                 let reject_body = reject_body.clone();
                 let reject_chat = reject_chat.clone();
+                let reject_method = reject_method.clone();
+                let my_name = my_name.clone();
                 std::thread::spawn(move || {
                     use std::io::Write as _;
                     let mut next_msg_id: i64 = 1000;
@@ -5369,7 +6031,10 @@ mod tests {
                                 // وكأن شيئاً لم يُرسَل. فيُعاد إلى الحجب صراحةً.
                                 sock.set_nonblocking(false).ok();
                                 sock.set_read_timeout(Some(Duration::from_secs(5))).ok();
-                                let (method, body) = read_http_request(&mut sock);
+                                let (method, head, raw) = read_http_request(&mut sock);
+                                // النصّ المقروء JSON مشتقٌّ من البايتات (فلا
+                                // نسختان تفترقان إن تغيّر القارئ).
+                                let body = String::from_utf8_lossy(&raw).to_string();
                                 let reject_b = reject_body
                                     .lock()
                                     .unwrap_or_else(|p| p.into_inner())
@@ -5378,19 +6043,30 @@ mod tests {
                                     .lock()
                                     .unwrap_or_else(|p| p.into_inner())
                                     .clone();
+                                let reject_m = reject_method
+                                    .lock()
+                                    .unwrap_or_else(|p| p.into_inner())
+                                    .clone();
+                                let mut name =
+                                    my_name.lock().unwrap_or_else(|p| p.into_inner()).clone();
                                 let reply = fake_reply(
                                     &method,
                                     &body,
                                     &mut next_msg_id,
                                     &reject_b,
                                     &reject_c,
+                                    &reject_m,
+                                    &mut name,
                                 );
+                                *my_name.lock().unwrap_or_else(|p| p.into_inner()) = name;
                                 if !method.is_empty() {
                                     seen.lock()
                                         .unwrap_or_else(|p| p.into_inner())
                                         .push(SeenCall {
                                             method: method.clone(),
+                                            head,
                                             body,
+                                            raw,
                                             reply: reply.clone(),
                                             at_ms: epoch_ms(),
                                         });
@@ -5413,7 +6089,35 @@ mod tests {
                 handle: Some(handle),
                 reject_body,
                 reject_chat,
+                reject_method,
+                my_name,
             }
+        }
+
+        /// **يرفض دالّةً بعينها** — شكل «تلغرام رفض هذا النداء» الحقيقي، وهو
+        /// الرفض الذي يجب أن يظهر خطأً مُسمّى لا نجاحاً كاذباً (ت١١).
+        fn reject_method(&self, method: &str) {
+            self.reject_method
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .push(method.to_string());
+        }
+
+        /// يُوقف الرفض عن دالّة — لإثبات أن المسار ينجح حين يزول السبب (فلا
+        /// يكون الفشل المُقاس فشلاً دائماً بحكم التهيئة).
+        fn accept_method(&self, method: &str) {
+            self.reject_method
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .retain(|m| m != method);
+        }
+
+        /// الاسم الحالي للبوت **على الخادم** — ما رجع فعلاً لا ما أرسلناه.
+        fn current_name(&self) -> String {
+            self.my_name
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .clone()
         }
 
         /// يجعل الخادم يرفض كل طلبٍ يحمل هذا النصّ في جسمه — وهو الشكل الحقيقي
@@ -6427,6 +7131,7 @@ mod tests {
         let job = Job {
             chat_id: 7,
             user_id: 7,
+            user: "المالك".into(),
             source: Source::File {
                 file_id: "F12".into(),
                 name: "second.mp4".into(),
@@ -6524,6 +7229,7 @@ mod tests {
         let job = Job {
             chat_id: 7,
             user_id: 7,
+            user: "المالك".into(),
             source: Source::File {
                 file_id: "F12".into(),
                 name: "second.mp4".into(),
@@ -6708,6 +7414,7 @@ mod tests {
         let mk = |token: &str| Pending {
             chat_id: 5,
             user_id: 5,
+            user: "عضو5".into(),
             token: token.into(),
             source: Source::Link(format!("https://x/{token}")),
             src_msg_id: 1,
@@ -6805,6 +7512,7 @@ mod tests {
         let job = Job {
             chat_id: 7,
             user_id: 7,
+            user: "المالك".into(),
             source: Source::File {
                 file_id: "F12".into(),
                 name: "second.mp4".into(),
@@ -7004,6 +7712,7 @@ mod tests {
             let ask = OversizeAsk {
                 chat_id: 7,
                 user_id: 7,
+                user: "المالك",
                 src_msg_id: 60 + i,
                 produced: &produced,
                 duration_secs: 600.0,
@@ -7055,6 +7764,7 @@ mod tests {
         ov.lock().unwrap().insert(Oversize {
             chat_id: 7,
             user_id: 7,
+            user: "المالك".into(),
             msg_id: 777,
             src_msg_id: 61,
             path: produced.clone(),
@@ -7116,6 +7826,7 @@ mod tests {
         ov.lock().unwrap().insert(Oversize {
             chat_id: 7,
             user_id: 7,
+            user: "المالك".into(),
             msg_id: 778,
             src_msg_id: 62,
             path: produced.clone(),
@@ -7171,6 +7882,7 @@ mod tests {
         let mk = |msg_id: i64, asked: Instant| Oversize {
             chat_id: 7,
             user_id: 7,
+            user: "المالك".into(),
             msg_id,
             src_msg_id: 63,
             path: produced.clone(),
@@ -7221,6 +7933,7 @@ mod tests {
         ov.lock().unwrap().insert(Oversize {
             chat_id: 7,
             user_id: 7,
+            user: "المالك".into(),
             msg_id: 779,
             src_msg_id: 64,
             path: PathBuf::from("does-not-matter.mp3"),
@@ -7261,6 +7974,7 @@ mod tests {
         ov.lock().unwrap().insert(Oversize {
             chat_id: 7,
             user_id: 7,
+            user: "المالك".into(),
             msg_id: 780,
             src_msg_id: 65,
             // مسار غير موجود: ffmpeg يفشل فوراً فلا يعتمد القياس على ترميز حقيقي.
@@ -8410,6 +9124,7 @@ mod tests {
         Job {
             chat_id,
             user_id,
+            user: format!("عضو{user_id}"),
             source: Source::File {
                 file_id: format!("F{user_id}"),
                 name: name.into(),
@@ -9439,5 +10154,481 @@ mod tests {
         );
         eprintln!("م٤/استجابة: طابور مُشبَع بثمانِ رسائل · /kill قُرئ ونُفِّذ في {read:?}");
         drain_sends();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  م٥ — هوية البوت (ت٨ · ت٩ · ت١١) والإحصاءات (ت٦ خارجياً · هنا الزرّ)
+    //  ولا شبكة ولا توكن: كلُّها على الخادم الوهمي ومسارٍ مؤقّت.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// **ت٩ — جسم الرفع multipart صحيح الشكل**، مقيساً على الطلب الخام:
+    /// حدّ واحد يطابق بين الترويسة والجسم · بداية `--حد` · نهاية `--حد--` ·
+    /// جزءان لا أكثر · الحقلان (`photo` نصّاً و`photo_file` ملفاً) · وحمولة
+    /// الصورة هي بايتات JPEG نفسها (‏`FFD8FF`…`FFD9`).
+    ///
+    /// والمُفسَد الذي يُسقطه: حدٌّ مُختلق لا يطابق الجسم، أو جسم بلا حدّ
+    /// نهائي، أو إرسال الصورة كجزءٍ واحد بلا الحقل النصّي `attach://`.
+    #[test]
+    fn t9_the_photo_upload_is_one_well_formed_multipart_body() {
+        let _g = state_lock();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let dir = temp_dir("m5_multipart");
+        let out = apply_bot_identity(&cfg, &dir).expect("التطبيق يجب أن ينجح");
+        assert!(out.applied, "التطبيق لم يرفع راية «مُطبَّق»");
+        assert_eq!(out.photo_bytes, BOT_PHOTO_JPG.len());
+
+        let calls = bot.calls();
+        let upload = calls
+            .iter()
+            .find(|c| c.method == "setMyProfilePhoto")
+            .expect("لم يُرسَل setMyProfilePhoto");
+
+        // ① الترويسة تعلن multipart وبحدٍّ غير فارغ. **والحدّ يُقرأ من السطر
+        //    الأصلي لا من نسخته المصغَّرة**: الحدّ حسّاس لحالة الأحرف، وتصغيرُ
+        //    السطر كلّه كان يجعل المقارنة تفشل لسببٍ لا علاقة له بالشكل.
+        let header_value = |name: &str| -> String {
+            upload
+                .head
+                .lines()
+                .find(|l| {
+                    l.trim_start()
+                        .to_ascii_lowercase()
+                        .starts_with(&format!("{name}:"))
+                })
+                .map(|l| l.trim_start()[name.len() + 1..].trim().to_string())
+                .unwrap_or_default()
+        };
+        let ctype = header_value("content-type");
+        let boundary = ctype
+            .strip_prefix("multipart/form-data; boundary=")
+            .unwrap_or("")
+            .to_string();
+        assert!(
+            !boundary.is_empty(),
+            "لا حدّ في ترويسة الـmultipart: {ctype:?}"
+        );
+
+        // ② الطول المُعلَن = الطول المُرسَل فعلاً (‏Content-Length صريح، ولا
+        //    نقل مُجزَّأ). والقياس على **البايتات** لا على نصٍّ مُشفَّر بـlossy.
+        let declared: usize = header_value("content-length").parse().unwrap_or(0);
+        assert_eq!(
+            declared,
+            upload.raw.len(),
+            "الطول المُعلَن ≠ المُرسَل (فالطلب يُقطَع أو يُكمَّل بلا علمنا)"
+        );
+        assert!(
+            !upload
+                .head
+                .to_ascii_lowercase()
+                .contains("transfer-encoding"),
+            "الطلب صار مُجزَّأً: {}",
+            upload.head
+        );
+
+        let find = |hay: &[u8], needle: &[u8]| -> Option<usize> {
+            hay.windows(needle.len()).position(|w| w == needle)
+        };
+        let count = |hay: &[u8], needle: &[u8]| -> usize {
+            hay.windows(needle.len()).filter(|w| *w == needle).count()
+        };
+
+        // ③ البداية والنهاية بالحدّ نفسه — لا حدَّين يفترقان.
+        let opener = format!("--{boundary}\r\n").into_bytes();
+        let closer = format!("\r\n--{boundary}--\r\n").into_bytes();
+        assert!(
+            upload.raw.starts_with(&opener),
+            "الجسم لا يبدأ بالحدّ: {:?}",
+            String::from_utf8_lossy(&upload.raw[..upload.raw.len().min(60)])
+        );
+        assert!(
+            upload.raw.ends_with(&closer),
+            "الجسم لا ينتهي بالحدّ الخاتم: {:?}",
+            String::from_utf8_lossy(&upload.raw[upload.raw.len().saturating_sub(60)..])
+        );
+
+        // ④ عدد الأجزاء: فاصلُ البداية يظهر مرّتين بالضبط (مرّة لكل جزء)،
+        //    والخاتمة مرّة. فجزءٌ ناقص أو زائد يسقط هنا.
+        assert_eq!(
+            count(&upload.raw, &opener),
+            2,
+            "عدد الأجزاء ليس اثنين: {}",
+            String::from_utf8_lossy(&upload.raw[..upload.raw.len().min(200)])
+        );
+        assert_eq!(count(&upload.raw, &closer), 1, "خاتمة واحدة للجسم");
+
+        // ⑤ الجزء النصّي: `photo` يحمل `attach://<اسم المرفق>` **نصّاً** كما
+        //    يوثّق `InputProfilePhotoStatic` (الحقل `String` لا `InputFile`).
+        let json_field = b"Content-Disposition: form-data; name=\"photo\"\r\n\r\n";
+        let at = find(&upload.raw, json_field).expect("حقل `photo` النصّي مفقود");
+        let tail = &upload.raw[at + json_field.len()..];
+        let json_text = std::str::from_utf8(&tail[..tail.len().min(200)])
+            .ok()
+            .and_then(|s| s.split("\r\n").next())
+            .unwrap_or("");
+        let parsed: Value = serde_json::from_str(json_text)
+            .unwrap_or_else(|e| panic!("حقل photo ليس JSON: {json_text:?} ({e})"));
+        assert_eq!(parsed["type"], "static", "نوع الصورة ليس static: {parsed}");
+        assert_eq!(
+            parsed["photo"].as_str(),
+            Some(format!("attach://{BOT_PHOTO_ATTACH}").as_str()),
+            "المرجع ليس attach:// بالاسم نفسه: {parsed}"
+        );
+
+        // ⑥ جزء الملف: اسم المرفق **نفسه** الذي في `attach://`، واسم ملف
+        //    بصيغة `.jpg`، ونوعه `image/jpeg`.
+        let file_field = format!(
+            "Content-Disposition: form-data; name=\"{BOT_PHOTO_ATTACH}\"; filename=\"{BOT_PHOTO_NAME}\"\r\nContent-Type: image/jpeg\r\n\r\n"
+        )
+        .into_bytes();
+        let at = find(&upload.raw, &file_field).unwrap_or_else(|| {
+            panic!(
+                "جزء الملف ليس بالشكل المتوقَّع: {}",
+                String::from_utf8_lossy(&upload.raw[..upload.raw.len().min(400)])
+            )
+        });
+
+        // ⑦ **والبايتات المُرسَلة هي الصورة نفسها**: حمولة الجزء تساوي ملف
+        //    JPEG المضمَّن بايتاً ببايت — لا نصٌّ يشبهه ولا صورة أخرى.
+        let payload = &upload.raw[at + file_field.len()..];
+        let payload = &payload[..payload.len() - closer.len()];
+        assert_eq!(
+            payload.len(),
+            BOT_PHOTO_JPG.len(),
+            "حجم الحمولة ≠ حجم الصورة"
+        );
+        assert!(
+            payload == BOT_PHOTO_JPG,
+            "الحمولة ليست الصورة المضمَّنة (أوّلها {:02X?})",
+            &payload[..4.min(payload.len())]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **حارس الصورة المُصرَّفة في الثنائي**: البايتات المضمَّنة بـ`include_bytes!`
+    /// ملفُّ JPEG صالح — ترويسة `FFD8FF` ونهاية `FFD9` وأبعاد تُقرأ من وسم SOF.
+    ///
+    /// **ولا يُدَّعى حدُّ تلغرام** (التوثيق لا يذكره): الحدّان هنا حدّانا نحن،
+    /// وما يُقاس هو **شكل الملف** لا سماحُ خدمةٍ لم تُسأل.
+    #[test]
+    fn the_bundled_bot_photo_is_a_real_jpeg_with_readable_dimensions() {
+        let (w, h) = photo_problem(BOT_PHOTO_JPG).expect("الصورة المضمَّنة يجب أن تكون JPEG صالحاً");
+        assert_eq!(
+            (w, h),
+            (512, 512),
+            "الأبعاد المقروءة من الملف ليست ما وثّقناه في التحويل"
+        );
+        assert!(BOT_PHOTO_JPG.len() > 1024, "ملف صغير بشكل غير معقول");
+        assert_eq!(BOT_PHOTO_JPG[..3], [0xFF, 0xD8, 0xFF], "ترويسة JPEG");
+
+        // والمُفسَد الذي يُسقط هذا الحارس: بايتة واحدة تُقلَب في الترويسة.
+        let mut broken = BOT_PHOTO_JPG.to_vec();
+        broken[1] = 0x00;
+        assert!(
+            photo_problem(&broken).is_err(),
+            "صورة بترويسة مكسورة مرّت من الحارس"
+        );
+        // وملفٌ مقطوع (بلا EOI) يُرفض كذلك.
+        let cut = &BOT_PHOTO_JPG[..BOT_PHOTO_JPG.len() - 2];
+        assert!(photo_problem(cut).is_err(), "ملف مقطوع مرّ من الحارس");
+    }
+
+    /// **ت٨ — العكس صادق**: بعد `revert` يعود **الاسم السابق المخزَّن** فعلاً،
+    /// والصورة تُزال — مقيساً على **حالة الخادم** لا على نصّ الطلب.
+    ///
+    /// والمُفسَد الذي يُسقطه: عدم تخزين الاسم السابق (فيُرسَل فراغٌ فيُمحى اسم
+    /// البوت بدل أن يعود)، أو إعادة «HaramLite» مكان نفسه.
+    #[test]
+    fn t8_revert_restores_the_stored_previous_name_on_the_server() {
+        let _g = state_lock();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let dir = temp_dir("m5_identity");
+        // اسم البوت قبلنا كما يعطيه BotFather — وهو ما يجب أن يعود.
+        let original = bot.current_name();
+        assert_eq!(original, "HaramLite Bot", "تهيئة الخادم الوهمي");
+
+        // ① التطبيق: يُقرأ الاسم أولاً، ويُخزَّن **قبل** أي تبديل.
+        let applied = apply_bot_identity(&cfg, &dir).expect("التطبيق");
+        assert_eq!(applied.name, "HaramLite");
+        assert_eq!(applied.previous_name, original, "الاسم السابق لم يُقرأ");
+        assert_eq!(bot.current_name(), "HaramLite", "الاسم على الخادم لم يتغيّر");
+        let stored = load_identity_state(&dir).expect("حالة مخزَّنة بعد التطبيق");
+        assert!(stored.applied, "راية التطبيق لم تُرفع");
+        assert_eq!(
+            stored.previous_name, original,
+            "الاسم السابق لم يُخزَّن على القرص"
+        );
+        // وترتيب النداءات: القراءة **قبل** الكتابة (وإلا سُجِّل اسمٌ بعد التبديل).
+        let order: Vec<String> = bot
+            .calls()
+            .iter()
+            .map(|c| c.method.clone())
+            .filter(|m| m == "getMyName" || m == "setMyName" || m == "setMyProfilePhoto")
+            .collect();
+        assert_eq!(
+            order,
+            ["getMyName", "setMyProfilePhoto", "setMyName"],
+            "ترتيب نداءات الهوية ليس: قراءة ← صورة ← اسم"
+        );
+
+        // ② العكس: إزالة الصورة وإعادة الاسم المخزَّن.
+        bot.clear();
+        let reverted = revert_bot_identity(&cfg, &dir).expect("العكس");
+        assert!(!reverted.applied);
+        assert_eq!(reverted.name, original);
+        assert_eq!(
+            bot.current_name(),
+            original,
+            "الاسم السابق لم يعد على الخادم — العكس ليس عكساً"
+        );
+        assert_eq!(bot.count("removeMyProfilePhoto"), 1, "الصورة لم تُزَل");
+        // والعكس **لم يرفع** صورة ثانية ولا أرسل `setMyProfilePhoto`.
+        assert_eq!(bot.count("setMyProfilePhoto"), 0, "العكس رفع صورة");
+        let after = load_identity_state(&dir).expect("حالة بعد العكس");
+        assert!(!after.applied, "راية التطبيق لم تُنزَل");
+        assert!(after.previous_name.is_empty(), "الاسم السابق لم يُفرَّغ");
+
+        // ③ وبلا حالةٍ مخزَّنة **لا عكس**: كان سيمحو اسم البوت الحقيقي.
+        let fresh = temp_dir("m5_identity_none");
+        match revert_bot_identity(&cfg, &fresh) {
+            Err(BotSetupError::State(_)) => {}
+            other => panic!("عكسٌ بلا سجلّ سابق يجب أن يُرفض، جاء: {other:?}"),
+        }
+        assert_eq!(bot.current_name(), original, "العكس المرفوض مسّ اسم البوت");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&fresh);
+    }
+
+    /// **ت١١ — الفشل يُعلَن**: صورةٌ يرفضها الـAPI ⇒ **خطأ مُسمّى** لا نجاح
+    /// كاذب، ولا نصفُ تطبيق (الاسم لم يُمَسّ)، والحالة تبقى `applied:false`.
+    ///
+    /// والمُفسَد الذي يُسقطه: `let _ = …` على نتيجة الرفع (فيُعاد `Ok`)، أو
+    /// تعيينُ الاسم **قبل** الصورة (فيبقى اسمٌ مبدَّل وصورةٌ مرفوضة).
+    #[test]
+    fn t11_a_rejected_photo_is_a_named_error_and_no_false_success() {
+        let _g = state_lock();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let dir = temp_dir("m5_identity_fail");
+        let original = bot.current_name();
+
+        bot.reject_method("setMyProfilePhoto");
+        let err = apply_bot_identity(&cfg, &dir).expect_err("الرفض يجب أن يُعلَن");
+        assert!(
+            matches!(err, BotSetupError::Photo(_)),
+            "الخطأ ليس مُسمّى بالصورة: {err:?}"
+        );
+        let text = err.to_string();
+        assert!(
+            text.contains("setMyProfilePhoto"),
+            "نصّ الخطأ لا يسمّي النداء الفاشل: {text}"
+        );
+
+        // **ولا نصف تطبيق**: الاسم لم يُمَسّ على الخادم، ولا `setMyName` أُرسل.
+        assert_eq!(
+            bot.current_name(),
+            original,
+            "الاسم تغيّر رغم فشل الصورة — نصفُ تطبيق"
+        );
+        assert_eq!(bot.count("setMyName"), 0, "أُرسل setMyName بعد فشل الصورة");
+        let st = load_identity_state(&dir).expect("الحالة تُكتب قبل المحاولة (للعكس)");
+        assert!(!st.applied, "ادُّعي التطبيق رغم الفشل");
+        assert_eq!(
+            st.previous_name, original,
+            "الاسم السابق يُخزَّن قبل المحاولة — وإلا فلا عكس صادق"
+        );
+
+        // ③ وبزوال السبب ينجح المسار: الفشل المُقاس ليس فشلاً دائماً.
+        bot.accept_method("setMyProfilePhoto");
+        let ok = apply_bot_identity(&cfg, &dir).expect("بعد زوال السبب");
+        assert!(ok.applied, "لم يُطبَّق بعد زوال سبب الرفض");
+        assert_eq!(bot.current_name(), "HaramLite");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **ت١٠ — لا `/stop` في أي نطاق**: لا في القائمة المُسجَّلة على الخادم
+    /// (نطاق المالك)، ولا في نصّ `/help` لأي قارئ، **ولا هو أمرٌ يُنفَّذ**:
+    /// رسالةٌ نصّها `/stop` لا تُلغي مهمّة — يُقال له «لا أعرف الأمر».
+    ///
+    /// والمُفسَد الذي يُسقطه: إضافة `("stop", …)` إلى `COMMANDS` ⇒ يسقط شقُّ
+    /// التسجيل، أو جعل `/stop` ينادي الإلغاء ⇒ يسقط شقُّ السلوك.
+    #[test]
+    fn t10_no_stop_command_in_any_scope_and_it_never_cancels() {
+        let _g = state_lock();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        // النصّ الممنوع يُبنى مقطّعاً حتى لا يجد الحارس نفسه في المصدر
+        // (نفس صنيع حارس م٤: مسبارٌ خام كان يسقط على توثيقه هو).
+        let banned = concat!("/st", "op");
+
+        // ① ما سُجّل فعلاً على الخادم: صفر `/stop` في القائمة الكاملة.
+        register_commands(&cfg);
+        let bodies = bot.bodies("setMyCommands");
+        assert_eq!(bodies.len(), 1, "قائمة واحدة تُسجَّل");
+        let v: Value = serde_json::from_str(&bodies[0]).unwrap();
+        let names: Vec<String> = v["commands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["command"].as_str().unwrap_or("").to_string())
+            .collect();
+        let banned_name = concat!("st", "op");
+        assert!(
+            !names
+                .iter()
+                .any(|n| n.to_ascii_lowercase().contains(banned_name)),
+            "أمر ممنوع في النطاق المُسجَّل: {names:?}"
+        );
+        // ② ولا في نصّ القائمة لأي قارئ.
+        for is_owner in [true, false] {
+            assert!(
+                !help_text_for(is_owner).contains(banned),
+                "ظهر {banned} في /help (مالك: {is_owner})"
+            );
+        }
+
+        // ③ **وسلوكاً**: رسالة `/stop` لا تُلغي شيئاً — والجواب يسمّيه مجهولاً.
+        let mut poll = PollState::default();
+        let ov = new_oversize_store();
+        let (tx, _rx) = chan();
+        let before = tg_job_states_for_test(7).len();
+        handle_update(&cfg, &mut poll, &ov, &text_msg(7, 900, banned), &tx);
+        let texts = sent_texts(&bot);
+        assert!(
+            texts.iter().any(|t| t.contains("لا أعرف الأمر")),
+            "لم يُقل إن الأمر مجهول: {texts:?}"
+        );
+        assert!(
+            !texts
+                .iter()
+                .any(|t| t.contains("أُلغيت") || t.contains("لا مهمّة جارية")),
+            "نُفِّذ إلغاء من أمر ممنوع: {texts:?}"
+        );
+        assert_eq!(before, tg_job_states_for_test(7).len(), "تغيّرت حالة مهامّ");
+    }
+
+    /// **ت٦/ت٧ في المنتج**: زرّ «📊 إحصاءات» يُرسل **رسالة واحدة لكل ضغطة**
+    /// ونصُّها **من الملف وحده** (الاسم · الـID · العدد · الحجم)، ولا يمرّ من
+    /// مسار التعديل التجميلي (`editMessageText`) أصلاً.
+    #[test]
+    fn the_stats_button_sends_exactly_one_message_from_the_file_alone() {
+        let _serial = crate::paths::serial_guard();
+        let _env = crate::paths::env_restore("HARAMLITE_DATA_DIR");
+        let _g = state_lock();
+        let base = temp_dir("m5_stats");
+        std::env::set_var("HARAMLITE_DATA_DIR", &base);
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        // سجلٌّ مكتوب من **الكاتب الوحيد** (تسليمٌ ناجح) — مفتاحه الـID.
+        crate::tg_stats::note_delivery(&base, 7, "المالك", 2 * 1024 * 1024).unwrap();
+
+        let mut poll = PollState::default();
+        let ov = new_oversize_store();
+        let (tx, _rx) = chan();
+
+        // ① `/stats` من صاحبه: نصٌّ من الملف + زرّه.
+        handle_update(&cfg, &mut poll, &ov, &text_msg(7, 950, "/stats"), &tx);
+        let sent = sent_to(&bot, 7);
+        assert_eq!(sent.len(), 1, "أكثر من رسالة لأمر واحد: {sent:?}");
+        let text = sent[0]["text"].as_str().unwrap_or("");
+        for want in ["المالك", "المعرّف: 7", "الملفات: 1", "2.0 م.ب"] {
+            assert!(text.contains(want), "ناقص «{want}» في نصّ الإحصاءات: {text}");
+        }
+        assert_eq!(
+            sent[0].pointer("/reply_markup/inline_keyboard/0/0/callback_data"),
+            Some(&json!(STATS_CALLBACK)),
+            "الزرّ ليس زرّ الإحصاءات: {sent:?}"
+        );
+
+        // ② ضغطة على الزرّ ⇒ **رسالة واحدة** (لا تعديل، ولا رسالتان).
+        let before_msgs = bot.count("sendMessage");
+        let before_edits = bot.count("editMessageText");
+        let press = json!({
+            "callback_query": {
+                "id": "cb-stats",
+                "from": { "id": 7 },
+                "data": STATS_CALLBACK,
+                "message": { "message_id": 950, "chat": { "id": 7, "type": "private" } }
+            }
+        });
+        handle_update(&cfg, &mut poll, &ov, &press, &tx);
+        assert_eq!(
+            bot.count("sendMessage") - before_msgs,
+            1,
+            "الضغطة لم تُرسل رسالة واحدة بالضبط"
+        );
+        assert_eq!(
+            bot.count("editMessageText") - before_edits,
+            0,
+            "الزرّ مرّ من مسار التعديل التجميلي"
+        );
+        assert_eq!(
+            bot.count("answerCallbackQuery"),
+            1,
+            "الضغطة لم تُجَب (يدور مؤشّر العميل)"
+        );
+        // والنصّ الثاني هو نفسه: **من الملف** لا من عدّادٍ حيّ.
+        let sent = sent_to(&bot, 7);
+        assert_eq!(
+            sent.last().unwrap()["text"].as_str().unwrap_or(""),
+            text,
+            "نصّ الضغطة ≠ نصّ الأمر (فليس من الملف وحده)"
+        );
+
+        // ③ ومستخدمٌ بلا سجلّ: تُقال الحقيقة بدل أصفارٍ مُختلقة.
+        handle_update(&cfg, &mut poll, &ov, &text_msg(7, 951, "/stats"), &tx);
+        let rec = crate::tg_stats::load(&base, 8);
+        assert!(rec.is_none(), "لا سجلّ لمستخدمٍ لم يجرِ له تسليم");
+        let none_text = stats_reply(&base, 8);
+        assert!(none_text.contains("لا سجلّ"), "{none_text}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// **الأوامر تُضبَط من الواجهة بنتيجة صريحة** (م٥/٤) — والمسار هو نفسه
+    /// الذي بناه م٤: **صفر أوامر عامة** ونطاق محادثة المالك، ولا نسخة ثانية.
+    #[test]
+    fn applying_the_commands_from_the_panel_reports_the_same_two_calls() {
+        let _g = state_lock();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let n = apply_bot_commands(&cfg).expect("الضبط يجب أن ينجح");
+        assert_eq!(n, COMMANDS.len(), "عدد المُسجَّل ≠ عدد المعلَن");
+        assert_eq!(bot.count("deleteMyCommands"), 1, "صفر أوامر عامة");
+        assert_eq!(bot.count("setMyCommands"), 1, "قائمة المالك وحدها");
+        let v: Value = serde_json::from_str(&bot.bodies("setMyCommands")[0]).unwrap();
+        assert_eq!(
+            v.pointer("/scope/type").and_then(Value::as_str),
+            Some("chat")
+        );
+        assert_eq!(
+            v.pointer("/scope/chat_id").and_then(Value::as_i64),
+            Some(7),
+            "النطاق ليس محادثة المالك"
+        );
+
+        // وبلا مالك: الإفراغ يقع والقائمة **لا** تُسجَّل، والنتيجة **خطأ مُسمّى**
+        // لا «نجح، صفر أوامر» (فالصفر هنا ليس إنجازاً بل غياب نطاق).
+        bot.clear();
+        let mut anon = bot.cfg(7);
+        anon.owner_id = None;
+        match apply_bot_commands(&anon) {
+            Err(BotSetupError::NotConfigured(e)) => {
+                assert!(e.contains("مالك"), "السبب لا يسمّي العلّة: {e}")
+            }
+            other => panic!("بلا مالك يجب أن يُعلَن السبب، جاء: {other:?}"),
+        }
+        assert_eq!(bot.count("setMyCommands"), 0, "سُجّلت قائمة بلا نطاق");
+        assert_eq!(bot.count("deleteMyCommands"), 1);
+
+        // والفشل يُعلَن: `setMyCommands` مرفوض ⇒ خطأ مُسمّى لا `Ok`.
+        bot.clear();
+        bot.reject_method("setMyCommands");
+        match apply_bot_commands(&cfg) {
+            Err(BotSetupError::Commands(e)) => {
+                assert!(e.contains("setMyCommands"), "الخطأ لا يسمّي النداء: {e}")
+            }
+            other => panic!("رفض setMyCommands يجب أن يُعلَن، جاء: {other:?}"),
+        }
     }
 }

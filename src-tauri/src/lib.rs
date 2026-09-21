@@ -28,6 +28,7 @@ mod silence;
 mod slots;
 mod stft;
 mod telegram;
+mod tg_stats;
 mod throttle;
 mod tray;
 mod update_check;
@@ -1000,6 +1001,42 @@ fn telegram_pairing_code(force: bool) -> serde_json::Value {
     telegram::pairing_code(force)
 }
 
+/// م٥: «📊 إحصاءات» للمالك — الاسم · الـID · عدد الملفات · الحجم، **من الملف
+/// وحده** (‏`<data_dir>/telegram/stats/<id>.json`) ولا يُحصي شيئاً آخر.
+#[tauri::command]
+fn telegram_stats(state: tauri::State<'_, AppState>) -> serde_json::Value {
+    let owner = state
+        .settings
+        .lock()
+        .map(|s| s.telegram_user_id.trim().parse::<i64>().ok())
+        .unwrap_or(None);
+    let id = owner.unwrap_or(0);
+    let data = paths::data_dir();
+    let rec = tg_stats::load(&data, id);
+    serde_json::json!({
+        "id": id,
+        "name": rec.as_ref().map(|r| r.name.clone()).unwrap_or_default(),
+        "files": rec.as_ref().map(|r| r.files).unwrap_or(0),
+        "bytes": rec.as_ref().map(|r| r.bytes).unwrap_or(0),
+        "known": rec.is_some(),
+        "text": tg_stats::text_for(id, rec.as_ref()),
+    })
+}
+
+/// م٥: «استخدم اسم HaramLite وصورته للبوت» — نداء صريح بنتيجة صريحة: نجح
+/// (‏وأي اسم سابق خُزِّن) أو **فشل مُسمّى بالسبب**، ولا ادّعاء قبل نجاح النداء.
+#[tauri::command]
+fn telegram_set_bot_identity(enabled: bool) -> Result<serde_json::Value, String> {
+    telegram::set_identity_now(enabled).map_err(|e| e.to_string())
+}
+
+/// م٥: «اضبط الأوامر» — `setMyCommands` بنطاق محادثة المالك و`deleteMyCommands`
+/// للنطاق الافتراضي (صفر أوامر عامة)، بنتيجة صريحة.
+#[tauri::command]
+fn telegram_set_commands() -> Result<serde_json::Value, String> {
+    telegram::set_commands_now().map_err(|e| e.to_string())
+}
+
 /// Smart CUDA toggle support: NVIDIA GPU present? runtime DLLs ready?
 /// `cuda: true` means the sixteen runtime files sit in the app's bin folder
 /// (self-downloaded) — the UI offers the one-click install when false.
@@ -1428,6 +1465,9 @@ pub fn run() {
             set_autostart,
             telegram_status,
             telegram_pairing_code,
+            telegram_stats,
+            telegram_set_bot_identity,
+            telegram_set_commands,
             player_open,
             player_status,
             player_advance,
