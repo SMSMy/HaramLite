@@ -28,6 +28,7 @@
     "matrix:check": "node scripts/matrix-check.cjs",
     "separation:entry": "node scripts/check-separation-entry.cjs",
     "cuda:guard": "node scripts/check-cuda-assets.cjs",
+    "release:assets": "node scripts/check-release-assets.cjs",
     "guards:selfcheck": "node scripts/check-guards-selfcheck.cjs",
     "release:verify": "node scripts/check-release-artifact.cjs"
   },
