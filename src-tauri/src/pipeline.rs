@@ -1685,11 +1685,12 @@ mod tests {
     /// (`scripts/check-extension-sync.cjs` §٢) ويهبط الموضع أمام الصورة.
     ///
     /// **حدّ الحارس (معلَن)**: حارس نصّي لا برهان — يقرأ النصف الإنتاجي من هذا
-    /// الملف نفسه (`include_str!`) ويمنع كل كتابة مباشرة في الحقل داخل مسار
-    /// clip. تحويلٌ ملتوٍ عبر اسم مستعار لا يراه، وهو موكول إلى المراجعة.
+    /// الملف نفسه (`include_str!`) ويحكم على **كل** استخدام للمعرّف فيه. تحويلٌ
+    /// ملتوٍ عبر اسم مستعار (تعريف وسيط يُنسخ إليه ثم يُكتب منه) لا يراه، وهو
+    /// موكول إلى المراجعة.
     ///
-    /// **مُفسَده**: إضافة `kept_ranges = page_kept.clone();` داخل فرع clip ⇒
-    /// يسقط الادّعاءان (قائمة الكتابات، واسم الثابت في الرسالة).
+    /// **مُفسَده**: `kept_ranges = page_kept.clone();` في فرع clip ⇒ يسقط
+    /// الادّعاءان (فحص الكتابة، وقائمة الاستخدامات) ويُسمّى الثابت المنقوض.
     #[test]
     fn the_page_map_never_reaches_kept_ranges() {
         let src = include_str!("pipeline.rs");
@@ -1698,21 +1699,111 @@ mod tests {
         let cut = src.rfind("\nmod tests {").unwrap_or(src.len());
         let production = &src[..cut];
 
+        /// هل يذكر السطر المعرّف `kept_ranges` (بحدّ معرّف: لا `kept_ranges_sec`)؟
+        fn mentions(line: &str) -> bool {
+            let mut rest = line;
+            while let Some(i) = rest.find("kept_ranges") {
+                let after = &rest[i + "kept_ranges".len()..];
+                if !after.starts_with(|c: char| c.is_alphanumeric() || c == '_') {
+                    return true;
+                }
+                rest = after;
+            }
+            false
+        }
+        /// تجريد المحارف النصّية: `{kept_ranges=}` داخل سطر سجلّ ليس إسناداً.
+        fn strip_literals(line: &str) -> String {
+            let mut out = String::with_capacity(line.len());
+            let mut in_str = false;
+            let mut chars = line.chars();
+            while let Some(c) = chars.next() {
+                if in_str {
+                    if c == '\\' {
+                        let _ = chars.next();
+                    } else if c == '"' {
+                        in_str = false;
+                    }
+                    continue;
+                }
+                if c == '"' {
+                    in_str = true;
+                    continue;
+                }
+                out.push(c);
+            }
+            out
+        }
+        /// الكتابة في الحقل: إسناد (`=`) في أي موضع من السطر، أو نداء مُغيِّر.
+        fn writes_to_it(line: &str) -> bool {
+            let line = strip_literals(line);
+            let mut rest = line.as_str();
+            while let Some(i) = rest.find("kept_ranges") {
+                let after = rest[i + "kept_ranges".len()..].trim_start();
+                if after.starts_with('=') && !after.starts_with("==") {
+                    return true;
+                }
+                if after.starts_with('[') {
+                    return true;
+                }
+                for m in [
+                    ".push(",
+                    ".extend(",
+                    ".append(",
+                    ".insert(",
+                    ".splice(",
+                    ".drain(",
+                    ".retain(",
+                    ".truncate(",
+                    ".resize(",
+                    ".clear(",
+                    ".fill(",
+                    ".sort",
+                    ".swap(",
+                    ".pop(",
+                    ".remove(",
+                ] {
+                    if after.starts_with(m) {
+                        return true;
+                    }
+                }
+                rest = &rest[i + "kept_ranges".len()..];
+            }
+            false
+        }
+
+        // (١) الكتابة في الحقل — سلسلة الأغنية وحدها.
         let writes: Vec<&str> = production
             .lines()
             .map(str::trim)
-            .filter(|t| {
-                t.starts_with("kept_ranges =")
-                    || t.starts_with("kept_ranges.")
-                    || t.starts_with("kept_ranges[")
-                    || t.starts_with("kept_ranges:")
-            })
+            .filter(|t| !t.starts_with("//") && writes_to_it(t))
             .collect();
         assert_eq!(
             writes,
             vec!["kept_ranges = crate::effects::enhance_song_file("],
-            "الكتابة الوحيدة في kept_ranges يجب أن تكون سلسلة الأغنية. \
-             الثابت المنقوض: «kept_ranges تصف ما قُصّ من الملف المُسلَّم، ومسار clip لا يقصّه»"
+            "الثابت المنقوض: «kept_ranges تصف ما قُصّ من الملف المُسلَّم، ومسار clip لا يقصّه» \
+             — الكتابة الوحيدة المسموحة هي سلسلة الأغنية"
+        );
+
+        // (٢) كل استخدام آخر (قراءة أو تمرير) — قائمة مُراجَعة: أي سطر جديد
+        // هنا يجب أن يُراجَع، فإن كان قراءة/سجلاً يُضاف بعد التحقّق، وإن كان
+        // كتابةً من مسار clip فالثابت منقوض.
+        let uses: Vec<&str> = production
+            .lines()
+            .map(str::trim)
+            .filter(|t| !t.starts_with("//") && mentions(t))
+            .collect();
+        assert_eq!(
+            uses,
+            vec![
+                "pub kept_ranges: Vec<(f64, f64)>,",
+                "let mut kept_ranges: Vec<(f64, f64)> = Vec::new();",
+                "kept_ranges = crate::effects::enhance_song_file(",
+                "&kept_ranges",
+                "kept_ranges,",
+                "tracing::info!(target: \"pipe\", \"pipeline done in {seconds:.1}s (kept_ranges={} · page_kept={})\", out.kept_ranges.len(), out.page_kept.len());",
+            ],
+            "استخدام جديد لـkept_ranges — راجعه: إن كان كتابةً من مسار clip فالثابت المنقوض \
+             («kept_ranges تصف ما قُصّ من الملف المُسلَّم»)، وإن كان قراءة/سجلاً فأضفه بعد التحقّق"
         );
 
         // ومقصّ الفيديو يبقى مربوطاً بالخريطة نفسها، لا بخريطة الصفحة.
