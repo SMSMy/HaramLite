@@ -549,6 +549,98 @@ CASES.push({
     apply: (dir) => fs.rmSync(path.join(dir, 'src-tauri'), { recursive: true, force: true }) },
 });
 
+/* ── نسب نسخة الإصدار: الثنائي المُسلَّم يثبت أنه من هذه الشيفرة (درس 2026-09-21).
+ *
+ *    والدرس الثاني في اليوم نفسه: أول صورة لهذا الحارس بحثت عن الأعلام **بايتاً
+ *    بايتاً** داخل الثنائي، فأسقطت ثنائياً **سليماً** (الأعلام تُمرَّر فعلاً —
+ *    مقيسة بالمناداة الحيّة — بينما لا توجد بايتاتها المتّصلة في الصورة النهائية).
+ *    فصارت البوّابة تقيس **سلوك الثنائي**: تشغّله على مسار التنزيل الإنتاجي مع
+ *    yt-dlp مزيّف يسجّل وسائطه. وهذه الحالات المصنوعة تُثبت أنها تسقط على «نسخة
+ *    قديمة» وتمرّ على «نسخة مطابقة» — والاثنتان تُبنيان بـrustc هنا. ─────────── */
+const REL_FLAGS = ['--no-quiet', '--newline', 'after_move:HARAMLITE_OUT:'];
+const REL_EXE = (dir) => path.join(dir, 'src-tauri', 'target', 'release', 'HaramLite.exe');
+const REL_APP_HEAD = `
+use std::process::Command;
+fn spawn(flags: &[&str]) {
+    let tools = std::env::var("HARAMLITE_TOOLS_DIR").unwrap_or_default();
+    let exe = format!("{tools}/yt-dlp.exe");
+    let _ = Command::new(&exe).args(flags).status();
+}
+`;
+const REL_GOOD_APP = REL_APP_HEAD + `
+fn main() {
+    spawn(&["--newline", "--no-quiet", "--no-playlist", "-f", "bv*+ba/b",
+            "--print", "after_move:HARAMLITE_OUT:%(filepath)s", "--dump-single-json"]);
+}
+`;
+const REL_OLD_APP = REL_APP_HEAD + `
+fn main() { spawn(&["--no-playlist", "--dump-single-json"]); }
+`;
+const REL_SILENT_APP = `fn main() { std::process::exit(0); }`;
+
+/** يبني «تطبيقاً» مصنوعاً بـrustc في موضع الثنائي (فشل البناء يُترك ليصرخ عبر البوّابة). */
+function relCompile(dir, body) {
+  const src = path.join(dir, 'appstub.rs');
+  fs.writeFileSync(src, body);
+  const exe = REL_EXE(dir);
+  fs.mkdirSync(path.dirname(exe), { recursive: true });
+  let rustc = null;
+  const p = spawnSync('rustc', ['--version'], { encoding: 'utf8', windowsHide: true });
+  if (!p.error && p.status === 0) rustc = 'rustc';
+  else if (process.env.USERPROFILE) {
+    const c = path.join(process.env.USERPROFILE, '.cargo', 'bin', 'rustc.exe');
+    if (fs.existsSync(c)) rustc = c;
+  }
+  if (!rustc) { fs.writeFileSync(exe, 'rustc مفقود'); return { ok: false }; }
+  const r = spawnSync(rustc, ['-O', '--edition', '2021', '-o', exe, src], { encoding: 'utf8', windowsHide: true });
+  const ok = r.status === 0 && fs.existsSync(exe);
+  if (!ok) fs.writeFileSync(exe, 'فشل بناء المصنوع: ' + (r.stdout || '') + (r.stderr || ''));
+  return { ok };
+}
+
+CASES.push({
+  name: 'check-release-artifact.cjs',
+  script: S('check-release-artifact.cjs'),
+  build(dir) {
+    mk(dir, 'src-tauri/src/yt_dlp.rs',
+      'let args: Vec<String> = vec![\n' + REL_FLAGS.map((m) => '    "' + m + '".into(),').join('\n') + '\n];\n');
+    mk(dir, 'src/index.ts', 'export const x = 1;\n');
+    mk(dir, 'index.html', '<html></html>\n');
+    mk(dir, 'package.json', '{"name":"fixture"}\n');
+    mk(dir, 'src-tauri/tauri.conf.json', '{}\n');
+    relCompile(dir, REL_GOOD_APP);
+    /* الحداثة: كل مصدر قبل ساعة · والثنائي الآن (الطوابع تُحفظ عبر `cpSync` — مقيس) */
+    const old = new Date(Date.now() - 3600e3);
+    for (const rel of ['src-tauri/src/yt_dlp.rs', 'src/index.ts', 'index.html', 'package.json',
+      'src-tauri/tauri.conf.json']) fs.utimesSync(path.join(dir, rel), old, old);
+  },
+  controlArgs: (dir) => ['--root', dir],
+  saw: (dir, res) => { const m = res.out.match(/(\d+) أعلام/); return m ? Number(m[1]) : 0; },
+  sawExpected: 3,
+  mutants: [
+    { label: 'نسخة قديمة: تطبيق لا يمرّر أعلام التنزيل (وهو العطل الواقعيّ) ⇒ يسقط',
+      apply: (dir) => { relCompile(dir, REL_OLD_APP); },
+      mustMatch: /لم يمرّر/ },
+    { label: 'تطبيق لا ينادي yt-dlp أصلاً ⇒ «لم ينادِ» لا نجاح فارغ',
+      apply: (dir) => { relCompile(dir, REL_SILENT_APP); },
+      mustMatch: /لم ينادِ/ },
+    { label: 'الثنائي أقدم من الشيفرة (بُني قبل آخر تغيير) ⇒ «أقدم من الشيفرة»',
+      apply: (dir) => fs.utimesSync(REL_EXE(dir), new Date(Date.now() - 10800e3), new Date(Date.now() - 10800e3)),
+      mustMatch: /أقدم من الشيفرة/ },
+    { label: 'انحراف العَلَم: أُزيل من المصدر وبقي في الجدول ⇒ فشل مُسمّى',
+      apply: (dir) => {
+        const p = path.join(dir, 'src-tauri/src/yt_dlp.rs');
+        fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace('--newline', '--nl'));
+      },
+      mustMatch: /انحراف العَلَم/ },
+    { label: 'لا ثنائي أصلاً ⇒ فشل مُسمّى لا انهيار',
+      apply: (dir) => fs.rmSync(REL_EXE(dir), { force: true }),
+      mustMatch: /مفقودة/ },
+  ],
+  zero: { label: 'لا مصدر واحد من جدول الأعلام',
+    apply: (dir) => fs.rmSync(path.join(dir, 'src-tauri'), { recursive: true, force: true }) },
+});
+
 /* ═══ التشغيل ═══════════════════════════════════════════════════════════════ */
 
 const results = [];   // { case, kind, label, ok, detail }
