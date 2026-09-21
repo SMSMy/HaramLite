@@ -80,6 +80,43 @@ function visibleText(): string {
   return parts.join('\n');
 }
 
+/** كل العناصر المرئية (ويشمل `body` نفسه). */
+function visibleElements(): Element[] {
+  return [...document.body.querySelectorAll('*')].filter(isVisible);
+}
+
+/* ── الأصناف التي يحكم عليها المسح ──────────────────────────────────────────
+ * الجولة الثالثة: المسح كان يقرأ **عُقد النصّ** وحدها، فخمسة أصناف تمرّ:
+ * عدّاد `1/3` · سمة `title`/`aria-label` («٢ مهامّ جارية») · `style="width:87%"` ·
+ * نقطة حمراء · `<progress value>`. فوسّعته إلى **أصناف الادّعاء**:
+ *   ① نصّ مرئي فيه نسبة أو كسر أو كلمة خطأ/نجاح.
+ *   ② سمة `aria-label` أو `title` مرئية تحمل عدداً أو نسبة (تُقرأ بالناطق).
+ *   ③ `value` يحمل نسبة أو كسر (`<progress value>` وأمثاله).
+ * **والحدّ الباقي معلَن**: ادّعاء **بلون** بلا نصّ (نقطة حمراء) لا يُكشف — لا
+ * محرّك أنماط هنا. ولا أدّعي شمولاً لا أملكه. */
+
+/** أنماط «قياس»: نسبة مئوية · كسر `N/M` · عدّاد بأرقام عربية. */
+const PCT = /\d{1,3}\s*%/;
+const FRACTION = /\d{1,3}\s*\/\s*\d{1,3}/;
+const AR_COUNT = /[\u0660-\u0669]+\s*\/\s*[\u0660-\u0669]+|\d+\s*(مهامّ|مهمّة|ملفّ|ملفات)/;
+
+/** ادّعاءات في سمات العناصر المرئية (غياب + عدّ). */
+function attributeClaims(): string[] {
+  const bad: string[] = [];
+  for (const el of visibleElements()) {
+    const label = el.getAttribute('aria-label') ?? '';
+    const title = el.getAttribute('title') ?? '';
+    for (const [name, v] of [['aria-label', label], ['title', title]] as const) {
+      if (v && (PCT.test(v) || FRACTION.test(v) || AR_COUNT.test(v))) bad.push(`${name}="${v}"`);
+    }
+    // `value` يحمل نسبة أو كسراً: عدّاد/تقدّم مُعلَن بلا عمل. (قيمة حقل رقميّ
+    // مجرّدة مثل `2048` ليست ادّعاءً — لا تُعدّ.)
+    const val = el.getAttribute('value');
+    if (val && (PCT.test(val) || FRACTION.test(val))) bad.push(`value="${val}"`);
+  }
+  return bad;
+}
+
 const list = (): HTMLElement => document.getElementById('batch-list') as HTMLElement;
 const emptyEl = (): HTMLElement => document.getElementById('batch-empty') as HTMLElement;
 const rows = (): HTMLElement[] => [...list().querySelectorAll<HTMLElement>('div[data-file]')];
@@ -124,11 +161,21 @@ describe('الردهة الخاملة · مسح الشاشة المُصيَّر�
 
   it('ولا نسبة مئوية معروضة', async () => {
     await idleBoot();
-    expect(visibleText(), 'نمط نسبة في شاشة خاملة').not.toMatch(/\d{1,3}\s*%/);
+    expect(visibleText(), 'نمط نسبة في شاشة خاملة').not.toMatch(PCT);
     // ولا شريط تقدّم معروض.
     const shownBars = [...document.querySelectorAll<HTMLElement>('.batch-prog-wrap, .batch-prog-bg, #stage-line')]
       .filter(isVisible);
     expect(shownBars, 'شريط تقدّم معروض بلا عمل').toEqual([]);
+  });
+
+  it('ولا عدّاد `N/M` معروض (نصّاً أو في سمة)', async () => {
+    await idleBoot();
+    const text = visibleText();
+    expect(text, 'كسر `N/M` في نصّ خامل').not.toMatch(FRACTION);
+    expect(text, 'عدّاد مهامّ في نصّ خامل').not.toMatch(AR_COUNT);
+    expect(attributeClaims(), 'ادّعاء عدّ/نسبة في سمات مرئية').toEqual([]);
+    // ولا عنصر `<progress>` معروض.
+    expect([...document.querySelectorAll('progress')].filter(isVisible), 'progress معروض').toEqual([]);
   });
 
   it('ولا اسم ملف، ولا عدّاد، ولا صفّ طابور', async () => {
@@ -138,6 +185,8 @@ describe('الردهة الخاملة · مسح الشاشة المُصيَّر�
     expect(rows(), 'صفوف في طابور فارغ').toHaveLength(0);
     expect(isVisible(document.getElementById('batch-counter')), 'عدّاد بلا طابور').toBe(false);
     expect(isVisible(document.getElementById('stop-bar')), 'شريط إيقاف بلا مهمّة').toBe(false);
+    // والفحص ليس باطلاً: العدّاد **موجود** في DOM ومخفيّ — والحكم على الرؤية.
+    expect(document.getElementById('batch-counter'), 'العدّاد في DOM').not.toBeNull();
   });
 
   it('والحالة الفارغة تُعلَن بنصّها الصادق (لا شاشة صامتة)', async () => {
@@ -242,6 +291,53 @@ describe('ع٢ · مهمّة حيّة بطابور واجهة فارغ', () => {
     expect(visibleText()).toContain(i18n.ar.queue_empty_add);
     expect(visibleText()).not.toContain(i18n.ar.queue_empty_running);
   });
+
+  it('والسِجلّ مفقود ⇒ «مجهول»: لا «لا ملفات» ولا «مهمّة جارية»', async () => {
+    // الجولة الثالثة: كان الشرط الثلاثي يُبنى على منطقيّ لا يُحدَّث عند الفشل،
+    // فيتقلّص إلى شرطين ⇒ «لا ملفات … لتبدأ المعالجة» **مع** الشريط يقول
+    // «✗ تعذّرت قراءة المهامّ النشطة» (خرج الجاسوس: Q1). والخمول ادّعاء معرفة.
+    await idleBoot();
+    h.invoke.mockImplementation(async (cmd) => {
+      if (cmd === 'active_jobs') throw new Error('registry down');
+      return null;
+    });
+    startJobsPolling();
+    await vi.advanceTimersByTimeAsync(1200);
+
+    const text = visibleText();
+    // الشريط يعترف بالفشل — واللوحة يجب ألّا تناقضه.
+    expect(document.getElementById('stop-note')?.textContent ?? '').toContain('تعذّرت');
+    expect(text, 'خمول مُعلَن والمعرفة مفقودة').not.toContain(i18n.ar.queue_empty_add);
+    expect(text, 'ادّعاء عمل بلا دليل').not.toContain(i18n.ar.queue_empty_running);
+    expect(text, 'لا تصريح بالجهل').toContain(i18n.ar.queue_empty_unknown);
+    expect(text).toContain(i18n.ar.queue_empty_unknown_hint);
+  });
+
+  it('ولا لاتش: مهمّة تُرى ثم تُفقد المعرفة ⇒ لا ادّعاء عمل أبديّ', async () => {
+    await idleBoot();
+    const job: JobInfo = { id: 9, label: 'gui', path: 'C:\\z\\w.mp3' };
+    h.invoke.mockImplementation(async (cmd) => (cmd === 'active_jobs' ? [job] : null));
+    startJobsPolling();
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(visibleText()).toContain(i18n.ar.queue_empty_running);
+
+    // القراءة تفشل: القيمة تُشتقّ من **كل دورة** لا تُحفظ من قراءة قديمة.
+    h.invoke.mockImplementation(async (cmd) => {
+      if (cmd === 'active_jobs') throw new Error('registry down');
+      return null;
+    });
+    await vi.advanceTimersByTimeAsync(1200);
+
+    const text = visibleText();
+    expect(text, 'ادّعاء عمل بقي بعد فقد المعرفة (لاتش)').not.toContain(i18n.ar.queue_empty_running);
+    expect(text).toContain(i18n.ar.queue_empty_unknown);
+
+    // وعودة القراءة الناجحة تُصحّح في الدورة نفسها.
+    h.invoke.mockImplementation(async (cmd) => (cmd === 'active_jobs' ? [] : null));
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(visibleText()).toContain(i18n.ar.queue_empty_add);
+    expect(visibleText()).not.toContain(i18n.ar.queue_empty_unknown);
+  });
 });
 
 /* ══ ٤) ع٤: صفّ مُستعاد بحالة run/fail يعلن حالته ═════════════════════════ */
@@ -330,6 +426,31 @@ describe('ع٣ · سجلّ الأحداث يقول الحقيقة عند الف�
     expect(text).toContain('REAL-LINE');
     expect(text).not.toContain(i18n.ar.log_empty);
     expect(text).not.toContain('[ERROR]');
+  });
+
+  it('ومسار `log-line` الحقيقي يُزيل الوسم (لا يَبقى «تعذّر» مع سطر)', async () => {
+    // الجولة الثالثة: `pushLogLine` كانت **تُضيف ولا تُزيل**، فبقي وسم الفشل مع
+    // سطر حقيقي تحته — وخرج الجاسوس: `P3 afterLine {"noticeStillSaysUnavailable":true}`.
+    // وكان تعليقي «ويُمحى بأول سطر حقيقي» **وعداً غير منفَّذ**.
+    mountApp();
+    h.invoke.mockImplementation(async (cmd) => {
+      if (cmd === 'get_recent_logs') throw new Error('ipc down');
+      return null;
+    });
+    vi.resetModules();
+    const log = await import('../log');
+    log.setLogOpen(true);
+    await log.refresh();
+    expect(document.querySelector('[data-log-notice="log_unavailable"]'), 'وسم الفشل ظاهر').not.toBeNull();
+
+    // حدث الإنتاج الحقيقي: سطر يصل من الخلفية.
+    log.pushLogLine({ ts: 'T', level: 'INFO', target: 't', message: 'REAL-LINE-AFTER-FAIL' });
+    await vi.advanceTimersByTimeAsync(50);
+
+    const view = document.getElementById('log-view')!;
+    expect(view.querySelector('[data-log-notice]'), 'الوسم البائت باقٍ').toBeNull();
+    expect(view.textContent ?? '').not.toContain(i18n.ar.log_unavailable);
+    expect(view.textContent ?? '').toContain('REAL-LINE-AFTER-FAIL');
   });
 });
 
