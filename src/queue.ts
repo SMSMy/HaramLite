@@ -223,10 +223,10 @@ function batchRows(queue: readonly string[]): HTMLElement[] {
     div.dataset.file = f;
     div.className = 'batch-item bg-coal-surface/40 border border-border-muted rounded p-stack-sm flex flex-col gap-unit opacity-60 transition-all duration-300 apple-ease cursor-default relative overflow-hidden';
     styleBatchItem(div);
-    
+
     const progBg = document.createElement('div');
     progBg.className = 'absolute inset-0 bg-clay-accent/10 w-0 transition-all duration-1000 ease-linear batch-prog-bg hidden';
-    
+
     const headerDiv = document.createElement('div');
     headerDiv.className = 'flex justify-between items-center relative z-10';
     const nameSpan = document.createElement('span');
@@ -237,24 +237,24 @@ function batchRows(queue: readonly string[]): HTMLElement[] {
     pctSpan.className = 'batch-pct font-label-sm text-label-sm text-clay-accent font-bold drop-shadow-sm hidden';
     pctSpan.textContent = '0%';
     headerDiv.append(nameSpan, pctSpan);
-    
+
     const progWrap = document.createElement('div');
     progWrap.className = 'h-1.5 bg-border-muted rounded-full overflow-hidden relative z-10 shadow-inner batch-prog-wrap hidden';
     const progBar = document.createElement('div');
     progBar.className = 'batch-prog-bar h-full bg-clay-accent w-0 rounded-full relative transition-all duration-1000 ease-linear shadow-[0_0_10px_rgba(218,119,86,0.8)]';
     progWrap.appendChild(progBar);
-    
+
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'batch-actions flex gap-2 z-10 hidden mt-1';
-    
+
     const statusSpan = document.createElement('span');
     statusSpan.className = 'status-text font-label-sm text-label-sm text-on-surface-variant relative z-10 flex-1';
     statusSpan.textContent = t('queue_pending');
-    
+
     const bottomRow = document.createElement('div');
     bottomRow.className = 'flex justify-between items-center w-full relative z-10';
     bottomRow.append(statusSpan, actionsDiv);
-    
+
     div.append(progBg, headerDiv, progWrap, bottomRow);
     return div;
   });
