@@ -25,6 +25,14 @@
  * بعقد صريح يعيد العدد. وإضافةً إلى ذلك: شريط إيقاف ثابت (`#stop-bar`) خارج
  * منطقة تمرير الطابور، واستطلاع كل ثانية **أثناء وجود مهامّ** يُوائم حالة
  * الصفوف مع السِجلّ (فلا يبقى صفٌّ «يعمل» بنسبة قديمة بعد أن ماتت مهمّته).
+ *
+ * **م٣ — موضع الصفّ المنتظر**: صفٌّ في الانتظار يعرض اليوم **موضعه** في قائمة
+ * الانتظار («في قائمة الانتظار — دورك: N»، 1 = التالي) بدل «في الانتظار»
+ * المجرّدة، بنفس صياغة صفوف تلغرام (`src/i18n.ts` — مفتاح `queue_wait_position`
+ * واحد للسطحين). والموضع **مقيس من القائمة نفسها** (`session.getBatchQueue()`
+ * و`batchStatus`) لا مخترع، ويُعاد حسابه بعد كل تغيّر حالة فلا يبقى رقم بائت.
+ * (تغيير سلوك مقصود ومُعلَن: النصّ القديم `queue_pending` بقي مفتاحاً في الجدول
+ * وفي هيكل index.html، ولم يبقَ نصّ الصفوف الحيّ.)
  */
 
 import { listen } from '@tauri-apps/api/event';
@@ -44,6 +52,7 @@ import {
   fetchActiveJobs,
   jobDisplayName,
   jobForPath,
+  pendingQueuePositions,
   reconcileItemState,
   stopTarget,
 } from './jobs';
@@ -159,6 +168,28 @@ function styleBatchItem(div: HTMLElement): void {
   div.style.contentVisibility = 'auto';
   div.style.containIntrinsicSize = 'auto 96px';
 }
+/** يكتب في كل صفٍّ منتظر **موضعه** في قائمة انتظار الواجهة («دورك: N»).
+ *
+ *  الموضع يُقرأ من `session.getBatchQueue()` مع `batchStatus` (لا من DOM)، ويُعاد
+ *  حسابه بعد كل تغيّر حالة — ترقية صفٍّ إلى «يعمل» أو إعادته إلى الانتظار — فلا
+ *  يبقى رقم بائت على الشاشة (وإلا بقي الصفّ الثاني «دورك: 3» بعد أن صار التالي).
+ *  و`except` لصفٍّ كُتب فيه نصٌّ صريح أهمّ من الرقم (صفٌّ أُعيد إلى الانتظار لأن
+ *  مهمّته ماتت ⇒ `stop_row_stale`)، فلا يُدهَس. */
+function refreshWaitingPositions(except?: HTMLElement | null): void {
+  const list = document.getElementById('batch-list');
+  if (!list) return;
+  const queue = session.getBatchQueue();
+  const positions = pendingQueuePositions(queue.map((f) => batchStatus.get(f) ?? 'pending'));
+  const at = new Map(queue.map((f, i) => [f, positions[i]] as const));
+  list.querySelectorAll<HTMLElement>('div[data-file]').forEach((row) => {
+    if (row === except) return;
+    const n = at.get(row.dataset.file ?? '');
+    if (typeof n !== 'number') return; // يعمل/انتهى: لا موضع يُقال
+    const span = row.querySelector<HTMLElement>('.status-text');
+    if (span) span.textContent = t('queue_wait_position', { n });
+  });
+}
+
 function renderBatchList(): void {
   const ul = document.getElementById('batch-list');
   if (!ul) return;
@@ -207,6 +238,7 @@ function renderBatchList(): void {
   );
   batchStatus.clear();
   for (const f of session.getBatchQueue()) batchStatus.set(f, 'pending');
+  refreshWaitingPositions(); // م٣: كل صفٍّ منتظر يقول موضعه لا «في الانتظار» فقط
   saveBatchState();
 }
 
@@ -264,7 +296,7 @@ export function restoreBatchState(): void {
 function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?: string): void {
   batchStatus.set(file, status);
   const item = document.querySelector<HTMLElement>(`#batch-list div[data-file="${CSS.escape(file)}"]`);
-  if (!item) { saveBatchState(); return; }
+  if (!item) { refreshWaitingPositions(); saveBatchState(); return; }
   styleBatchItem(item); // className swaps below wipe classes — re-apply after each
   
   const statusSpan = item.querySelector('.status-text') as HTMLElement;
@@ -334,6 +366,7 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?:
       }
   }
   styleBatchItem(item); // className swaps above wipe it — restore last
+  refreshWaitingPositions(); // م٣: ترقية صفٍّ تُحرّك مواضع مَن بعده
   saveBatchState();
 }
 
@@ -489,6 +522,8 @@ function reconcileBatchRows(jobs: readonly JobInfo[]): void {
       batchStatus.set(f, 'pending');
       const item = document.querySelector<HTMLElement>(`#batch-list div[data-file="${CSS.escape(f)}"]`);
       if (item) resetBatchItemProgress(item, t('stop_row_stale'));
+      // الرسالة الصريحة أهمّ من الرقم، فلا تُدهَس في صفّها — وبقية الصفوف تُحدَّث
+      refreshWaitingPositions(item);
       saveBatchState();
       invoke('push_log', { level: 'warn', message: `queue row reset to pending (no backend job): ${f}` });
       continue;
