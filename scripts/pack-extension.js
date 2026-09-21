@@ -156,6 +156,46 @@ function main() {
     entries.push({ name: f, data: fs.readFileSync(path.join(EXT_DIR, f)) });
   }
 
+  /* **`_locales/**` تُشحن كاملة** (تصحيح 2026-09-22): القائمة أعلاه **مسطَّحة** فلا تستطيع
+   *  التعبير عن شجرة لغات، وكان المانيفست يستعمل `__MSG_appName__` ⇒ لولا هذا المشي المتكرّر
+   *  لَشُحنت حزمة متجر **اسمها `__MSG_appName__`** (وهو عطل صامت لا يراه أحد حتى يقرأه المشتري). */
+  const localesDir = path.join(EXT_DIR, '_locales');
+  const localeFiles = [];
+  if (fs.existsSync(localesDir)) {
+    const walk = (dir, prefix) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+        const abs = path.join(dir, e.name);
+        const rel = prefix ? `${prefix}/${e.name}` : e.name;
+        if (e.isDirectory()) walk(abs, rel);
+        else localeFiles.push({ name: `_locales/${rel}`, abs });
+      }
+    };
+    walk(localesDir, '');
+  }
+  for (const f of localeFiles) entries.push({ name: f.name, data: fs.readFileSync(f.abs) });
+
+  /* وكل `__MSG_key__` في المانيفست يجب أن يكون **معرَّفاً** في لغة الافتراض — وإلا فالمتصفّح
+   *  يعرض الرمز كما هو. والفشل هنا **بصوت عالٍ** لا تحذيراً. */
+  const defaultLocale = manifest.default_locale;
+  const msgs = {};
+  if (defaultLocale) {
+    const p = path.join(localesDir, defaultLocale, 'messages.json');
+    if (!fs.existsSync(p)) {
+      console.error(`pack: default_locale=${defaultLocale} بلا _locales/${defaultLocale}/messages.json`);
+      process.exit(1);
+    }
+    const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+    for (const [k, v] of Object.entries(raw)) msgs[k] = v && v.message;
+  }
+  const msgRefs = [...JSON.stringify(manifest).matchAll(/__MSG_([A-Za-z0-9_@]+)__/g)].map((m) => m[1]);
+  const undefinedRefs = [...new Set(msgRefs)].filter((k) => !msgs[k]);
+  if (undefinedRefs.length) {
+    console.error('pack: __MSG_ في المانيفست بلا تعريف في لغة الافتراض: ' + undefinedRefs.join(', '));
+    process.exit(1);
+  }
+  /** ما يراه المراجع فعلاً: الرمز مُستبدَلاً برسالة لغة الافتراض. */
+  const resolvedName = String(manifest.name).replace(/__MSG_([A-Za-z0-9_@]+)__/g, (_, k) => msgs[k] ?? `__MSG_${k}__`);
+
   const out =
     args.out ||
     path.join(ROOT, 'src-tauri', 'target', 'store', `HaramLite-Bridge-${manifest.version}-${args.target}.zip`);
@@ -166,7 +206,8 @@ function main() {
   const drop = ['key', 'browser_specific_settings'].filter((k) => args.target === 'chrome' || k === 'key');
   console.log(`packed ${entries.length} files → ${out}`);
   console.log(`  version:      ${manifest.version}`);
-  console.log(`  name:         ${manifest.name}`);
+  console.log(`  name:         ${resolvedName}${msgRefs.length ? ` (من _locales/${defaultLocale})` : ''}`);
+  if (localeFiles.length) console.log(`  locales:      ${localeFiles.map((f) => f.name).join(', ')}`);
   console.log(`  permissions:  ${(manifest.permissions || []).join(', ')}`);
   console.log(`  host scope:   ${(manifest.content_scripts || []).flatMap((c) => c.matches || []).join(', ')}`);
   console.log(`  stripped:     ${drop.join(', ') || '(nothing)'}`);
