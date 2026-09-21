@@ -16,6 +16,7 @@ mod media;
 mod paths;
 mod pipeline;
 mod player;
+mod proc;
 mod repair;
 mod reverb_delay;
 mod scratch;
@@ -1059,6 +1060,29 @@ fn cancel_bridge_job() -> Result<(), String> {
     bridge::cancel_via_gui()
 }
 
+/// **م٢ — عقد IPC مُجمَّد** (الواجهة تُبنى عليه): المهامّ النشطة الآن.
+///
+/// `JobInfo` أربعة حقول بأسمائها: `id` · `label` · `path` · `started_ms`،
+/// و`path` هو ما تُطابق به الواجهة عنصر الطابور بالمهمّة. ولا يُغيَّر بلا
+/// تصريح (نظيره في `slots.rs`).
+#[tauri::command]
+fn active_jobs() -> Vec<slots::JobInfo> {
+    slots::active_jobs()
+}
+
+/// **م٢**: إلغاء مهمّة واحدة بمعرّفها. `true` = الإلغاء **وقع** (الرمز مضبوط
+/// وشجرة عملياتها قُتلت)، `false` = لا مهمّة بهذا المعرّف (انتهت قبله).
+#[tauri::command]
+fn cancel_job(id: u64) -> bool {
+    slots::cancel_job(id)
+}
+
+/// **م٢**: إلغاء كل المهامّ النشطة — يعيد عدد ما أُلغى فعلاً.
+#[tauri::command]
+fn cancel_all_jobs() -> usize {
+    slots::cancel_all()
+}
+
 /// Functional gap: cancel the file the WATCH folder is processing right now
 /// (the watcher thread itself keeps running).
 #[tauri::command]
@@ -1377,6 +1401,9 @@ pub fn run() {
             open_folder,
             open_file,
             cancel_process,
+            active_jobs,
+            cancel_job,
+            cancel_all_jobs,
             cancel_bridge_job,
             cancel_watch_file,
             probe_media,

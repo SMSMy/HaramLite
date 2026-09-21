@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::proc::CancelToken;
 use crate::{decide, media, separator, silence, v1proto};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -87,19 +88,49 @@ fn locks_dir() -> PathBuf {
     crate::paths::data_dir().join("locks")
 }
 
+/// اسم القفل للملف — **مستعمل في الاختبارات وحدها**: مسار الإنتاج يمرّ بـ
+/// `claim_processing_in` الذي يبني الاسم من مجلده الصريح، ولا ينادي هذه أبداً.
+/// والوسم هنا **صادق** لا تسكيت: لا مستدعي في المنتج.
+#[cfg(test)]
 fn lock_name_for(input: &Path) -> PathBuf {
-    use sha2::{Digest, Sha256};
-    // Canonicalize so `.\a.mp3`, `A.MP3` and absolute forms hash identically.
-    let canon = input
+    lock_name_in(&locks_dir(), input)
+}
+
+/// الصيغة الواحدة لاسم القفل من (مجلد الأقفال، مسار الإدخال) — ومفصولة حتى
+/// يحسب اختبار «القفل الميت» موضع القفل في مجلده بلا لمس الحالة العامة.
+fn lock_name_in(locks_dir: &Path, input: &Path) -> PathBuf {
+    let canon = canonical_input(input);
+    locks_dir.join(format!("{:x}.lock", lock_hash(&canon)))
+}
+
+/// المسار المعياري الذي يُبنى عليه القفل: `.\a.mp3` و`A.MP3` والصيغة المطلقة
+/// تُجزّأ تجزئة واحدة.
+fn canonical_input(input: &Path) -> PathBuf {
+    input
         .canonicalize()
-        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default().join(input));
+        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default().join(input))
+}
+
+/// تجزئة مسار الإدخال إلى اسم ملف قفل (`{:x}` — ست عشري بلا شرطات).
+fn lock_hash(canon: &Path) -> sha2::digest::Output<sha2::Sha256> {
+    use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
     h.update(canon.to_string_lossy().as_bytes());
-    locks_dir().join(format!("{:x}.lock", h.finalize()))
+    h.finalize()
 }
 
 /// Exclusive processing claim, released on drop (even on panic-unwind,
 /// which is what makes it crash-safe where in-memory sets are not).
+///
+/// **عطل ميداني مُصلَح (شرط قبول م٢)**: القفل كان يحمل طابعاً زمنياً فقط،
+/// و`Drop` لا يعمل عند قتل العملية ⇒ مهمّة تُقتل (أو يُلغى ملفها) تترك قفلاً
+/// **ميتاً** يمنع إعادة معالجة **الملف نفسه** ١٢ ساعة برسالة «الملف قيد
+/// المعالجة حالياً — تخطي» (قِيس: رفض في 10ms). أي أن الإلغاء كان **عقوبة**.
+///
+/// والعلاج: القفل يخزّن **PID المالك وطابعه الزمني**، ويُسترجع بفحص **حياة
+/// العملية المالكة** (`lock_owner_is_dead`) بدل انتظار الزمن. والطابع الزمني
+/// يبقى **مساراً بديلاً صريحاً** لقفل بلا PID مقروء (قفل من نسخة أقدم أو ملف
+/// عبث به أحد) — فلا يتعلّق ملف إلى الأبد بحجّة «تعذّر الفحص».
 pub(crate) struct ProcessingClaim {
     path: PathBuf,
 }
@@ -110,54 +141,158 @@ impl Drop for ProcessingClaim {
     }
 }
 
-/// Stale locks (older than 12h — necessarily a killed run, since no job may
-/// legally span that) are reclaimed instead of wedging the file forever.
+/// قفل عمره أطول من هذا لا يمكن أن يكون لمهمّة حيّة (لا مهمّة تمتدّ ١٢ ساعة)
+/// ⇒ **يُسترجع**. وهو الآن **احتياط** لا الأصل: الأصل فحص حياة المالك.
 const STALE_LOCK_SECS: u64 = 12 * 3600;
 
-fn claim_processing(input: &Path) -> Result<ProcessingClaim, PipelineError> {
-    let dir = locks_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| PipelineError(format!("تعذر مجلد الأقفال: {e}")))?;
-    let lock = lock_name_for(input);
-    match std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&lock)
+/// الأقدمية التي يُقبل بها **قفل بلا PID مقروء** كقفل ميت. أصغر بكثير من
+/// `STALE_LOCK_SECS` عن قصد: القفل بلا PID يعني «لا سبيل لفحص الحياة»، وإبقاء
+/// ملف ١٢ ساعة على الاحتمال أسوأ من إعادة محاولة تُكرَّر — والقفل المتعارَض
+/// الحقيقي يبقى محميّاً لأن كل قفل نكتبه يحمل PID.
+const UNREADABLE_LOCK_STALE_SECS: u64 = 60;
+
+/// هل يبدو القفل قائماً من نسخة أقدم (بلا PID)؟ — نفس صيغة المهلتين أعلاه.
+fn lock_age_secs(lock: &Path) -> Option<u64> {
+    std::fs::metadata(lock)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| std::time::SystemTime::now().duration_since(t).ok())
+        .map(|age| age.as_secs())
+}
+
+/// فحص **حياة العملية المالكة** لقفل قائم.
+///
+/// * `true` = المالك **مات** (أو القفل غير مقروء وقديم) ⇒ القفل يُسترجع.
+/// * `false` = المالك **حيّ** ⇒ القفل يُحترم.
+///
+/// وعلى ويندوز: `OpenProcess(SYNCHRONIZE|QUERY_LIMITED_INFORMATION)` ثم
+/// `WaitForSingleObject(handle, 0)`:
+/// * `WAIT_OBJECT_0` ⇒ العملية انتهت (ميتة) — أو PID مُعاد استخدامه لعملية
+///   انتهت أيضاً، وفي الحالتين لا مالك حيّ ⇒ الاسترجاع سليم.
+/// * `WAIT_TIMEOUT` ⇒ العملية حيّة ⇒ لا استرجاع.
+/// * فشل الفتح (`ERROR_INVALID_PARAMETER`) ⇒ لا عملية بهذا المعرّف ⇒ ميتة.
+/// * `ERROR_ACCESS_DENIED` ⇒ العملية موجودة (ملكٌ لغيرنا) ⇒ حيّة، ولا نخمّن.
+///
+/// **حدّها المعلَن**: عملية ميتة أُعيد استخدام معرّفها لعملية حيّة أخرى تُقرأ
+/// «حيّة» فيبقى القفل حتى `STALE_LOCK_SECS`. وهو **تحفّظ آمن** (لا يُسترجع قفل
+/// حيّ أبداً) لا عطل: احتمال إعادة استخدام PID داخل نافذة الأقدمية ضئيل،
+/// والخطأ في الاتجاه الآخر يهدم حصرية المعالجة كلها.
+fn lock_owner_is_dead(lock: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(lock) else {
+        return true; // اختفى بين الفحص والقراءة ⇒ لا مالك
+    };
+    let pid = text
+        .split_whitespace()
+        .next()
+        .and_then(|t| t.parse::<u32>().ok());
+    match pid {
+        Some(pid) => !process_is_alive(pid),
+        None => lock_age_secs(lock)
+            .map(|age| age > UNREADABLE_LOCK_STALE_SECS)
+            .unwrap_or(true),
+    }
+}
+
+/// المالك حيّ؟ — الصيغة الوحيدة في هذا الملف، مفصولة لتُقاس بمعرّف معروف
+/// (اختبار `a_killed_process_is_not_alive`).
+fn process_is_alive(pid: u32) -> bool {
+    #[cfg(target_os = "windows")]
     {
-        Ok(mut f) => {
-            use std::io::Write;
-            let _ = writeln!(
-                f,
-                "{} {}",
-                std::process::id(),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0)
+        use windows_sys::Win32::Foundation::{
+            CloseHandle, GetLastError, ERROR_ACCESS_DENIED, HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT,
+        };
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION,
+            PROCESS_SYNCHRONIZE,
+        };
+        unsafe {
+            let handle: HANDLE = OpenProcess(
+                PROCESS_SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION,
+                0,
+                pid,
             );
-            Ok(ProcessingClaim { path: lock })
-        }
-        Err(_) => {
-            let stale = std::fs::metadata(&lock)
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| std::time::SystemTime::now().duration_since(t).ok())
-                .map(|age| age.as_secs() > STALE_LOCK_SECS)
-                .unwrap_or(false);
-            if stale {
-                let _ = std::fs::remove_file(&lock);
-                // One retry only: a second collision is a live owner.
-                return match std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&lock)
-                {
-                    Ok(_) => Ok(ProcessingClaim { path: lock }),
-                    Err(_) => Err(PipelineError("الملف قيد المعالجة حالياً — تخطي".into())),
-                };
+            if handle.is_null() {
+                // لا مقبض: إما لا عملية بهذا المعرّف (ميتة) وإما مُنعنا (حيّة).
+                return GetLastError() == ERROR_ACCESS_DENIED;
             }
-            Err(PipelineError("الملف قيد المعالجة حالياً — تخطي".into()))
+            let waited = WaitForSingleObject(handle, 0);
+            CloseHandle(handle);
+            match waited {
+                WAIT_OBJECT_0 => false, // انتهت ⇒ ميتة
+                WAIT_TIMEOUT => true,   // ما زالت تعمل ⇒ حيّة
+                _ => true,              // فشل غير متوقّع ⇒ لا نخمّن بمهاجمة قفل قائم
+            }
         }
     }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // يونكس: `/proc` إن وُجد، وإلا `kill -0` كسؤال «هل يستطيع إشارةً؟».
+        let proc_dir = Path::new("/proc").join(pid.to_string());
+        if proc_dir.exists() {
+            return true;
+        }
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(true)
+    }
+}
+
+/// يسجّل القفل باسم المالك (PID + طابع زمني)، ويعيد حارساً يحذفه في `Drop`.
+fn claim_processing(input: &Path) -> Result<ProcessingClaim, PipelineError> {
+    claim_processing_in(&locks_dir(), input, lock_owner_is_dead)
+}
+
+/// [`claim_processing`] بمجلد أقفال صريح وفحص مالك **محقون**.
+///
+/// ولماذا الحقن: مالك القفل في الاختبار هو العملية نفسها، فلا سبيل لقياس مسار
+/// «مالك ميت» بلا حقن. ومجلد الأقفال صريح حتى لا يعتمد القياس على
+/// `HARAMLITE_DATA_DIR` (لمسُه في اختبار يُسابق كل اختبار يحلّ مساراً — عطل
+/// مقيس في `paths.rs:29-31`) ولا يكتب في بيانات المستخدم.
+fn claim_processing_in(
+    dir: &Path,
+    input: &Path,
+    owner_is_dead: impl Fn(&Path) -> bool,
+) -> Result<ProcessingClaim, PipelineError> {
+    std::fs::create_dir_all(dir).map_err(|e| PipelineError(format!("تعذر مجلد الأقفال: {e}")))?;
+    let lock = lock_name_in(dir, input);
+    match create_lock(&lock) {
+        Ok(()) => Ok(ProcessingClaim { path: lock }),
+        Err(_) => {
+            let stale = owner_is_dead(&lock)
+                || lock_age_secs(&lock)
+                    .map(|age| age > STALE_LOCK_SECS)
+                    .unwrap_or(false);
+            if !stale {
+                return Err(PipelineError("الملف قيد المعالجة حالياً — تخطي".into()));
+            }
+            // One retry only: a second collision is a live owner.
+            let _ = std::fs::remove_file(&lock);
+            match create_lock(&lock) {
+                Ok(()) => Ok(ProcessingClaim { path: lock }),
+                Err(_) => Err(PipelineError("الملف قيد المعالجة حالياً — تخطي".into())),
+            }
+        }
+    }
+}
+
+/// ينشئ ملف القفل **حصراً** ويكتب فيه PID المالك وطابعه الزمني.
+fn create_lock(lock: &Path) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(lock)?;
+    writeln!(
+        f,
+        "{} {}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    )
 }
 
 pub struct PipelineOutput {
@@ -203,6 +338,12 @@ fn finish_run(
 /// 2. MDX-Net separation → vocals/instrumental stems       [M2 ✓]
 /// 3. (M3) song-mode effect chain + silence cut            [hook below]
 /// 4. (M4/M5) encode to requested container                [wav native now]
+///
+/// **`cancel` (م٢)**: رمز الإلغاء **لكل مهمّة** يُمرَّر من `slots::run_separation`
+/// (ويحقن `proc::never()` في الاختبارات المباشرة). وكل حدّ مرحلة يقرؤه، وكل
+/// نداء أداة يقرؤه **ويقتل شجرته فوراً** (`proc::run_cancellable`). والحدّ
+/// الباقي مصرَّح به: `separator::separate` (ONNX) نداء واحد غير قابل للقطع،
+/// فالإلغاء داخله يُهجر عند أول حدّ بعده بلا إنتاج ناتج (دلالة على مرحلتين).
 pub fn process_file(
     input: &Path,
     out_dir: &Path,
@@ -212,6 +353,7 @@ pub fn process_file(
     keep_vocals: bool,
     use_cuda: bool,
     preview_seconds: Option<f32>,
+    cancel: &CancelToken,
     progress: &dyn Fn(f32) -> bool,
     stage: &dyn Fn(&str, f32),
 ) -> Result<PipelineOutput, PipelineError> {
@@ -219,6 +361,18 @@ pub fn process_file(
     // Held for the whole run: any second path attempting this file gets a
     // clean skip instead of a concurrent double separation.
     let _claim = claim_processing(input)?;
+    // **حدّ الإلغاء الواحد لكل مرحلة** (م٢): يسأل رمز الإلغاء **و**المستدعي
+    // (علم الواجهة/البوت العام كما كان — فلا يتغيّر سلوك مستدعٍ قديم). ومعه
+    // تنظيف مجلد العمل: الإلغاء لا يترك سكراتش (وإلا صار الإلغاء عقوبة على
+    // القرص أيضاً). قبل الترميز النهائي لا نحذف ناتجاً سابقاً ناجحاً (التعليل
+    // في `finish_run`).
+    let checkpoint = |p: f32| -> Result<(), PipelineError> {
+        if progress(p) && !cancel.is_cancelled() {
+            return Ok(());
+        }
+        let _ = std::fs::remove_dir_all(out_dir.join("_haramlite_work"));
+        Err(err("تم إلغاء المعالجة من قبل المستخدم."))
+    };
     // P1 autopsy: time every stage transition. The wrapper shadows the
     // caller's callback — zero changes at the dozen call sites below, and
     // the log now shows exactly where a run's wall time goes.
@@ -246,9 +400,7 @@ pub fn process_file(
 
     // Stage 1 — repair & normalize whatever came in (Sprint C2: visible stages)
     stage("normalize", 0.0);
-    if !progress(0.02) {
-        return Err(err("تم إلغاء المعالجة من قبل المستخدم."));
-    }
+    checkpoint(0.02)?;
     // Audit 2026-09-03: scratch must not outlive a failed run (tens of MB
     // per failure used to accumulate in the user's output folder).
     let normalized = media::normalize_for_engine_limited(input, &work_dir, preview_seconds)
@@ -305,9 +457,7 @@ pub fn process_file(
                 err(e)
             })?;
             stage("separate", 1.0);
-            if !progress(0.90) {
-                return Err(err("تم إلغاء المعالجة من قبل المستخدم."));
-            }
+            checkpoint(0.90)?;
             clip_direct_vocals = Some(direct_path);
         }
         // Audit 2026-09-15 (٤.ب.٧): keep the scan for the MDX call below. Only
@@ -317,7 +467,7 @@ pub fn process_file(
     }
     let sep_progress = |p: f32| {
         stage("separate", p);
-        progress(0.05 + p * 0.85)
+        progress(0.05 + p * 0.85) && !cancel.is_cancelled()
     };
     let (vocals_raw, instrumental_raw): (PathBuf, Option<PathBuf>) = if let Some(v) =
         clip_direct_vocals
@@ -341,15 +491,19 @@ pub fn process_file(
         (stems.vocals, Some(stems.instrumental))
     };
     stage("separate", 1.0);
+    // **أول حدّ بعد نداء الاستدلال** (م٢): نداء ONNX غير قابل للقطع داخل
+    // العملية، فالإلغاء الذي وصل أثناءه يسقط العمل **هنا** بلا إنتاج ناتج.
+    if cancel.is_cancelled() {
+        let _ = std::fs::remove_dir_all(&work_dir);
+        return Err(err("تم إلغاء المعالجة من قبل المستخدم."));
+    }
     let _ = std::fs::remove_dir_all(&work_dir);
 
     // Stage 3 — song mode: enhancement chain (M3) applied ONTO the vocals stem
     let mut vocals_path = vocals_raw;
     let mut kept_ranges: Vec<(f64, f64)> = Vec::new();
     if matches!(mode, Mode::Song) {
-        if !progress(0.92) {
-            return Err(err("تم إلغاء المعالجة من قبل المستخدم."));
-        }
+        checkpoint(0.92)?;
         stage("effects", 0.0);
         tracing::info!(target: "pipe", "Starting DSP phase (CPU bound) for audio enhancement...");
         let tmp_enhanced = out_dir.join("_haramlite_enhanced.wav");
@@ -357,7 +511,7 @@ pub fn process_file(
         // the progress bar (it used to freeze through the whole phase).
         let dsp_progress = |p: f32| {
             stage("effects", p);
-            progress(0.90 + p * 0.06)
+            progress(0.90 + p * 0.06) && !cancel.is_cancelled()
         };
         kept_ranges = crate::effects::enhance_song_file(
             &vocals_path,
@@ -428,9 +582,7 @@ pub fn process_file(
     let mut final_vocals: Option<PathBuf> = Some(vocals_path.clone());
     match actual_kind {
         OutKind::Video { max_height } => {
-            if !progress(0.97) {
-                return Err(err("تم إلغاء المعالجة من قبل المستخدم."));
-            }
+            checkpoint(0.97)?;
             stage("encode", 0.0);
             let vid_target = out_dir.join(format!("{orig_stem}_(Clean)_haramlite{name_tag}.mp4"));
             let ranges_for_video: &[(f64, f64)] = if matches!(mode, Mode::Song) {
@@ -454,9 +606,7 @@ pub fn process_file(
         }
         OutKind::Audio { fmt } => {
             if fmt != OutFormat::Wav {
-                if !progress(0.96) {
-                    return Err(err("تم إلغاء المعالجة من قبل المستخدم."));
-                }
+                checkpoint(0.96)?;
                 stage("encode", 0.0);
                 let encode_one = |p: &mut PathBuf| -> Result<(), PipelineError> {
                     let encoded = media::extract_audio(p, fmt.as_str(), out_dir).map_err(err)?;
@@ -546,6 +696,214 @@ pub fn health_check() -> Result<Vec<(String, bool, String)>, String> {
 mod tests {
     use super::*;
 
+    /// وضع «حامل القفل»: عملية تأخذ القفل ثم **تُقتل** بلا `Drop` — وهو مسار
+    /// العطل الميداني (قتل/إلغاء مهمّة) بلا محاكاة.
+    const LOCK_HOLDER_MODE: &str = "HARAMLITE_LOCK_HOLDER";
+
+    #[test]
+    fn lock_holder_process() {
+        if std::env::var(LOCK_HOLDER_MODE).is_err() {
+            return; // لسنا في وضع حامل القفل
+        }
+        // البيئة تُضبط من الأب **قبل** إقلاع هذا الطفل، فالقفل يُكتب في مجلد
+        // القياس (لا في بيانات المستخدم).
+        let locks = PathBuf::from(std::env::var("HARAMLITE_LOCKS_DIR").expect("مجلد الأقفال"));
+        let input = PathBuf::from(std::env::var("HARAMLITE_LOCK_INPUT").expect("مسار الإدخال"));
+        let ready = PathBuf::from(std::env::var("HARAMLITE_LOCK_READY").expect("مجلد العلامة"));
+        let _claim =
+            claim_processing_in(&locks, &input, lock_owner_is_dead).expect("الطفل يأخذ القفل");
+        std::fs::write(ready.join("held.pid"), std::process::id().to_string())
+            .expect("علامة الجاهزية");
+        // يبقى حيّاً حتى يُقتل — والقتل لا يعمل المدوِّرات فيبقى القفل.
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(60));
+        }
+    }
+
+    /// **شرط قبول م٢ — القفل الميت ١٢ ساعة**.
+    ///
+    /// العطل المقيس: `ProcessingClaim` يحذف القفل في `Drop`، والقتل لا يعمل
+    /// المدوِّرات، و`STALE_LOCK_SECS = 12h` ⇒ بعد قتل مهمّة تفشل إعادة معالجة
+    /// **الملف نفسه** ١٢ ساعة بـ«الملف قيد المعالجة حالياً — تخطي» (قِيس: رفض
+    /// في 10ms). فالإلغاء كان **عقوبة**.
+    ///
+    /// القياس هنا **حقيقي لا محقون**: عملية طفل تأخذ القفل فعلاً ثم تُقتل
+    /// `TerminateProcess` (لا `Drop`)، فيبقى ملف القفل على القرص حاملاً PID
+    /// ميتاً. ثم يُقاس على `claim_processing` الحقيقية:
+    ///
+    /// * **ضابط موجب**: القفل موجود وPIDه هو PID الطفل المقتول (فالمسار المقيس
+    ///   هو المسار الميداني)، وهي **ميتة** (`process_is_alive` = false).
+    /// * **الادّعاء**: إعادة المحاولة على الملف نفسه **تنجح فوراً**.
+    /// * **ضابط سالب (المُفسَد)**: لو حُكم على المالك بأنه **حيّ** (فحص معطَّل)
+    ///   لرُفض الطلب بالرسالة نفسها التي قِيس بها العطل — وهذا يُثبت أن النجاح
+    ///   سببه فحص الحياة لا مجرد إعادة محاولة عمياء.
+    #[test]
+    fn a_dead_owner_lock_is_reclaimed_immediately() {
+        let _guard = crate::paths::serial_guard();
+        let dir = std::env::temp_dir().join(format!("hl_deadlock_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let locks = dir.join("locks");
+        let ready = dir.join("ready");
+        std::fs::create_dir_all(&ready).unwrap();
+        let input = dir.join("same_file.mp3");
+        std::fs::write(&input, b"x").unwrap();
+
+        // القفل يُحسب من (مجلد الأقفال، مسار الإدخال) — ونحسبه **بالصيغة نفسها**
+        // في مجلد القياس، فلا يتّسخ مجلد بيانات المستخدم ولا يُلمس متغيّر بيئة
+        // عام (لمسُه يُسابق كل اختبار يحلّ مساراً — عطل مقيس في `paths.rs:29-31`).
+        let lock = lock_name_in(&locks, &input);
+
+        let exe = std::env::current_exe().expect("مسار ثنائي الاختبار");
+        let mut child = std::process::Command::new(&exe)
+            .args([
+                "pipeline::tests::lock_holder_process",
+                "--exact",
+                "--nocapture",
+            ])
+            .env(LOCK_HOLDER_MODE, "1")
+            .env("HARAMLITE_LOCKS_DIR", &locks)
+            .env("HARAMLITE_LOCK_INPUT", &input)
+            .env("HARAMLITE_LOCK_READY", &ready)
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .spawn()
+            .expect("إطلاق حامل القفل");
+        let pid_file = ready.join("held.pid");
+        let started = std::time::Instant::now();
+        while !pid_file.exists() && started.elapsed() < std::time::Duration::from_secs(15) {
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        assert!(
+            pid_file.exists(),
+            "الطفل لم يعلن أخذه القفل خلال 15 ث — القياس باطل"
+        );
+        let holder_pid: u32 = std::fs::read_to_string(&pid_file)
+            .unwrap_or_default()
+            .trim()
+            .parse()
+            .expect("pid الطفل");
+
+        // ضابط موجب (١): القفل على القرص يحمل PID الطفل.
+        assert!(lock.is_file(), "ملف القفل موجود: {}", lock.display());
+        let recorded: u32 = std::fs::read_to_string(&lock)
+            .unwrap_or_default()
+            .split_whitespace()
+            .next()
+            .and_then(|t| t.parse().ok())
+            .expect("القفل يخزّن PID المالك");
+        assert_eq!(recorded, holder_pid, "القفل يخزّن PID المالك الحقيقي");
+
+        // القتل القاسر: لا `Drop` ⇒ القفل يبقى (وهذا هو العطل الأصلي).
+        assert!(
+            kill_process(holder_pid),
+            "قتل حامل القفل ({holder_pid}) — القياس بلا قتل باطل"
+        );
+        let _ = child.wait();
+        let died = started.elapsed();
+        assert!(
+            !process_is_alive(holder_pid),
+            "المالك مات فعلاً (وإلا لكان الاسترجاع خاطئاً)"
+        );
+        assert!(lock.is_file(), "القفل الميت باقٍ على القرص كما في الميدان");
+
+        // ضابط سالب: القفل **الطازج نفسه** (بلا فحص حياة) لا يُستَرجع — وهذا
+        // يثبت أن المسار المقيس هو مسار «القفل القائم» لا مسار «لا قفل».
+        std::thread::sleep(std::time::Duration::from_millis(1200));
+        let fresh = claim_processing_in(&locks, &input, |_| false);
+        assert!(
+            fresh.is_err(),
+            "قفل عمره ثانية يجب أن يُرفض — وإلا فالقياس بلا قفل أصلاً"
+        );
+        let fresh_msg = fresh.err().map(|e| e.to_string()).unwrap_or_default();
+        assert_eq!(
+            fresh_msg, "الملف قيد المعالجة حالياً — تخطي",
+            "الرسالة المقيسة في العطل نفسه"
+        );
+
+        // **الادّعاء**: إعادة المحاولة فوراً على الملف نفسه تنجح.
+        let t = std::time::Instant::now();
+        let again = claim_processing_in(&locks, &input, lock_owner_is_dead);
+        let reclaim = t.elapsed();
+        assert!(
+            again.is_ok(),
+            "إعادة المعالجة على الملف نفسه يجب أن تنجح فوراً بعد قتل المالك: {:?}",
+            again.as_ref().err().map(|e| e.to_string())
+        );
+        assert!(
+            reclaim < std::time::Duration::from_secs(2),
+            "الاسترجاع فوري، وقياسه {reclaim:?}"
+        );
+        assert!(
+            reclaim.as_secs() < STALE_LOCK_SECS,
+            "الاسترجاع لم ينتظر الطابع الزمني (١٢ ساعة)"
+        );
+        eprintln!(
+            "م٢/القفل الميت: pid={holder_pid} مات بعد {died:?} · الاسترجاع {reclaim:?} \
+             (المهلتان: احتياط الطابع الزمني {STALE_LOCK_SECS} ث · قفل بلا PID {UNREADABLE_LOCK_STALE_SECS} ث)"
+        );
+        drop(again);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// قتل قاسر بعملية (نفس مسار الميدان: قتل مهمّة لا يعمل المدوِّرات).
+    #[cfg(windows)]
+    fn kill_process(pid: u32) -> bool {
+        use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, TerminateProcess, PROCESS_TERMINATE,
+        };
+        unsafe {
+            let h = OpenProcess(PROCESS_TERMINATE, 0, pid);
+            if h.is_null() || h == INVALID_HANDLE_VALUE {
+                return false;
+            }
+            let ok = TerminateProcess(h, 1);
+            CloseHandle(h);
+            ok != 0
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn kill_process(pid: u32) -> bool {
+        std::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+
+    /// اسم القفل **واحد للملف الواحد** أياً كانت صيغة المسار: الصيغة النسبية
+    /// و`..` والحالة المختلفة للحروف تُجزّأ تجزئة واحدة (وإلا مرّت معالجة
+    /// مزدوجة لنفس الملف). والاختبار يستدعي `lock_name_for` نفسها (لا نسخة من
+    /// صيغتها) فتبقى مغطّاة بعد فصل `claim_processing_in`.
+    #[test]
+    fn the_same_file_maps_to_one_lock_however_it_is_spelled() {
+        let _guard = crate::paths::test_lock()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let tmp = std::env::temp_dir().join(format!("hl_lockname_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("sub")).unwrap();
+        let f = tmp.join("Clip.MP3");
+        std::fs::write(&f, b"x").unwrap();
+
+        let direct = lock_name_for(&f);
+        let dotted = lock_name_for(&tmp.join("sub").join("..").join("Clip.MP3"));
+        assert_eq!(direct, dotted, "الصيغة النسبية بالقفزة لا تُنشئ قفلاً ثانياً");
+        assert_ne!(
+            direct,
+            lock_name_for(&tmp.join("other.MP3")),
+            "ملف آخر يقفل باسم آخر"
+        );
+        assert!(
+            direct.starts_with(crate::paths::data_dir().join("locks")),
+            "القفل تحت مجلد بيانات التطبيق: {}",
+            direct.display()
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     /// Cross-path exclusion: a live claim blocks a second claimant.
     #[test]
     fn processing_lock_excludes_double_claim() {
@@ -594,6 +952,7 @@ mod tests {
             true,
             false,
             None,
+            &CancelToken::new(),
             &|_| true,
             &|_, _| {},
         );
