@@ -234,6 +234,33 @@ describe('طابور حقيقي ⇒ الصفوف الحقيقية وحدها', (
     // والنصّ في صفٍّ **له مسار حقيقي** — لا في صفٍّ وهمي بلا مصدر.
     expect(row.dataset.file).toBe(A);
   });
+
+  it('الحالة الفارغة لا تُناقض صفوفاً معروضة (والرسم يحكم في الاتجاهين)', async () => {
+    // ملاحظة مقيسة: `stopBatch()` **لا** تمحو الصفوف عن قصد — فهي «أفرِغ
+    // الطابور قبل تشغيل جديد» (queue.ts)، والصفوف تبقى شاهدةً على ما جرى حتى
+    // الرسم التالي. فالفرض هنا ليس «الإفراغ يمحو الصفوف» بل:
+    //   لا ترى حالةَ فراغٍ وفي الشاشة صفوف، ولا ترى صفوفاً بلا أن يُخفى الفراغ.
+    await ingestFiles([A, B]);
+    expect(rows()).toHaveLength(2);
+    expect(emptyVisible(), 'صفوف ⇒ الحالة الفارغة مُخفاة').toBe(false);
+
+    // الإفراغ يعلن الفراغ (لا شاشة صامتة) — والقائمة الفعلية صارت فارغة.
+    await stopBatch();
+    expect(session.getBatchQueue(), 'قائمة الجلسة أُفرغت').toEqual([]);
+    expect(empty(), 'العنصر باقٍ في DOM').not.toBeNull();
+
+    // والرسم التالي من قائمة فارغة يمحو الصفوف ويُظهر الحالة الفارغة.
+    localStorage.setItem('hl.batch', JSON.stringify([{ f: A, s: 'pending' }]));
+    restoreBatchState();
+    expect(rows()).toHaveLength(1);
+    expect(emptyVisible(), 'صفّ حقيقي ⇒ الفراغ مُخفى').toBe(false);
+
+    document.getElementById('batch-list')!.querySelectorAll('div[data-file]')
+      .forEach((r) => r.remove());
+    await stopBatch(); // إفراغ بلا صفوف
+    expect(emptyVisible(), 'لا صفوف ⇒ الفراغ معروض').toBe(true);
+    expect(text()).toContain(i18n.ar.queue_empty);
+  });
 });
 
 /* ── ٤) الترجمة: الحالة الفارغة تتبع اللغة المختارة ───────────────────────── */
