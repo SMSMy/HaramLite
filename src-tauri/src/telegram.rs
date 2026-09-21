@@ -1012,6 +1012,11 @@ fn send_ephemeral(
     text: &str,
     shape: &str,
 ) -> Result<i64, String> {
+    // **ونفس سقف المجموعة**: الفانية رسالةٌ في المجموعة، فإعفاؤها من الحصّة
+    // كان يفتح من الباب الذي أُغلق — فهذا المسار **لا يمرّ بـ`send_message`**.
+    if !pace_group_send(chat_id) {
+        return Err("تجاوز سقف إرسال المجموعة".to_string());
+    }
     let mut body = json!({ "chat_id": chat_id, "text": text, "disable_web_page_preview": true });
     body[shape] = if shape == EPHEMERAL_PARAMS_V10_3 {
         // 10.3: كائنٌ يحمل المستقبِل.
