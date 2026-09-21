@@ -159,7 +159,7 @@
 //!   والمقصود بها `cargo test` على أي منصّة لا الإنتاج).
 
 use std::path::Path;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -292,6 +292,17 @@ fn registry() -> &'static Mutex<Vec<(u64, JobEntry)>> {
     JOBS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
+/// قفل **الاختبارات** التي تلمس السِجلّ العامّ — **واحد للعملية كلها**.
+///
+/// السِجلّ واحد للعمليّة، فاختبارٌ يفتح مهمّة حقيقية فيه (ولو كان في ملف آخر:
+/// اختبار التسجيل المبكر في `telegram.rs`) يجعل قياس اختبارٍ آخر تابعاً لترتيب
+/// الخيوط لا للسلوك. فالقفل هنا **مشترك** لا نسخة لكل ملف.
+#[cfg(test)]
+pub(crate) fn registry_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: Mutex<()> = Mutex::new(());
+    LOCK.lock().unwrap_or_else(|p| p.into_inner())
+}
+
 fn next_id() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     NEXT.fetch_add(1, Ordering::SeqCst)
@@ -400,6 +411,63 @@ fn register_job(label: &str, path: Option<&str>) -> JobGuard {
         label: label.to_string(),
         started_ms,
         ctx,
+    }
+}
+
+/// **تسجيل مبكر (م٣)**: مهمّة تُفتح في السِجلّ **قبل** عملها التحضيري (تنزيل رابط
+/// أو استلام ملف)، فيعمل `/kill` وزرّ الإلغاء **أثناء التحضير** كما يعملان
+/// أثناء الفصل — وقبله كان الزرّ يردّ «لا مهمّة جارية» كذباً وهو ظاهر.
+///
+/// **ولا يحمل فتحة جهاز**: الفتحة تُؤخذ في `run_separation_registered` وحدها،
+/// فلا يُحتجز مورد الجهاز على زمن تنزيل (وهذا شرط م١ القائم: التسجيل ≠ الفتحة).
+///
+/// **والسياق (`proc::enter`) مثبَّت مدة حياة الحارس** — فكل عملية فرعية للتحضير
+/// (‏yt-dlp) تُسجَّل فيقتلها `cancel_job` فوراً، و`cancel_flag` يسلّم الرمز نفسه
+/// إلى التنزيل فيتوقّف عند أول فحص.
+pub struct EarlyJob {
+    guard: JobGuard,
+    /// يحفظ السياق مثبَّتاً على هذا الخيط؛ يُرفع عند سقوط الحارس.
+    _ctx: proc::CtxGuard,
+}
+
+/// يفتح تسجيلاً مبكراً مهمّته أن يُغلق تلقائياً عند سقوط الحارس.
+pub fn register_early(label: &str, path: Option<&str>) -> EarlyJob {
+    let guard = register_job(label, path);
+    // **الترتيب مقصود**: `register_job` أولاً ثم تثبيت السياق، فلا نافذة تكون
+    // فيها المهمّة مسجَّلة بلا سياق (فتفلت عملية فرعية من `kill_children`).
+    let ctx = proc::enter(&guard.ctx);
+    EarlyJob { guard, _ctx: ctx }
+}
+
+impl EarlyJob {
+    /// معرّف المهمّة في السِجلّ.
+    pub fn id(&self) -> u64 {
+        self.guard.id
+    }
+
+    /// رمز إلغاء هذه المهمّة (يقرؤه كل حدّ مرحلة وكل نداء أداة).
+    pub fn token(&self) -> CancelToken {
+        self.guard.token()
+    }
+
+    /// العلم الخام لرمز المهمّة — يُمرَّر إلى ما يقبل `&Arc<AtomicBool>`
+    /// (‏`yt_dlp::download_media`) فيكون **الرمز نفسه** لا علماً ثانياً.
+    pub fn cancel_flag(&self) -> Arc<AtomicBool> {
+        self.guard.token().raw().clone()
+    }
+
+    /// يُثبّت مسار الإدخال **بعد** أن يصير معلوماً (بعد التنزيل/الاستلام) —
+    /// فتبقى الواجهة تُطابق عنصر الطابور بالمهمّة عبر المسار كما في م٢.
+    pub fn set_path(&self, path: &str) {
+        let mut jobs = registry().lock().unwrap_or_else(|p| p.into_inner());
+        match jobs.iter_mut().find(|(id, _)| *id == self.guard.id) {
+            Some((_, e)) => e.path = Some(path.to_string()),
+            None => tracing::warn!(
+                target: "slots",
+                "المهمة #{} انتهت قبل تثبيت مسارها",
+                self.guard.id
+            ),
+        }
     }
 }
 
@@ -1090,6 +1158,9 @@ fn acquire_now_or_wait(
 /// والسقف يُقرأ **لحظة الطلب** (ب٣): تغيير الإعداد في الإعدادات يغيّر ما تأخذه
 /// المهامّ **الجديدة** بلا إعادة تشغيل، ولا يمسّ مهمّة جارية (الرموز المأخوذة
 /// تبقى بيد صاحبها حتى ينتهي).
+/// تسجيل لحظي ثم أداء الجسم تحت فتحة — **يستعمله الاختبار وحده اليوم**، فمسار
+/// المنتج يمرّ بـ`register_early` (تلغرام) أو `run_registered_with`.
+#[cfg(test)]
 fn run_registered<T>(
     slot_name: &str,
     label: &str,
@@ -1113,9 +1184,21 @@ fn run_registered_with<T>(
     limit: u32,
     body: impl FnOnce(&CancelToken) -> Result<T, String>,
 ) -> Result<T, String> {
-    let job = register_job(label, path);
+    run_body_in(register_early(label, path), slot_name, limit, body)
+}
+
+/// يؤدّي الجسم تحت فتحة جهاز، **بتسجيلٍ قائم** (مبكر أو لحظي).
+///
+/// الترتيب: الفتحة تُحرَّر عند خروج هذه الدالة، وإلغاء التسجيل بعدها (`EarlyJob`
+/// معاملٌ يُسقَط في النهاية) — فلا تبقى مهمّة «نشطة» بلا فتحة بعد انتهائها.
+fn run_body_in<T>(
+    job: EarlyJob,
+    slot_name: &str,
+    limit: u32,
+    body: impl FnOnce(&CancelToken) -> Result<T, String>,
+) -> Result<T, String> {
     let token = job.token();
-    let _ctx = proc::enter(&job.ctx);
+    let label = job.guard.label.clone();
     // **الإعلان صادق أو لا يكون**: محاولة فورية أولاً، ولا سطر انتظار إطلاقاً
     // إن أُخذت الفتحة فوراً. وإن وقع انتظار فعلاً أُعلن **قبله** (فالانتظار كان
     // صامتاً في السجلّ: قاس المدقّق ٣٤٢ ثانية بلا أثر)، ثم يُسجَّل **زمنه
@@ -1124,20 +1207,58 @@ fn run_registered_with<T>(
     let got = acquire_now_or_wait(slot_name, limit, DEFAULT_WAIT, || {
         tracing::info!(
             target: "slots",
-            "المهمّة ({label}) بانتظار فتحة فصل (سقف {limit})…"
+            "المهمّة #{id} ({label}) بانتظار فتحة فصل (سقف {limit})…",
+            id = job.id()
         );
     })
     .inspect_err(|e| {
-        tracing::warn!(target: "slots", "المهمّة ({label}) لم تحصل على فتحة فصل: {e}");
+        tracing::warn!(
+            target: "slots",
+            "المهمّة #{id} ({label}) لم تحصل على فتحة فصل: {e}",
+            id = job.id()
+        );
     })?;
     if got.waited {
         tracing::info!(
             target: "slots",
-            "انتظرت المهمّة ({label}) فتحة فصل {:.1} ث (سقف {limit})",
-            got.waited_for.as_secs_f64()
+            "انتظرت المهمّة #{id} ({label}) فتحة فصل {:.1} ث (سقف {limit})",
+            got.waited_for.as_secs_f64(),
+            id = job.id()
         );
     }
     body(&token)
+}
+
+/// **الموضع الواحد** الذي يذكر `pipeline::process_file` في هذا الملف — يُبنى
+/// مرّة ويُمرَّر إلى التسجيلين (اللحظي والمبكر)، فلا يتفرّع مدخل الفصل.
+fn separation_body<'a>(
+    input: &'a Path,
+    out_dir: &'a Path,
+    mode: Mode,
+    kind: OutKind,
+    keep_instrumental: bool,
+    keep_vocals: bool,
+    use_cuda: bool,
+    preview_seconds: Option<f32>,
+    progress: &'a dyn Fn(f32) -> bool,
+    stage: &'a dyn Fn(&str, f32),
+) -> impl FnOnce(&CancelToken) -> Result<PipelineOutput, String> + 'a {
+    move |token| {
+        pipeline::process_file(
+            input,
+            out_dir,
+            mode,
+            kind,
+            keep_instrumental,
+            keep_vocals,
+            use_cuda,
+            preview_seconds,
+            token,
+            progress,
+            stage,
+        )
+        .map_err(|e| e.to_string())
+    }
 }
 
 /// فصل ملف عبر `pipeline::process_file` تحت فتحة جهاز — **المدخل الواحد**.
@@ -1181,6 +1302,44 @@ pub fn run_separation(
     )
 }
 
+/// فصل **داخل تسجيل مبكر قائم** (م٣): يأخذ فتحة الجهاز الآن (لا عند التسجيل)،
+/// ويؤدّي الفصل برمز المهمّة نفسه، ثم يُغلق التسجيل بخروج `job`.
+///
+/// استخدامه في مسار تلغرام: التسجيل يُفتح **قبل** تنزيل الرابط، فيعمل زرّ
+/// الإلغاء و`/kill` أثناء التنزيل — ثم يُسلَّم التسجيل نفسه إلى هذه الدالة في
+/// أثناء الفصل، فلا مهمّتان ولا رمزا إلغاء لحالة واحدة.
+pub fn run_separation_registered(
+    job: EarlyJob,
+    input: &Path,
+    out_dir: &Path,
+    mode: Mode,
+    kind: OutKind,
+    keep_instrumental: bool,
+    keep_vocals: bool,
+    use_cuda: bool,
+    preview_seconds: Option<f32>,
+    progress: &dyn Fn(f32) -> bool,
+    stage: &dyn Fn(&str, f32),
+) -> Result<PipelineOutput, String> {
+    run_body_in(
+        job,
+        &slot_name(),
+        current_limit(),
+        separation_body(
+            input,
+            out_dir,
+            mode,
+            kind,
+            keep_instrumental,
+            keep_vocals,
+            use_cuda,
+            preview_seconds,
+            progress,
+            stage,
+        ),
+    )
+}
+
 /// نفس `run_separation` باسم فتحة صريح — للاختبار: كل اختبار باسمه الفريد فلا
 /// يتنازع مع تطبيق المالك العامل، ولا ينتظر فتحات محجوزة في الجهاز.
 fn run_separation_as(
@@ -1197,8 +1356,12 @@ fn run_separation_as(
     progress: &dyn Fn(f32) -> bool,
     stage: &dyn Fn(&str, f32),
 ) -> Result<PipelineOutput, String> {
-    run_registered(slot_name, label, Some(&input.to_string_lossy()), |token| {
-        pipeline::process_file(
+    run_registered_with(
+        slot_name,
+        label,
+        Some(&input.to_string_lossy()),
+        current_limit(),
+        separation_body(
             input,
             out_dir,
             mode,
@@ -1207,12 +1370,10 @@ fn run_separation_as(
             keep_vocals,
             use_cuda,
             preview_seconds,
-            token,
             progress,
             stage,
-        )
-        .map_err(|e| e.to_string())
-    })
+        ),
+    )
 }
 
 #[cfg(test)]
@@ -1221,6 +1382,101 @@ mod tests {
     use std::path::PathBuf;
     use std::process::{Command, Stdio};
     use std::sync::atomic::AtomicBool;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  م٣ — التسجيل المبكر (قبل عمل المهمّة التحضيري)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// **العطل المقيس**: كان تسجيل المهمّة يقع عند `run_separation` وحدها، فقبلها
+    /// (زمن التنزيل/الاستلام) لا وجود للمهمّة في السِجلّ ⇒ `/kill` وزرّ الإلغاء
+    /// يردّان «لا مهمّة جارية» **كذباً** والزرّ ظاهر على الشاشة.
+    /// والقياس: التسجيل المبكر يجعلها **ظاهرة فوراً**، بلا أن تحمل فتحة جهاز.
+    #[test]
+    fn an_early_job_is_visible_immediately_and_holds_no_slot() {
+        let name = unique_name("m3-early-noslot");
+        let early = register_early("m3-early", None);
+        let id = early.id();
+        let seen = active_jobs();
+        assert!(
+            seen.iter().any(|j| j.id == id && j.label == "m3-early"),
+            "المهمّة غير ظاهرة بعد التسجيل المبكر: {seen:?}"
+        );
+        assert!(
+            seen.iter().find(|j| j.id == id).unwrap().path.is_none(),
+            "المسار لم يُعرف بعد ⇒ None صادق (لا مسار مخترع)"
+        );
+
+        // **ولا فتحة محجوزة**: مهمّة أخرى بسقف ١ تأخذ الفتحة فوراً — ولو حجز
+        // التسجيل المبكر فتحة لانتظرت حتى المهلة وسقط ذلك.
+        let t0 = std::time::Instant::now();
+        let got = run_registered_with(&name, "other", None, 1, |_| Ok::<_, String>(()));
+        assert!(got.is_ok(), "مهمّة أخرى لم تجد الفتحة: {got:?}");
+        assert!(
+            t0.elapsed() < Duration::from_secs(2),
+            "التسجيل المبكر حجز فتحة جهاز: انتظرت {:?}",
+            t0.elapsed()
+        );
+
+        // والمسار يُثبَّت لاحقاً فيظهر كما كان في م٢.
+        early.set_path("C:\\tmp\\late.mp4");
+        let seen = active_jobs();
+        assert_eq!(
+            seen.iter().find(|j| j.id == id).unwrap().path.as_deref(),
+            Some("C:\\tmp\\late.mp4")
+        );
+        drop(early);
+        assert!(
+            !active_jobs().iter().any(|j| j.id == id),
+            "التسجيل لم يُغلق بسقوط الحارس"
+        );
+    }
+
+    /// و`cancel_job` على تسجيل مبكر **يقع فعلاً**: الرمز يُضبط، والعلم الخام
+    /// الذي يُمرَّر إلى `yt_dlp` يقرؤه — وهو ما يجعل التنزيل يتوقّف.
+    #[test]
+    fn cancelling_an_early_job_sets_the_very_flag_the_download_polls() {
+        let early = register_early("m3-early-cancel", None);
+        let id = early.id();
+        let flag = early.cancel_flag();
+        assert!(!flag.load(Ordering::SeqCst), "الرمز يبدأ نظيفاً");
+        assert!(cancel_job(id), "cancel_job لم يجد المهمّة المبكرة");
+        assert!(
+            flag.load(Ordering::SeqCst),
+            "الإلغاء لم يصل إلى العلم الذي يقرؤه التنزيل"
+        );
+        assert!(early.token().is_cancelled(), "ورفض الرمز يقرؤه كذلك");
+        assert!(
+            active_jobs().iter().find(|j| j.id == id).unwrap().cancelled,
+            "الحالة المعروضة تقول إن الإلغاء مطلوب"
+        );
+    }
+
+    /// والنواة: الجسم يؤدّى **داخل التسجيل القائم نفسه** (لا تسجيل ثانٍ)، والفتحة
+    /// تُؤخذ داخلها، والتسجيل يُغلق عند خروجها — تسجيلٌ واحد لمهمّة واحدة.
+    #[test]
+    fn running_inside_an_early_job_registers_once_and_releases_the_slot() {
+        let name = unique_name("m3-early-body");
+        let early = register_early("m3-early-body", Some("known.mp4"));
+        let id = early.id();
+        let mut seen_outside = 0;
+        let out: Result<(), String> = run_body_in(early, &name, MAX_LIMIT, |token| {
+            let live = active_jobs();
+            seen_outside = live.iter().filter(|j| j.label == "m3-early-body").count();
+            assert!(!token.is_cancelled());
+            Ok(())
+        });
+        assert!(out.is_ok(), "الجسم سقط: {out:?}");
+        assert_eq!(seen_outside, 1, "تسجيلٌ مزدوج للمهمّة نفسها");
+        assert!(
+            !active_jobs().iter().any(|j| j.id == id),
+            "التسجيل بقي بعد انتهاء المهمّة"
+        );
+        // والفتحة حُرِّرت: مهمّة أخرى تأخذها فوراً.
+        let t0 = std::time::Instant::now();
+        run_registered_with(&name, "after", None, MAX_LIMIT, |_| Ok::<_, String>(()))
+            .expect("الفتحة لم تُحرَّر");
+        assert!(t0.elapsed() < Duration::from_secs(2), "{:?}", t0.elapsed());
+    }
 
     /// **إثبات التملّك قبل الحكم، دائماً**: كائن النواة قد لا يكون موجوداً بعد
     /// (وإن كان الاسم فريداً)، فننتظر ظهور العلامة في ملف السجلّ بمهلة صريحة —
@@ -1517,9 +1773,11 @@ mod tests {
 
     /// الاختبارات التي تلمس السِجلّ العامّ تتسلسل: السِجلّ **واحد للعملية**،
     /// فلو تشابه اختباران لصار القياس تابعاً لترتيب الخيوط لا للسلوك.
+    ///
+    /// **والقفل مشترك** مع اختبارات الملفات الأخرى التي تفتح مهمّة حقيقية
+    /// (‏`telegram.rs`: التسجيل المبكر) — انظر `registry_test_lock`.
     fn registry_lock() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: Mutex<()> = Mutex::new(());
-        LOCK.lock().unwrap_or_else(|p| p.into_inner())
+        super::registry_test_lock()
     }
 
     // ── القيمة والاسم (دوالّ نقية) ─────────────────────────────────────
