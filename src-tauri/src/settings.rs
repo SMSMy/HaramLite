@@ -56,6 +56,11 @@ pub struct Settings {
     /// الموسَّع («كل الرسائل») لا يعالج شيئاً بلا ضغطة المالك (بطاقة موافقة في
     /// خاصّه)، فهو توسيعٌ **مُصرَّح** لا فتحٌ أعمى.
     pub telegram_group_mode: String,
+    /// م٥: «استخدم اسم HaramLite وصورته للبوت» — يُطبَّق بـ`setMyName`
+    /// و`setMyProfilePhoto`، وإلغاؤه يُعيد الوضع السابق
+    /// (`removeMyProfilePhoto` ثم الاسم المخزَّن). **والافتراضيّ: لا** — هوية
+    /// البوت ملكُ صاحبه، فلا تُغيَّر بلا طلبٍ صريح.
+    pub telegram_bot_identity: bool,
 }
 
 impl Default for Settings {
@@ -86,6 +91,7 @@ impl Default for Settings {
             telegram_api_hash: String::new(),
             telegram_local_url: String::new(),
             telegram_group_mode: GROUP_MODE_MENTIONS.to_string(),
+            telegram_bot_identity: false,
         }
     }
 }
