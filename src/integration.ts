@@ -2,7 +2,7 @@
  * نُقل من src/main.ts كما هو حرفياً، وهو وحدة واحدة لأن هذه الأسطح تشترك في
  * نفس الواجهة ونفس الأحداث:
  *   - تغذية الوظائف الخارجية: ExtKind/extJobs/extSig وrenderExtJobs()
- *     وwireExtJobs() (أحداث bridge-* وwatch-*)
+ *     وwireExtJobs() (أحداث bridge-* وwatch-* و**telegram-jobs** — م٣)
  *   - تيليجرام: wireTelegram() (بما فيها حذف النسختين القديمتين من
  *     localStorage وإدارة رمز الاقتران)
  *   - المتصفح: wireBridge() وBridgeExt/renderBridgeExt()/refreshBridgeExt()
@@ -21,23 +21,68 @@ import { currentLang, t } from './i18n';
 import { pushSettings, setAutostartAsked, setTelegramApiHash, setTelegramToken } from './settings';
 import { playDing, showToast, trapFocus } from './util';
 import * as session from './session';
+import {
+  TELEGRAM_MAX_ROWS,
+  applyTelegramSnapshot,
+  expireTelegramRows,
+  nextTelegramExpiry,
+  telegramSignature,
+  visibleTelegramRows,
+} from './telegramJobs';
+import type { TelegramRow } from './telegramJobs';
 import type { RustSettings } from './settings';
 
-/* ── unified external-jobs feed (functional gap: invisible externals) ─── */
-type ExtKind = 'bridge' | 'watch';
+/* ── unified external-jobs feed (functional gap: invisible externals) ───
+ * م٣: `telegram` أُضيف إلى الوسوم — شكوى المالك أن القائمة كانت «لإضافة
+ * المتصفح فقط» ومهامّ البوت (وقائمة انتظارها) غائبة عنها كلياً. */
+type ExtKind = 'bridge' | 'watch' | 'telegram';
 interface ExtRow { kind: ExtKind; name: string; detail: string; pct: number | null }
 const extJobs = new Map<string, ExtRow>();
 let extSig = '';
+
+/* ── مهامّ تلغرام: لقطة `telegram-jobs` ⇒ صفوف ⇒ إزالة بعد مهلة ──────────
+ * المنطق كله في `src/telegramJobs.ts` (نقيّ ومُختبَر)، وهنا الحالة والمؤقّت
+ * والرسم فقط. والحدث **لقطة كاملة** عند كل تغيّر حالة فعلي. */
+let tgRows: TelegramRow[] = [];
+let tgExpiry: number | undefined;
+
+/** يطبّق لقطة على صفوف تلغرام ثم يعيد الرسم.
+ *  حمولة غير مقروءة ⇒ الحالة السابقة كما هي: لا يُفرَّغ القسم ولا تُدَّعى
+ *  «لا مهامّ» (والفرق بين «لا أعرف» و«لا شيء» هو نفس الفرق الذي يحرسه
+ *  `fetchActiveJobs` في `src/jobs.ts`). */
+function applyTelegramJobs(payload: unknown): void {
+  const next = applyTelegramSnapshot(tgRows, payload, Date.now());
+  if (next === tgRows) return; // لا تغيير ⇒ لا رسم
+  tgRows = next;
+  armTelegramExpiry();
+  renderExtJobs();
+}
+
+/** مؤقّت واحد لأقرب انتهاء صلاحية: الصفّ المنتهي يُعرض بنتيجته ثم **يُزال** —
+ *  فلا صفوف عالقة على الشاشة، ولا مؤقّت لكل صفّ (يتراكم مع كل لقطة). */
+function armTelegramExpiry(): void {
+  if (tgExpiry !== undefined) { window.clearTimeout(tgExpiry); tgExpiry = undefined; }
+  const at = nextTelegramExpiry(tgRows);
+  if (at === null) return;
+  tgExpiry = window.setTimeout(() => {
+    tgExpiry = undefined;
+    tgRows = expireTelegramRows(tgRows, Date.now());
+    renderExtJobs();
+    armTelegramExpiry();
+  }, Math.max(0, at - Date.now()));
+}
+
 export function renderExtJobs(): void {
   const list = document.getElementById('ext-list');
   if (!list) return;
+  const telegram = visibleTelegramRows(tgRows, TELEGRAM_MAX_ROWS);
   const sig = [...extJobs.values()]
     .map((j) => `${j.kind}|${j.name}|${j.detail}|${j.pct === null ? '-' : Math.round(j.pct * 100)}`)
-    .join('~');
+    .join('~') + `#${telegram.hidden}|${telegramSignature(telegram.shown)}`;
   if (sig === extSig) return; // progress ticks at high frequency — skip no-ops
   extSig = sig;
   list.replaceChildren();
-  if (!extJobs.size) {
+  if (!extJobs.size && !telegram.shown.length) {
     const s = document.createElement('span');
     s.id = 'ext-empty';
     s.className = 'font-label-sm text-label-sm text-on-surface-variant opacity-80';
@@ -48,6 +93,7 @@ export function renderExtJobs(): void {
   for (const job of extJobs.values()) {
     const row = document.createElement('div');
     row.className = 'bg-coal-surface/40 border border-border-muted rounded p-stack-sm flex flex-col gap-unit';
+    row.dataset.extKind = job.kind;
     const top = document.createElement('div');
     top.className = 'flex justify-between items-center gap-unit';
     const name = document.createElement('span');
@@ -78,6 +124,51 @@ export function renderExtJobs(): void {
     detail.textContent = job.detail;
     row.appendChild(detail);
     list.appendChild(row);
+  }
+  /* صفوف تلغرام (م٣): الاسم = مُرسِل الملف · الملف بلا مسار · والتفصيل من
+   * الحالة. ولا زرّ إلغاء هنا: العقد لا يحمل أمر إلغاء لمهمّة بعينها (إلغاء
+   * مهامّ المحادثة أمرٌ في البوت نفسه — `/kill`)، فزرٌّ بلا أمر أصدقُ غياباً. */
+  for (const row of telegram.shown) {
+    const el = document.createElement('div');
+    el.className = 'bg-coal-surface/40 border border-border-muted rounded p-stack-sm flex flex-col gap-unit';
+    el.dataset.extKind = 'telegram';
+    el.dataset.extKey = row.key;
+    const top = document.createElement('div');
+    top.className = 'flex justify-between items-center gap-unit';
+    const name = document.createElement('span');
+    name.className = 'ext-name font-label-sm text-label-sm text-cream-text truncate flex-1';
+    name.dir = 'ltr';
+    name.textContent = `✈️ ${row.name}`;
+    top.appendChild(name);
+    el.appendChild(top);
+    if (row.file) {
+      const file = document.createElement('span');
+      file.className = 'ext-tg-file font-label-sm text-label-sm text-on-surface-variant opacity-80 truncate';
+      file.dir = 'ltr';
+      file.textContent = row.file; // بِتّاً بلا مسار: العقد يمنع المسار الكامل
+      el.appendChild(file);
+    }
+    if (row.pct !== null) {
+      const wrap = document.createElement('div');
+      wrap.className = 'h-1.5 bg-border-muted rounded-full overflow-hidden';
+      const bar = document.createElement('div');
+      bar.className = 'h-full bg-clay-accent rounded-full';
+      bar.style.inlineSize = `${row.pct}%`;
+      wrap.appendChild(bar);
+      el.appendChild(wrap);
+    }
+    const detail = document.createElement('span');
+    detail.className = 'ext-detail font-label-sm text-label-sm text-on-surface-variant';
+    detail.textContent = t(row.detailKey, row.vars);
+    el.appendChild(detail);
+    list.appendChild(el);
+  }
+  if (telegram.hidden > 0) {
+    const more = document.createElement('span');
+    more.id = 'ext-more';
+    more.className = 'font-label-sm text-label-sm text-on-surface-variant opacity-80';
+    more.textContent = t('ext_more', { n: telegram.hidden });
+    list.appendChild(more);
   }
 }
 export function wireExtJobs(): void {
@@ -129,6 +220,11 @@ export function wireExtJobs(): void {
     extJobs.delete(`watch:${ev.payload.path}`);
     renderExtJobs();
   });
+  // م٣: مهامّ بوت تلغرام — لقطة كاملة عند كل تغيّر حالة (`TelegramJob[]`).
+  // ولا يُشترط نجاح التسجيل لعرض ما سبق: فشل `listen` (بناء محمول بلا IPC)
+  // يُسجَّل ولا يُسقط شيئاً، والقسم يبقى كما هو بلا ادّعاء «لا مهامّ».
+  void listen<unknown>('telegram-jobs', (ev) => { applyTelegramJobs(ev?.payload); })
+    .catch((e) => console.error('telegram-jobs listener failed', e));
   renderExtJobs();
 }
 
