@@ -48,6 +48,14 @@ const LONG_POLL_SECS: u64 = 25;
 const EDIT_MIN_GAP: Duration = Duration::from_secs(3);
 /// Local Bot API server default port (telegram-bot-api).
 pub const LOCAL_SERVER_HINT: &str = "http://127.0.0.1:8081";
+/// كم ينتظر `/kill` قبل أن يجيب (م٢): الانتظار **محدود**، وبعد انتهائه يقول
+/// الحقيقة («طُلب الإلغاء… خلال ≤ X ث») بدل وعد لا يُضمن.
+const CANCEL_CONFIRM_WAIT: Duration = Duration::from_secs(20);
+/// الحدّ المعلَن للمستخدم لسقوط المهمّة بعد طلب الإلغاء وهي داخل نداء الاستدلال
+/// (ONNX غير قابل للقطع داخل العملية). وهو **وعد موجَّه بالسقف المقيس**: أطول
+/// نداء استدلال مسجَّل في هذا المستودع 140 ث (‏`inference_ms=140208`)، والفحص
+/// يقع عند أول حدّ بعده.
+const INFERENCE_BAIL_HINT_SECS: u64 = 150;
 
 // ── pairing (OTP) ───────────────────────────────────────────────────────────
 /// Six digits: a four-digit code is guessable inside the attempt budget.
@@ -337,6 +345,63 @@ fn parse_mode_action(data: &str) -> Option<(String, Mode)> {
         return None;
     }
     Some((token, mode))
+}
+
+/// وسم مهمّة البوت في سِجلّ المهامّ (م٢): `telegram:<chat_id>`.
+///
+/// **لماذا الوسم لا معرّف المهمّة وحده**: `/kill` يجب أن يُلغي مهمّة **مَن
+/// أرسلها** لا مهمّة غيره (وإن كان المالك وحده مسموحاً اليوم، فالفصل يبقى شرطاً
+/// لأن الطابور لكل مستخدم في م٤). والوسم هو ما يجعل المهمّة قابلة للعثور عليها
+/// من الخيط الذي يعالج التحديث، بلا حالة إضافية تُزامَن.
+fn job_label(chat_id: i64) -> String {
+    format!("telegram:{chat_id}")
+}
+
+/// معرّفات المهامّ النشطة **لهذه المحادثة** (وسم `telegram:<chat_id>`).
+fn active_job_ids(chat_id: i64) -> Vec<u64> {
+    let want = job_label(chat_id);
+    slots::active_jobs()
+        .into_iter()
+        .filter(|j| j.label == want)
+        .map(|j| j.id)
+        .collect()
+}
+
+/// زر الإلغاء على رسالة التقدّم: `cancel:<chat_id>` — نفس معنى `/kill` حرفاً.
+fn cancel_button(chat_id: i64) -> Value {
+    json!({
+        "inline_keyboard": [[
+            { "text": "🛑 إلغاء", "callback_data": format!("cancel:{chat_id}") }
+        ]]
+    })
+}
+
+/// ينفّذ الإلغاء ويعيد **نصّاً صادقاً**: لا يقول «أُلغيت» إلا إذا فرغت المهمّة
+/// فعلاً من السِجلّ. و`cancel_job` وحده يعيد «سُجِّل الطلب» لا «توقّف العمل»،
+/// والفرق بينهما دقيقتان ممكنة داخل نداء الاستدلال (ONNX غير قابل للقطع).
+fn cancel_chat_jobs(chat_id: i64) -> String {
+    let ids = active_job_ids(chat_id);
+    if ids.is_empty() {
+        return "لا مهمّة جارية".to_string();
+    }
+    let mut marked = 0;
+    for id in &ids {
+        if slots::cancel_job(*id) {
+            marked += 1;
+        }
+    }
+    if marked == 0 {
+        return "لا مهمّة جارية".to_string();
+    }
+    // الانتظار **محدود**: بعد انتهائه نقول الحقيقة لا الوعد.
+    if slots::wait_until_gone(&ids, CANCEL_CONFIRM_WAIT) {
+        return "🛑 أُلغيت".to_string();
+    }
+    format!(
+        "🛑 طُلب الإلغاء — المهمّة داخل مرحلة الاستدلال (لا تُقطع داخل العملية) \
+         وستسقط عند أول حدّ بعدها، خلال ≤ {} ث",
+        INFERENCE_BAIL_HINT_SECS
+    )
 }
 
 /// First http(s) URL in a message — the only "link" the bot will chase.
@@ -913,6 +978,17 @@ fn handle_update(
             answer_callback(cfg, cb_id, "غير مصرّح");
             return;
         }
+        // ── زر الإلغاء (م٢): `cancel:<chat_id>` — المالك وحده يصل إلى هنا ──
+        if let Some(target) = data.strip_prefix("cancel:") {
+            let target: i64 = target.trim().parse().unwrap_or(chat_id);
+            let reply = cancel_chat_jobs(target);
+            answer_callback(cfg, cb_id, &reply);
+            if msg_id != 0 {
+                let _ = edit_message(cfg, chat_id, msg_id, &reply);
+            }
+            set_activity(reply);
+            return;
+        }
         let Some((token, mode)) = parse_mode_action(data) else {
             answer_callback(cfg, cb_id, "");
             return;
@@ -1044,6 +1120,17 @@ fn handle_update(
         Incoming::Smalltalk(t) => {
             let help =
                 "أرسل رابط فيديو، أو ارفع ملف صوت/فيديو (حتى 20MB)، وسأزيل الموسيقى وأعيده إليك.";
+            // ── `/kill` (م٢): المالك وحده، ويُلغي مهمّة **هذه المحادثة** ──
+            // (وقد تجاوز الفحص أعلاه كل من ليس المالك، فلا حاجة لفحص ثانٍ.)
+            // **ولا يوجد `/stop`**: قرار المالك «ما يظهر يعمل» — أمر واحد
+            // وظيفته الإلغاء، فلا اسمان لحالة واحدة.
+            let cmd = t.trim().to_ascii_lowercase();
+            if cmd == "/kill" || cmd.starts_with("/kill@") || cmd.starts_with("/kill ") {
+                let reply = cancel_chat_jobs(chat_id);
+                let _ = send_message(cfg, chat_id, &reply, None);
+                set_activity(reply);
+                return;
+            }
             if t.trim_start().starts_with('/') || t.trim().is_empty() {
                 let _ = send_message(cfg, chat_id, help, None);
             } else {
@@ -1213,7 +1300,15 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
         mode,
     } = job;
 
-    let msg_id = send_message(cfg, chat_id, "📥 جارٍ التجهيز…", None).unwrap_or(0);
+    let msg_id = send_message(
+        cfg,
+        chat_id,
+        "📥 جارٍ التجهيز…",
+        // م٢: زر إلغاء صريح على رسالة التقدّم — يقع عليه النداء مرة أخرى،
+        // فيُلغى الطلب فعلاً (لا رسالة تُشعِر بلا فعل).
+        Some(cancel_button(chat_id)),
+    )
+    .unwrap_or(0);
     // RefCell: the progress closure AND the stage closure both report through
     // the same status message, and two `&mut` captures cannot coexist.
     let status = std::cell::RefCell::new(StatusMsg::new(chat_id, msg_id, String::new()));
@@ -1377,14 +1472,25 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
         status.borrow_mut().set(cfg, ar.to_string(), false);
     };
     // م١: مهمّة البوت تأخذ فتحة جهاز مثل كل مدخل آخر.
+    // م٢: ووسمها يحمل معرّف المحادثة (`telegram:<chat_id>`) فيجدها `/kill`،
+    // ويُسجَّل مسار الإدخال معها فتظهر الواجهةُ المهمّةَ بمصدرها.
     let processed = slots::run_separation(
-        "telegram",
+        &job_label(chat_id),
         // Results land in the user's results folder — the same place the
         // browser bridge puts them — NOT in our scratch dir. That was the bug
         // behind the 150MB of "temporary" files the owner found in AppData:
         // the delivered artefact was being written to the scratch folder and
         // never cleaned (2026-09-11).
-        &input, &results, mode, kind, false, true, s.cuda, None, &prog, &stage,
+        &input,
+        &results,
+        mode,
+        kind,
+        false,
+        true,
+        s.cuda,
+        None,
+        &prog,
+        &stage,
     );
     let out = match processed {
         Ok(o) => o,
