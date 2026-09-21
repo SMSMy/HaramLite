@@ -71,6 +71,13 @@ impl CancelToken {
     pub fn is_cancelled(&self) -> bool {
         self.0.load(Ordering::SeqCst)
     }
+
+    /// العلم الخام — لمن يحتاج `&Arc<AtomicBool>` (‏`yt_dlp::download_media`
+    /// مثلاً) فيكون **رمز المهمّة نفسه** لا نسخةً منه: إلغاء السِجلّ يوقف
+    /// التنزيل فعلاً، بلا علمٍ ثانٍ يُزامَن.
+    pub fn raw(&self) -> &Arc<AtomicBool> {
+        &self.0
+    }
 }
 
 // ─────────────────── سياق المهمّة على هذا الخيط ───────────────────
