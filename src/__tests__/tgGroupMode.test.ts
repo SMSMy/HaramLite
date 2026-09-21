@@ -11,19 +11,26 @@
  *   ٣) `collectSettings().telegram_group_mode` **مطبَّع** كذلك — فالمعروض =
  *      المُرسَل إلى الخلف.
  *   ٤) التغيير يُخزِّن **ويُدفع** إلى الخلف (`set_settings`) عبر مهلة 300ms.
- *   ٥) صدق النصّ: لا وعد بميزة م٤ غير المنفَّذة (تحويل الرابط للمالك للموافقة ·
- *      «اسمح دائماً»)، ويُقال ما يفعله تلغرام نفسه (privacy mode). ومع ذلك
- *      **النصّ مربوط بالكود لا بالذاكرة**: الفحص يقرأ `src-tauri/src/settings.rs`
- *      فيسقط إن وُجد فيه `telegram_group_mode` (أي إن دُمج نصف Rust) مطالِباً
- *      بتحرير النصّ — فلا يبقى نصٌّ يزعم غياب ميزة بعد وجودها.
+ *   ٥) صدق النصّ: التلميح يذكر **ما نُفِّذ فعلاً** (الموافقة · «اسمح دائماً» ·
+ *      قائمة السماح · الحجب في «بالمنشن فقط») ويذكر الحدّ التقني كحدّ. ومربوط
+ *      بالكود **في الاتجاهين**: إن وعد النصّ بميزة فليكن الكود ينفّذها.
  *
- * **ما لا يقيسه** (بصراحة): لا يشغّل بوت تلغرام ولا Rust — الحجب الفعلي
- * («بالمنشن فقط») وحده يمكن قياسه في نصف Rust، وهو غير موجود في هذه الشجرة
- * (مُثبَت أدناه بقراءة الملف نفسه). ولا متصفّح: لا حكم بصري على القائمة.
+ * **ما لا يقيسه** (بصراحة):
+ *   • **لا يشغّل بوت تلغرام ولا Rust**: لا حكم على سلوك حقيقي، ولا على أن
+ *     الرسالة غير الموجَّهة تُسكَت فعلاً. واختبارات Rust التي تُثبت ذلك
+ *     (`mentions_only_silences_a_group_message_that_does_not_address_the_bot`
+ *     وأخواتها) **لا تُشغَّل هنا**: بناء `cargo test` في هذه البيئة يفشل عند
+ *     `tauri_build` بـ`resource path vc_redist.x64.exe doesn't exist` (فخّ
+ *     مسجَّل في AGENT.md §١٥، وCI يتجاوزه بـStub للموارد).
+ *   • **الفحوص الساكنة تقيس البنية لا السلوك**: «البوابة موجودة وتقرأ الوضع»
+ *     ليست «البوابة تحجب». ومُفسَد قِيس: `if !addressed { → if false {` لم
+ *     يُسقط شيئاً — **ثقب مُعلَن** لا مخفيّ. ولا يدّعي هذا الملف سدّه.
+ *   • ولا متصفّح: لا حكم بصري على القائمة.
  *
- * **مُفسَداته** (انظر التقرير، كلٌّ بخروجه الحرفي): نصّ تلميح يَعِد بالميزة ·
- * مفتاح ترجمة غير موجود في الجدول · قيمة خيار `every` بدل `all` · إسقاط
- * `pushSettings()` من مستمع التغيير · إسقاط تطبيع `collectSettings`.
+ * **مُفسَداته** (انظر التقرير، كلٌّ بخروجه الحرفي): نصّ تلميح يَعِد بميزة غير
+ * منفَّذة (ر٣) · إزالة `apv:always` من دالّة الزرّ (ر١) · مفتاح ترجمة غير موجود ·
+ * قيمة خيار `every` بدل `all` · إسقاط `pushSettings()` · إسقاط تطبيع
+ * `collectSettings` · إسقاط إعلان الفراغ.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import indexHtml from '../../index.html?raw';
@@ -42,6 +49,47 @@ const HINT_OF = (lang: 'ar' | 'en'): string => {
   if (!m) throw new Error(`settings_group_mode_hint غير موجود في ${lang}`);
   return m[1].replace(/\\'/g, "'");
 };
+/** جسد دالّة من `telegram.rs` بموازنة أقواس — لقياس **ما تفعله الدالّة** لا ما
+ *  يذكره الملف. وسبب الحاجة مقيس: `#[cfg(test)]` في هذا الملف **١٩ موضعاً**،
+ *  أكثرها دوالّ مساعدة **داخل كود الإنتاج** (لا كتلة `mod tests` واحدة في
+ *  الآخر)، فالقطع عند أول موضع — أو عند آخر كتلة — يهدم كود الإنتاج. */
+function fnBody(src: string, needle: string): string {
+  const at = src.indexOf(needle);
+  if (at === -1) return '';
+  let i = src.indexOf('{', at);
+  if (i === -1) return '';
+  let depth = 0;
+  const start = i;
+  for (; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}') {
+      depth--;
+      if (depth === 0) return src.slice(start, i + 1);
+    }
+  }
+  return '';
+}
+
+/** من `needle` إلى الفاصلة المنقوطة التي تُنهيه — **بموازنة الأقواس** كي لا
+ *  تنتهي عند فاصلة داخل نداء. (`let addressed = …` يمتدّ عدّة أسطر وينتهي
+ *  بـ`;`، فموازنة الأقواس وحدها تُخرج جسد `if` التالي — وهذا قِيس فعلاً.) */
+function exprFrom(src: string, needle: string): string {
+  const at = src.indexOf(needle);
+  if (at === -1) return '';
+  let depth = 0;
+  for (let i = at; i < src.length; i++) {
+    const c = src[i];
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') depth--;
+    else if (c === ';' && depth === 0) return src.slice(at, i + 1);
+  }
+  return '';
+}
+
+/** زرُ الموافقة ووسم «اسمح دائماً»: يُقاسان في **دالّتيهما** لا في الملف. */
+const APPROVAL_KEYBOARD = fnBody(telegramRs as unknown as string, 'fn approval_keyboard(');
+const ACCESS_ALLOW = fnBody(telegramRs as unknown as string, 'fn allow(&mut self');
+const ADDRESS_GATE = exprFrom(telegramRs as unknown as string, 'let addressed =');
 const TG_RS = telegramRs as unknown as string;
 
 const h = vi.hoisted(() => ({
@@ -305,12 +353,23 @@ describe('م٤ · النصّ لا يَعِد بميزة غير منفَّذة', 
     return { ar: i18n.ar.settings_group_mode_hint, en: i18n.en.settings_group_mode_hint };
   }
 
-  it('يذكر المنشن وprivacy mode — الشرطان التقنيان الحقيقيان', async () => {
-    const { ar, en } = await hints();
-    expect(ar).toContain('منشن');
-    expect(ar).toContain('privacy mode');
-    expect(en.toLowerCase()).toContain('mention');
-    expect(en.toLowerCase()).toContain('privacy mode');
+  it('التلميح نفسه يذكر المنشن وprivacy mode — الشرطان التقنيان', () => {
+    // **تصحيح مقيس**: كان هذا الفحص يقرأ `i18n.ar.settings_group_mode_hint`،
+    // لكن الفحوص المجاورة تستعمل `hints()` التي تقرأ **التسميات** — فحذفُ كلمة
+    // المنشن من نصّ التلميح **لم يُسقط شيئاً** (24/24) لأن الكلمة باقية في وسم
+    // «بالمنشن فقط». فالقياس اليوم على **نصّ التلميح** من الملف المشحون.
+    //
+    // **وحدّه مقيس أيضاً**: هذا التأكيد قريب من العبث في اتجاه واحد — التلميح
+    // **يجب** أن يسمّي الوضع، واسمه «بالمنشن فقط» يحوي «منشن» بالضرورة ⇒ فلا
+    // يمكن إسقاطه بحذف الكلمة وحدها. فهو يمنع تلميحاً **لا يسمّي الوضع**، ولا
+    // يدّعي أكثر: أن الكود يحجب فعلاً **لا يقيسه فحص ساكن** (انظر §«ما لا يقيسه
+    // هذا الملف» في رأس الملف).
+    for (const lang of ['ar', 'en'] as const) {
+      const h = HINT_OF(lang);
+      expect(h.length, `التلميح (${lang}) مقروء`).toBeGreaterThan(80);
+      expect(h, `الوضع مسمّى في تلميح ${lang}`).toContain(lang === 'ar' ? 'منشن' : 'mention');
+      expect(h, `privacy mode في تلميح ${lang}`).toContain('privacy mode');
+    }
   });
 
   /* ── الفخّ مقلوباً (جولة الدمج 2026-09-21) ────────────────────────────────
@@ -351,32 +410,36 @@ describe('م٤ · النصّ لا يَعِد بميزة غير منفَّذة', 
    * في التلميح فليكن الكود يُصدر `apv:always`، وإن ذُكر حجب «بالمنشن فقط»
    * فليكن الكود يحمل منطق الإسكات. فيسقط الفحص إن حُذفت الميزة من الكود وبقي
    * النصّ يَعِد بها — وهو ما لا يمنعه اتجاهٌ واحد. */
-  it('النصّ ↔ الكود: كل ما يَعِد به النصّ موجودٌ في telegram.rs', () => {
+  it('النصّ ↔ الكود: كل ما يَعِد به النصّ موجودٌ في الدالّة التي تنفّذه', () => {
+    // المقيس **جسد الدالّة** لا الملف: البحث في الملف كان يمرّ لأن اختبارات
+    // Rust ودوالّها المساعدة تذكر الرموز نفسها — وثقب مُقاس: إزالة `apv:always`
+    // من الإنتاج لم تُسقط شيئاً (24/24) والحرف باقٍ في `#[cfg(test)]`.
+    expect(APPROVAL_KEYBOARD.length, 'جسد approval_keyboard مقروء').toBeGreaterThan(50);
+    expect(ACCESS_ALLOW.length, 'جسد access.allow مقروء').toBeGreaterThan(50);
+    expect(ADDRESS_GATE, 'بوابة addressed مقروءة').not.toBe('');
     const hintAr = HINT_OF('ar');
     const hintEn = HINT_OF('en');
-    // ① الموافقة و«اسمح دائماً»: النصّ يذكرهما ⇒ الكود يُصدر زرّهما.
-    const promisesAlways = hintAr.includes('اسمح دائماً') || hintEn.includes('Always allow');
-    const promisesApproval = hintAr.includes('بطاقة موافقة') || hintEn.includes('approval card');
-    expect(promisesAlways || promisesApproval, 'النصّ يَعِد بالموافقة').toBe(true);
-    expect(TG_RS, 'الكود لا يُصدر apv:always والنصّ يَعِد بـ«اسمح دائماً»')
-      .toContain('apv:always');
-    expect(TG_RS, 'الكود لا يُصدر بطاقة الموافقة والنصّ يذكرها')
-      .toContain('approval_keyboard');
-    // ② الإضافة إلى قائمة السماح عند «اسمح دائماً»: مذكورة ⇒ منفَّذة.
+    // ① الموافقة و«اسمح دائماً»: النصّ يذكرهما ⇒ الزرّ يُصدر `apv:always`.
+    expect(hintAr.includes('اسمح دائماً') || hintEn.includes('Always allow'),
+      'النصّ يَعِد بـ«اسمح دائماً»').toBe(true);
+    expect(hintAr.includes('بطاقة موافقة') || hintEn.includes('approval card'),
+      'النصّ يذكر بطاقة الموافقة').toBe(true);
+    expect(APPROVAL_KEYBOARD, 'لا زرّ apv:always والنصّ يَعِد به').toContain('apv:always');
+    expect(APPROVAL_KEYBOARD, 'لا زرّ apv:no').toContain('apv:no');
+    expect(APPROVAL_KEYBOARD, 'لا زرّ apv:yes').toContain('apv:yes');
+    // ② «اسمح دائماً» تُضيف إلى قائمة السماح: مذكورة ⇒ `access.allow` تُوسّعها.
     expect(hintAr.includes('قائمة السماح') || hintEn.includes('allow list')).toBe(true);
-    expect(TG_RS, 'لا إضافة إلى قائمة السماح والنصّ يذكرها').toContain('fn allow(');
+    expect(ACCESS_ALLOW, 'allow() لا تُضيف إلى المجموعة').toMatch(/insert|push/);
     // ③ الحجب في «بالمنشن فقط»: النصّ يقول «لا يعالج البوت إلا ما وُجِّه إليه»
-    //    ⇒ الكود يحمل بوابة `addressed` (و`mentions_bot` التي تحسبها).
+    //    ⇒ بوابة `addressed` تقرأ الوضع قبل أي معالجة، و`mentions_bot` تحسبها.
     const claimsGating = hintAr.includes('لا يعالج البوت إلا ما وُجِّه إليه')
       || hintEn.includes('processes only what is addressed to it');
     expect(claimsGating, 'النصّ يدّعي الحجب').toBe(true);
-    if (claimsGating) {
-      expect(TG_RS, 'النصّ يدّعي الحجب ولا بوابة في الكود').toContain('let addressed =');
-      expect(TG_RS, 'لا حساب للمنشن في الكود').toContain('fn mentions_bot(');
-      expect(TG_RS).toContain('if !addressed {');
-    }
-    // ④ والحدّ التقني: مذكور كحدّ ⇒ لا `start` تلقائي في مجموعة.
-    expect(hintAr.includes('لا يبدأ محادثة خاصة')).toBe(true);
+    expect(ADDRESS_GATE, 'البوابة لا تقرأ الوضع').toContain('GroupMode::All');
+    expect(TG_RS, 'لا حساب للمنشن في الكود').toContain('fn mentions_bot(');
+    // ④ والحدّ التقني: مذكور كحدّ في النصّين.
+    expect(hintAr.includes('لا يبدأ محادثة خاصة'), 'الحدّ في العربي').toBe(true);
+    expect(hintEn.toLowerCase()).toContain('cannot start a private chat');
   });
 
   it('والبوّابة ليست باطلة: العنصر والتلميح مرئيان فعلاً في DOM المُركَّب', async () => {
