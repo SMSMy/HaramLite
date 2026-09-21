@@ -347,3 +347,34 @@ describe('م٤ · النصّ لا يَعِد بميزة غير منفَّذة', 
     expect(menu.querySelector('[data-i18n="settings_group_mode"]')).not.toBeNull();
   });
 });
+
+/* ── ٥ب) التسميتان تقولان ما تعنيه القيمتان ──────────────────────────────────
+ * أُضيفت بعد **مُفسَد ناجٍ**: قلب قيمتي `settings_group_mode_mentions` و
+ * `settings_group_mode_all` في الجدول (فصار «بالمنشن فقط» اسماً لـ`all`)
+ * لم يُسقط شيئاً (22/22 مرّت) — أي أن المستخدم كان سيقرأ العكس تماماً. */
+describe('م٤ · التسمية تطابق القيمة (لا انقلاب صامت)', () => {
+  it('«بالمنشن فقط» لـmentions و«كل الرسائل» لـall — في الجدول وفي DOM', async () => {
+    const { i18n } = await import('../i18n');
+    expect(i18n.ar.settings_group_mode_mentions, 'تسمية mentions').toContain('منشن');
+    expect(i18n.ar.settings_group_mode_all, 'تسمية all').not.toContain('منشن');
+    expect(i18n.en.settings_group_mode_mentions.toLowerCase()).toContain('mention');
+    expect(i18n.en.settings_group_mode_all.toLowerCase()).not.toContain('mention');
+
+    await mountWith(null);
+    const label = (v: string): string =>
+      select().querySelector(`option[value="${v}"]`)!.textContent!.trim();
+    expect(label('mentions')).toContain('منشن');
+    expect(label('all')).not.toContain('منشن');
+    expect(label('mentions')).not.toBe(label('all'));
+  });
+
+  it('التلميح يعرّف الوضعين معاً فلا يبقى اسم بلا شرح', async () => {
+    const { i18n } = await import('../i18n');
+    const ar = i18n.ar.settings_group_mode_hint;
+    expect(ar).toContain(i18n.ar.settings_group_mode_mentions);
+    expect(ar).toContain(i18n.ar.settings_group_mode_all);
+    const en = i18n.en.settings_group_mode_hint;
+    expect(en).toContain(i18n.en.settings_group_mode_mentions);
+    expect(en).toContain(i18n.en.settings_group_mode_all);
+  });
+});
