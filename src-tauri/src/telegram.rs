@@ -379,6 +379,16 @@ fn active_job_ids(chat_id: i64) -> Vec<u64> {
 }
 
 /// زر الإلغاء على رسالة التقدّم: `cancel:<chat_id>` — نفس معنى `/kill` حرفاً.
+/// **لوحة فارغة صريحة** — إزالة أزرار رسالة.
+///
+/// ولا يكفي أن «لا نُمرّر» لوحةً لإزالتها: `editMessageText` بلا `reply_markup`
+/// **يحذف** اللوحة، وهذا هو العطل المقيس الذي رآه المالك (زر الإلغاء يظهر ثانية
+/// ثم يختفي عند أول تعديل تقدّم). فصار التمرير في كل تعديل **صريحاً**: إمّا
+/// اللوحة المرادة، وإمّا هذه الفارغة للإزالة المتعمَّدة.
+fn empty_keyboard() -> Value {
+    json!({ "inline_keyboard": [] })
+}
+
 fn cancel_button(chat_id: i64) -> Value {
     json!({
         "inline_keyboard": [[
@@ -524,8 +534,22 @@ fn send_message(
     Ok(v.get("message_id").and_then(Value::as_i64).unwrap_or(0))
 }
 
-fn edit_message(cfg: &TgConfig, chat_id: i64, message_id: i64, text: &str) -> Result<(), String> {
-    let body = json!({ "chat_id": chat_id, "message_id": message_id, "text": text });
+/// تعديل رسالة قائمة.
+///
+/// **`keyboard` صريح لا اختياريّ**: تمرير `Some(…)` يُبقي/يُبدّل اللوحة، وتمرير
+/// `None` **يحذفها** (سلوك تليجرام في `editMessageText`) — ولذلك كل نداء هنا
+/// يُصرّح بما يريده، ولا يُترك الحذف يقع بالسهو كما وقع في عطل زر الإلغاء.
+fn edit_message(
+    cfg: &TgConfig,
+    chat_id: i64,
+    message_id: i64,
+    text: &str,
+    keyboard: Option<Value>,
+) -> Result<(), String> {
+    let mut body = json!({ "chat_id": chat_id, "message_id": message_id, "text": text });
+    if let Some(k) = keyboard {
+        body["reply_markup"] = k;
+    }
     call(cfg, "editMessageText", &body, Duration::from_secs(20)).map(|_| ())
 }
 
@@ -1009,7 +1033,7 @@ fn handle_update(
             let reply = cancel_chat_jobs(target);
             answer_callback(cfg, cb_id, &reply);
             if msg_id != 0 {
-                let _ = edit_message(cfg, chat_id, msg_id, &reply);
+                let _ = edit_message(cfg, chat_id, msg_id, &reply, Some(empty_keyboard()));
             }
             set_activity(reply);
             return;
@@ -1054,7 +1078,7 @@ fn handle_update(
             format!("▶ بدأ العمل — الوضع: {label}")
         };
         if msg_id != 0 {
-            let _ = edit_message(cfg, chat_id, msg_id, &text);
+            let _ = edit_message(cfg, chat_id, msg_id, &text, Some(empty_keyboard()));
         } else {
             let _ = send_message(cfg, chat_id, &text, None);
         }
@@ -1215,17 +1239,40 @@ struct StatusMsg {
     message_id: i64,
     last: Instant,
     text: String,
+    /// اللوحة التي تُرسَل مع **كل** تعديل. الغياب (`None`) يعني «بلا لوحة» في
+    /// المعنى الذي يفرضه تليجرام: يحذفها. ولذلك نحمل هنا **زرّ الإلغاء** ما دامت
+    /// المهمّة جارية، ونستبدله بلوحة فارغة عند الانتهاء.
+    keyboard: Option<Value>,
 }
 
 impl StatusMsg {
-    fn new(chat_id: i64, message_id: i64, text: String) -> Self {
+    fn new(chat_id: i64, message_id: i64, text: String, keyboard: Option<Value>) -> Self {
         Self {
             chat_id,
             message_id,
             last: Instant::now(),
             text,
+            keyboard,
         }
     }
+
+    /// جسم تعديل الحالة — **دالّة نقيّة تُقاس باختبار** (لا HTTP): العطل الذي
+    /// رآه المالك كان في هذا الجسم بالضبط (لوحة غائبة ⇒ زرّ يختفي).
+    fn edit_body(&self, text: &str) -> Value {
+        let mut body =
+            json!({ "chat_id": self.chat_id, "message_id": self.message_id, "text": text });
+        if let Some(k) = &self.keyboard {
+            body["reply_markup"] = k.clone();
+        }
+        body
+    }
+
+    /// يُنهي رسالة الحالة: **يزيل زر الإلغاء صراحةً** (لوحة فارغة) ويثبّت النصّ.
+    fn finish(&mut self, cfg: &TgConfig, text: String) {
+        self.keyboard = Some(empty_keyboard());
+        self.set(cfg, text, true);
+    }
+
     fn set(&mut self, cfg: &TgConfig, text: String, force: bool) {
         if !force && self.last.elapsed() < EDIT_MIN_GAP && text == self.text {
             return;
@@ -1236,8 +1283,28 @@ impl StatusMsg {
         self.last = Instant::now();
         self.text = text.clone();
         if self.message_id != 0 {
-            let _ = edit_message(cfg, self.chat_id, self.message_id, &text);
+            let body = self.edit_body(&text);
+            let _ = call(cfg, "editMessageText", &body, Duration::from_secs(20));
         }
+    }
+}
+
+/// **إزالة زر الإلغاء مضمونة على كل مسار خروج** — بما فيه العودة المبكرة
+/// (`return`) عند فشل التنزيل أو تجاوز الحجم: لو تركنا الزرّ على رسالة مهمّة
+/// منتهية لكان زرّاً يكذب (يُضغط فيقول «لا مهمّة جارية»). والحارس يُسقط نفسه
+/// مع أي `return` أو ذعر، فيقع التنظيف دائماً.
+struct StatusFinishGuard<'a> {
+    status: &'a std::cell::RefCell<StatusMsg>,
+    cfg: &'a TgConfig,
+}
+
+impl Drop for StatusFinishGuard<'_> {
+    fn drop(&mut self) {
+        let text = self.status.borrow().text.clone();
+        if text.is_empty() {
+            return; // لم تُكتب حالة بعد ⇒ لا شيء يُعدَّل
+        }
+        self.status.borrow_mut().finish(self.cfg, text);
     }
 }
 
@@ -1336,7 +1403,19 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
     .unwrap_or(0);
     // RefCell: the progress closure AND the stage closure both report through
     // the same status message, and two `&mut` captures cannot coexist.
-    let status = std::cell::RefCell::new(StatusMsg::new(chat_id, msg_id, String::new()));
+    // **وزرّ الإلغاء يُحمَل في الرسالة نفسها** (لا مرة واحدة عند الإنشاء): كل
+    // تعديل يُعيد تمريره، وإلا حذفه تليجرام — وهو عطل «الزر يختفي» المقيس.
+    let status = std::cell::RefCell::new(StatusMsg::new(
+        chat_id,
+        msg_id,
+        String::new(),
+        Some(cancel_button(chat_id)),
+    ));
+    // وحارس يُزيل الزرّ عند **أي** خروج من هذه الدالّة (نجاحاً أو فشلاً).
+    let _finish_guard = StatusFinishGuard {
+        status: &status,
+        cfg,
+    };
 
     // 1. Obtain the input. Everything this job creates inside the scratch dir
     //    is disposable and tracked here, so no exit path can leak it.
@@ -1383,6 +1462,7 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
                         human_mb(*size),
                         human_mb(CLOUD_DOWNLOAD_MAX_BYTES)
                     ),
+                    Some(empty_keyboard()),
                 );
                 return;
             }
@@ -1722,6 +1802,59 @@ fn sanitize_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **عطل مقيس من المالك (2026-09-21)**: «زر الإلغاء يظهر لثانية أو أقل ثم
+    /// يختفي». السبب: `editMessageText` **يحذف لوحة الأزرار** إن لم يُمرَّر معه
+    /// `reply_markup`، وتعديلات التقدّم لم تكن تمرّره ⇒ أول تحديث يمحو الزرّ.
+    /// وهذا الاختبار يقيس **جسم التعديل نفسه** (لا HTTP): الزرّ حاضر في كل
+    /// تحديث، ولا يغيب إلا بإزالة متعمَّدة عند انتهاء المهمّة.
+    ///
+    /// **المُفسَد**: أزل `reply_markup` من `StatusMsg::edit_body` ⇒ يسقط هذا
+    /// الاختبار (وهو نفسه العطل الذي رآه المالك).
+    #[test]
+    fn every_status_update_carries_the_cancel_button_until_the_job_finishes() {
+        let mut status = StatusMsg::new(7, 42, String::new(), Some(cancel_button(7)));
+        for text in ["📥 جارٍ التنزيل… 0%", "🎚️ الفصل 40%", "🎛️ التنقية 80%"]
+        {
+            let body = status.edit_body(text);
+            let kb = body
+                .get("reply_markup")
+                .expect("اللوحة تُمرَّر مع **كل** تحديث وإلا حذفها تليجرام");
+            assert_eq!(
+                kb["inline_keyboard"][0][0]["callback_data"]
+                    .as_str()
+                    .unwrap_or_default(),
+                "cancel:7",
+                "والزرّ هو زرّ هذه المحادثة"
+            );
+            assert_eq!(body["text"], text, "والنصّ هو نصّ هذه المرحلة");
+            assert_eq!(
+                body["message_id"], 42,
+                "وعلى الرسالة نفسها (تحرير لا رسالة جديدة)"
+            );
+        }
+        // وعند الانتهاء: إزالة **صريحة** بلوحة فارغة — لا اختفاء بالسهو.
+        status.keyboard = Some(empty_keyboard());
+        let body = status.edit_body("✔ تم");
+        assert_eq!(
+            body["reply_markup"]["inline_keyboard"]
+                .as_array()
+                .map(|a| a.len()),
+            Some(0),
+            "اللوحة الفارغة تُرسَل صراحةً فتُزال الأزرار بلا التباس"
+        );
+    }
+
+    /// واللوحة الفارغة نفسها: مصفوفة فارغة (ما يفهمه تليجرام كإزالة).
+    #[test]
+    fn the_empty_keyboard_is_an_explicit_empty_list() {
+        assert_eq!(
+            empty_keyboard()["inline_keyboard"]
+                .as_array()
+                .map(|a| a.len()),
+            Some(0)
+        );
+    }
 
     #[test]
     fn pairing_gate_blocks_everyone_until_the_owner_is_set() {
