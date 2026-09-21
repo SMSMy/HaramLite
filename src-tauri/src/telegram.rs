@@ -860,8 +860,8 @@ impl AccessStore {
             })
             .collect();
         entries.sort_by_key(|e| (e.chat_id, e.user_id));
-        let body = serde_json::to_string(&AccessFile { v: 1, entries })
-            .map_err(|e| e.to_string())?;
+        let body =
+            serde_json::to_string(&AccessFile { v: 1, entries }).map_err(|e| e.to_string())?;
         crate::atomic::write_atomic_str(path, &body, "json").map_err(|e| e.to_string())
     }
 
@@ -894,12 +894,18 @@ fn mentions_bot(msg: &Value, bot: &BotIdentity) -> bool {
         return true;
     }
     for key in ["entities", "caption_entities"] {
-        for e in msg.get(key).and_then(Value::as_array).cloned().unwrap_or_default() {
+        for e in msg
+            .get(key)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+        {
             match e.get("type").and_then(Value::as_str) {
-                Some("text_mention") => {
-                    if e.pointer("/user/id").and_then(Value::as_i64) == Some(bot.id) {
-                        return true;
-                    }
+                // `text_mention` يحمل معرّف البوت نفسه — فلا يُبنى على الاسم.
+                Some("text_mention")
+                    if e.pointer("/user/id").and_then(Value::as_i64) == Some(bot.id) =>
+                {
+                    return true;
                 }
                 Some("mention") => {
                     if let Some(t) = e.get("text").and_then(Value::as_str) {
@@ -1893,7 +1899,10 @@ struct ApprovalStore {
 
 impl ApprovalStore {
     fn count_for(&self, chat_id: i64) -> usize {
-        self.by_token.values().filter(|a| a.chat_id == chat_id).count()
+        self.by_token
+            .values()
+            .filter(|a| a.chat_id == chat_id)
+            .count()
     }
 
     /// يُدرج بلا إسقاط شيء، ويعيد `false` عند بلوغ السقف (فيُقال للمستخدم).
@@ -3189,8 +3198,7 @@ fn handle_update(
                         Source::Link(u) => display_name(u),
                         Source::File { name, .. } => display_name(name),
                     };
-                    let src_msg_id =
-                        msg.get("message_id").and_then(Value::as_i64).unwrap_or(0);
+                    let src_msg_id = msg.get("message_id").and_then(Value::as_i64).unwrap_or(0);
                     let a = Approval {
                         chat_id,
                         user_id: from_id,
@@ -3453,8 +3461,8 @@ fn handle_my_chat_member(cfg: &TgConfig, poll: &mut PollState, m: &Value) {
         .pointer("/old_chat_member/status")
         .and_then(Value::as_str)
         .unwrap_or("");
-    let joined = matches!(now, "member" | "administrator")
-        && matches!(before, "left" | "kicked" | "");
+    let joined =
+        matches!(now, "member" | "administrator") && matches!(before, "left" | "kicked" | "");
     if joined {
         pin_intro(cfg, poll, chat_id);
     }
@@ -3625,16 +3633,7 @@ fn handle_approval_press(
             let source = a.source.clone();
             let user = a.user.clone();
             let chat_id = a.chat_id;
-            offer_mode_question(
-                cfg,
-                poll,
-                chat_id,
-                user_id,
-                source,
-                src_msg_id,
-                &user,
-                file,
-            );
+            offer_mode_question(cfg, poll, chat_id, user_id, source, src_msg_id, &user, file);
         }
         _ => {
             answer_callback(cfg, cb_id, "قرار غير معروف");
@@ -4451,12 +4450,7 @@ fn run_job(
     };
     // RefCell: the progress closure AND the stage closure both report through
     // the same status message, and two `&mut` captures cannot coexist.
-    let status = std::cell::RefCell::new(StatusMsg::new(
-        chat_id,
-        user_id,
-        msg_id,
-        cancel.clone(),
-    ));
+    let status = std::cell::RefCell::new(StatusMsg::new(chat_id, user_id, msg_id, cancel.clone()));
     // ضمانة بنيوية: **على كل باب خروج** يُزال زرّ الإلغاء صراحةً لو نسي فرعٌ
     // ذلك، فلا يبقى زرّ على مهمّة منتهية أبداً.
     let _cancel_button_guard = CancelButtonGuard {
@@ -4656,7 +4650,7 @@ fn run_job(
     // فتحة المشغّل تُحرَّر هنا — **قبل** أي انتظار بشري أدناه (سؤال التجاوز
     // وضغطات الأعضاء) وقبل الإرسال. فلا يبقى مستخدمٌ خارج السقف لأن غيره
     // ينتظر ضغطة. (والتحرير يقع في `Drop` أيضاً على كل باب خروج آخر.)
-    if let Some(s) = slot.as_deref_mut() {
+    if let Some(s) = slot.as_mut() {
         s.release();
     }
 
@@ -4963,7 +4957,10 @@ mod tests {
         reject_body: &[String],
         reject_chat: &[i64],
     ) -> String {
-        if reject_body.iter().any(|needle| body.contains(needle.as_str())) {
+        if reject_body
+            .iter()
+            .any(|needle| body.contains(needle.as_str()))
+        {
             let err = format!(
                 "{{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: {method} rejected by the fixture\"}}"
             );
@@ -5047,10 +5044,17 @@ mod tests {
                                     .lock()
                                     .unwrap_or_else(|p| p.into_inner())
                                     .clone();
-                                let reject_c =
-                                    reject_chat.lock().unwrap_or_else(|p| p.into_inner()).clone();
-                                let reply =
-                                    fake_reply(&method, &body, &mut next_msg_id, &reject_b, &reject_c);
+                                let reject_c = reject_chat
+                                    .lock()
+                                    .unwrap_or_else(|p| p.into_inner())
+                                    .clone();
+                                let reply = fake_reply(
+                                    &method,
+                                    &body,
+                                    &mut next_msg_id,
+                                    &reject_b,
+                                    &reject_c,
+                                );
                                 if !method.is_empty() {
                                     seen.lock()
                                         .unwrap_or_else(|p| p.into_inner())
@@ -6115,7 +6119,10 @@ mod tests {
         // ننتظر ظهور المهمّة في السِجلّ العام (‏`slots::active_jobs`) ثم نحكم.
         let mut live = false;
         for _ in 0..300 {
-            if slots::active_jobs().iter().any(|j| j.label == job_label(7, 7)) {
+            if slots::active_jobs()
+                .iter()
+                .any(|j| j.label == job_label(7, 7))
+            {
                 live = true;
                 break;
             }
@@ -6156,7 +6163,9 @@ mod tests {
 
         // وبعد الانتهاء لا تبقى مهمّة معلّقة في السِجلّ.
         assert!(
-            !slots::active_jobs().iter().any(|j| j.label == job_label(7, 7)),
+            !slots::active_jobs()
+                .iter()
+                .any(|j| j.label == job_label(7, 7)),
             "تسريب تسجيل بعد انتهاء المهمّة"
         );
     }
@@ -8238,7 +8247,13 @@ mod tests {
         // ③ والمالك يضغط زرّ غيره ⇒ مقبول (تصميم §٣: «صاحب المهمّة **أو** المالك»).
         let other = slots::register_early(&job_label(-102, 66), None);
         let other_id = other.id();
-        handle_update(&cfg, &mut poll, &ov, &press_in(7, -102, 1002, "cancel:-102:66"), &tx);
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &press_in(7, -102, 1002, "cancel:-102:66"),
+            &tx,
+        );
         assert!(cancelled_job(other_id), "المالك مُنع من إلغاء مهمّة عضوه");
         drop(other);
     }
@@ -8261,7 +8276,13 @@ mod tests {
         let (a_id, b_id) = (a.id(), b.id());
         assert_ne!(a_id, b_id);
 
-        handle_update(&cfg, &mut poll, &ov, &press_in(55, -103, 1003, "cancel:-103:55"), &tx);
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &press_in(55, -103, 1003, "cancel:-103:55"),
+            &tx,
+        );
         assert!(cancelled_job(a_id), "مهمّة الضاغط لم تُلغَ");
         assert!(
             !cancelled_job(b_id),
@@ -8270,7 +8291,13 @@ mod tests {
         // ومهمّةٌ في **محادثة أخرى** لم تُمسّ أيضاً (الوسم يحمل المحادثة).
         let c = slots::register_early(&job_label(-203, 55), None);
         let c_id = c.id();
-        handle_update(&cfg, &mut poll, &ov, &press_in(55, -103, 1004, "cancel:-103:55"), &tx);
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &press_in(55, -103, 1004, "cancel:-103:55"),
+            &tx,
+        );
         assert!(!cancelled_job(c_id), "الإلغاء تعدّى حدود المحادثة");
         drop((a, b, c));
     }
@@ -8385,7 +8412,12 @@ mod tests {
         queue.push(group_job(-112, 66, 2000, "b1.mp4"));
         assert_eq!(queue.waiting(), 5, "الطابور لم يُمتلأ قبل البدء");
         let stop = Arc::new(AtomicBool::new(false));
-        spawn_job_workers(cfg.clone(), stop.clone(), new_oversize_store(), queue.clone());
+        spawn_job_workers(
+            cfg.clone(),
+            stop.clone(),
+            new_oversize_store(),
+            queue.clone(),
+        );
 
         // ننتظر **البدء الفعلي للخمسة** (والسقف ١ ⇒ كلٌّ يبدأ بعد انتهاء سابقه).
         let deadline = Instant::now() + Duration::from_secs(60);
@@ -8473,7 +8505,13 @@ mod tests {
         let job_id = job.id();
 
         for (i, cmd) in ["/kill", "/status"].iter().enumerate() {
-            handle_update(&cfg, &mut poll, &ov, &group_msg(55, -104, 30 + i as i64, cmd), &tx);
+            handle_update(
+                &cfg,
+                &mut poll,
+                &ov,
+                &group_msg(55, -104, 30 + i as i64, cmd),
+                &tx,
+            );
         }
         assert!(
             !cancelled_job(job_id),
@@ -8603,14 +8641,23 @@ mod tests {
         let ov = new_oversize_store();
         let (tx, _rx) = chan();
 
-        handle_update(&cfg, &mut poll, &ov, &bot_joined(-106, "left", "member"), &tx);
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &bot_joined(-106, "left", "member"),
+            &tx,
+        );
         assert_eq!(bot.count("pinChatMessage"), 1, "لم تُثبَّت رسالة التعريف");
         let intro = sent_to(&bot, -106);
         assert_eq!(intro.len(), 1, "أُرسلت رسالة التعريف أكثر من مرة");
         let text = intro[0]["text"].as_str().unwrap_or("");
         assert_eq!(text.lines().count(), 2, "النصّ سطران كما في التصميم: {text}");
         assert!(text.contains("@MyBot"), "معرّف البوت مذكور: {text}");
-        assert!(text.contains("جهاز المالك"), "المعالجة على جهاز المالك: {text}");
+        assert!(
+            text.contains("جهاز المالك"),
+            "المعالجة على جهاز المالك: {text}"
+        );
 
         // **عشر رسائل عادية** لا تُثبّت شيئاً آخر — هذا هو المُفسَد المحروس.
         for i in 0..10 {
@@ -8623,7 +8670,13 @@ mod tests {
             );
         }
         // وتحديث إضافةٍ ثانٍ لا يُعيد الكرّ أيضاً.
-        handle_update(&cfg, &mut poll, &ov, &bot_joined(-106, "left", "administrator"), &tx);
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &bot_joined(-106, "left", "administrator"),
+            &tx,
+        );
         assert_eq!(
             bot.count("pinChatMessage"),
             1,
@@ -8652,8 +8705,7 @@ mod tests {
             "اختُلق اسم بوت لم يُقرأ: {unknown}"
         );
         assert!(
-            intro_text(&BotIdentity::default(), cpu_advice_line(Some("CPU")))
-                .contains("CPU"),
+            intro_text(&BotIdentity::default(), cpu_advice_line(Some("CPU"))).contains("CPU"),
             "نصيحة المعالج لا تظهر في رسالة التعريف"
         );
     }
@@ -8783,7 +8835,13 @@ mod tests {
             .unwrap()
             .clone();
         let card_msg = sent_message_ids_to(&bot, 7)[0];
-        handle_update(&cfg, &mut poll, &ov, &press_in(7, 7, card_msg, &always), &tx);
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &press_in(7, 7, card_msg, &always),
+            &tx,
+        );
         assert!(
             poll.access.allows(-108, 55, Some(7)),
             "«اسمح دائماً» لم تُضف الزوج إلى قائمة السماح"
@@ -8861,10 +8919,7 @@ mod tests {
         let _ = std::fs::remove_file(&p);
         let mut a = AccessStore::from_path(p.clone());
         assert_eq!(a.len(), 0);
-        assert!(
-            a.allows(-100, 7, Some(7)),
-            "المالك مسموح دائماً بلا مدخل"
-        );
+        assert!(a.allows(-100, 7, Some(7)), "المالك مسموح دائماً بلا مدخل");
         assert!(!a.allows(-100, 55, Some(7)));
         assert!(a.allow(-100, 55), "الإضافة الأولى جديدة");
         assert!(!a.allow(-100, 55), "الإضافة الثانية ليست جديدة");
@@ -8872,7 +8927,10 @@ mod tests {
 
         let b = AccessStore::from_path(p.clone());
         assert_eq!(b.len(), 1);
-        assert!(b.allows(-100, 55, Some(7)), "السماح لم ينجُ من إعادة القراءة");
+        assert!(
+            b.allows(-100, 55, Some(7)),
+            "السماح لم ينجُ من إعادة القراءة"
+        );
         assert!(
             !b.allows(-200, 55, Some(7)),
             "السماح تسرّب إلى محادثةٍ أخرى — المفتاح الزوج لا العضو"
@@ -8932,17 +8990,11 @@ mod tests {
             pacer.last_hit(-110).is_some(),
             "إرسال المجموعة لم يمرّ من مُنظِّم المعدّل"
         );
-        assert!(
-            pacer.last_hit(7).is_none(),
-            "المحادثة الخاصة حُصِّصت بلا سبب"
-        );
+        assert!(pacer.last_hit(7).is_none(), "المحادثة الخاصة حُصِّصت بلا سبب");
         drop(pacer);
         // وتعديلٌ تجميلي فوق الحصّة **يُسقَط** بدل أن يُرسَل بلا حدّ.
         reset_counters();
         let _ = send_message(&cfg, -110, "ثانية", None, None);
-        assert!(
-            !pace_group_edit(-110),
-            "تعديلٌ تجميلي مرّ فوق السقف"
-        );
+        assert!(!pace_group_edit(-110), "تعديلٌ تجميلي مرّ فوق السقف");
     }
 }
