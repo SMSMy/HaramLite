@@ -1250,7 +1250,7 @@ fn download_media_inner(
                             Some(k) => k.kill(),
                             None => crate::proc::kill_tree(child_pid),
                         }
-                        if attempts % 25 == 0 {
+                        if attempts.is_multiple_of(25) {
                             tracing::warn!(
                                 target: "ytdlp",
                                 "الشجرة (pid={child_pid}) لم تمت بعد {attempts} محاولة قتل — تُعاد المحاولة"
