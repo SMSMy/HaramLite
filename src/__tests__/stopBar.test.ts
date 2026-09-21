@@ -321,6 +321,21 @@ describe('م٢ · زرّ الإيقاف الثابت وزرّ إلغاء الك�
     expect(el('stop-bar')?.classList.contains('hidden')).toBe(true);
   });
 
+  it('stays visible for a run whose job is not registered yet, and says the target is unknown', async () => {
+    // نافذة حقيقية: الزرّ ضُغط وبدأ التشغيل، والمهمّة لم تُسجَّل في الخلف بعد.
+    h.invoke.mockImplementation(async (cmd) => (cmd === 'active_jobs' ? [] : null));
+    expect(session.setBatchRunning(true)).toBe(true);
+
+    startJobsPolling();
+    await settle();
+
+    expect(el('stop-bar')?.classList.contains('hidden')).toBe(false);
+    expect(el('stop-target')?.textContent).toBe(t('stop_target_none'));
+    // ولا يدّعي إلغاءً لم يقع: رسالة الإلغاء المحلي مكانٌ آخر ولم تُكتب بعد
+    expect(el('stop-note')?.textContent).not.toBe(t('stop_local_queued'));
+    session.endRun('batch');
+  });
+
   it('stopBatch asks for cancel_all_jobs (by name) and never the app-wide cancel_process', async () => {
     h.invoke.mockImplementation(async (cmd) => (cmd === 'cancel_all_jobs' ? 2 : null));
     // مسار الإفراغ يعمل فقط إذا كان في الواجهة تشغيل معلَن
