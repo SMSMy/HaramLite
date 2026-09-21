@@ -198,9 +198,8 @@ const fill = (s, vars) => s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(
  * اللغتين، فالمحسوب هنا مقيَّد لا مجهول — والحارس يعدّ الموضعين بعدد وتعليل.
  */
 function applyI18n() {
-  const root = document.documentElement;
-  root.lang = LANG;
-  root.dir = RTL ? 'rtl' : 'ltr';
+  document.documentElement.lang = LANG;
+  document.documentElement.dir = RTL ? 'rtl' : 'ltr';
   document.querySelectorAll('[data-i18n]').forEach((node) => {
     node.textContent = t(node.getAttribute('data-i18n'));
   });
