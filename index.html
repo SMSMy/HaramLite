@@ -14,7 +14,7 @@
 <header class="glass-effect border-b border-border-muted flex justify-between items-center w-full px-gutter py-stack-md max-w-full docked full-width top-0 z-50">
 <div class="flex items-center gap-stack-md">
 <h1 class="font-headline-xl text-headline-xl font-black text-clay-accent tracking-tight drop-shadow-md">HaramLite</h1>
-<span class="bg-surface-container text-on-surface-variant px-stack-sm py-unit rounded font-label-sm text-label-sm border border-border-muted cursor-pointer select-none transition-all duration-300 apple-ease hover:bg-surface-variant hover:scale-105 active:scale-95" id="version-badge">v0.2.0</span>
+<span class="bg-surface-container text-on-surface-variant px-stack-sm py-unit rounded font-label-sm text-label-sm border border-border-muted cursor-pointer select-none transition-all duration-300 apple-ease hover:bg-surface-variant hover:scale-105 active:scale-95" id="version-badge"></span>
 </div>
 <div class="absolute left-1/2 transform -translate-x-1/2 pointer-events-none hidden md:block">
 <p class="font-body-lg text-cream-text text-sm font-semibold tracking-wide flex items-baseline gap-unit justify-center"><span data-i18n="tagline_pre">الموسيقى لا تليق بقلبٍ يريد</span> <span class="kashida-text text-clay-accent" data-i18n="tagline_hl">الطمأنينة</span><span aria-hidden="true">.</span></p></div>
@@ -305,13 +305,20 @@
 <p id="pl-map" class="hidden text-clay-accent text-sm mt-2 whitespace-pre-wrap"></p>
 </div>
 </div>
-<!-- Visible pipeline stages (Sprint C2) -->
+<!-- Visible pipeline stages (Sprint C2)
+     ممسوح بالجولة الثانية (2026-09-21): كان هنا `0%` في `#stage-pct` و«فصل الصوت»
+     في `#stage-name` **نصّاً ثابتاً في الترميز**. ولا يُقرأ اليوم كعمل لأن
+     `#stage-line` عليه `hidden` ولا يُزال إلا بحدث `sep-stage` حقيقي
+     (`paintSepStage` تُرجع مبكراً بلا `lastStage`، ثم تكتب الاسم والنسبة معاً).
+     فهو **كامن لا حيّ** — لكنه من صنف «سطح يعرض قيمة ثابتة تُقرأ كقياس»، ويسقط
+     إن أُظهر السطر من مسار آخر. فالتسمية والنسبة تُكتبان من الكود وحدهما
+     (`src/queue.ts` · `paintSepStage`)، والترميز لا يحمل رقماً ولا مرحلة. -->
 <div id="stage-line" class="hidden flex items-center gap-stack-sm font-label-sm text-label-sm text-on-surface-variant fade-in-up delay-200">
-    <span id="stage-name" class="text-clay-accent font-bold">فصل الصوت</span>
+    <span id="stage-name" class="text-clay-accent font-bold"></span>
     <div class="flex-1 h-1.5 bg-border-muted rounded-full overflow-hidden">
         <div id="stage-bar" class="h-full bg-clay-accent/70 w-0 rounded-full transition-all duration-300"></div>
     </div>
-    <span id="stage-pct" class="w-10 text-left" dir="ltr">0%</span>
+    <span id="stage-pct" class="w-10 text-left" dir="ltr"></span>
 </div>
 <!-- Action Button -->
 <button class="kashida-text mt-auto w-full bg-clay-accent text-coal-surface font-headline-lg text-headline-lg py-stack-md rounded-lg flex justify-center items-center gap-stack-md transition-all duration-300 apple-ease hover:bg-primary-container hover:-translate-y-1 hover:shadow-[0_12px_24px_-8px_rgba(218,119,86,0.6)] active:scale-[0.98] active:shadow-md fade-in-up delay-300 group" id="btn-separate">
@@ -398,22 +405,14 @@
 </div>
 </div>
 <div class="h-32 bg-coal-bg/90 p-stack-sm overflow-y-auto font-mono-code text-mono-code text-on-surface-variant scroll-smooth" dir="ltr" id="log-view" role="log" aria-live="polite" aria-relevant="additions" data-i18n-aria="log_toggle">
-<div class="flex gap-stack-sm hover:bg-surface-variant/40 transition-colors duration-200 px-unit py-1 rounded cursor-text animate-log-entry" style="animation-delay: 100ms;">
-<span class="text-tertiary font-bold drop-shadow-sm">[INFO]</span>
-<span data-i18n="log_demo_info">yt-dlp update check: already up to date.</span>
-</div>
-<div class="flex gap-stack-sm hover:bg-surface-variant/40 transition-colors duration-200 px-unit py-1 rounded cursor-text animate-log-entry" style="animation-delay: 200ms;">
-<span class="text-warn-yellow font-bold drop-shadow-sm">[WARN]</span>
-<span data-i18n="log_demo_warn">Track 2 audio format might cause slight degradation.</span>
-</div>
-<div class="flex gap-stack-sm hover:bg-surface-variant/40 transition-colors duration-200 px-unit py-1 rounded cursor-text animate-log-entry" style="animation-delay: 300ms;">
-<span class="text-error font-bold drop-shadow-sm">[ERROR]</span>
-<span data-i18n="log_demo_error">Failed to locate model weights in ./models directory.</span>
-</div>
-<div class="flex gap-stack-sm hover:bg-surface-variant/40 transition-colors duration-200 px-unit py-1 rounded cursor-text animate-log-entry" style="animation-delay: 400ms;">
-<span class="text-tertiary font-bold drop-shadow-sm">[INFO]</span>
-<span data-i18n="log_demo_ready">Initialization complete. Ready.</span>
-</div>
+<!-- ع٣ (جولة الجاسوس، 2026-09-21): كان هنا **أربعة سطور سجلّ ثابتة** تُقرأ
+     كسجلّ حقيقي، ومنها `[ERROR] Failed to locate model weights…` — **إنذار
+     كاذب يدعو لإجراء**. وهي لا تُستبدل إلا بنجاح `get_recent_logs`؛ وعند فشله
+     تبقى (قِيس: `afterFailedRefresh {"hidden":false,"text":"…[ERROR] Failed to
+     locate model weights…"}`). واليوم السجلّ **فارغ في الترميز**: يملؤه
+     `src/log.ts` وحده من `logBuffer` (و`refresh()` تكتب حالة انتظار صادقة عند
+     الفشل بدل أن تترك خطأً لم يقع). وترتيب السطور المُنتَجة بيدٌ بقيت في الجدول
+     لأنها نصوص ترجمة مشروعة، لكن **لا عنصر يعرضها** بلا سطر حقيقي. -->
 </div>
 </div>
 

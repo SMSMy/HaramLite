@@ -198,11 +198,21 @@ const i18n = {
     // 2026-09-21: حالتان صريحتان بدل ترميز تصميمي ثابت كان يُقرأ كعمل جارٍ.
     queue_empty: 'لا ملفات في الطابور بعد',
     queue_empty_add: 'أفلت ملفات في النافذة أو أضف رابطاً لتبدأ المعالجة.',
+    // ع٢ (جولة الجاسوس المستقل): طابور الواجهة فارغ **ومهمّة حيّة في الخلفية**
+    // (طلب تلغرام/الجسر، أو إعادة تحميل الواجهة أثناء عمل Rust) — فلا يُقال
+    // «لا شيء، ابدأ» وشريط الإيقاف فوقه يقول «المهامّ النشطة: 1». النصّ يسمّي
+    // الحقيقة بدل أن يناقضها.
+    queue_empty_running: 'لا ملفات في الطابور — ومهمّة جارية في الخلفية',
+    queue_empty_running_hint: 'المهمّة الجارية تتابع في الخلفية؛ وأفلت ملفات أو أضف رابطاً لإضافة عمل جديد.',
     queue_processing: 'جاري المعالجة...',
     queue_pending: 'في الانتظار',
     ext_title: 'وظائف خارجية',
     ext_empty: 'لا وظائف خارجية جارية',
     log_toggle: 'سجل الأحداث / Activity Log',
+    // ع٣ (جولة الجاسوس): حالتان تُكتبان في اللوحة عند غياب سطور حقيقية — بدل
+    // سطور ثابتة كانت تُقرأ كسجلّ، ومنها خطأ لم يقع.
+    log_empty: 'لا سطور في السجلّ بعد.',
+    log_unavailable: '⚠ تعذّر قراءة السجلّ من الخلفية — لا سطور معروضة.',
     log_demo_info: 'yt-dlp update check: already up to date.',
     log_demo_warn: 'Track 2 audio format might cause slight degradation.',
     log_demo_error: 'Failed to locate model weights in ./models directory.',
@@ -457,11 +467,15 @@ const i18n = {
     open_out_folder: 'Open the output folder',
     queue_empty: 'No files in the queue yet',
     queue_empty_add: 'Drop files on the window or add a link to start processing.',
+    queue_empty_running: 'No files in the queue — a job is running in the background',
+    queue_empty_running_hint: 'The running job continues in the background; drop files or add a link to queue more work.',
     queue_processing: 'Processing...',
     queue_pending: 'Waiting',
     ext_title: 'External jobs',
     ext_empty: 'No external jobs running',
     log_toggle: 'Activity Log',
+    log_empty: 'No log lines yet.',
+    log_unavailable: '⚠ Could not read the log from the backend — no lines shown.',
     log_demo_info: 'yt-dlp update check: already up to date.',
     log_demo_warn: 'Track 2 audio format might cause slight degradation.',
     log_demo_error: 'Failed to locate model weights in ./models directory.',
