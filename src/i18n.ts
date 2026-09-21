@@ -211,18 +211,20 @@ const i18n = {
     batch_restored_skipped: '، تخطي {skipped} منجزة',
     cancel_processing: 'إلغاء المعالجة',
     // م٢ — الإلغاء الحقيقي: زرّ الإيقاف الثابت ونتائجه. النصوص تقول الحدّ
-    // ولا تقول «فوراً»: العمليات المنفصلة تُقتل فوراً، ونداء الاستدلال الجاري
-    // لا يُقطع (يُهجَر عند أول حدّ) — و{secs} هو سقف **أطول ما قيس** لا حدّ
-    // رياضي (التفصيل في `src/jobs.ts` عند STOP_CEILING_SECS).
+    // ولا تقول «فوراً»: العمليات المنفصلة تُقتل فوراً، **ونتيجة نداء المحرّك
+    // الجاري لا تُقطع** (يُهجَر عند أول حدّ بعده) — و{secs} هو **أطول ما قيس**
+    // لا حدّ رياضي، ومعه الدقائق (٩.٤) كي لا يُقرأ الرقم وحده وعداً.
+    // (الرقم الواحد وتفصيله في `src/jobs.ts` عند STOP_CEILING_SECS، ومعه حارس
+    // تكافؤ يمنع تباعد هذه النصوص عن ثابت Rust.)
     stop_bar_title: 'مهمّة جارية الآن',
     stop_count: 'المهامّ النشطة: {n}',
     stop_target_line: 'الهدف: {name}',
     stop_target_none: 'لا مهمّة خلفية معروفة بعد',
     stop_button_label: 'إيقاف المهمّة',
-    stop_button_hint: 'يُقتل ما هو خارج العملية فوراً، والاستدلال الجاري لا يُقطع — يُهجَر عند أول حدّ',
+    stop_button_hint: 'يُقتل ما هو خارج العملية فوراً، ونداء المحرّك الجاري لا يُقطع — يُهجَر عند أول حدّ بعده',
     stop_all_button_label: 'إلغاء الكل',
     stop_all_hint: 'يُلغي كل المهامّ النشطة (واجهة · جسر · مراقبة · تيليجرام) — ليس هذه المهمّة وحدها',
-    stop_note_wait: 'طُلب الإيقاف: ما هو خارج العملية يُقتل فوراً، والاستدلال الجاري يُهجَر عند أول حدّ ⇒ ≤ {secs} ث (أطول ما قيس)',
+    stop_note_wait: 'طُلب الإيقاف: ما هو خارج العملية يُقتل فوراً، ونداء المحرّك الجاري يُهجَر عند أول حدّ بعده — أطول ما قيس {secs} ث (‏٩.٤ دقيقة)، والغالب أقلّ بكثير',
     stop_requested: '⏹ جارٍ الإيقاف…',
     stop_job_gone: '⚠ لم يبقَ ما يُلغى: انتهت المهمّة قبل الطلب',
     stop_local_queued: '⚠ لا مهمّة خلفية لهذا الملف — أُوقف الطابور محلياً (بلا إلغاء عام)',
@@ -446,17 +448,18 @@ const i18n = {
     batch_restored_skipped: ', {skipped} finished skipped',
     cancel_processing: 'Cancel processing',
     // م٢ — same contract as the Arabic block: killable processes die now, a
-    // running inference call is not cut, and {secs} is the LONGEST MEASURED
-    // ceiling (see STOP_CEILING_SECS in src/jobs.ts), never a mathematical one.
+    // running engine call's *result* is not cut (dropped at the first boundary
+    // after it), and {secs} is the LONGEST MEASURED ceiling with its minutes
+    // spelled out (see STOP_CEILING_SECS in src/jobs.ts), never a mathematical one.
     stop_bar_title: 'Job running now',
     stop_count: 'Active jobs: {n}',
     stop_target_line: 'Target: {name}',
     stop_target_none: 'No backend job known yet',
     stop_button_label: 'Stop the job',
-    stop_button_hint: 'Processes outside the engine die now; a running inference call is not cut — it is dropped at the first boundary',
+    stop_button_hint: 'Processes outside the engine die now; a running engine call is not cut — it is dropped at the first boundary after it',
     stop_all_button_label: 'Cancel all',
     stop_all_hint: 'Cancels every active job (UI · bridge · watch · telegram) — not just this one',
-    stop_note_wait: 'Stop requested: anything outside the engine dies now, a running inference call is dropped at the first boundary ⇒ ≤ {secs}s (longest measured)',
+    stop_note_wait: 'Stop requested: anything outside the engine dies now, a running engine call is dropped at the first boundary after it — longest measured {secs}s (9.4 minutes), most calls far shorter',
     stop_requested: '⏹ Stopping…',
     stop_job_gone: '⚠ Nothing left to cancel: the job finished before the request',
     stop_local_queued: '⚠ No backend job for this file — the queue stopped locally (no global cancel)',
