@@ -137,7 +137,9 @@ export async function stopBatch(): Promise<void> {
   session.setBatchQueue([]);
   batchStatus.clear();
   localStorage.removeItem('hl.batch');
-  document.getElementById('batch-list')?.classList.add('hidden');
+  // 2026-09-21: كانت هذه تُخفي `#batch-list` كلها — وحالة الفراغ تعيش داخلها
+  // فكان الإفراغ يُخفيها هي أيضاً (شاشة صامتة). واليوم الحالة الفارغة تُعلَن.
+  updateBatchEmptyState();
   document.getElementById('batch-counter')?.classList.add('hidden');
   // Phantom-cancel fix: stopBatch runs on EVERY single-file ingest, and it
   // used to fire the cancel command (and its scary backend WARN line) even
@@ -194,52 +196,77 @@ function renderBatchList(): void {
   const ul = document.getElementById('batch-list');
   if (!ul) return;
   ul.classList.remove('hidden');
-  ul.replaceChildren(
-    ...session.getBatchQueue().map((f) => {
-      const div = document.createElement('div');
-      div.dataset.file = f;
-      div.className = 'batch-item bg-coal-surface/40 border border-border-muted rounded p-stack-sm flex flex-col gap-unit opacity-60 transition-all duration-300 apple-ease cursor-default relative overflow-hidden';
-      styleBatchItem(div);
-      
-      const progBg = document.createElement('div');
-      progBg.className = 'absolute inset-0 bg-clay-accent/10 w-0 transition-all duration-1000 ease-linear batch-prog-bg hidden';
-      
-      const headerDiv = document.createElement('div');
-      headerDiv.className = 'flex justify-between items-center relative z-10';
-      const nameSpan = document.createElement('span');
-      nameSpan.className = 'font-label-sm text-label-sm text-cream-text truncate font-semibold';
-      nameSpan.dir = 'ltr';
-      nameSpan.textContent = f.split(/[\\/]/).pop() ?? f;
-      const pctSpan = document.createElement('span');
-      pctSpan.className = 'batch-pct font-label-sm text-label-sm text-clay-accent font-bold drop-shadow-sm hidden';
-      pctSpan.textContent = '0%';
-      headerDiv.append(nameSpan, pctSpan);
-      
-      const progWrap = document.createElement('div');
-      progWrap.className = 'h-1.5 bg-border-muted rounded-full overflow-hidden relative z-10 shadow-inner batch-prog-wrap hidden';
-      const progBar = document.createElement('div');
-      progBar.className = 'batch-prog-bar h-full bg-clay-accent w-0 rounded-full relative transition-all duration-1000 ease-linear shadow-[0_0_10px_rgba(218,119,86,0.8)]';
-      progWrap.appendChild(progBar);
-      
-      const actionsDiv = document.createElement('div');
-      actionsDiv.className = 'batch-actions flex gap-2 z-10 hidden mt-1';
-      
-      const statusSpan = document.createElement('span');
-      statusSpan.className = 'status-text font-label-sm text-label-sm text-on-surface-variant relative z-10 flex-1';
-      statusSpan.textContent = t('queue_pending');
-      
-      const bottomRow = document.createElement('div');
-      bottomRow.className = 'flex justify-between items-center w-full relative z-10';
-      bottomRow.append(statusSpan, actionsDiv);
-      
-      div.append(progBg, headerDiv, progWrap, bottomRow);
-      return div;
-    }),
-  );
+  // 2026-09-21: `replaceChildren` كانت تمحو **كل** أولاد `#batch-list` — ومنهم
+  // `#batch-empty` الثابت — فيختفي عنصر الحالة الفارغة من DOM بعد أول رسم
+  // (قيست: `getElementById('batch-empty')` ⟶ null بعد `renderBatchList`).
+  // فالإزالة اليوم تخصّ **الصفوف** (`div[data-file]`) وحدها، والحالة تبقى.
+  ul.querySelectorAll('div[data-file]').forEach((row) => row.remove());
+  ul.append(...batchRows(session.getBatchQueue()));
+  updateBatchEmptyState();
   batchStatus.clear();
   for (const f of session.getBatchQueue()) batchStatus.set(f, 'pending');
   refreshWaitingPositions(); // م٣: كل صفٍّ منتظر يقول موضعه لا «في الانتظار» فقط
   saveBatchState();
+}
+
+/** صفوف الطابور — **المنشئ الوحيد** لصفوف `#batch-list`.
+ *
+ *  العطل الميداني 2026-09-21: كان في `index.html` ترميز تصميمي ثابت (صفّ
+ *  `track_01_vocals.mp3` بنسبة 33% وشريط تقدّم و«1/3 جاري المعالجة...»، وصفّ
+ *  `podcast_ep44.wav` «في الانتظار») يبقى ظاهراً متى كان الطابور فارغاً، فيُقرأ
+ *  كعمل جارٍ لا وجود له. وسببه المقيس أن `restoreBatchState()` تُرجع مبكراً عند
+ *  غياب `hl.batch` ولا تمسّ DOM. فالعلاج بنيوي: **لا صفّ ملف في الترميز أصلاً**،
+ *  والصفوف تُبنى هنا وحدها من قائمة الجلسة. */
+function batchRows(queue: readonly string[]): HTMLElement[] {
+  return queue.map((f) => {
+    const div = document.createElement('div');
+    div.dataset.file = f;
+    div.className = 'batch-item bg-coal-surface/40 border border-border-muted rounded p-stack-sm flex flex-col gap-unit opacity-60 transition-all duration-300 apple-ease cursor-default relative overflow-hidden';
+    styleBatchItem(div);
+    
+    const progBg = document.createElement('div');
+    progBg.className = 'absolute inset-0 bg-clay-accent/10 w-0 transition-all duration-1000 ease-linear batch-prog-bg hidden';
+    
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'flex justify-between items-center relative z-10';
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'font-label-sm text-label-sm text-cream-text truncate font-semibold';
+    nameSpan.dir = 'ltr';
+    nameSpan.textContent = f.split(/[\\/]/).pop() ?? f;
+    const pctSpan = document.createElement('span');
+    pctSpan.className = 'batch-pct font-label-sm text-label-sm text-clay-accent font-bold drop-shadow-sm hidden';
+    pctSpan.textContent = '0%';
+    headerDiv.append(nameSpan, pctSpan);
+    
+    const progWrap = document.createElement('div');
+    progWrap.className = 'h-1.5 bg-border-muted rounded-full overflow-hidden relative z-10 shadow-inner batch-prog-wrap hidden';
+    const progBar = document.createElement('div');
+    progBar.className = 'batch-prog-bar h-full bg-clay-accent w-0 rounded-full relative transition-all duration-1000 ease-linear shadow-[0_0_10px_rgba(218,119,86,0.8)]';
+    progWrap.appendChild(progBar);
+    
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'batch-actions flex gap-2 z-10 hidden mt-1';
+    
+    const statusSpan = document.createElement('span');
+    statusSpan.className = 'status-text font-label-sm text-label-sm text-on-surface-variant relative z-10 flex-1';
+    statusSpan.textContent = t('queue_pending');
+    
+    const bottomRow = document.createElement('div');
+    bottomRow.className = 'flex justify-between items-center w-full relative z-10';
+    bottomRow.append(statusSpan, actionsDiv);
+    
+    div.append(progBg, headerDiv, progWrap, bottomRow);
+    return div;
+  });
+}
+
+/** حالة الفراغ = **دالّة قائمة الجلسة** لا علامة في الترميز: تُرى حين لا صفّ
+ *  حقيقي، وتُخفى حين يوجد. ودالّة واحدة تحكمها فلا تتناقض موضعان (وهو ما وقع:
+ *  `stopBatch` كانت تُخفي القائمة كلها، و`restoreBatchState` لا تمسّها). */
+function updateBatchEmptyState(): void {
+  const empty = document.getElementById('batch-empty');
+  if (!empty) return;
+  empty.classList.toggle('hidden', session.getBatchQueue().length > 0);
 }
 
 /* ── batch persistence (functional gap: memory-only queue) ──────────── */
@@ -276,6 +303,10 @@ export function restoreBatchState(): void {
   const skipped = items.length - files.length;
   if (!files.length) {
     if (items.length) localStorage.removeItem('hl.batch');
+    // 2026-09-21: كان هنا `return` وحده — فلا يُمَسّ DOM ويبقى ترميز الصفوف
+    // الوهمي من `index.html` معروضاً كعمل جارٍ في كل إقلاع بطابور فارغ.
+    // واليوم الحالة الفارغة تُعلَن صراحةً من قائمة الجلسة (وهي فارغة هنا).
+    updateBatchEmptyState();
     return;
   }
   session.setBatchQueue(files);
