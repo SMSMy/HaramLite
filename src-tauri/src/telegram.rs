@@ -49,13 +49,24 @@ const EDIT_MIN_GAP: Duration = Duration::from_secs(3);
 /// Local Bot API server default port (telegram-bot-api).
 pub const LOCAL_SERVER_HINT: &str = "http://127.0.0.1:8081";
 /// كم ينتظر `/kill` قبل أن يجيب (م٢): الانتظار **محدود**، وبعد انتهائه يقول
-/// الحقيقة («طُلب الإلغاء… خلال ≤ X ث») بدل وعد لا يُضمن.
-const CANCEL_CONFIRM_WAIT: Duration = Duration::from_secs(20);
-/// الحدّ المعلَن للمستخدم لسقوط المهمّة بعد طلب الإلغاء وهي داخل نداء الاستدلال
-/// (ONNX غير قابل للقطع داخل العملية). وهو **وعد موجَّه بالسقف المقيس**: أطول
-/// نداء استدلال مسجَّل في هذا المستودع 140 ث (‏`inference_ms=140208`)، والفحص
-/// يقع عند أول حدّ بعده.
-const INFERENCE_BAIL_HINT_SECS: u64 = 150;
+/// الحقيقة («طُلب الإلغاء…») بدل وعد لا يُضمن.
+///
+/// **وقُصِّر من ٢٠ ث إلى ٢ ث (م٢/إصلاح)**: هذا الانتظار يقع على **خيط تحديثات
+/// البوت**، فكل `/kill` كان **يحجب كل أوامر المحادثة** حتى ٢٠ ث — وأوامر أخرى
+/// (‏`/status` · `/kill` ثانٍ) لا تُقرأ إلا بعدها. والمهلة القصيرة تكفي للحالة
+/// الغالبة (العمليات المنفصلة تُقتل في أجزاء الثانية)، وإن كانت المهمّة داخل
+/// نداء المحرّك فالجواب الصادق يصل فوراً بدل انتظارٍ لا يغيّر شيئاً (النداء
+/// غير قابل للقطع أصلاً).
+pub const CANCEL_CONFIRM_WAIT: Duration = Duration::from_secs(2);
+/// الحدّ المعلَن للمستخدم لسقوط المهمّة بعد طلب الإلغاء وهي داخل نداء المحرّك
+/// (ONNX غير قابل للقطع داخل العملية) — **مشتقّ من المقيس لا مكتوب بيد**:
+/// [`crate::pipeline::ENGINE_CALL_CEILING_SECS`] هو الرقم الواحد الذي تقرؤه
+/// الواجهة أيضاً، وحارس تكافؤ يمنع تباعدهما (`src/__tests__/stopCeiling.parity.test.ts`).
+///
+/// **وسابقة مُصلَحة**: كان هنا `150` وفي الواجهة `141` — **رقمان مختلفان لنفس
+/// الحالة**، وكلاهما من عيّنة ١٤٠ ث قديمة أقلّ من أطول ما قيس بأكثر من ثلاث
+/// مرات. فالثابت الآن واحد، والصياغة تقول «أطول ما قيس» لا «≤ كذا ث».
+pub const INFERENCE_BAIL_HINT_SECS: u64 = crate::pipeline::ENGINE_CALL_CEILING_SECS;
 
 // ── pairing (OTP) ───────────────────────────────────────────────────────────
 /// Six digits: a four-digit code is guessable inside the attempt budget.
@@ -378,8 +389,11 @@ fn cancel_button(chat_id: i64) -> Value {
 
 /// ينفّذ الإلغاء ويعيد **نصّاً صادقاً**: لا يقول «أُلغيت» إلا إذا فرغت المهمّة
 /// فعلاً من السِجلّ. و`cancel_job` وحده يعيد «سُجِّل الطلب» لا «توقّف العمل»،
-/// والفرق بينهما دقيقتان ممكنة داخل نداء الاستدلال (ONNX غير قابل للقطع).
-fn cancel_chat_jobs(chat_id: i64) -> String {
+/// والفرق بينهما دقائق ممكنة داخل نداء المحرّك (ONNX غير قابل للقطع).
+///
+/// `pub(crate)` لأن قياس **زمن الحجب** يحتاج سِجلّ المهامّ الحقيقي، ومرافقه في
+/// `slots::tests` حيث يوجد (`registry_lock` + `run_registered`).
+pub(crate) fn cancel_chat_jobs(chat_id: i64) -> String {
     let ids = active_job_ids(chat_id);
     if ids.is_empty() {
         return "لا مهمّة جارية".to_string();
@@ -394,13 +408,24 @@ fn cancel_chat_jobs(chat_id: i64) -> String {
         return "لا مهمّة جارية".to_string();
     }
     // الانتظار **محدود**: بعد انتهائه نقول الحقيقة لا الوعد.
-    if slots::wait_until_gone(&ids, CANCEL_CONFIRM_WAIT) {
+    cancel_reply(slots::wait_until_gone(&ids, CANCEL_CONFIRM_WAIT))
+}
+
+/// الجواب الواحد بعد طلب الإلغاء — دالّة **نقيّة** لتُقاس بلا مهمّة حقيقية،
+/// ولئلا يفترق نصّان لنفس الحالة.
+///
+/// **ولا يُقال «فوراً»** عن نداء المحرّك (نصيحة المالك): هو نداء واحد داخل
+/// العملية لا نقطة إلغاء فيه، فالصياغة تقول **«بعد انتهاء نداء المحرّك الجاري»**
+/// وتذكر **أطول ما قيس** (‏٩.٤ دقيقة) وتُصرّح بأنّ الغالب أقلّ بكثير.
+pub(crate) fn cancel_reply(gone: bool) -> String {
+    if gone {
         return "🛑 أُلغيت".to_string();
     }
+    let secs = INFERENCE_BAIL_HINT_SECS;
+    let mins = secs as f64 / 60.0;
     format!(
-        "🛑 طُلب الإلغاء — المهمّة داخل مرحلة الاستدلال (لا تُقطع داخل العملية) \
-         وستسقط عند أول حدّ بعدها، خلال ≤ {} ث",
-        INFERENCE_BAIL_HINT_SECS
+        "🛑 طُلب الإلغاء — سيتوقّف بعد انتهاء نداء المحرّك الجاري (لا يُقطع داخل \
+         العملية). أطول ما قيس {mins:.1} دقيقة ({secs} ث)، والغالب أقلّ بكثير."
     )
 }
 
@@ -2205,5 +2230,50 @@ mod tests {
         assert!(lower.contains("multipart/form-data; boundary=----haramliteboundary"));
         assert!(head.contains("name=\"chat_id\""));
         let _ = std::fs::remove_file(&tmp);
+    }
+
+    /// **صياغة الإلغاء لا تكذب (م٢/إصلاح)**: الجواب الصادق يذكر **أطول ما قيس**
+    /// ورقمه، **ولا يقول «فوراً»** عن نداء المحرّك ولا يعِد بسقف مطلق.
+    ///
+    /// (وسابقة مُصلَحة: كان الجواب يَعِد بسقف مطلق «خلال ١٥٠ ث» — وعدٌ أقصر
+    /// من الواقع ٣.٨× — والآن يقول «أطول ما قيس» ورقمه.)
+    #[test]
+    fn the_cancel_reply_states_the_measured_worst_case_and_never_promises_instant() {
+        assert_eq!(cancel_reply(true), "🛑 أُلغيت", "الفراغ = إلغاء وقع فعلاً");
+        let pending = cancel_reply(false);
+        let secs = crate::pipeline::ENGINE_CALL_CEILING_SECS;
+        assert!(
+            pending.contains(&secs.to_string()),
+            "الرقم المقيس مذكور في الجواب: {pending}"
+        );
+        assert!(
+            pending.contains("أطول ما قيس"),
+            "التوصيف «أطول ما قيس» لا وعداً: {pending}"
+        );
+        assert!(
+            pending.contains("والغالب أقلّ بكثير"),
+            "ويُقال إن الغالب أقلّ بكثير: {pending}"
+        );
+        assert!(
+            !pending.contains("فوراً"),
+            "لا «فوراً» عن نداء المحرّك: {pending}"
+        );
+        assert!(!pending.contains('≤'), "لا سقف مطلق في الجواب: {pending}");
+    }
+
+    /// **حجب خيط تحديثات البوت محدود (م٢/إصلاح)**: كان الانتظار ٢٠ ث لكل
+    /// `/kill` على خيط التحديثات (فتُحجب أوامر المحادثة كلها). والحدّ الآن قصير،
+    /// والقياس **السلوكي** في
+    /// `slots::tests::a_kill_command_does_not_block_the_bot_thread_for_long`.
+    #[test]
+    fn the_cancel_confirmation_wait_is_short() {
+        assert!(
+            CANCEL_CONFIRM_WAIT <= Duration::from_secs(3),
+            "انتظار /kill يحجب خيط البوت: {CANCEL_CONFIRM_WAIT:?}"
+        );
+        assert!(
+            CANCEL_CONFIRM_WAIT >= Duration::from_millis(500),
+            "وانتظار بلا معنى لا يكفي الحالة الغالبة: {CANCEL_CONFIRM_WAIT:?}"
+        );
     }
 }
