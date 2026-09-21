@@ -20,9 +20,9 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
@@ -106,6 +106,36 @@ pub(crate) const CANCELLED_TEXT: &str = "🛑 أُلغيت";
 /// بديل يشبهه) ويسقط إن تجاوز الرقم، ويسقط إن خرج الرقم من نطاق «القتل الفوري»
 /// (‏< ١ ث) فيصير سقفاً مطّاطاً بلا قياس.
 pub const CANCEL_PREPARE_WORST_SECS: f64 = 0.3;
+
+// ── م٤: المجموعات — الحدود المقيسة من توثيق تلغرام نفسه ─────────────────────
+/// سقف الإرسال في المجموعة (‏core.telegram.org/bots/faq): **≈٢٠ رسالة/دقيقة**،
+/// و**≈رسالة/ثانية** للمحادثة الواحدة. الرقمان مكتوبان هنا صراحةً ليُقرآ من
+/// الشيفرة لا من نيّة، ويُفرَضان على **كل** إرسال وتعديل في محادثة معرّفها سالب
+/// (مجموعة) عبر [`SendPacer`] — وتعديلات التقدّم تمرّ أصلاً ببوّابة الرسالة
+/// ([`status_push`]) فلا خيط يكتب بلا حدّ.
+pub const GROUP_MSG_PER_MINUTE: usize = 20;
+/// أدنى فرق بين رسالتين في المحادثة نفسها.
+pub const GROUP_MIN_GAP: Duration = Duration::from_secs(1);
+
+/// حدود `setMyCommands` في Bot API: **١٠٠ أمر** كحدّ أقصى · اسم الأمر **١–٣٢**
+/// (إنجليزي صغير/أرقام/`_`) · وصفه **١–٢٥٦**. تُفحَص على [`COMMANDS`] نفسها في
+/// اختبار — فحدُّ الـAPI ليس نيّةً في تعليق.
+pub const MAX_BOT_COMMANDS: usize = 100;
+pub const MAX_COMMAND_NAME: usize = 32;
+pub const MAX_COMMAND_DESC: usize = 256;
+
+/// **شكلان للرسالة الفانية لا شكل واحد**:
+/// * 10.2 (١٤ يوليو ٢٠٢٦): `receiver_user_id` **مسطّحاً**؛
+/// * 10.3 (٢٤ أغسطس ٢٠٢٦): **استُبدل** بكائن `ephemeral_message_parameters`
+///   (نصّ سجلّ التغييرات: «replaced the parameters receiver_user_id … with the
+///   parameter ephemeral_message_parameters»).
+///
+/// فلا يُثبَّت شكل في الشيفرة: يُجرَّب الأحدث ثم الأقدم، و**لا يُبنى عليه سلوك**
+/// أصلاً — التسليم **غير مضمون** (لا يصل غير المتّصلين)، والردّ على رسالة فانية
+/// يجب أن يقع خلال ١٥ ث. فالأساس هو [`notify_member`] وسقوطُه إلى **الخاص** ثم
+/// إلى المحادثة نفسها، والفانية تحسينٌ لا عماد (شرط ت٨).
+pub const EPHEMERAL_PARAMS_V10_3: &str = "ephemeral_message_parameters";
+pub const EPHEMERAL_PARAMS_V10_2: &str = "receiver_user_id";
 
 // ── pairing (OTP) ───────────────────────────────────────────────────────────
 /// Six digits: a four-digit code is guessable inside the attempt budget.
@@ -272,6 +302,43 @@ fn pairing_hint(from_id: i64) -> String {
     )
 }
 
+/// م٤: كيف يُخاطَب البوت في **المجموعة**. وضعان لا أكثر، والمجهول يُقيَّد في
+/// `settings::clamp_group_mode` قبل أن يصل إلى هنا.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GroupMode {
+    /// **الافتراضيّ (قرار المالك)**: لا معالجة إلا لما خُوطب فيه البوت
+    /// (منشن أو ردّ على رسالته). وما عدا ذلك **صمت** — ليس تجاهلاً، بل لأن
+    /// رسالةً لا تخاطبه ليست طلباً.
+    #[default]
+    Mentions,
+    /// الموسَّع: كل رسالة تُعرَض على **المالك في خاصّه** كبطاقة أزرار، ولا
+    /// معالجة قبل ضغطته — فالموافقة تحلّ محلّ المنشن.
+    All,
+}
+
+/// نوع المحادثة كما يعنينا: **خاصة** (المالك وحده) أو **مجموعة** (فيها غير
+/// المالك، فتلزم قائمة السماح والأوضاع).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChatKind {
+    Private,
+    Group,
+}
+
+/// هوية البوت من `getMe` — بها وحدها يُعرَف المنشن (`@username`) والردّ على
+/// رسالة البوت. وبلا معرفةٍ لا تُدَّعى معرفة: [`PollState::identity`] يبقى
+/// فارغاً و`mentions_bot` تعيد `false` بصدق.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BotIdentity {
+    pub id: i64,
+    pub username: String,
+}
+
+impl BotIdentity {
+    fn known(&self) -> bool {
+        self.id != 0 || !self.username.is_empty()
+    }
+}
+
 /// The settings that actually change behaviour — compared on every
 /// `set_settings` so the worker is only restarted when something moved.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -280,6 +347,9 @@ pub struct TgConfig {
     pub owner_id: Option<i64>,
     pub audio_only: bool,
     pub local_url: Option<String>,
+    /// م٤: وضع المجموعة (يُقرأ من الإعدادات ويدخل مقارنة إعادة التشغيل —
+    /// تغييره يجب أن يبني عاملاً جديداً لا أن يبقى القديم).
+    pub group_mode: GroupMode,
 }
 
 impl TgConfig {
@@ -299,6 +369,13 @@ impl TgConfig {
                 Some(local.trim_end_matches('/').to_string())
             } else {
                 Some(format!("http://{}", local.trim_end_matches('/')))
+            },
+            group_mode: if crate::settings::clamp_group_mode(&s.telegram_group_mode)
+                == crate::settings::GROUP_MODE_ALL
+            {
+                GroupMode::All
+            } else {
+                GroupMode::Mentions
             },
         }
     }
@@ -397,19 +474,46 @@ fn parse_mode_action(data: &str) -> Option<(String, Mode)> {
     Some((token, mode))
 }
 
-/// وسم مهمّة البوت في سِجلّ المهامّ (م٢): `telegram:<chat_id>`.
+/// وسم مهمّة البوت في سِجلّ المهامّ (م٢): `telegram:<chat_id>:<user_id>`.
 ///
 /// **لماذا الوسم لا معرّف المهمّة وحده**: `/kill` يجب أن يُلغي مهمّة **مَن
-/// أرسلها** لا مهمّة غيره (وإن كان المالك وحده مسموحاً اليوم، فالفصل يبقى شرطاً
-/// لأن الطابور لكل مستخدم في م٤). والوسم هو ما يجعل المهمّة قابلة للعثور عليها
-/// من الخيط الذي يعالج التحديث، بلا حالة إضافية تُزامَن.
-fn job_label(chat_id: i64) -> String {
-    format!("telegram:{chat_id}")
+/// أرسلها** لا مهمّة غيره. والوسم هو ما يجعل المهمّة قابلة للعثور عليها من
+/// الخيط الذي يعالج التحديث، بلا حالة إضافية تُزامَن.
+///
+/// **ولماذا `<user_id>` أُضيف في م٤**: مجموعةٌ فيها عشرة أعضاء كلّهم بوسم
+/// `telegram:<chat>` واحد تعني أن `/kill` واحداً — أو ضغطة زرّ — تُلغي مهامّ
+/// **الجميع**. والفصل بالمستخدم هو ما يجعل «لا يُلغي أحدٌ مهمّة غيره» صحيحاً
+/// بالبناء لا بالوعد.
+fn job_label(chat_id: i64, user_id: i64) -> String {
+    format!("telegram:{chat_id}:{user_id}")
 }
 
-/// معرّفات المهامّ النشطة **لهذه المحادثة** (وسم `telegram:<chat_id>`).
-fn active_job_ids(chat_id: i64) -> Vec<u64> {
-    let want = job_label(chat_id);
+/// بادئة مهامّ محادثةٍ بعينها — كل مستخدميها. تُقرأ بها `/status` (للمالك).
+fn chat_label_prefix(chat_id: i64) -> String {
+    format!("telegram:{chat_id}:")
+}
+
+/// هل هذه المحادثة مجموعة؟ تلغرام يعطي المجموعات والقنوات معرّفات **سالية**،
+/// والمعرّف الموجب محادثة خاصة. الشرط واحد في كل الملف.
+fn is_group_chat(chat_id: i64) -> bool {
+    chat_id < 0
+}
+
+/// نوع المحادثة من التحديث: `chat.type` إن وُجد، وإلا فالإشارة الرقمية —
+/// فاختبارٌ يبني مجموعةً بمعرّف سالب بلا حقل نوع لا يُقرأ خاصاً.
+fn chat_kind_of(chat_id: i64, msg: &Value) -> ChatKind {
+    match msg.pointer("/chat/type").and_then(Value::as_str) {
+        Some("private") => ChatKind::Private,
+        Some("group" | "supergroup" | "channel") => ChatKind::Group,
+        _ if is_group_chat(chat_id) => ChatKind::Group,
+        _ => ChatKind::Private,
+    }
+}
+
+/// معرّفات المهامّ النشطة **لهذا المستخدم في هذه المحادثة** (وسم
+/// `telegram:<chat_id>:<user_id>`).
+fn active_job_ids(chat_id: i64, user_id: i64) -> Vec<u64> {
+    let want = job_label(chat_id, user_id);
     slots::active_jobs()
         .into_iter()
         .filter(|j| j.label == want)
@@ -417,13 +521,39 @@ fn active_job_ids(chat_id: i64) -> Vec<u64> {
         .collect()
 }
 
-/// زر الإلغاء على رسالة التقدّم: `cancel:<chat_id>` — نفس معنى `/kill` حرفاً.
-fn cancel_button(chat_id: i64) -> Value {
+/// معرّفات مهامّ **المحادثة كلها** — كل مستخدميها. يقرؤها `/kill` من المالك
+/// وحده (و`/status`)، ولا يقرؤها زرٌّ ولا أمرُ عضو.
+fn active_job_ids_in_chat(chat_id: i64) -> Vec<u64> {
+    let prefix = chat_label_prefix(chat_id);
+    slots::active_jobs()
+        .into_iter()
+        .filter(|j| j.label.starts_with(&prefix))
+        .map(|j| j.id)
+        .collect()
+}
+
+/// زر الإلغاء على رسالة التقدّم: `cancel:<chat_id>:<user_id>` — نفس معنى
+/// `/kill` حرفاً، **وموثَّقٌ بصاحبه**: ضغطة من غيره تُرفض قبل أن تصل إلى السِجلّ.
+fn cancel_button(chat_id: i64, user_id: i64) -> Value {
     json!({
         "inline_keyboard": [[
-            { "text": "🛑 إلغاء", "callback_data": format!("cancel:{chat_id}") }
+            { "text": "🛑 إلغاء", "callback_data": format!("cancel:{chat_id}:{user_id}") }
         ]]
     })
+}
+
+/// يقرأ `cancel:<chat_id>:<user_id>`. الشكل القديم `cancel:<chat_id>` بلا صاحب
+/// **لا يُقبل**: بلا صاحبٍ لا يمكن مصادقة الضغطة، والقبول يعني إلغاء مهامّ
+/// الجميع (وهو الفرق بين ت٢ وت٥).
+fn parse_cancel_button(data: &str) -> Option<(i64, i64)> {
+    let rest = data.strip_prefix("cancel:")?;
+    let mut it = rest.split(':');
+    let chat: i64 = it.next()?.trim().parse().ok()?;
+    let user: i64 = it.next()?.trim().parse().ok()?;
+    if it.next().is_some() {
+        return None;
+    }
+    Some((chat, user))
 }
 
 /// **لوحة فارغة صراحةً** — إزالة الأزرار تُطلَب ولا تُترك لسلوك ضمني.
@@ -443,20 +573,43 @@ fn no_keyboard() -> Value {
 ///
 /// `pub(crate)` لأن قياس **زمن الحجب** يحتاج سِجلّ المهامّ الحقيقي، ومرافقه في
 /// `slots::tests` حيث يوجد (`registry_lock` + `run_registered`).
-pub(crate) fn cancel_chat_jobs(chat_id: i64) -> String {
-    cancel_chat_jobs_with(chat_id, CANCEL_CONFIRM_WAIT)
+///
+/// **م٤**: الإلغاء صار **لمستخدمٍ بعينه** (`user_id`) لا لكل مهامّ المحادثة —
+/// وهو نصّ «لا يُلغي أحدٌ مهمّة غيره» في مسار `/kill`.
+pub(crate) fn cancel_chat_jobs(chat_id: i64, user_id: i64) -> String {
+    cancel_chat_jobs_with(chat_id, user_id, CANCEL_CONFIRM_WAIT)
 }
 
 /// نفس العمل بمهلة انتظار صريحة — والمنتَج ينادي [`cancel_chat_jobs`] بمهلة
 /// [`CANCEL_CONFIRM_WAIT`]، وهذه تُقاس بها **نصوص المراحل** بلا انتظار ثانيتين
 /// في كل فحص (والمهلة لا تغيّر النصّ، بل تُغيّر جواب «هل فرغت فعلاً؟»).
-pub(crate) fn cancel_chat_jobs_with(chat_id: i64, wait: Duration) -> String {
-    let ids = active_job_ids(chat_id);
+///
+/// **و`cancel_job` لكل معرّف — لا `cancel_all`** (شرط ت٥): `cancel_all` يوقف
+/// كل ما على الجهاز (ومنها مهامّ الواجهة والجسر ومستخدمٍ آخر)، وهو عكس المطلوب.
+pub(crate) fn cancel_chat_jobs_with(chat_id: i64, user_id: i64, wait: Duration) -> String {
+    cancel_ids(&active_job_ids(chat_id, user_id), wait)
+}
+
+/// **`/kill` من المالك**: يوقف مهامّ **المحادثة كلها** — المالك صاحب الجهاز،
+/// وأمره يوقف ما يجري في محادثته.
+///
+/// **وحدُّه**: لا يمسّ محادثةً أخرى ولا مهمّة الواجهة/الجسر/CLI. وهذا فرقُه عن
+/// [`slots::cancel_all`] — والأخير يوقف **كل** ما على الجهاز، ومنه عمل
+/// المستخدم نفسه في نافذة أخرى (وهو ما يمنعه حارس ت٥).
+///
+/// **وأما الضغطة على زرّ** فتبقى لصاحب المهمّة أو المالك وحدهم (ت٢)، والأمرُ
+/// لا يغيّر ذلك: العضو لا يملك `/kill` أصلاً (ت٧).
+pub(crate) fn cancel_chat_all_jobs(chat_id: i64) -> String {
+    cancel_ids(&active_job_ids_in_chat(chat_id), CANCEL_CONFIRM_WAIT)
+}
+
+/// النواة الواحدة للإلغاء: `cancel_job` لكل معرّف — **لا `cancel_all`**.
+fn cancel_ids(ids: &[u64], wait: Duration) -> String {
     if ids.is_empty() {
         return "لا مهمّة جارية".to_string();
     }
     let mut marked = 0;
-    for id in &ids {
+    for id in ids {
         if slots::cancel_job(*id) {
             marked += 1;
         }
@@ -467,8 +620,8 @@ pub(crate) fn cancel_chat_jobs_with(chat_id: i64, wait: Duration) -> String {
     // الانتظار **محدود**: بعد انتهائه نقول الحقيقة لا الوعد. **والمرحلة تُقرأ
     // من السِجلّ** (م٣/إصلاح)، فلا يُقال «بعد انتهاء نداء المحرّك» لمهمّة ما
     // زالت تنزّل: عدد صادق لمرحلةٍ صادقة.
-    let gone = slots::wait_until_gone(&ids, wait);
-    cancel_reply(gone, slots::phase_of(&ids))
+    let gone = slots::wait_until_gone(ids, wait);
+    cancel_reply(gone, slots::phase_of(ids))
 }
 
 /// الجواب الواحد بعد طلب الإلغاء — دالّة **نقيّة** لتُقاس بلا مهمّة حقيقية،
@@ -533,6 +686,581 @@ fn human_mb(bytes: u64) -> String {
     format!("{:.1}MB", bytes as f64 / (1024.0 * 1024.0))
 }
 
+// ── م٤: مُنظِّم معدّل الإرسال في المجموعة ───────────────────────────────────
+
+/// نافذة زمنية من الطلبات لكل محادثة، بسقفين **معلَنين** من توثيق تلغرام:
+/// [`GROUP_MSG_PER_MINUTE`] في الدقيقة و[`GROUP_MIN_GAP`] بين رسالتين.
+///
+/// **والساعة معامل لا `Instant::now()` داخلياً**: فيُقاس السلوك عند حدود
+/// النافذة بلا انتظار دقيقةٍ في اختبار (وهو نفس نمط `purge_expired`).
+///
+/// **ولا يُطبَّق على المحادثات الخاصة**: السقف سقف **مجموعة**، والمحادثة
+/// الخاصة مع المالك رسالة/ثانية لا تبلغها أصلاً، ففرضُه هناك يقصّ بلا سبب.
+#[derive(Debug, Default)]
+struct SendPacer {
+    hits: HashMap<i64, VecDeque<Instant>>,
+}
+
+impl SendPacer {
+    /// هل يُسمح بإرسالٍ الآن؟ **يسجّل الطلب إن سُمح** (أو يرفض بلا تسجيل).
+    fn admit_at(&mut self, chat_id: i64, now: Instant) -> bool {
+        if !is_group_chat(chat_id) {
+            return true;
+        }
+        let q = self.hits.entry(chat_id).or_default();
+        while let Some(front) = q.front() {
+            if now.saturating_duration_since(*front) >= Duration::from_secs(60) {
+                q.pop_front();
+            } else {
+                break;
+            }
+        }
+        let gap_ok = q
+            .back()
+            .map(|last| now.saturating_duration_since(*last) >= GROUP_MIN_GAP)
+            .unwrap_or(true);
+        if q.len() >= GROUP_MSG_PER_MINUTE || !gap_ok {
+            return false;
+        }
+        q.push_back(now);
+        true
+    }
+
+    /// متى كان آخر طلبٍ مسموح لهذه المحادثة — تُقرأ في الاختبار **لتُثبَت
+    /// الوصلة** (أن `send_message` في مجموعة يمرّ من هنا فعلاً)، لا السياسة وحدها.
+    #[cfg(test)]
+    fn last_hit(&self, chat_id: i64) -> Option<Instant> {
+        self.hits.get(&chat_id).and_then(|q| q.back().copied())
+    }
+}
+
+fn send_pacer() -> &'static Mutex<SendPacer> {
+    static P: OnceLock<Mutex<SendPacer>> = OnceLock::new();
+    P.get_or_init(|| Mutex::new(SendPacer::default()))
+}
+
+#[cfg(test)]
+fn reset_send_pacer() {
+    let mut p = send_pacer().lock().unwrap_or_else(|e| e.into_inner());
+    p.hits.clear();
+}
+
+/// **خيط الكاتب وحده ينام على المعدّل.** كان `pace_group_send` يُنادى من خيط
+/// الاستطلاع، فأي انتظار فيه **يوقف قراءة التحديثات** ومعها `/kill`. والعلاج
+/// ليس تقصير الانتظار ولا إسقاط الرسالة، بل **ألّا يكون الإرسال متزامناً في
+/// خيط الاستطلاع أصلاً**: الطلب يُدرَج في [`SendQueue`] ويستهلكه خيطٌ كاتب
+/// واحد، فالانتظار يقع على خيطه وحده.
+///
+/// **ولذلك لا حدّ زمني لهذا الانتظار**: الخيط مخصَّص له، ولا يحجب غيره؛ وحدٌّ
+/// زمني كان يعني إسقاط رسالة عضو — وهو ما يمنعه التصميم §٢-٣. (الثابت القديم
+/// `GROUP_PACE_MAX_WAIT` أُزيل لأنه لم يبقَ له مستهلك.)
+fn pace_group_send(chat_id: i64) {
+    loop {
+        {
+            let mut p = send_pacer().lock().unwrap_or_else(|e| e.into_inner());
+            if p.admit_at(chat_id, Instant::now()) {
+                return;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(120));
+    }
+}
+
+/// حصّة **تعديل** في مجموعة بلا انتظار: `false` تعني «أُسقِط هذا التعديل
+/// التجميلي».
+///
+/// **وهذا هو موضع الإسقاط الوحيد اليوم**، وهو **قبل الطابور لا داخله**: كتابة
+/// الحالة تحمل قفل رسالتها عبر نداء الشبكة (`status_push`)، فترتيبُ ما يصل
+/// السلك هو ترتيب الرتب — وإدراجُها في طابور كان يَكسر ذلك الضمان (وهو سلوك
+/// مُختبَر). فلا تتكدّس التعديلات ولا تزاحم رسالةَ عضو.
+fn pace_group_edit(chat_id: i64) -> bool {
+    send_pacer()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .admit_at(chat_id, Instant::now())
+}
+
+// ── م٤: طابور الإرسال وخيط الكاتب ──────────────────────────────────────────
+
+/// سعة الطابور لكل محادثة قبل أن يُصرَخ.
+///
+/// **وما يقع عند بلوغها**: لا شيء يُسقَط. الرسالة الضرورية سؤالُ عضوٍ أو
+/// جوابُه، وإسقاطُها صمتٌ عليه — والتأخّر في الإرسال أهون من الصمت (التصميم
+/// §٢-٣). فالسقف هنا **عتبة إنذار** لا عتبة إسقاط: يُكتب سطرٌ واحد لكل انفجار
+/// بعمق الطابور وعدد المُسقَط (صفر) — فلا يمرّ تضخّمٌ بصمت.
+pub const SEND_QUEUE_CAP: usize = 24;
+
+/// أقصى انتظارٍ **لمعرّف رسالة** على خيط مهمّة ([`send_message_wait_id`]).
+/// ولا يناديه خيط الاستطلاع أبداً — فالحجب هنا لا يمسّ قراءة التحديثات.
+pub const SEND_ID_WAIT: Duration = Duration::from_secs(90);
+
+/// خانة معرّف رسالة يكتبها خيط الكاتب بعد نجاح الإرسال — فيبقى المُرسِل غير
+/// حاجب ويظلّ قادراً على تحرير رسالته لاحقاً (‏`Pending::ask_msg_id`).
+type IdSlot = Arc<AtomicI64>;
+
+/// ما يُنفّذه الكاتب.
+enum SendItem {
+    /// رسالة نصّية في مجموعة، و`pin` تعني «ثبّتها بعد إرسالها» (رسالة التعريف).
+    Message {
+        chat_id: i64,
+        text: String,
+        keyboard: Option<Value>,
+        reply_to: Option<i64>,
+        pin: bool,
+        id_slot: Option<IdSlot>,
+    },
+    /// تنبيه عضوٍ في مجموعة: **السلسلة كلها على خيط الكاتب** (فانية ← خاص ←
+    /// المحادثة) — لأن معرفة نجاح كل خطوة تحتاج نتيجتها، وهي هنا لا على خيط
+    /// الاستطلاع.
+    Notify {
+        chat_id: i64,
+        user_id: i64,
+        text: String,
+    },
+}
+
+struct SendJob {
+    cfg: TgConfig,
+    item: SendItem,
+}
+
+#[derive(Default)]
+struct SendQueueState {
+    q: VecDeque<SendJob>,
+    /// طلبٌ يخضع للمعدّل الآن — فالسِجلّ ليس فارغاً وإن خلا الطابور.
+    busy: bool,
+    /// عمق أُعلن لكل محادثة — فلا يتكرّر السطر مع كل رسالة في الانفجار نفسه.
+    warned: HashMap<i64, usize>,
+}
+
+/// **طابور الإرسال**: محدود العتبة، وخيطٌ كاتب واحد يستهلكه.
+struct SendQueue {
+    state: Mutex<SendQueueState>,
+    ready: Condvar,
+}
+
+impl SendQueue {
+    fn new() -> Self {
+        Self {
+            state: Mutex::new(SendQueueState::default()),
+            ready: Condvar::new(),
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, SendQueueState> {
+        self.state.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// يُدرج طلباً **بلا حجب ولا إسقاط**، ويُصرَخ إن تجاوز العمق العتبة.
+    fn push(&self, job: SendJob) {
+        let chat_id = match &job.item {
+            SendItem::Message { chat_id, .. } | SendItem::Notify { chat_id, .. } => *chat_id,
+        };
+        {
+            let mut s = self.lock();
+            s.q.push_back(job);
+            let depth = s.q.len();
+            let seen = s.warned.get(&chat_id).copied().unwrap_or(0);
+            if depth > SEND_QUEUE_CAP && depth > seen {
+                s.warned.insert(chat_id, depth);
+                tracing::warn!(
+                    target: "telegram",
+                    "طابور إرسال المحادثة {chat_id} بلغ {depth} (العتبة {SEND_QUEUE_CAP}) — \
+                     المُسقَط 0: الرسائل الضرورية لا تُسقَط، والتأخّر على خيط الكاتب وحده"
+                );
+            } else if depth <= SEND_QUEUE_CAP {
+                s.warned.remove(&chat_id);
+            }
+        }
+        self.ready.notify_one();
+    }
+
+    /// يُخرج الطلب التالي، **وينتظر إن خلا الطابور**.
+    ///
+    /// **ولا إيقاف للكاتب**: خيطٌ واحد ساكن على `Condvar` كلفتُه صفر، وإيقافُه
+    /// عند إطفاء البوت كان يُبقي رسالةً أُدرجت قبله بلا إرسال — والكاتب يُفرغ
+    /// ما في يده دائماً.
+    fn pop(&self) -> Option<SendJob> {
+        let mut s = self.lock();
+        loop {
+            if let Some(job) = s.q.pop_front() {
+                s.busy = true;
+                return Some(job);
+            }
+            s = self.ready.wait(s).unwrap_or_else(|p| p.into_inner());
+        }
+    }
+
+    /// يُعلن أن الطلب الحالي انتهى تنفيذه.
+    fn done(&self) {
+        self.lock().busy = false;
+    }
+
+    /// معلَّق الآن (منتظرٌ + قيد التنفيذ) — للقياس في الاختبارات.
+    #[cfg(test)]
+    fn depth(&self) -> usize {
+        let s = self.lock();
+        s.q.len() + usize::from(s.busy)
+    }
+}
+
+/// الطابور **واحد للعملية**، وخيطه الكاتب يُنشأ عند أول استعمال.
+///
+/// **ولماذا عامّ لا ممرَّر**: الإرسال يقع من مواضع كثيرة (خيط الاستطلاع، خيوط
+/// المهامّ، خيط التصغير، خيط الكاتب نفسه)، وتمرير الطابور إلى كلٍّ منها كان
+/// يُضخّم التوقيعات بلا مقابل — تماماً كسِجلّ `telegram-jobs` وبوّابات الرسائل.
+fn send_queue() -> &'static Arc<SendQueue> {
+    static Q: OnceLock<Arc<SendQueue>> = OnceLock::new();
+    Q.get_or_init(|| Arc::new(SendQueue::new()))
+}
+
+/// ينشئ خيط الكاتب مرة واحدة (‏`OnceLock` على المقبض) — **ويعيش ما دامت
+/// العملية**: لا يُوقَف عند إطفاء البوت، فلا تضيع رسالةٌ أُدرجت قبله.
+fn ensure_send_writer() {
+    static W: OnceLock<()> = OnceLock::new();
+    W.get_or_init(|| {
+        let queue = send_queue().clone();
+        let _ = std::thread::Builder::new()
+            .name("telegram-send".into())
+            .spawn(move || {
+                while let Some(job) = queue.pop() {
+                    run_send_job(&job);
+                    queue.done();
+                }
+            });
+    });
+}
+
+/// ينفّذ طلب إرسالٍ واحداً **على خيط الكاتب**: المعدّل هنا وحده، ثم النداء.
+fn run_send_job(job: &SendJob) {
+    match &job.item {
+        SendItem::Message {
+            chat_id,
+            text,
+            keyboard,
+            reply_to,
+            pin,
+            id_slot,
+        } => {
+            pace_group_send(*chat_id);
+            match send_message_now(&job.cfg, *chat_id, text, keyboard.clone(), *reply_to) {
+                Ok(id) => {
+                    if let Some(slot) = id_slot {
+                        slot.store(id, Ordering::SeqCst);
+                    }
+                    if *pin {
+                        let body = json!({
+                            "chat_id": chat_id,
+                            "message_id": id,
+                            "disable_notification": true,
+                        });
+                        match call(&job.cfg, "pinChatMessage", &body, Duration::from_secs(20)) {
+                            Ok(_) => tracing::info!(
+                                target: "telegram",
+                                "ثُبّتت رسالة التعريف في {chat_id} (مرة واحدة)"
+                            ),
+                            Err(e) => tracing::warn!(
+                                target: "telegram",
+                                "تعذّر تثبيت رسالة التعريف في {chat_id}: {e}"
+                            ),
+                        }
+                    }
+                }
+                Err(e) => tracing::warn!(
+                    target: "telegram",
+                    "تعذّر الإرسال إلى {chat_id} من طابور الإرسال: {e}"
+                ),
+            }
+        }
+        SendItem::Notify {
+            chat_id,
+            user_id,
+            text,
+        } => {
+            let path = run_notify_chain(&job.cfg, *chat_id, *user_id, text);
+            tracing::info!(target: "telegram", "تنبيه العضو {user_id} في {chat_id} سلك {path:?}");
+        }
+    }
+}
+
+/// سلسلة التنبيه **على خيط الكاتب**: فانية ← خاص ← المحادثة. والمعدّل يُطبَّق
+/// على كل خطوةٍ داخل المجموعة (والخاص ليس عليه حصّة أصلاً).
+fn run_notify_chain(cfg: &TgConfig, chat_id: i64, user_id: i64, text: &str) -> NotifyPath {
+    for shape in [EPHEMERAL_PARAMS_V10_3, EPHEMERAL_PARAMS_V10_2] {
+        pace_group_send(chat_id);
+        if send_ephemeral(cfg, chat_id, user_id, text, shape).is_ok() {
+            return NotifyPath::Ephemeral;
+        }
+    }
+    // الخاص ليس محادثة مجموعة ⇒ لا حصّة عليه.
+    if send_message_now(cfg, user_id, text, None, None).is_ok() {
+        return NotifyPath::Private;
+    }
+    pace_group_send(chat_id);
+    let _ = send_message_now(cfg, chat_id, &format!("@{user_id} {text}"), None, None);
+    NotifyPath::InChat
+}
+
+/// انتظار الطابور حتى يفرغ — **للاختبار وحده**: الإنتاج لا ينتظر إرسالاً أبداً.
+#[cfg(test)]
+fn wait_sends(timeout: Duration) -> bool {
+    let started = Instant::now();
+    loop {
+        if send_queue().depth() == 0 {
+            return true;
+        }
+        if started.elapsed() >= timeout {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+// ── م٤: قائمة السماح — `chat_id` + `user_id` معاً ──────────────────────────
+
+/// مدخل سماح محفوظ. **الزوج لا العضو وحده**: من سُمح له في مجموعةٍ ليس
+/// مسموحاً في غيرها — فالصلاحية للمكان وللعضو معاً، كما في التصميم §٣.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct AllowPair {
+    chat_id: i64,
+    user_id: i64,
+}
+
+/// ملف قائمة السماح كما يُكتب على القرص.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+struct AccessFile {
+    #[serde(default)]
+    v: u32,
+    #[serde(default)]
+    entries: Vec<AllowPair>,
+}
+
+/// **قائمة السماح** (تصميم م٤ §٣): البوت يشغّل معالجةً على **جهاز المالك**، فلا
+/// يكفي أن يكون المُرسِل في المجموعة — يلزم أن يكون مسموحاً فيها بعينه.
+///
+/// **والمالك مسموح دائماً** بلا مدخل: هو صاحب الجهاز، وطلبُه الإذن من نفسه عبث.
+/// و`path: None` يعني «بلا حفظ» — وهو حال كل اختبار (فلا يلمس قرصاً).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct AccessStore {
+    entries: HashSet<(i64, i64)>,
+    path: Option<PathBuf>,
+}
+
+impl AccessStore {
+    /// تحميل من ملف — وملفٌ تالف أو غائب يعني **قائمة فارغة** لا خطأً: أساسٌ
+    /// ضيّق يُصلَح بضغطة، وأساسٌ واسع لا يُستَرَدّ.
+    fn from_path(path: PathBuf) -> Self {
+        let entries = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<AccessFile>(&raw).ok())
+            .map(|f| {
+                f.entries
+                    .into_iter()
+                    .map(|e| (e.chat_id, e.user_id))
+                    .collect()
+            })
+            .unwrap_or_default();
+        Self {
+            entries,
+            path: Some(path),
+        }
+    }
+
+    /// الحكم الواحد: المالك دائماً، وإلا فمدخلٌ صريح لهذا الزوج.
+    fn allows(&self, chat_id: i64, user_id: i64, owner: Option<i64>) -> bool {
+        if Some(user_id) == owner {
+            return true;
+        }
+        self.entries.contains(&(chat_id, user_id))
+    }
+
+    /// يُضيف مدخلاً ويعيد `true` إن كان جديداً (فلا يُقال «أُضيف» لموجود).
+    fn allow(&mut self, chat_id: i64, user_id: i64) -> bool {
+        self.entries.insert((chat_id, user_id))
+    }
+
+    /// كتابة **ذرّية** (`atomic.rs`) — القائمة تُقرأ عند كل رسالة، فملفٌ مقطوع
+    /// يعني فقدان كل السماحات.
+    fn save(&self) -> Result<(), String> {
+        let Some(path) = self.path.as_ref() else {
+            return Ok(());
+        };
+        let mut entries: Vec<AllowPair> = self
+            .entries
+            .iter()
+            .map(|(chat_id, user_id)| AllowPair {
+                chat_id: *chat_id,
+                user_id: *user_id,
+            })
+            .collect();
+        entries.sort_by_key(|e| (e.chat_id, e.user_id));
+        let body =
+            serde_json::to_string(&AccessFile { v: 1, entries }).map_err(|e| e.to_string())?;
+        crate::atomic::write_atomic_str(path, &body, "json").map_err(|e| e.to_string())
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+/// ملف قائمة السماح في مجلد بيانات التطبيق.
+fn access_path(app_data: &Path) -> PathBuf {
+    app_data.join("telegram-access.json")
+}
+
+/// **يُخاطَب البوت؟** منشن `@username` (بالكيانات إن وُجدت، وبالنصّ كذلك لأن
+/// إزاحات الكيانات UTF-16 وسهلة الخطأ)، أو `text_mention` بمعرّف البوت، أو
+/// **ردٌّ على رسالةٍ من البوت**.
+///
+/// وبلا هويةٍ معروفة (تعذّر `getMe`) تعيد `false` — لا يُدَّعى منشنٌ لم يُقرأ.
+fn mentions_bot(msg: &Value, bot: &BotIdentity) -> bool {
+    if !bot.known() {
+        return false;
+    }
+    if bot.id != 0
+        && msg
+            .pointer("/reply_to_message/from/id")
+            .and_then(Value::as_i64)
+            == Some(bot.id)
+    {
+        return true;
+    }
+    for key in ["entities", "caption_entities"] {
+        for e in msg
+            .get(key)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+        {
+            match e.get("type").and_then(Value::as_str) {
+                // `text_mention` يحمل معرّف البوت نفسه — فلا يُبنى على الاسم.
+                Some("text_mention")
+                    if e.pointer("/user/id").and_then(Value::as_i64) == Some(bot.id) =>
+                {
+                    return true;
+                }
+                Some("mention") => {
+                    if let Some(t) = e.get("text").and_then(Value::as_str) {
+                        if bot.username_matches(t) {
+                            return true;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let text = msg
+        .get("text")
+        .or_else(|| msg.get("caption"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    text.split_whitespace().any(|w| bot.username_matches(w))
+}
+
+impl BotIdentity {
+    /// هل هذه الكلمة منشَنٌ لهذا البوت؟ يقبل `@Name` و`@Name,` وما شابه من
+    /// الترقيم الملتصق (وهو شائع في نهاية جملة)، ويقارن بلا حساسية لحالة الأحرف
+    /// (تلغرام لا يفرّق فيها في أسماء المستخدمين).
+    fn username_matches(&self, word: &str) -> bool {
+        if self.username.is_empty() {
+            return false;
+        }
+        let core = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '_' && c != '@');
+        let Some(handle) = core.strip_prefix('@') else {
+            return false;
+        };
+        !handle.is_empty() && handle.eq_ignore_ascii_case(&self.username)
+    }
+}
+
+/// **أمرٌ موجَّه إلى هذا البوت**: `/kill` أو `/kill@MyBot`؛ و`/kill@OtherBot`
+/// ليس لنا فلا يُقرأ (فلا يُجاب عنه بوتٌ ليس المقصود).
+///
+/// **ولماذا يُحتسب «مخاطَبةً»**: في مجموعةٍ بالمنشن، كتابةُ عضوٍ `/status`
+/// مخاطبةٌ صريحة للبوت لا رسالةً عابرة — وتلغرام نفسه يرسل الأمر ككيان
+/// `bot_command`، والعملاء تُلحق `@اسمه` تلقائياً.
+fn command_for_bot(text: &str, bot: &BotIdentity) -> bool {
+    let Some(rest) = text.trim().strip_prefix('/') else {
+        return false;
+    };
+    let head = rest.split_whitespace().next().unwrap_or("");
+    let mut it = head.split('@');
+    let name = it.next().unwrap_or("");
+    if name.is_empty() {
+        return false;
+    }
+    match it.next() {
+        // بلا تسمية: الأمر للبوت الوحيد في المحادثة (وهو حالنا).
+        None => true,
+        Some(handle) => bot.username_matches(&format!("@{handle}")),
+    }
+}
+
+// ── م٤: مسار تنبيه عضوٍ في مجموعة (فانيّ ← خاص ← المحادثة) ────────────────
+
+/// أيّ طريقٍ سلك التنبيه فعلاً — **يُعاد ليُقاس**، فلا يُدَّعى مسارٌ لم يقع.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NotifyPath {
+    /// رسالة فانية في المجموعة (‏Bot API 10.2/10.3) — تحسينٌ لا عماد.
+    Ephemeral,
+    /// رسالة في **خاص العضو** (تعمل فقط إن كان قد بدأ محادثةً مع البوت).
+    Private,
+    /// رسالة في المحادثة نفسها — الطريق الأخير الذي لا يفشل.
+    InChat,
+}
+
+/// يُبلّغ عضواً في مجموعة برسالةٍ موجزة. **ولا يُنفَّذ هنا**: الطلب يُدرَج في
+/// طابور الإرسال، والسلسلة (فانية ← خاص ← المحادثة) تُسلك على **خيط الكاتب**.
+///
+/// **ولماذا لا هنا**: معرفة نجاح كل خطوة تحتاج نتيجتها، وانتظارُها على خيط
+/// الاستطلاع يوقف قراءة التحديثات ومعها `/kill` — وهو العطل الذي أُزيل.
+/// ويعيد `true` إن أُدرج الطلب.
+///
+/// **ولا يُبنى على الفانية**: التسليم غير مضمون (لا يصل غير المتّصلين)، والشكل
+/// نفسُه تغيّر بين 10.2 و10.3 ⇒ فشلُها **ليس فشلاً**، بل خطوة تُتجاوز.
+fn notify_member(cfg: &TgConfig, chat_id: i64, user_id: i64, text: &str) -> bool {
+    if !is_group_chat(chat_id) {
+        // الخاص ليس عليه حصّة، فالنداء المباشر هو الأقصر — ويقع غالباً على خيط
+        // المهامّ، ولا يمسّ خيط الاستطلاع في حالته الغالبة (بطاقة المالك).
+        return send_message_now(cfg, user_id, text, None, None).is_ok();
+    }
+    send_group_async(
+        cfg,
+        SendItem::Notify {
+            chat_id,
+            user_id,
+            text: text.to_string(),
+        },
+    )
+}
+
+/// محاولة إرسالٍ فانيّة بشكلٍ بعينه. **الشكل معامل** لا ثابت: 10.3 استبدلت
+/// `receiver_user_id` بـ`ephemeral_message_parameters`، فالاثنان يُجرَّبان.
+///
+/// **ولا حصّة هنا**: معدّل الإرسال يُطبَّق في [`run_send_job`] — على خيط الكاتب
+/// وحده. ومن نادى هذه من خيط غيره نادى [`pace_group_send`] قبله.
+fn send_ephemeral(
+    cfg: &TgConfig,
+    chat_id: i64,
+    user_id: i64,
+    text: &str,
+    shape: &str,
+) -> Result<i64, String> {
+    let mut body = json!({ "chat_id": chat_id, "text": text, "disable_web_page_preview": true });
+    body[shape] = if shape == EPHEMERAL_PARAMS_V10_3 {
+        // 10.3: كائنٌ يحمل المستقبِل.
+        json!({ "receiver_user_id": user_id })
+    } else {
+        // 10.2: الحقل مسطّح على الرسالة.
+        json!(user_id)
+    };
+    let v = call(cfg, "sendMessage", &body, Duration::from_secs(20))?;
+    Ok(v.get("message_id").and_then(Value::as_i64).unwrap_or(0))
+}
+
 // ── HTTP: cloud and local speak the same language ───────────────────────────
 
 fn call(cfg: &TgConfig, method: &str, body: &Value, timeout: Duration) -> Result<Value, String> {
@@ -583,7 +1311,9 @@ fn get_updates(cfg: &TgConfig, offset: i64) -> Result<Vec<Value>, String> {
     let body = json!({
         "offset": offset,
         "timeout": LONG_POLL_SECS,
-        "allowed_updates": ["message", "callback_query"],
+        // `my_chat_member` (م٤): لحظة **إضافة البوت إلى مجموعة** — وعندها وحدها
+        // تُثبَّت رسالة التعريف (ت٩)، فلا تُثبَّت مع كل رسالة.
+        "allowed_updates": ["message", "callback_query", "my_chat_member"],
     });
     let v = call(
         cfg,
@@ -598,7 +1328,10 @@ fn get_updates(cfg: &TgConfig, offset: i64) -> Result<Vec<Value>, String> {
 /// الربط يقع الناتج في مكان آخر من المحادثة، وهو أصل شكوى «المحادثة مشتّتة».
 /// والحمولة `reply_parameters: {message_id}` هي الصيغة الحالية في Bot API
 /// (`reply_to_message_id` القديمة ما زالت تُقبل لكنها مهجورة).
-fn send_message(
+///
+/// **وهذا هو النداء الخام**: بلا حصّة وبلا طابور. يناديه الخاصُّ مباشرةً
+/// (فلا حصّة عليه)، وخيطُ الكاتب بعد أن يكون قد أدّى الحصّة.
+fn send_message_now(
     cfg: &TgConfig,
     chat_id: i64,
     text: &str,
@@ -614,6 +1347,88 @@ fn send_message(
     }
     let v = call(cfg, "sendMessage", &body, Duration::from_secs(20))?;
     Ok(v.get("message_id").and_then(Value::as_i64).unwrap_or(0))
+}
+
+/// **إدراج طلبٍ في طابور الإرسال** — يعيد `true` إن أُدرج.
+///
+/// وهو الموضع الذي يمرّ منه كل إرسالٍ في **مجموعة**: لا حصّة هنا ولا انتظار،
+/// والكاتب وحده ينام على المعدّل. ويعيد إنشاء خيط الكاتب إن لم يكن قائماً.
+fn send_group_async(cfg: &TgConfig, item: SendItem) -> bool {
+    ensure_send_writer();
+    send_queue().push(SendJob {
+        cfg: cfg.clone(),
+        item,
+    });
+    true
+}
+
+/// الواجهة التي يناديها الكود كلّه.
+///
+/// * **محادثة خاصة** ⇒ نداءٌ مباشر (لا حصّة على الخاص أصلاً) ويُعاد المعرّف.
+/// * **مجموعة** ⇒ يُدرَج في الطابور ويُعاد `Ok(0)`: **لا معرّف بعد**، ولا انتظار.
+///   ومن يحتاج المعرّف في مجموعة ينادي [`send_message_wait_id`]، ومن يحتاجه
+///   لاحقاً يمرّر [`IdSlot`].
+fn send_message(
+    cfg: &TgConfig,
+    chat_id: i64,
+    text: &str,
+    keyboard: Option<Value>,
+    reply_to: Option<i64>,
+) -> Result<i64, String> {
+    if !is_group_chat(chat_id) {
+        return send_message_now(cfg, chat_id, text, keyboard, reply_to);
+    }
+    send_group_async(
+        cfg,
+        SendItem::Message {
+            chat_id,
+            text: text.to_string(),
+            keyboard,
+            reply_to,
+            pin: false,
+            id_slot: None,
+        },
+    );
+    Ok(0)
+}
+
+/// إرسالٌ في مجموعة **يُنتظَر معرّفُه** — `SEND_ID_WAIT` حدّاً أقصى.
+///
+/// **ولا يناديه خيط الاستطلاع**: انتظارُه هناك هو الحجب الذي أُزيل، فمن ناداه
+/// من خيط مهمّةٍ (سؤال التجاوز) لم يمسّ قراءة التحديثات.
+fn send_message_wait_id(
+    cfg: &TgConfig,
+    chat_id: i64,
+    text: &str,
+    keyboard: Option<Value>,
+    reply_to: Option<i64>,
+) -> Result<i64, String> {
+    if !is_group_chat(chat_id) {
+        return send_message_now(cfg, chat_id, text, keyboard, reply_to);
+    }
+    let slot: IdSlot = Arc::new(AtomicI64::new(0));
+    send_group_async(
+        cfg,
+        SendItem::Message {
+            chat_id,
+            text: text.to_string(),
+            keyboard,
+            reply_to,
+            pin: false,
+            id_slot: Some(slot.clone()),
+        },
+    );
+    let started = Instant::now();
+    loop {
+        let id = slot.load(Ordering::SeqCst);
+        if id != 0 {
+            return Ok(id);
+        }
+        if started.elapsed() >= SEND_ID_WAIT {
+            return Err("انتهت مهلة انتظار معرّف الرسالة من طابور الإرسال".to_string());
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 fn edit_message(cfg: &TgConfig, chat_id: i64, message_id: i64, text: &str) -> Result<(), String> {
@@ -935,6 +1750,9 @@ pub fn parse_message(msg: &Value) -> Option<(i64, i64, Incoming)> {
 
 struct Job {
     chat_id: i64,
+    /// **صاحب الطلب** (م٤): مفتاح الطابور (‏FIFO لكل مستخدم) ووسم المهمّة في
+    /// السِجلّ (`telegram:<chat>:<user>`) ومصادقة الضغطات — ثلاثةٌ بمصدر واحد.
+    user_id: i64,
     source: Source,
     mode: Mode,
     /// رسالة المستخدم الأصلية — كل ردٍّ لهذه المهمّة يقع تحتها (م٣).
@@ -987,6 +1805,8 @@ fn display_name(name: &str) -> String {
 /// الرمز)**، والرمز يسري في أزرار الملف وحده.
 struct Pending {
     chat_id: i64,
+    /// **صاحب الملف** (م٤): أزرارُه لا تُقبل من غيره — ولا يرى غيرُه ملفاته.
+    user_id: i64,
     /// رمز هذا الملف: زرُّه لا يصلح لملفٍ آخر.
     token: String,
     source: Source,
@@ -999,7 +1819,11 @@ struct Pending {
     /// معرّفها **مرجعَ الحالة** للمهمّة الجارية: تُحرَّر رسالةٌ قديمة ويبقى
     /// السؤال الحقيقي بأزراره. والحقل يربط الضغطة بسؤالها: ما لا يطابق يُردّ
     /// بصدق ولا يُحرَّر شيء. و`/mode` **ينقل** الربط إلى الرسالة الجديدة.
-    ask_msg_id: i64,
+    ///
+    /// **ولماذا خانةٌ مشتركة لا رقم** (م٤): في المجموعة يُسلَّم الإرسال إلى خيط
+    /// الكاتب فلا معرّف عند الإدراج، والكاتب يكتبه في هذه الخانة. والضغطة لا
+    /// تقع قبل وجود الرسالة أصلاً، فالنافذة بلا أثر.
+    ask_msg_id: IdSlot,
     /// الاسم المعروض (بلا مسار).
     file: String,
     /// صفّ `telegram-jobs` (يُسجَّل عند الوصول).
@@ -1044,18 +1868,22 @@ impl PendingStore {
 
     /// **ينقل ربط المعلَّق إلى رسالة السؤال الجديدة** (`/mode` يعيد الأزرار في
     /// رسالة جديدة ولا يمحو القديمة) — فالرسالة الحيّة هي الأحدث وحدها.
-    fn set_ask_msg(&mut self, chat_id: i64, token: &str, ask_msg_id: i64) {
+    fn set_ask_msg(&mut self, chat_id: i64, token: &str, ask_msg_id: IdSlot) {
         if let Some(p) = self.by_token.get_mut(&(chat_id, token.to_string())) {
             p.ask_msg_id = ask_msg_id;
         }
     }
 
-    /// معلَّقات محادثةٍ بترتيب الوصول.
-    fn for_chat(&self, chat_id: i64) -> Vec<&Pending> {
+    /// معلَّقات **مستخدمٍ بعينه** في محادثةٍ بترتيب الوصول (م٤).
+    ///
+    /// **ولماذا ليس لكل المحادثة**: في مجموعة، `/mode` بلا هذا الفصل يعرض
+    /// لصاحب الطلب أزرارَ ملفات **غيره** — تسريبٌ بين الأعضاء وضغطةٌ تُشغّل
+    /// ملفاً ليس له.
+    fn for_user(&self, chat_id: i64, user_id: i64) -> Vec<&Pending> {
         let mut v: Vec<&Pending> = self
             .by_token
             .values()
-            .filter(|p| p.chat_id == chat_id)
+            .filter(|p| p.chat_id == chat_id && p.user_id == user_id)
             .collect();
         v.sort_by_key(|p| p.row_id);
         v
@@ -1075,6 +1903,9 @@ impl PendingStore {
 #[derive(Debug, Clone)]
 struct Oversize {
     chat_id: i64,
+    /// **صاحب الناتج** (م٤): ضغطةٌ من غيره تُرفض ولا تستهلك السؤال — فالناتج
+    /// يُرسَل إلى صاحبه، ومن ضغط زرَّ غيره كان سيُرسل ناتجَ غيره إليه.
+    user_id: i64,
     /// رسالة السؤال — **مفتاح المدخل**، وتُحرَّر بالنتيجة.
     msg_id: i64,
     /// رسالة المستخدم الأصلية (الردّ يقع تحتها).
@@ -1347,6 +2178,129 @@ impl Drop for JobRowGuard {
 struct PollState {
     pending: PendingStore,
     hinted: HashSet<i64>,
+    /// هوية البوت من `getMe` (م٤): بها وحدها يُعرَف المنشن والردّ على رسالته.
+    identity: BotIdentity,
+    /// **قائمة السماح** (م٤): `(chat_id, user_id)` — الافتراضيّ فارغة، والحفظ
+    /// في مجلد بيانات التطبيق (يُبنى في [`spawn_poll_thread`]).
+    access: AccessStore,
+    /// طلبات الموافقة المفتوحة (الوضع الموسَّع): تُعرَض في خاصّ المالك ولا
+    /// تُعالَج قبل ضغطته.
+    approvals: ApprovalStore,
+    /// محادثات ثُبّتت فيها رسالة التعريف — **مرة واحدة لكل محادثة** (ت٩).
+    pinned: HashSet<i64>,
+    /// من أُخبر مرّةً أنه غير مسموح: «رسالة **واحدة** موجزة» حرفاً لا سيلاً.
+    notified: HashSet<(i64, i64)>,
+}
+
+// ── م٤: طلبات الموافقة (الوضع الموسَّع) ────────────────────────────────────
+
+/// طلبُ عضوٍ في مجموعة ينتظر قرار المالك. **يُحفظ كاملاً** (المصدر والرسالة
+/// والاسم) لأن الموافقة تُنفِّذ الطلب بعدها — فبلا المصدر تصير الموافقة وعداً
+/// بلا فعل.
+#[derive(Debug, Clone)]
+struct Approval {
+    chat_id: i64,
+    user_id: i64,
+    user: String,
+    source: Source,
+    src_msg_id: i64,
+    file: String,
+    /// رسالة البطاقة في خاصّ المالك — تُحرَّر بالقرار فلا يبقى زرٌّ منتهٍ.
+    card_msg_id: i64,
+}
+
+/// حدّ أعلى **صريح** لطلبات الموافقة في المحادثة الواحدة — فلا يملأ عضوٌ
+/// خاصَّ المالك ببطاقاتٍ لا تنتهي (نفس مبدأ `MAX_PENDING_PER_CHAT`).
+pub const MAX_APPROVALS_PER_CHAT: usize = 10;
+
+#[derive(Default)]
+struct ApprovalStore {
+    by_token: HashMap<String, Approval>,
+}
+
+impl ApprovalStore {
+    fn count_for(&self, chat_id: i64) -> usize {
+        self.by_token
+            .values()
+            .filter(|a| a.chat_id == chat_id)
+            .count()
+    }
+
+    /// يُدرج بلا إسقاط شيء، ويعيد `false` عند بلوغ السقف (فيُقال للمستخدم).
+    fn insert(&mut self, token: String, a: Approval) -> bool {
+        if self.count_for(a.chat_id) >= MAX_APPROVALS_PER_CHAT {
+            return false;
+        }
+        self.by_token.insert(token, a);
+        true
+    }
+
+    fn get(&self, token: &str) -> Option<&Approval> {
+        self.by_token.get(token)
+    }
+
+    fn take(&mut self, token: &str) -> Option<Approval> {
+        self.by_token.remove(token)
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.by_token.len()
+    }
+}
+
+/// أزرار بطاقة الموافقة: `apv:<yes|always|no>:<token>`.
+fn approval_keyboard(token: &str) -> Value {
+    json!({
+        "inline_keyboard": [[
+            { "text": "✅ اسمح", "callback_data": format!("apv:yes:{token}") },
+            { "text": "❌ ارفض", "callback_data": format!("apv:no:{token}") },
+            { "text": "♾️ اسمح دائماً", "callback_data": format!("apv:always:{token}") },
+        ]]
+    })
+}
+
+/// قراءة زرّ الموافقة: `(القرار، الرمز)`.
+fn parse_approval_button(data: &str) -> Option<(&'static str, String)> {
+    let rest = data.strip_prefix("apv:")?;
+    let (verdict, token) = rest.split_once(':')?;
+    let verdict = match verdict {
+        "yes" => "yes",
+        "no" => "no",
+        "always" => "always",
+        _ => return None,
+    };
+    if token.is_empty() {
+        return None;
+    }
+    Some((verdict, token.to_string()))
+}
+
+/// نصّ بطاقة الموافقة في خاصّ المالك.
+fn approval_text(a: &Approval) -> String {
+    format!(
+        "🔗 طلب من {} ({})\n📎 {}\n\nلا معالجة قبل ضغطتك.",
+        a.user, a.user_id, a.file
+    )
+}
+
+/// يُرسل بطاقة الموافقة إلى **خاصّ المالك** ويسجّلها. ويعيد `false` إن تعذّر
+/// إبلاغ المالك — فيُقال ذلك في المجموعة بدل صمتٍ يبدو عطلاً.
+fn send_approval(cfg: &TgConfig, poll: &mut PollState, mut a: Approval) -> bool {
+    let Some(owner) = cfg.owner_id else {
+        return false;
+    };
+    let text = approval_text(&a);
+    let mut token = format!("{:x}", nanos());
+    if poll.approvals.get(&token).is_some() {
+        token.push('x');
+    }
+    let Ok(msg_id) = send_message(cfg, owner, &text, Some(approval_keyboard(&token)), None) else {
+        return false;
+    };
+    a.card_msg_id = msg_id;
+    tracing::info!(target: "telegram", "طلب موافقة من {} في {} (رسالة {msg_id})", a.user_id, a.chat_id);
+    poll.approvals.insert(token, a)
 }
 
 /// صفوف مهامّ محادثةٍ بعينها — للاختبار فقط (لا يقرؤها مسار المنتج).
@@ -1485,8 +2439,34 @@ pub fn apply_settings(s: &Settings) {
     );
     let oversize = Arc::new(Mutex::new(OversizeStore::default()));
     let (tx, rx) = mpsc::channel::<Job>();
-    spawn_job_thread(want.clone(), stop.clone(), rx, oversize.clone());
+    // م٤: الطابور يُبنى على **سقف الجهاز نفسه** (`slots::current_limit`) —
+    // رقمٌ واحد لا رقمان يفترقان، وقصّه إلى 1..=2 في `clamp_limit`.
+    let queue = Arc::new(JobQueue::new(slots::current_limit()));
+    // **وخيط الكاتب** يقوم مع العامل: الإرسال في المجموعة لا يقع على خيط
+    // الاستطلاع ولا على خيوط المهامّ.
+    ensure_send_writer();
+    spawn_job_thread(want.clone(), stop.clone(), rx, oversize.clone(), queue);
     spawn_poll_thread(want, stop, tx, oversize);
+}
+
+/// هوية البوت من `getMe`. الفشل ليس كارثة: تُعاد هوية فارغة و`known()` تكذب
+/// على أحد — والمنشن لا يُدَّعى بلا اسم.
+fn fetch_identity(cfg: &TgConfig) -> BotIdentity {
+    match call(cfg, "getMe", &json!({}), Duration::from_secs(20)) {
+        Ok(v) => BotIdentity {
+            id: v.get("id").and_then(Value::as_i64).unwrap_or(0),
+            username: v
+                .get("username")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim_start_matches('@')
+                .to_string(),
+        },
+        Err(e) => {
+            tracing::warn!(target: "telegram", "getMe فشل: {e}");
+            BotIdentity::default()
+        }
+    }
 }
 
 fn spawn_poll_thread(
@@ -1502,6 +2482,20 @@ fn spawn_poll_thread(
             // أوامر البوت تُسجَّل عند كل تشغيل: قائمة `/help` **هي** قائمة
             // `setMyCommands`، فلا يُعلَن أمرٌ لا يعمل ولا يعمل أمرٌ لم يُعلَن.
             register_commands(&cfg);
+            // **هوية البوت مرة واحدة** (م٤): المنشن والردّ على رسالته يُقاسان
+            // بها، وتعذّرها لا يُسقط البوت — يُسجَّل تحذير وتبقى الهوية فارغة
+            // فتُقرأ الرسائل كما كانت (وضعٌ أضيق لا سلوك مخترع).
+            let identity = fetch_identity(&cfg);
+            if !identity.known() {
+                tracing::warn!(target: "telegram", "تعذّر قراءة هوية البوت (getMe) — المنشن لن يُعرَف");
+            }
+            // قائمة السماح (م٤): تُحمَّل من القرص مرة واحدة لكل عامل.
+            let access = AccessStore::from_path(access_path(&crate::paths::data_dir()));
+            tracing::info!(
+                target: "telegram",
+                "قائمة السماح: {} مدخلاً",
+                access.entries.len()
+            );
             // Drop the backlog: links sent while the app was closed are stale,
             // and processing them unasked would burn the machine at startup.
             let mut offset = match call(
@@ -1522,7 +2516,11 @@ fn spawn_poll_thread(
                     0
                 }
             };
-            let mut poll = PollState::default();
+            let mut poll = PollState {
+                identity,
+                access,
+                ..Default::default()
+            };
             while !stop.load(Ordering::SeqCst) {
                 match get_updates(&cfg, offset) {
                     Ok(updates) => {
@@ -1613,10 +2611,24 @@ const COMMANDS: &[(&str, &str)] = &[
     ("help", "قائمة الأوامر"),
 ];
 
-/// قائمة موجزة **صادقة**: كل سطر فيها أمرٌ يعمل فعلاً.
-fn help_text() -> String {
+/// **الأوامر العامة: صفر** (م٤/٣، بعد قياس توثيق تلغرام).
+///
+/// القائمة الافتراضية (`BotCommandScopeDefault`) تظهر في **كل** محادثة، ومنها
+/// المجموعات. وفي المجموعة `/kill` و`/status` **للمالك وحده** ⇒ إعلانُهما هناك
+/// إعلانُ أمرٍ سيُرفض، وهو نقض «ما يظهر يعمل». و`ChatMember`/`ChatAdministrators`
+/// يسبقان `Chat` في المجموعات، فلا يُتّكل على نطاق محادثةٍ لتضييق مجموعة.
+/// فالنتيجة: **لا أمر عام**، وقائمة المالك في نطاق محادثته وحدها.
+const PUBLIC_COMMANDS: &[(&str, &str)] = &[];
+
+/// قائمة موجزة **صادقة**: كل سطر فيها أمرٌ يعمل فعلاً — **لمن يقرؤها**.
+/// وغير المالك يرى [`PUBLIC_COMMANDS`] وحدها، فلا يُعرض عليه أمرٌ سيُرفض.
+fn help_text_for(is_owner: bool) -> String {
+    let list: &[(&str, &str)] = if is_owner { COMMANDS } else { PUBLIC_COMMANDS };
     let mut s = String::from("🤖 أوامر البوت:\n");
-    for (name, desc) in COMMANDS {
+    if list.is_empty() {
+        s.push_str("(لا أوامر عامة — الأوامر تظهر في محادثة المالك وحدها)\n");
+    }
+    for (name, desc) in list {
         s.push_str(&format!("/{name} — {desc}\n"));
     }
     s.push_str(&format!(
@@ -1625,6 +2637,13 @@ fn help_text() -> String {
         human_mb(CLOUD_DOWNLOAD_MAX_BYTES)
     ));
     s
+}
+
+/// قائمة المالك — الاسم الذي تناديه حرّاس `/help` القائمة (`help_text()`).
+/// والمنتَج ينادي [`help_text_for`] لأن القائمة تختلف بحسب القارئ (م٤/٣).
+#[cfg(test)]
+fn help_text() -> String {
+    help_text_for(true)
 }
 
 /// يفصل الأمر ووسيطه: `/kill@MyBot الآن` ⇒ `("kill", Some("الآن"))`.
@@ -1656,9 +2675,12 @@ pub fn status_text(
     now_ms: u128,
 ) -> String {
     let mut s = String::from("📊 الحال الآن\n");
+    // **كل مهامّ المحادثة** — لمستخدميها جميعاً: `/status` للمالك وحده في
+    // المجموعة (م٤/٤)، فهو الذي يسأل «ما يعمل الآن **ولِمَن**».
+    let prefix = chat_label_prefix(chat_id);
     let mine: Vec<&slots::JobInfo> = running
         .iter()
-        .filter(|j| j.label == job_label(chat_id))
+        .filter(|j| j.label.starts_with(&prefix))
         .collect();
     if mine.is_empty() {
         s.push_str("▶ لا شيء يعمل لهذه المحادثة الآن.\n");
@@ -1715,22 +2737,101 @@ fn lang_text(arg: Option<&str>) -> String {
     }
 }
 
-/// يسجّل قائمة الأوامر في تلغرام — **بأفضل جهد**: فشلُ التسجيل لا يُسقط البوت
-/// (يُسجَّل تحذير)، والقائمة المُعلَنة تبقى هي نفسها التي يعرضها `/help`.
+/// يسجّل قوائم الأوامر في تلغرام — **بنطاقٍ لكل محادثة** (م٤/٣): «ما يظهر يعمل».
+///
+/// ١) **النطاق الافتراضي: صفر أوامر** — تُحذف صراحةً بـ`deleteMyCommands`، فلا
+///    تبقى قائمة بناءٍ سابق تظهر في المجموعات حيث `/kill` و`/status` مرفوضان.
+/// ٢) **نطاق محادثة المالك** (`BotCommandScopeChat`): القائمة الكاملة، وفيها
+///    وحدها `/kill` و`/status`. والنطاق «محادثة بعينها» **ولا يقبل القنوات**،
+///    فالمعرّف موجب (محادثة المالك الخاصة) وإلا لم يُرسَل أصلاً.
+///
+/// **وبأفضل جهد**: فشلُ التسجيل لا يُسقط البوت (يُسجَّل تحذير).
 fn register_commands(cfg: &TgConfig) {
+    match call(
+        cfg,
+        "deleteMyCommands",
+        &json!({ "scope": { "type": "default" } }),
+        Duration::from_secs(20),
+    ) {
+        Ok(_) => tracing::info!(target: "telegram", "لا أوامر عامة: أُفرغ النطاق الافتراضي"),
+        Err(e) => tracing::warn!(target: "telegram", "تعذّر إفراغ الأوامر الافتراضية: {e}"),
+    }
+    let Some(owner) = cfg.owner_id.filter(|id| *id > 0) else {
+        tracing::warn!(target: "telegram", "لا معرّف مالك ⇒ لا نطاق محادثة تُسجَّل فيه الأوامر");
+        return;
+    };
+    // **وحدود الـAPI تُفحص قبل الإرسال**: قائمةٌ مخالفة يرفضها تلغرام **كاملةً**
+    // فيصير الفشل صامتاً ويظنّ المستخدم أن الأوامر سُجّلت. فالفحص هنا صريح،
+    // والأرقام هي أرقام التوثيق المعلَنة في رأس الملف لا أرقاماً مخترعة.
+    let too_long = COMMANDS.len() > MAX_BOT_COMMANDS;
+    let bad = COMMANDS.iter().find(|(n, d)| {
+        n.is_empty()
+            || n.len() > MAX_COMMAND_NAME
+            || d.is_empty()
+            || d.len() > MAX_COMMAND_DESC
+            || !n
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    });
+    if too_long || bad.is_some() {
+        tracing::error!(
+            target: "telegram",
+            "قائمة الأوامر مخالفة لحدود Bot API ({} أمراً · المخالف {:?}) — لم تُسجَّل",
+            COMMANDS.len(),
+            bad
+        );
+        return;
+    }
     let cmds: Vec<Value> = COMMANDS
         .iter()
         .map(|(c, d)| json!({ "command": c, "description": d }))
         .collect();
-    match call(
-        cfg,
-        "setMyCommands",
-        &json!({ "commands": cmds }),
-        Duration::from_secs(20),
-    ) {
-        Ok(_) => tracing::info!(target: "telegram", "سُجّلت أوامر البوت: {} أمراً", COMMANDS.len()),
-        Err(e) => tracing::warn!(target: "telegram", "تعذّر تسجيل الأوامر: {e}"),
+    let body = json!({
+        "commands": cmds,
+        "scope": { "type": "chat", "chat_id": owner },
+    });
+    match call(cfg, "setMyCommands", &body, Duration::from_secs(20)) {
+        Ok(_) => tracing::info!(
+            target: "telegram",
+            "سُجّلت أوامر المالك في محادثته وحدها: {} أمراً",
+            COMMANDS.len()
+        ),
+        Err(e) => tracing::warn!(target: "telegram", "تعذّر تسجيل أوامر المالك: {e}"),
     }
+}
+
+// ── م٤: رسالة التعريف المثبَّتة ونصيحة المعالج ──────────────────────────────
+
+/// **نصيحة المعالج** (م٤/٨) — تُبنى على **ما جرى فعلاً** لا على تحليلٍ نظري.
+///
+/// * المصدر [`crate::separator::read_provider`] — المزوّد **المقيس** لآخر جلسة
+///   فصل حقيقية على هذا الجهاز (‏`provider.json`).
+/// * و`None` (لم يجرِ فصلٌ بعد) ⇒ **لا نصيحة**: لا يُدَّعى مسارٌ لم يُقَس.
+/// * **ولا يُقاس CPU الصافي**: لا عَلَم في هذا البناء يعطّل CUDA وDirectML
+///   معاً، فالحكم على التجربة وحدها — ولا رقم مُختلق (`m4-design.md` §٤).
+fn cpu_advice_line(provider: Option<&str>) -> Option<&'static str> {
+    match provider {
+        Some("CPU") => Some(
+            "⚠️ آخر فصلٍ على هذا الجهاز جرى على **المعالج (CPU)** لا على كرت — \
+             ومجموعةٌ فيها أكثر من عضو غير عملية على المعالج.",
+        ),
+        _ => None,
+    }
+}
+
+/// نصّ رسالة التعريف المثبَّتة (سطران كما في التصميم §٢-١)، ومعرّف البوت يُذكر
+/// **إن عُرف** فقط — ولا يُختلق اسمٌ لم يُقرأ.
+fn intro_text(bot: &BotIdentity, advice: Option<&str>) -> String {
+    let example = if bot.username.is_empty() {
+        "اذكرني مع الرابط: مثال `@<البوت> https://…`".to_string()
+    } else {
+        format!("**اذكرني مع الرابط** — مثال: `@{} https://…`", bot.username)
+    };
+    let mut s = format!("📌 للاستخدام: {example}\nوالمعالجة تجري على جهاز المالك.");
+    if let Some(a) = advice {
+        s.push_str(&format!("\n\n{a}"));
+    }
+    s
 }
 
 // ── سؤال التجاوز: الحساب نقيّ والنصوص ثابتة (م٣/٤) ───────────────────────────
@@ -1881,6 +2982,8 @@ fn parse_oversize_action(data: &str) -> Option<OversizeAction> {
 /// (بدل أحد عشر معاملاً تخطئ في ترتيبها).
 struct OversizeAsk<'a> {
     chat_id: i64,
+    /// **صاحب الناتج** (م٤): ضغطةٌ من غيره تُرفض قبل أن تستهلك السؤال.
+    user_id: i64,
     src_msg_id: i64,
     /// الناتج في **مجلد النتائج** — لا وسيطاً في مجلد مؤقّت يُمحى.
     produced: &'a Path,
@@ -1902,7 +3005,11 @@ fn ask_oversize(
     let text = oversize_text(ask.bytes, ask.file, &plan);
     // رسالة مستقلة **ردٌّ على رسالة المستخدم**: رسالة الحالة تحمل تقدّم معالجةٍ
     // جرت فعلاً، ولو حُرِّرت إلى سؤالٍ لضاع أثرها.
-    let qid = send_message(
+    //
+    // **ويُنتظَر معرّفها** (م٤): هو مفتاح مدخل السؤال في السِجلّ. والانتظار هنا
+    // على **خيط مهمّة** لا على خيط الاستطلاع، فقراءة التحديثات (ومعها `/kill`)
+    // لا تتأثّر.
+    let qid = send_message_wait_id(
         cfg,
         ask.chat_id,
         &text,
@@ -1914,6 +3021,7 @@ fn ask_oversize(
         .unwrap_or_else(|p| p.into_inner())
         .insert(Oversize {
             chat_id: ask.chat_id,
+            user_id: ask.user_id,
             msg_id: qid,
             src_msg_id: ask.src_msg_id,
             path: ask.produced.to_path_buf(),
@@ -2049,14 +3157,21 @@ fn run_oversize_action(
 
 /// يعالج ضغطة على سؤال تجاوز. **وكل ضغطة تُجاب** (`answerCallbackQuery`) وإلا
 /// بقي مؤشّر العميل يدور.
+///
+/// **ومصادقة صاحب الناتج (م٤)**: الضغطة تُقبل من صاحب السؤال أو المالك وحدهما.
+/// والفحص **قبل أي حالة**: غريبٌ ضغط زرَّ غيره لا يُنقص السؤال ولا يرفع ناتج
+/// غيره — يُردّ بصدق ويبقى كل شيء كما كان.
 fn handle_oversize_action(
     cfg: &TgConfig,
     store: &Arc<Mutex<OversizeStore>>,
     action: OversizeAction,
     chat_id: i64,
     msg_id: i64,
+    from_id: i64,
     cb_id: &str,
 ) {
+    // المعلومة يجوز للجميع (لا تفعل شيئاً)؛ أما ما **ينفّذ** فلمالكه وحده.
+    let acting = !matches!(action, OversizeAction::Help);
     let entry = store
         .lock()
         .unwrap_or_else(|p| p.into_inner())
@@ -2068,6 +3183,10 @@ fn handle_oversize_action(
         answer_callback(cfg, cb_id, "لم يعد هذا السؤال فعّالاً");
         return;
     };
+    if acting && from_id != entry.user_id && Some(from_id) != cfg.owner_id {
+        answer_callback(cfg, cb_id, "هذا الزرّ ليس لك");
+        return;
+    }
     match action {
         OversizeAction::Help => {
             // معلوماتي فقط: السؤال **يبقى** ولوحته تبقى (ت٥).
@@ -2169,14 +3288,30 @@ fn handle_update(
             .and_then(|m| m.get("message_id"))
             .and_then(Value::as_i64)
             .unwrap_or(0);
-        if !cfg.allows(from_id) {
-            answer_callback(cfg, cb_id, "غير مصرّح");
+        // **ولا مفوَّض عام هنا** (م٤): كل فرعٍ يصادق ضغطته بنفسه، لأن لكل فرعٍ
+        // صاحباً مختلفاً — مهمّةٌ لصاحبها، وسؤالُ تجاوزٍ لصاحبه، ومعلَّقٌ لصاحبه،
+        // وبطاقةُ موافقةٍ للمالك. وفحصٌ واحد عام كان يمنع المالك من مساعدة أحد
+        // أو يسمح لغريبٍ بالضغط على زرّ غيره.
+        //
+        // ── بطاقة الموافقة (م٤): قرارُ المالك وحده، وهي في خاصّه ──
+        if let Some((verdict, token)) = parse_approval_button(data) {
+            handle_approval_press(cfg, poll, from_id, &token, verdict, cb_id);
             return;
         }
-        // ── زر الإلغاء (م٢): `cancel:<chat_id>` — المالك وحده يصل إلى هنا ──
-        if let Some(target) = data.strip_prefix("cancel:") {
-            let target: i64 = target.trim().parse().unwrap_or(chat_id);
-            let reply = cancel_chat_jobs(target);
+        // ── زر الإلغاء (م٢/م٤): `cancel:<chat_id>:<user_id>` — **صاحبُ المهمّة
+        //    أو المالك**، ولا ثالث. ولا يُلغي أحدٌ مهمّة غيره (ت٢).
+        if let Some((target_chat, target_user)) = parse_cancel_button(data) {
+            // **ولا إلغاء بمحادثةٍ أخرى**: الزرّ يحمل محادثته، وطلبُ إلغاءٍ في
+            // محادثةٍ غير محادثة المهمّة يُرفض بصراحة (لا يُترجَم إلى الافتراض).
+            if target_chat != chat_id {
+                answer_callback(cfg, cb_id, "هذا الزرّ ليس لهذه المحادثة");
+                return;
+            }
+            if from_id != target_user && Some(from_id) != cfg.owner_id {
+                answer_callback(cfg, cb_id, "هذا الزرّ ليس لك");
+                return;
+            }
+            let reply = cancel_chat_jobs(target_chat, target_user);
             answer_callback(cfg, cb_id, &reply);
             if msg_id != 0 {
                 // الزرّ يُزال **صراحةً** بلوحة فارغة: الرسالة كانت تحمله، وتعديلٌ
@@ -2191,9 +3326,10 @@ fn handle_update(
             set_activity(reply);
             return;
         }
-        // ── أزرار سؤال التجاوز (م٣) — قبل أزرار الوضع، فشكل البيانات مختلف ──
+        // ── أزرار سؤال التجاوز (م٣) — قبل أزرار الوضع، فشكل البيانات مختلف.
+        //    والمصادقة داخلها: صاحب الناتج أو المالك (م٤). ──
         if let Some(action) = parse_oversize_action(data) {
-            handle_oversize_action(cfg, oversize, action, chat_id, msg_id, cb_id);
+            handle_oversize_action(cfg, oversize, action, chat_id, msg_id, from_id, cb_id);
             return;
         }
         let Some((token, mode)) = parse_mode_action(data) else {
@@ -2211,10 +3347,19 @@ fn handle_update(
             answer_callback(cfg, cb_id, "انتهت صلاحية هذا الطلب — أعد الإرسال");
             return;
         };
-        if current.ask_msg_id != 0 && msg_id != current.ask_msg_id {
+        // **ومصادقة صاحب الملف** (م٤): ضغطةٌ من غيره تُرفض **قبل** السحب —
+        // فلا يُستهلك معلَّق غيره، ولا يُشغَّل ملفٌّ ليس له.
+        if current.user_id != from_id && Some(from_id) != cfg.owner_id {
+            answer_callback(cfg, cb_id, "هذا الزرّ ليس لك");
+            return;
+        }
+        if current.ask_msg_id.load(Ordering::SeqCst) != 0
+            && msg_id != current.ask_msg_id.load(Ordering::SeqCst)
+        {
             answer_callback(cfg, cb_id, "هذا سؤال قديم — استعمل أزرار آخر رسالة سؤال");
             return;
         }
+        let owner_of_file = current.user_id;
         let Some(p) = poll.pending.take(chat_id, &token) else {
             answer_callback(cfg, cb_id, "انتهت صلاحية هذا الطلب — أعد الإرسال");
             return;
@@ -2237,6 +3382,9 @@ fn handle_update(
         let queued_ok = tx
             .send(Job {
                 chat_id,
+                // **صاحب الملف لا الضاغط**: المالك قد يضغط نيابةً عن عضو،
+                // والمهمّة تبقى للعضو (وسمها وطابورها وزرّها).
+                user_id: owner_of_file,
                 source,
                 mode,
                 src_msg_id,
@@ -2270,37 +3418,48 @@ fn handle_update(
                 msg_id,
                 StatusRank::Queued,
                 &text,
-                cancel_button(chat_id),
+                cancel_button(chat_id, owner_of_file),
             );
         } else {
             let _ = send_message(
                 cfg,
                 chat_id,
                 &text,
-                Some(cancel_button(chat_id)),
+                Some(cancel_button(chat_id, owner_of_file)),
                 Some(src_msg_id),
             );
         }
         return;
     }
 
+    // ── م٤: إضافة البوت إلى مجموعة ⇒ تثبيت رسالة التعريف (ت٩) ──────────────
+    // يُقرأ **قبل** أي معالجة، والتحديث لا يُقرأ رسالةً عادية (وإلا رُدَّ عليه
+    // بـ«لم أجد رابطاً»).
+    if let Some(m) = u.get("my_chat_member") {
+        handle_my_chat_member(cfg, poll, m);
+        return;
+    }
     let Some(msg) = u.get("message") else { return };
+    if handle_bot_added(cfg, poll, msg) {
+        return;
+    }
     let Some((from_id, chat_id, incoming)) = parse_message(msg) else {
         return;
     };
+    let kind = chat_kind_of(chat_id, msg);
+    let owner = cfg.owner_id;
+    // «المالك» تعريفٌ واحد في الملف كله: مطابقة معرّف الإعداد (`allows`).
+    let is_owner = cfg.allows(from_id);
 
     // ── security gate: an open bot on a desktop drains the machine ─────────
     // Paired ⇒ only the owner exists as far as this bot is concerned; anyone
     // else gets nothing at all, not even an acknowledgement.
-    if let Some(owner) = cfg.owner_id {
-        if from_id != owner {
-            set_activity(format!("رُفض متطفل: {from_id}"));
-            tracing::warn!(target: "telegram", "رسالة من غير المالك ({from_id}) — تجاهُل تام");
+    if owner.is_none() {
+        // وضع الاقتران **خاصٌّ بالمحادثة الخاصة**: مجموعةٌ بلا مالك معرَّف لا
+        // تُخاطَب أصلاً (ولا رمز اقتران يُقال فيها لمَن لا يملك الجهاز).
+        if kind == ChatKind::Group {
             return;
         }
-    } else {
-        // Pairing mode: the ONE thing that opens this bot is the one-time code
-        // shown in the app's settings panel.
         let src_msg_id = msg.get("message_id").and_then(Value::as_i64).unwrap_or(0);
         let text = msg
             .get("text")
@@ -2342,21 +3501,80 @@ fn handle_update(
         return;
     }
 
+    // ── م٤: بوابة المجموعة — الوضع ثم قائمة السماح، **قبل أي معالجة** ───────
+    if kind == ChatKind::Group {
+        // ① الوضع: في «بالمنشن» لا تُقرأ إلا رسالةٌ تخاطب البوت — منشناً، أو
+        //    **أمراً موجَّهاً إليه**. والرسالة التي لا تخاطبه ليست طلباً،
+        //    فالصمت هنا صوابٌ لا عطل.
+        let addressed = cfg.group_mode == GroupMode::All
+            || mentions_bot(msg, &poll.identity)
+            || msg
+                .get("text")
+                .and_then(Value::as_str)
+                .map(|t| command_for_bot(t, &poll.identity))
+                .unwrap_or(false);
+        if !addressed {
+            return;
+        }
+        // ② قائمة السماح: `chat_id` + `user_id` **إلزاميان** (ت١). وغير المسموح
+        //    لا يُشغّل مهمّة أبداً.
+        if !poll.access.allows(chat_id, from_id, owner) {
+            // الوضع الموسَّع: الرابط يُعرَض على المالك في خاصّه، **ولا معالجة
+            // قبل ضغطته** — فالموافقة تحلّ محلّ المنشن.
+            if cfg.group_mode == GroupMode::All {
+                if let Incoming::Job(source) = &incoming {
+                    let user = display_user(msg.get("from").unwrap_or(&Value::Null));
+                    let file = match source {
+                        Source::Link(u) => display_name(u),
+                        Source::File { name, .. } => display_name(name),
+                    };
+                    let src_msg_id = msg.get("message_id").and_then(Value::as_i64).unwrap_or(0);
+                    let a = Approval {
+                        chat_id,
+                        user_id: from_id,
+                        user,
+                        source: source.clone(),
+                        src_msg_id,
+                        file,
+                        card_msg_id: 0,
+                    };
+                    if !send_approval(cfg, poll, a) {
+                        // تعذّر إبلاغ المالك ⇒ يُقال في المجموعة بدل صمتٍ يبدو
+                        // عطلاً (ومَن ليس في القائمة يُردّ عليه دائماً).
+                        let _ = notify_member(
+                            cfg,
+                            chat_id,
+                            from_id,
+                            "🔒 طلبك يحتاج إذن المالك، وتعذّر إبلاغه الآن.",
+                        );
+                        return;
+                    }
+                }
+            }
+            // ③ **رسالة واحدة موجزة** لا صمت (تصميم §٢-٣).
+            if notify_not_allowed(cfg, poll, chat_id, from_id) {
+                set_activity(format!("طلب من غير مسموح: {from_id}@{chat_id}"));
+            }
+            return;
+        }
+    } else if !is_owner {
+        // محادثة خاصة مع غير المالك: **صمت تام** (سلوك م٢/م٣ القائم — لا إقرار
+        // ولا دعوة، فالبوت ليس خدمة عامة).
+        set_activity(format!("رُفض متطفل: {from_id}"));
+        tracing::warn!(target: "telegram", "رسالة من غير المالك ({from_id}) — تجاهُل تام");
+        return;
+    }
+
     // أسئلة تجاوزٍ انتهى وقتها: تُزال **ويُقال ذلك** قبل معالجة أي تحديث جديد.
     purge_oversize(cfg, oversize);
 
     match incoming {
         Incoming::Job(source) => {
-            let token = format!("{:x}", nanos());
             let src_msg_id = msg.get("message_id").and_then(Value::as_i64).unwrap_or(0);
             let user = display_user(msg.get("from").unwrap_or(&Value::Null));
             let file = match &source {
                 Source::Link(u) => display_name(u),
                 Source::File { name, .. } => display_name(name),
-            };
-            let hint = match &source {
-                Source::Link(u) => format!("🔗 {u}"),
-                Source::File { .. } => format!("📎 {file}"),
             };
             // ① الحدّ الأعلى **صراحةً وقبل الإرسال**: لا سؤال يُرسَل ثم يُلغى،
             //    ولا إسقاط صامت — رسالة واحدة تقول ما يلزم عمله.
@@ -2364,45 +3582,7 @@ fn handle_update(
                 let _ = send_message(cfg, chat_id, &pending_full_text(), None, Some(src_msg_id));
                 return;
             }
-            // ② إشعار الانتظار يُحسب **من الطابور الفعلي** ويُرسَل مع السؤال
-            //    **عند الوصول** (لا عند الضغط على الزرّ).
-            let ahead = jobs_ahead();
-            let keyboard = json!({
-                "inline_keyboard": [[
-                    { "text": "🎵 أغنية", "callback_data": format!("mode:song:{token}") },
-                    { "text": "🎬 مقطع عادي", "callback_data": format!("mode:clip:{token}") }
-                ]]
-            });
-            let text = mode_question_text(&hint, ahead);
-            match send_message(cfg, chat_id, &text, Some(keyboard), Some(src_msg_id)) {
-                Ok(ask_msg_id) => {
-                    let row_id = jobs_arrived(chat_id, &user, &file);
-                    let inserted = poll.pending.insert(Pending {
-                        chat_id,
-                        token,
-                        source,
-                        src_msg_id,
-                        // **موضع الأزرار يُحفظ مع المعلَّق** (م٣/إصلاح): الضغطة
-                        // تُطابَق به، فلا تُقبل ضغطة على سؤالٍ قديم.
-                        ask_msg_id,
-                        file,
-                        row_id,
-                    });
-                    if !inserted {
-                        // لا يقع اليوم (الفحص أعلاه على الخيط نفسه) — لكن السقوط
-                        // الصامت أسوأ من سطر.
-                        jobs_finished(row_id, false);
-                        let _ = send_message(
-                            cfg,
-                            chat_id,
-                            &pending_full_text(),
-                            None,
-                            Some(src_msg_id),
-                        );
-                    }
-                }
-                Err(e) => set_error(e),
-            }
+            offer_mode_question(cfg, poll, chat_id, from_id, source, src_msg_id, &user, file);
         }
         Incoming::Smalltalk(t) => {
             // رسالة المستخدم الأصلية: كل ردٍّ في هذا الفرع ردٌّ عليها (م٣).
@@ -2411,10 +3591,24 @@ fn handle_update(
             let name = cmd.as_ref().map(|(n, _)| n.as_str()).unwrap_or("");
             let arg = cmd.as_ref().and_then(|(_, a)| a.as_deref());
             match name {
-                // ── `/kill` (م٢): المالك وحده (الفحص أعلاه ردّ كل من ليس المالك)،
-                //    ويُلغي مهمّة **هذه المحادثة**. **ولا `/stop`** في أي مكان. ──
+                // ── م٤/٤: `/kill` و`/status` **للمالك وحده في المجموعة** (ت٧).
+                //    والرفض **صريح** لا صمت: العضو يعرف أنه ليس له، ولا يُنفَّذ
+                //    شيء — فلا يُلغي عضوٌ مهامّ غيره ولا يرى حال غيره. ──
+                "kill" | "status" if kind == ChatKind::Group && !is_owner => {
+                    let _ = send_message(
+                        cfg,
+                        chat_id,
+                        "🔒 هذا الأمر للمالك وحده في المجموعة.",
+                        None,
+                        Some(src_msg_id),
+                    );
+                    set_activity(format!("رُفض أمر مالك من {from_id}@{chat_id}"));
+                }
+                // ── `/kill` من **المالك** (وليس من غيره — الفحص أعلاه): يوقف
+                //    مهامّ هذه المحادثة كلها بـ`cancel_job` لكل معرّف،
+                //    **لا `cancel_all`** (شرط ت٥). **ولا `/stop`** في أي مكان. ──
                 "kill" => {
-                    let reply = cancel_chat_jobs(chat_id);
+                    let reply = cancel_chat_all_jobs(chat_id);
                     let _ = send_message(cfg, chat_id, &reply, None, Some(src_msg_id));
                     set_activity(reply);
                 }
@@ -2438,11 +3632,11 @@ fn handle_update(
                     );
                     let _ = send_message(cfg, chat_id, &text, None, Some(src_msg_id));
                 }
-                // ── `/mode`: يُعيد أزرار الوضع للملفات المنتظرة ──
+                // ── `/mode`: يُعيد أزرار الوضع **لملفات صاحب الأمر** وحدها ──
                 "mode" => {
                     let items: Vec<(String, String, i64)> = poll
                         .pending
-                        .for_chat(chat_id)
+                        .for_user(chat_id, from_id)
                         .iter()
                         .map(|p| (p.token.clone(), p.file.clone(), p.src_msg_id))
                         .collect();
@@ -2468,9 +3662,16 @@ fn handle_update(
                             // **والربط ينتقل إلى الرسالة الجديدة** (م٣/إصلاح): هي
                             // التي تحمل الأزرار الحيّة، والقديمة يُردّ ضغطُها بصدق
                             // («هذا سؤال قديم») بدل أن تُحرَّر وتصير مرجع الحالة.
+                            //
+                            // **وخانةٌ جديدة لكل إعادة عرض** (م٤): في المجموعة
+                            // يكتب الكاتب المعرّف فيها بعد الإرسال.
+                            let slot: IdSlot = Arc::new(AtomicI64::new(0));
                             match send_message(cfg, chat_id, &text, Some(keyboard), Some(src)) {
-                                Ok(new_ask) => {
-                                    poll.pending.set_ask_msg(chat_id, &token, new_ask);
+                                Ok(id) => {
+                                    if id != 0 {
+                                        slot.store(id, Ordering::SeqCst);
+                                    }
+                                    poll.pending.set_ask_msg(chat_id, &token, slot);
                                 }
                                 Err(e) => set_error(e),
                             }
@@ -2482,28 +3683,42 @@ fn handle_update(
                     let _ = send_message(cfg, chat_id, &lang_text(arg), None, Some(src_msg_id));
                 }
                 // ── `/help` (و`/start` الذي يرسله كل عميل): القائمة نفسها التي
-                //    سُجّلت في `setMyCommands` — لا قائمتان تفترقان. ──
+                //    سُجّلت في `setMyCommands` — لا قائمتان تفترقان. **ولكلٍّ
+                //    قائمته**: المالك يرى `/kill` و`/status`، وغيره لا يراهما
+                //    (فلا يُعرَض عليه أمرٌ سيُرفض). ──
                 "help" | "start" => {
-                    let _ = send_message(cfg, chat_id, &help_text(), None, Some(src_msg_id));
+                    let _ = send_message(
+                        cfg,
+                        chat_id,
+                        &help_text_for(is_owner),
+                        None,
+                        Some(src_msg_id),
+                    );
                 }
                 // أمر معروف الشكل لا نعرفه: يُقال بصراحة بدل صمت أو تنكّر.
                 other if !other.is_empty() => {
                     let _ = send_message(
                         cfg,
                         chat_id,
-                        &format!("لا أعرف الأمر /{other}.\n\n{}", help_text()),
+                        &format!("لا أعرف الأمر /{other}.\n\n{}", help_text_for(is_owner)),
                         None,
                         Some(src_msg_id),
                     );
                 }
                 _ => {
                     if t.trim().is_empty() || t.trim_start().starts_with('/') {
-                        let _ = send_message(cfg, chat_id, &help_text(), None, Some(src_msg_id));
+                        let _ = send_message(
+                            cfg,
+                            chat_id,
+                            &help_text_for(is_owner),
+                            None,
+                            Some(src_msg_id),
+                        );
                     } else {
                         let _ = send_message(
                             cfg,
                             chat_id,
-                            &format!("لم أجد رابطاً في رسالتك.\n{}", help_text()),
+                            &format!("لم أجد رابطاً في رسالتك.\n{}", help_text_for(is_owner)),
                             None,
                             Some(src_msg_id),
                         );
@@ -2514,32 +3729,479 @@ fn handle_update(
     }
 }
 
+/// يسأل عن الوضع ويسجّل المعلَّق — **مسار واحد** يستعمله الوصول المباشر
+/// (رسالة من مسموح) وموافقة المالك (الوضع الموسَّع)، فلا يفترق مساران لنفس
+/// السؤال.
+#[allow(clippy::too_many_arguments)]
+fn offer_mode_question(
+    cfg: &TgConfig,
+    poll: &mut PollState,
+    chat_id: i64,
+    user_id: i64,
+    source: Source,
+    src_msg_id: i64,
+    user: &str,
+    file: String,
+) {
+    let token = format!("{:x}", nanos());
+    let hint = match &source {
+        Source::Link(u) => format!("🔗 {u}"),
+        Source::File { .. } => format!("📎 {file}"),
+    };
+    // إشعار الانتظار يُحسب **من الطابور الفعلي** ويُرسَل مع السؤال **عند
+    // الوصول** (لا عند الضغط على الزرّ).
+    let ahead = jobs_ahead();
+    let keyboard = json!({
+        "inline_keyboard": [[
+            { "text": "🎵 أغنية", "callback_data": format!("mode:song:{token}") },
+            { "text": "🎬 مقطع عادي", "callback_data": format!("mode:clip:{token}") }
+        ]]
+    });
+    let text = mode_question_text(&hint, ahead);
+    // **المعلَّق يُسجَّل قبل الإرسال** (م٤): في المجموعة لا معرّف عند الإدراج —
+    // الكاتب يكتبه في الخانة المشتركة، والضغطة لا تقع قبل وجود الرسالة.
+    let slot: IdSlot = Arc::new(AtomicI64::new(0));
+    let row_id = jobs_arrived(chat_id, user, &file);
+    let inserted = poll.pending.insert(Pending {
+        chat_id,
+        user_id,
+        token: token.clone(),
+        source,
+        src_msg_id,
+        ask_msg_id: slot.clone(),
+        file,
+        row_id,
+    });
+    if !inserted {
+        jobs_finished(row_id, false);
+        let _ = send_message(cfg, chat_id, &pending_full_text(), None, Some(src_msg_id));
+        return;
+    }
+    match send_message(cfg, chat_id, &text, Some(keyboard), Some(src_msg_id)) {
+        Ok(id) => {
+            // الخاص: المعرّف وصل الآن ⇒ يُكتب في الخانة فوراً.
+            if id != 0 {
+                slot.store(id, Ordering::SeqCst);
+            }
+        }
+        Err(e) => {
+            // فشلُ الإرسال لا يترك معلَّقاً بلا رسالة: يُسحب الصفّ والمعلَّق.
+            poll.pending.take(chat_id, &token);
+            jobs_finished(row_id, false);
+            set_error(e);
+        }
+    }
+}
+
+// ── م٤: إضافة البوت إلى مجموعة، ورسالة التعريف المثبَّتة (ت٩) ──────────────
+
+/// تحديث `my_chat_member`: **يُرسَل للبوت وحده**، فعضوية البوت صارت `member`
+/// أو `administrator` بعد أن كانت خارجه ⇒ أُضيف الآن.
+fn handle_my_chat_member(cfg: &TgConfig, poll: &mut PollState, m: &Value) {
+    let chat_id = m.pointer("/chat/id").and_then(Value::as_i64).unwrap_or(0);
+    let now = m
+        .pointer("/new_chat_member/status")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let before = m
+        .pointer("/old_chat_member/status")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let joined =
+        matches!(now, "member" | "administrator") && matches!(before, "left" | "kicked" | "");
+    if joined {
+        pin_intro(cfg, poll, chat_id);
+    }
+}
+
+/// `message.new_chat_members` تحمل البوت ⇒ أُضيف. **تعيد `true`** حينها فقط،
+/// فلا يُقرأ تحديث الإضافة رسالةً عادية ويُردّ عليه بـ«لم أجد رابطاً».
+fn handle_bot_added(cfg: &TgConfig, poll: &mut PollState, msg: &Value) -> bool {
+    let members = msg
+        .get("new_chat_members")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if members.is_empty() {
+        return false;
+    }
+    // بلا هويةٍ لا يُدَّعى أن المضاف هو البوت: تُقرأ الرسالة رسالةً عادية.
+    if poll.identity.id == 0 {
+        return false;
+    }
+    let added = members
+        .iter()
+        .any(|m| m.get("id").and_then(Value::as_i64) == Some(poll.identity.id));
+    if !added {
+        return false;
+    }
+    let chat_id = msg.pointer("/chat/id").and_then(Value::as_i64).unwrap_or(0);
+    pin_intro(cfg, poll, chat_id);
+    true
+}
+
+/// **تُثبَّت مرة واحدة عند الإضافة** (ت٩) — لا مع كل رسالة.
+///
+/// العلامة (`pinned`) تُفحص وتُضبط **في موضع واحد** قبل الإرسال، فالتحديثات
+/// المتكرّرة لا تُنتج تثبيتاً ثانياً. والإرسال **يُدرَج في الطابور** ويثبّته
+/// الكاتب بعد نجاحه (فلا ينتظر خيط الاستطلاع حصّةً ولا ردّاً).
+///
+/// **ونصيحة المعالج** تُضاف إن كان المسار الفعّال CPU (م٤/٨) — والحكم على
+/// التجربة لا على تحليلٍ نظري (لا عَلَم يعطّل CUDA وDirectML معاً).
+fn pin_intro(cfg: &TgConfig, poll: &mut PollState, chat_id: i64) -> bool {
+    if !is_group_chat(chat_id) || chat_id == 0 {
+        return false;
+    }
+    if !poll.pinned.insert(chat_id) {
+        tracing::debug!(target: "telegram", "رسالة التعريف مثبَّتة أصلاً في {chat_id}");
+        return false;
+    }
+    let provider = crate::separator::read_provider();
+    let advice = cpu_advice_line(provider.as_deref());
+    if provider.is_none() {
+        tracing::info!(target: "telegram", "لا نصيحة معالج: لم يُقَس مزوّد أي فصل بعد");
+    }
+    let text = intro_text(&poll.identity, advice);
+    send_group_async(
+        cfg,
+        SendItem::Message {
+            chat_id,
+            text,
+            keyboard: None,
+            reply_to: None,
+            pin: true,
+            id_slot: None,
+        },
+    )
+}
+
+/// **رسالة واحدة موجزة** لغير المسموح (تصميم §٢-٣): الصمت يجعل البوت يبدو
+/// معطّلاً، والتكرار سيلٌ. فتُقال **مرة واحدة** لكل (محادثة، عضو) في عمر
+/// العامل، وبعدها لا يُعاد — و`false` تعني «قيلت سابقاً».
+fn notify_not_allowed(cfg: &TgConfig, poll: &mut PollState, chat_id: i64, user_id: i64) -> bool {
+    if !poll.notified.insert((chat_id, user_id)) {
+        return false;
+    }
+    notify_member(
+        cfg,
+        chat_id,
+        user_id,
+        "🔒 لست في قائمة السماح لهذا البوت — اطلب من المالك السماح.",
+    )
+}
+
+// ── م٤: قرار المالك على بطاقة الموافقة ──────────────────────────────────────
+
+/// ضغطةٌ على بطاقة الموافقة (وهي في **خاصّ المالك**): القرار له وحده، وفروع
+/// القرار ثلاثة: `yes` ينفّذ الطلب مرةً، و`always` يُضيف الزوج إلى قائمة
+/// السماح **ويحفظه** (فالسماح الدائم يجب أن ينجو من إعادة التشغيل)، و`no`
+/// يُنهي الطلب بصدق.
+fn handle_approval_press(
+    cfg: &TgConfig,
+    poll: &mut PollState,
+    from_id: i64,
+    token: &str,
+    verdict: &str,
+    cb_id: &str,
+) {
+    if Some(from_id) != cfg.owner_id {
+        answer_callback(cfg, cb_id, "هذا القرار للمالك وحده");
+        return;
+    }
+    let Some(a) = poll.approvals.get(token).cloned() else {
+        answer_callback(cfg, cb_id, "لم يعد هذا الطلب فعّالاً");
+        return;
+    };
+    poll.approvals.take(token);
+    let card = |text: String| {
+        if a.card_msg_id != 0 {
+            let _ = edit_message_kb(cfg, from_id, a.card_msg_id, &text, Some(no_keyboard()));
+        }
+    };
+    match verdict {
+        "no" => {
+            answer_callback(cfg, cb_id, "رُفض الطلب");
+            card(format!("❌ رُفض طلب {} ({}).", a.user, a.user_id));
+            let _ = notify_member(cfg, a.chat_id, a.user_id, "🔒 لم يُسمح بطلبك.");
+            set_activity(format!("رُفض طلب {}@{}", a.user_id, a.chat_id));
+        }
+        "yes" | "always" => {
+            let permanent = verdict == "always";
+            if permanent {
+                let added = poll.access.allow(a.chat_id, a.user_id);
+                let saved = poll.access.save();
+                if let Err(e) = &saved {
+                    // القائمة في الذاكرة صارت أوسع، والحفظ فشل: يُقال صراحةً
+                    // بدل وعدٍ لا ينجو من إعادة التشغيل.
+                    tracing::warn!(target: "telegram", "تعذّر حفظ قائمة السماح: {e}");
+                }
+                card(format!(
+                    "♾️ سُمح دائماً لـ{} ({}){}.",
+                    a.user,
+                    a.user_id,
+                    if added {
+                        if saved.is_ok() {
+                            " — أُضيف إلى قائمة السماح"
+                        } else {
+                            " — أُضيف في الذاكرة **وتعذّر حفظه**"
+                        }
+                    } else {
+                        " — كان مسموحاً أصلاً"
+                    }
+                ));
+            } else {
+                card(format!("✅ سُمح لطلب {} ({}).", a.user, a.user_id));
+            }
+            answer_callback(cfg, cb_id, "تم");
+            set_activity(format!("سُمح لطلب {}@{}", a.user_id, a.chat_id));
+            // **ويُنفَّذ الطلب الآن**: نفس سؤال الوضع الذي يُطرح للمسموح به
+            // مباشرةً — فلا مسار ثانٍ للسؤال نفسه. (والمهمّة تُدخَل الطابور عند
+            // ضغط زرّ الوضع، فلا تُنشأ مهمّة بلا وضعٍ مختار.)
+            let file = a.file.clone();
+            let user_id = a.user_id;
+            let src_msg_id = a.src_msg_id;
+            let source = a.source.clone();
+            let user = a.user.clone();
+            let chat_id = a.chat_id;
+            offer_mode_question(cfg, poll, chat_id, user_id, source, src_msg_id, &user, file);
+        }
+        _ => {
+            answer_callback(cfg, cb_id, "قرار غير معروف");
+        }
+    }
+}
+
+// ── م٤: طابور FIFO لكل مستخدم فوق السقف العام ──────────────────────────────
+
+/// **طابور المهامّ** (تصميم م٤ §٣): ترتيبٌ عادل بين المستخدمين تحت سقفٍ عام.
+///
+/// * **FIFO لكل `user_id`**: ملفّا المستخدم نفسه لا يتقدّم أحدهما على الآخر.
+/// * **دورٌ بين المستخدمين (round-robin)**: مستخدمٌ بأربعة ملفات **لا يحتكر**
+///   السقف — يأخذ ملفاً ثم يفسح الدور لغيره. هذا نصّ ت٤ لا تفسيرٌ له.
+/// * **والسقف العام** ([`QueueState::limit`]) يحمي البطاقة: افتراضيّ ١ وأقصى ٢،
+///   وهو الرقم المقيس لسقف ذاكرة الكرت في `slots`.
+/// * **ولا يُحتجز موردٌ في الطابور**: مهمّةٌ تنتظر دورها لا تحمل فتحة جهاز ولا
+///   فتحة مشغّل؛ الفتحتان تُؤخذان عند التنفيذ وتُحرَّران قبل أي انتظار بشري.
+struct JobQueue {
+    state: Mutex<QueueState>,
+    ready: Condvar,
+}
+
+#[derive(Default)]
+struct QueueState {
+    /// طابور كل مستخدم بترتيب الوصول.
+    per_user: HashMap<i64, VecDeque<Job>>,
+    /// المستخدمون بأدوارهم — كلٌّ **مرة واحدة** ما دام له ما ينتظر.
+    order: VecDeque<i64>,
+    /// مهامّ قيد التنفيذ الآن.
+    running: usize,
+    /// السقف العام (من `slots::current_limit`).
+    limit: u32,
+    stop: bool,
+}
+
+impl JobQueue {
+    fn new(limit: u32) -> Self {
+        Self {
+            state: Mutex::new(QueueState {
+                limit: limit.clamp(1, slots::MAX_LIMIT),
+                ..Default::default()
+            }),
+            ready: Condvar::new(),
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, QueueState> {
+        self.state.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// يُدرج مهمّةً في طابور صاحبها **ويُعلم** عاملاً منتظراً.
+    fn push(&self, job: Job) {
+        let user = job.user_id;
+        {
+            let mut s = self.lock();
+            let fresh = !s.per_user.contains_key(&user);
+            s.per_user.entry(user).or_default().push_back(job);
+            // **مرة واحدة في الترتيب**: طابورٌ ثانٍ لصاحبٍ حاضر لا يعني دوراً
+            // ثانياً — وإلا صار مستخدمٌ بأربعة ملفات أربعةَ أدوار.
+            if fresh {
+                s.order.push_back(user);
+            }
+        }
+        self.ready.notify_one();
+    }
+
+    /// يُخرج المهمّة التالية، أو `None` عند الإيقاف. **يحجب** حتى يتوفّر عملٌ
+    /// وفتحة — وهذا هو مكان السقف العام الوحيد.
+    fn pop(&self) -> Option<Job> {
+        let mut s = self.lock();
+        loop {
+            if s.stop {
+                return None;
+            }
+            if s.running < s.limit as usize {
+                if let Some(job) = Self::take_next(&mut s) {
+                    s.running += 1;
+                    return Some(job);
+                }
+            }
+            s = self.ready.wait(s).unwrap_or_else(|p| p.into_inner());
+        }
+    }
+
+    /// يأخذ مهمّةً واحدة بالدور: مستخدمٌ من مقدّمة الترتيب، فإن بقي له عمل
+    /// أُعيد إلى **آخره** — فلا يحتكر السقف.
+    fn take_next(s: &mut QueueState) -> Option<Job> {
+        while let Some(user) = s.order.pop_front() {
+            let Some(q) = s.per_user.get_mut(&user) else {
+                continue;
+            };
+            let Some(job) = q.pop_front() else {
+                s.per_user.remove(&user);
+                continue;
+            };
+            if q.is_empty() {
+                s.per_user.remove(&user);
+            } else {
+                s.order.push_back(user);
+            }
+            return Some(job);
+        }
+        None
+    }
+
+    /// **يُحرّر فتحةً** ويوقظ المنتظرين. نداءٌ على مهمّةٍ انتهت (وفيها نقص)
+    /// لا يُنقص إلى ما تحت الصفر — العدّاد لا يلتفّ.
+    fn finish_one(&self) {
+        {
+            let mut s = self.lock();
+            s.running = s.running.saturating_sub(1);
+        }
+        self.ready.notify_all();
+    }
+
+    /// يوقف الطابور ويفتح كل المنتظرين (إيقاف العامل من الإعدادات).
+    fn shutdown(&self) {
+        {
+            let mut s = self.lock();
+            s.stop = true;
+        }
+        self.ready.notify_all();
+    }
+
+    /// عدد المهامّ المنتظرة (بلا الجارية) — للقياس في الاختبارات.
+    #[cfg(test)]
+    fn waiting(&self) -> usize {
+        self.lock().per_user.values().map(VecDeque::len).sum()
+    }
+
+    /// المهامّ الجارية الآن — **المقياس المباشر للسقف** في اختبار التوازي.
+    #[cfg(test)]
+    fn running(&self) -> usize {
+        self.lock().running
+    }
+}
+
+/// فتحة مشغّل: تُحرَّر **صراحةً** فور انتهاء حاجة المهمّة إلى موارد الجهاز،
+/// وتلقائياً عند الخروج من `run_job` (نجاحاً أو خطأً أو ذعراً).
+///
+/// **النداء مرتان لا يُنقص مرتين** (‏`released`)، فالفتحة لا «تُوهَب» لمهمّة
+/// أخرى مرتين.
+struct JobSlot {
+    queue: Arc<JobQueue>,
+    released: bool,
+}
+
+impl JobSlot {
+    fn new(queue: Arc<JobQueue>) -> Self {
+        Self {
+            queue,
+            released: false,
+        }
+    }
+
+    /// **يُحرّر المورد قبل أي انتظار بشري** (شرط م٤ §٣): يُنادى بعد نداء المحرّك
+    /// مباشرةً، فسؤال التجاوز وضغطات الأعضاء لا تُبقي أحداً خارج السقف.
+    fn release(&mut self) {
+        if !self.released {
+            self.released = true;
+            self.queue.finish_one();
+        }
+    }
+}
+
+impl Drop for JobSlot {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
+/// مهامّ تلغرام: خيط استقبالٍ واحد يُدخل الطابور، وعاملٌ لكل فتحة يسمح بها
+/// السقف الأقصى. **والسقف الفعلي يُفحص داخل الطابور** ([`JobQueue::pop`])،
+/// فالعامل الثاني ينتظر حين يكون السقف ١ ولا يُلغي وجوده السقف.
 fn spawn_job_thread(
     cfg: TgConfig,
     stop: Arc<AtomicBool>,
     rx: Receiver<Job>,
     oversize: Arc<Mutex<OversizeStore>>,
+    queue: Arc<JobQueue>,
 ) {
-    std::thread::Builder::new()
-        .name("telegram-jobs".into())
+    // Self-healing: wipe whatever a previous run (or a crash) left in the
+    // scratch dir. Safe here because no job can be running yet.
+    clear_scratch(&work_dir(&crate::paths::data_dir()));
+    spawn_job_intake(stop.clone(), rx, queue.clone());
+    spawn_job_workers(cfg, stop, oversize, queue);
+}
+
+/// خيط الاستقبال: القناة ← الطابور. (مفصولٌ عن العاملين ليستطيع فحصٌ أن
+/// **يملأ الطابور قبل أن يبدأ أي عامل** فيقيس ترتيب الدور بلا سباق.)
+fn spawn_job_intake(stop: Arc<AtomicBool>, rx: Receiver<Job>, queue: Arc<JobQueue>) {
+    let _ = std::thread::Builder::new()
+        .name("telegram-intake".into())
         .spawn(move || {
-            // Self-healing: wipe whatever a previous run (or a crash) left in
-            // the scratch dir. Safe here because no job can be running yet.
-            clear_scratch(&work_dir(&crate::paths::data_dir()));
             while let Ok(job) = rx.recv() {
                 if stop.load(Ordering::SeqCst) {
                     break;
                 }
-                // الخارج من القناة يُحسب **داخل** `run_job` بعد `InFlightGuard`
-                // (لا هنا): بهذا لا توجد لحظة تكون فيها المهمّة في لا عدّاد.
-                run_job(&cfg, job, &stop, &oversize);
-                if let Ok(mut st) = status().lock() {
-                    st.processed += 1;
-                    st.last_activity = now_stamp();
-                }
+                queue.push(job);
             }
-        })
-        .ok();
+            // القناة أُغلقت (إعادة تشغيل العامل) ⇒ لا منتظرَ إلى الأبد.
+            queue.shutdown();
+        });
+}
+
+/// العاملون: واحد لكل فتحة يسمح بها السقف الأقصى، والسقف الفعلي يُفحص داخل
+/// الطابور ([`JobQueue::pop`]) فالعامل الثاني ينتظر حين يكون السقف ١.
+fn spawn_job_workers(
+    cfg: TgConfig,
+    stop: Arc<AtomicBool>,
+    oversize: Arc<Mutex<OversizeStore>>,
+    queue: Arc<JobQueue>,
+) {
+    for i in 0..slots::MAX_LIMIT {
+        let cfg = cfg.clone();
+        let stop = stop.clone();
+        let oversize = oversize.clone();
+        let queue = queue.clone();
+        let _ = std::thread::Builder::new()
+            .name(format!("telegram-jobs-{i}"))
+            .spawn(move || {
+                while let Some(job) = queue.pop() {
+                    if stop.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    // الخارج من الطابور يُحسب **داخل** `run_job` بعد
+                    // `InFlightGuard` (لا هنا): بهذا لا توجد لحظة تكون فيها
+                    // المهمّة في لا عدّاد.
+                    let mut slot = JobSlot::new(queue.clone());
+                    run_job(&cfg, job, &stop, &oversize, Some(&mut slot));
+                    if let Ok(mut st) = status().lock() {
+                        st.processed += 1;
+                        st.last_activity = now_stamp();
+                    }
+                }
+            });
+    }
 }
 
 fn now_stamp() -> String {
@@ -2745,6 +4407,24 @@ fn status_push(
     // يسبق تعديلٌ أقدمُ رتبةً تعديلاً أحدث منها على السلك.
     let mut gate = gate.lock().unwrap_or_else(|p| p.into_inner());
     let decided_ms = epoch_ms();
+    // م٤: **سقف المجموعة** — التعديلات التجميلية (ما دون النهاية) تُسقَط إن
+    // تجاوزت حصّة المحادثة (٢٠/دقيقة · رسالة/ثانية)، فالتقدّم زينةٌ لا خبر.
+    // أما الكتابة **النهائية** فلا تُسقَط: هي آخر ما يراه المستخدم، وإسقاطها
+    // يترك «⏳ في قائمة الانتظار» على مهمّة انتهت.
+    if rank < StatusRank::Finished && !pace_group_edit(chat_id) {
+        gate.dropped += 1;
+        gate.log.push(StatusWrite {
+            rank,
+            at_ms,
+            decided_ms,
+            applied: false,
+            text: format!("(أُسقِط لسقف المجموعة) {text}"),
+        });
+        if gate.log.len() > STATUS_LOG_CAP {
+            gate.log.remove(0);
+        }
+        return false;
+    }
     if !gate.admit(rank, at_ms, decided_ms, text) {
         return false;
     }
@@ -2812,6 +4492,9 @@ fn keyboard_is_empty(keyboard: &Value) -> bool {
 /// **وكل كتابة تمرّ بـ[`status_push`]** (م٣/إصلاح): فلا خيطان يكتبان بلا ترتيب.
 struct StatusMsg {
     chat_id: i64,
+    /// **صاحب المهمّة** (م٤): زرّ الإلغاء يُبنى بمعرّفه، فلا يقع زرٌّ بلا صاحب
+    /// (وضغطةٌ بلا صاحب لا يمكن مصادقتها).
+    user_id: i64,
     message_id: i64,
     last: Instant,
     text: String,
@@ -2823,9 +4506,10 @@ struct StatusMsg {
 }
 
 impl StatusMsg {
-    fn new(chat_id: i64, message_id: i64, cancel: Arc<AtomicBool>) -> Self {
+    fn new(chat_id: i64, user_id: i64, message_id: i64, cancel: Arc<AtomicBool>) -> Self {
         Self {
             chat_id,
+            user_id,
             message_id,
             last: Instant::now(),
             text: String::new(),
@@ -2840,7 +4524,7 @@ impl StatusMsg {
             cfg,
             text,
             force,
-            cancel_button(self.chat_id),
+            cancel_button(self.chat_id, self.user_id),
             StatusRank::Progress,
         );
     }
@@ -3008,7 +4692,15 @@ fn out_dir() -> PathBuf {
     crate::results_dir()
 }
 
-fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>, oversize: &Arc<Mutex<OversizeStore>>) {
+fn run_job(
+    cfg: &TgConfig,
+    job: Job,
+    stop: &Arc<AtomicBool>,
+    oversize: &Arc<Mutex<OversizeStore>>,
+    // فتحة المشغّل (م٤): `None` في الاختبارات التي تنادي `run_job` مباشرةً
+    // بلا طابور — والمسار الإنتاجي يمرّرها دائماً.
+    mut slot: Option<&mut JobSlot>,
+) {
     // ① المهمّة «جارية» **قبل** أن تخرج من عدّاد القناة: لا لحظة تكون فيها في
     //    لا عدّاد (وإلا عُدّ «دورك» ناقصاً في تلك النافذة).
     let _in_flight = InFlightGuard::enter();
@@ -3033,7 +4725,7 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>, oversize: &Arc<Mute
     // وهو ظاهر على الشاشة — قياس: للمهمّة نافذة تحضير كاملة لا يُلغيها أحد.
     // والمسار يُثبَّت لاحقاً (`set_path`) فور أن يصير معلوماً: `None` هنا صادق
     // (لم يُعرف بعد)، ولا يكسر مطابقة الواجهة بالمسار.
-    let early = slots::register_early(&job_label(job.chat_id), None);
+    let early = slots::register_early(&job_label(job.chat_id, job.user_id), None);
 
     let app_data = crate::paths::data_dir();
     let scratch = work_dir(&app_data);
@@ -3043,6 +4735,7 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>, oversize: &Arc<Mute
     let _ = std::fs::create_dir_all(&results);
     let Job {
         chat_id,
+        user_id,
         source,
         mode,
         src_msg_id,
@@ -3072,7 +4765,7 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>, oversize: &Arc<Mute
             status_msg_id,
             StatusRank::Running,
             &running_text(label),
-            cancel_button(chat_id),
+            cancel_button(chat_id, user_id),
         );
         status_msg_id
     } else {
@@ -3080,14 +4773,14 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>, oversize: &Arc<Mute
             cfg,
             chat_id,
             &running_text(label),
-            Some(cancel_button(chat_id)),
+            Some(cancel_button(chat_id, user_id)),
             Some(src_msg_id),
         )
         .unwrap_or(0)
     };
     // RefCell: the progress closure AND the stage closure both report through
     // the same status message, and two `&mut` captures cannot coexist.
-    let status = std::cell::RefCell::new(StatusMsg::new(chat_id, msg_id, cancel.clone()));
+    let status = std::cell::RefCell::new(StatusMsg::new(chat_id, user_id, msg_id, cancel.clone()));
     // ضمانة بنيوية: **على كل باب خروج** يُزال زرّ الإلغاء صراحةً لو نسي فرعٌ
     // ذلك، فلا يبقى زرّ على مهمّة منتهية أبداً.
     let _cancel_button_guard = CancelButtonGuard {
@@ -3283,6 +4976,13 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>, oversize: &Arc<Mute
             return;
         }
     };
+    // **الموارد صارت حرة الآن** (نداء المحرّك انتهى وفتحة الجهاز أُعيدت):
+    // فتحة المشغّل تُحرَّر هنا — **قبل** أي انتظار بشري أدناه (سؤال التجاوز
+    // وضغطات الأعضاء) وقبل الإرسال. فلا يبقى مستخدمٌ خارج السقف لأن غيره
+    // ينتظر ضغطة. (والتحرير يقع في `Drop` أيضاً على كل باب خروج آخر.)
+    if let Some(s) = slot.as_mut() {
+        s.release();
+    }
 
     // 4. Pick the artifact and decide how to deliver it.
     let produced = out
@@ -3379,6 +5079,7 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>, oversize: &Arc<Mute
         // السؤال يشير إلى ملفٍ محذوف.
         let ask = OversizeAsk {
             chat_id,
+            user_id,
             src_msg_id,
             produced: &produced,
             duration_secs: duration,
@@ -3518,6 +5219,13 @@ mod tests {
         seen: Arc<Mutex<Vec<SeenCall>>>,
         stop: Arc<AtomicBool>,
         handle: Option<std::thread::JoinHandle<()>>,
+        /// **رفضٌ مصطنع** (م٤): نصوصٌ في جسم الطلب تجعل الخادم يردّ
+        /// `{"ok":false}` — وهو الشكل الحقيقي لرفض Bot API («Bad Request: …»).
+        /// وبه يُقاس **السقوط** لا النجاح: فانيةٌ غير مدعومة، أو محادثةٌ لم
+        /// يبدأها العضو (‏`chat not found`).
+        reject_body: Arc<Mutex<Vec<String>>>,
+        /// معرّفات محادثات يرفضها الخادم (‏`chat_id`).
+        reject_chat: Arc<Mutex<Vec<i64>>>,
     }
 
     /// يقرأ طلب HTTP واحد: (اسم الدوال، الجسم الخام).
@@ -3569,7 +5277,43 @@ mod tests {
         (method, body)
     }
 
-    fn fake_reply(method: &str, next_msg_id: &mut i64) -> String {
+    /// ردّ الخادم الوهمي. **والرفض يُحاكي Bot API حرفاً**: `ok:false` مع
+    /// `description`، وهذا ما يقرؤه `call` فيعيد `Err` — فالمسار المُقاس هو
+    /// مسار الفشل الحقيقي لا نجاحٌ مصطنع.
+    fn fake_reply(
+        method: &str,
+        body: &str,
+        next_msg_id: &mut i64,
+        reject_body: &[String],
+        reject_chat: &[i64],
+    ) -> String {
+        if reject_body
+            .iter()
+            .any(|needle| body.contains(needle.as_str()))
+        {
+            let err = format!(
+                "{{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: {method} rejected by the fixture\"}}"
+            );
+            return format!(
+                "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                err.len(),
+                err
+            );
+        }
+        if !reject_chat.is_empty() && method == "sendMessage" {
+            let sent = serde_json::from_str::<Value>(body)
+                .ok()
+                .and_then(|v| v.get("chat_id").and_then(Value::as_i64))
+                .unwrap_or(0);
+            if reject_chat.contains(&sent) {
+                let err = "{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: chat not found\"}";
+                return format!(
+                    "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    err.len(),
+                    err
+                );
+            }
+        }
         let result = match method {
             "sendMessage" => {
                 *next_msg_id += 1;
@@ -3582,7 +5326,8 @@ mod tests {
             }
             // **بطيء عمداً**: يفتح نافذة استلامٍ يُقاس فيها أن المهمّة مسجَّلة
             // أثناءه (التسجيل المبكر، م٣) — وهي النافذة التي كان الزرّ فيها
-            // يردّ «لا مهمّة جارية» كذباً.
+            // يردّ «لا مهمّة جارية» كذباً. **وفي م٤ صارت نافذة قياس التوازي**:
+            // ثلاث مهامّ في ثلاث نافذة ٤٠٠ مللي تُظهر السقف العام فعلاً.
             "getFile" => {
                 std::thread::sleep(Duration::from_millis(400));
                 json!({ "file_path": "hl_m3_absent.bin", "file_size": 0 }).to_string()
@@ -3604,9 +5349,13 @@ mod tests {
             let addr = listener.local_addr().unwrap();
             let seen = Arc::new(Mutex::new(Vec::new()));
             let stop = Arc::new(AtomicBool::new(false));
+            let reject_body: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+            let reject_chat: Arc<Mutex<Vec<i64>>> = Arc::new(Mutex::new(Vec::new()));
             let handle = {
                 let seen = seen.clone();
                 let stop = stop.clone();
+                let reject_body = reject_body.clone();
+                let reject_chat = reject_chat.clone();
                 std::thread::spawn(move || {
                     use std::io::Write as _;
                     let mut next_msg_id: i64 = 1000;
@@ -3621,7 +5370,21 @@ mod tests {
                                 sock.set_nonblocking(false).ok();
                                 sock.set_read_timeout(Some(Duration::from_secs(5))).ok();
                                 let (method, body) = read_http_request(&mut sock);
-                                let reply = fake_reply(&method, &mut next_msg_id);
+                                let reject_b = reject_body
+                                    .lock()
+                                    .unwrap_or_else(|p| p.into_inner())
+                                    .clone();
+                                let reject_c = reject_chat
+                                    .lock()
+                                    .unwrap_or_else(|p| p.into_inner())
+                                    .clone();
+                                let reply = fake_reply(
+                                    &method,
+                                    &body,
+                                    &mut next_msg_id,
+                                    &reject_b,
+                                    &reject_c,
+                                );
                                 if !method.is_empty() {
                                     seen.lock()
                                         .unwrap_or_else(|p| p.into_inner())
@@ -3648,7 +5411,27 @@ mod tests {
                 seen,
                 stop,
                 handle: Some(handle),
+                reject_body,
+                reject_chat,
             }
+        }
+
+        /// يجعل الخادم يرفض كل طلبٍ يحمل هذا النصّ في جسمه — وهو الشكل الحقيقي
+        /// لـ«Bot API لا يعرف هذا المعامل».
+        fn reject_containing(&self, needle: &str) {
+            self.reject_body
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .push(needle.to_string());
+        }
+
+        /// يجعل الخادم يرفض الإرسال إلى هذه المحادثة — شكل «لم يبدأ العضو
+        /// محادثةً مع البوت» الحقيقي (‏`chat not found`).
+        fn reject_chat_id(&self, chat_id: i64) {
+            self.reject_chat
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .push(chat_id);
         }
 
         /// إعداد **محلي** (‏`local_url` ⇒ `is_local()`): يعني أن مسار السحابة
@@ -3660,6 +5443,15 @@ mod tests {
                 owner_id: Some(owner),
                 audio_only: false,
                 local_url: Some(format!("http://{}", self.addr)),
+                group_mode: GroupMode::Mentions,
+            }
+        }
+
+        /// نفس الإعداد بوضع مجموعةٍ صريح — للفحوص التي تقيس الوضعين.
+        fn cfg_group(&self, owner: i64, mode: GroupMode) -> TgConfig {
+            TgConfig {
+                group_mode: mode,
+                ..self.cfg(owner)
             }
         }
 
@@ -3742,6 +5534,9 @@ mod tests {
         QUEUE_DEPTH.store(0, Ordering::SeqCst);
         IN_FLIGHT.store(0, Ordering::SeqCst);
         reset_status_gates();
+        // **ومُنظِّم المجموعة معها** (م٤): حصّة الإرسال عدّادٌ عامّ أيضاً،
+        // ففحصٌ يرسل في مجموعةٍ كان يُسقط رسائل الفحص التالي بلا سبب.
+        reset_send_pacer();
     }
 
     fn temp_dir(tag: &str) -> PathBuf {
@@ -3784,6 +5579,136 @@ mod tests {
                 "message": { "message_id": msg_id, "chat": { "id": from } }
             }
         })
+    }
+
+    /// ضغطة **في محادثةٍ بعينها** (م٤): في المجموعة `chat_id` سالب وصاحب
+    /// الضغطة غيره — وهذا الفرق هو ما يقيسه ت٢.
+    fn press_in(from: i64, chat_id: i64, msg_id: i64, data: &str) -> Value {
+        json!({
+            "update_id": 400 + msg_id,
+            "callback_query": {
+                "id": format!("CB{msg_id}"),
+                "from": { "id": from },
+                "data": data,
+                "message": { "message_id": msg_id, "chat": { "id": chat_id } }
+            }
+        })
+    }
+
+    /// رسالة **في مجموعة**: معرّف سالب ونوع `supergroup` — فلا تُقرأ خاصة.
+    fn group_msg(from: i64, chat_id: i64, message_id: i64, text: &str) -> Value {
+        json!({
+            "update_id": 500 + message_id,
+            "message": {
+                "message_id": message_id,
+                "from": { "id": from, "first_name": format!("عضو{from}") },
+                "chat": { "id": chat_id, "type": "supergroup" },
+                "text": text
+            }
+        })
+    }
+
+    /// ملفٌ في مجموعة.
+    fn group_file(from: i64, chat_id: i64, message_id: i64, name: &str) -> Value {
+        json!({
+            "update_id": 600 + message_id,
+            "message": {
+                "message_id": message_id,
+                "from": { "id": from, "first_name": format!("عضو{from}") },
+                "chat": { "id": chat_id, "type": "supergroup" },
+                "video": { "file_id": format!("F{message_id}"), "file_name": name, "file_size": 1024 }
+            }
+        })
+    }
+
+    /// تحديث `my_chat_member` يقول إن البوت أُضيف إلى المجموعة.
+    fn bot_joined(chat_id: i64, from: &str, to: &str) -> Value {
+        json!({
+            "update_id": 700,
+            "my_chat_member": {
+                "chat": { "id": chat_id, "type": "supergroup" },
+                "from": { "id": 7 },
+                "old_chat_member": { "status": from, "user": { "id": 99, "is_bot": true } },
+                "new_chat_member": { "status": to, "user": { "id": 99, "is_bot": true } }
+            }
+        })
+    }
+
+    /// حالة استطلاع **في مجموعة**: هوية بوتٍ معروفة وقائمةُ سماحٍ صريحة.
+    /// (بلا هويةٍ لا يُعرَف منشن — وهو سلوكٌ مقصود لا سهو.)
+    fn group_poll(username: &str, bot_id: i64, allowed: &[(i64, i64)]) -> PollState {
+        let mut poll = PollState {
+            identity: BotIdentity {
+                id: bot_id,
+                username: username.to_string(),
+            },
+            ..Default::default()
+        };
+        for (chat, user) in allowed {
+            poll.access.allow(*chat, *user);
+        }
+        poll
+    }
+
+    /// رسائل أُرسلت إلى محادثةٍ بعينها.
+    fn sent_to(bot: &FakeBot, chat_id: i64) -> Vec<Value> {
+        bot.sent_messages()
+            .into_iter()
+            .filter(|m| m.get("chat_id").and_then(Value::as_i64) == Some(chat_id))
+            .collect()
+    }
+
+    /// أجوبة `answerCallbackQuery` النصّية.
+    fn callback_answers(bot: &FakeBot) -> Vec<String> {
+        bot.bodies("answerCallbackQuery")
+            .iter()
+            .filter_map(|b| serde_json::from_str::<Value>(b).ok())
+            .filter_map(|v| v.get("text").and_then(Value::as_str).map(str::to_string))
+            .collect()
+    }
+
+    /// معرّفات الرسائل التي وزّعها الخادم على إرسالاتٍ إلى محادثةٍ بعينها —
+    /// من **الردود** لا من الطلبات (فطلب `sendMessage` لا يحمل `message_id`).
+    fn sent_message_ids_to(bot: &FakeBot, chat_id: i64) -> Vec<i64> {
+        bot.calls()
+            .into_iter()
+            .filter(|c| c.method == "sendMessage")
+            .filter(|c| {
+                serde_json::from_str::<Value>(&c.body)
+                    .ok()
+                    .and_then(|v| v.get("chat_id").and_then(Value::as_i64))
+                    == Some(chat_id)
+            })
+            .filter_map(|c| {
+                let body = c.reply.rsplit("\r\n\r\n").next().unwrap_or(&c.reply).trim();
+                serde_json::from_str::<Value>(body)
+                    .ok()?
+                    .pointer("/result/message_id")
+                    .and_then(Value::as_i64)
+            })
+            .collect()
+    }
+
+    /// رسائل `sendMessage` التي تحمل أزرار اختيار الوضع (‏`mode:`).
+    fn mode_questions_to(bot: &FakeBot, chat_id: i64) -> Vec<Value> {
+        sent_to(bot, chat_id)
+            .into_iter()
+            .filter(|m| {
+                m.pointer("/reply_markup/inline_keyboard")
+                    .and_then(Value::as_array)
+                    .map(|rows| {
+                        rows.iter().any(|r| {
+                            r.as_array().cloned().unwrap_or_default().iter().any(|b| {
+                                b.get("callback_data")
+                                    .and_then(Value::as_str)
+                                    .map(|d| d.starts_with("mode:"))
+                                    .unwrap_or(false)
+                            })
+                        })
+                    })
+                    .unwrap_or(false)
+            })
+            .collect()
     }
 
     /// رموز الملفات كما وردت **فعلاً** في أزرار الرسائل المُرسَلة (لا من حالة
@@ -3883,6 +5808,7 @@ mod tests {
             owner_id: None,
             audio_only: false,
             local_url: None,
+            group_mode: GroupMode::Mentions,
         };
         assert!(!cfg.allows(12345), "no id configured ⇒ nobody is allowed");
         cfg.owner_id = Some(12345);
@@ -4027,6 +5953,7 @@ mod tests {
             owner_id: Some(7),
             audio_only: false,
             local_url: None,
+            group_mode: GroupMode::Mentions,
         };
         // The exact shape ureq produces: URL first, then the reason.
         let leaky = format!(
@@ -4499,6 +6426,7 @@ mod tests {
         let ov = new_oversize_store();
         let job = Job {
             chat_id: 7,
+            user_id: 7,
             source: Source::File {
                 file_id: "F12".into(),
                 name: "second.mp4".into(),
@@ -4515,13 +6443,16 @@ mod tests {
             let cfg = cfg.clone();
             let ov = ov.clone();
             let stop = stop.clone();
-            std::thread::spawn(move || run_job(&cfg, job, &stop, &ov))
+            std::thread::spawn(move || run_job(&cfg, job, &stop, &ov, None))
         };
 
         // ننتظر ظهور المهمّة في السِجلّ العام (‏`slots::active_jobs`) ثم نحكم.
         let mut live = false;
         for _ in 0..300 {
-            if slots::active_jobs().iter().any(|j| j.label == job_label(7)) {
+            if slots::active_jobs()
+                .iter()
+                .any(|j| j.label == job_label(7, 7))
+            {
                 live = true;
                 break;
             }
@@ -4533,11 +6464,11 @@ mod tests {
         );
         // والمسارات في السِجلّ لم تُعرف بعد ⇒ None صادق لا مخترع.
         let entry = slots::active_jobs();
-        let mine = entry.iter().find(|j| j.label == job_label(7)).unwrap();
+        let mine = entry.iter().find(|j| j.label == job_label(7, 7)).unwrap();
         assert!(mine.path.is_none(), "مسار مخترع قبل التنزيل: {mine:?}");
 
         // **والزرّ يعمل فعلاً**: نفس الدالّة التي يناديها الزرّ و`/kill`.
-        let reply = cancel_chat_jobs(7);
+        let reply = cancel_chat_jobs(7, 7);
         assert_ne!(
             reply, "لا مهمّة جارية",
             "الإلغاء أثناء الاستلام لم يجد المهمّة (العطل الأصلي)"
@@ -4562,7 +6493,9 @@ mod tests {
 
         // وبعد الانتهاء لا تبقى مهمّة معلّقة في السِجلّ.
         assert!(
-            !slots::active_jobs().iter().any(|j| j.label == job_label(7)),
+            !slots::active_jobs()
+                .iter()
+                .any(|j| j.label == job_label(7, 7)),
             "تسريب تسجيل بعد انتهاء المهمّة"
         );
     }
@@ -4590,6 +6523,7 @@ mod tests {
         let ov = new_oversize_store();
         let job = Job {
             chat_id: 7,
+            user_id: 7,
             source: Source::File {
                 file_id: "F12".into(),
                 name: "second.mp4".into(),
@@ -4602,7 +6536,7 @@ mod tests {
             row_id: jobs_arrived(7, "المالك", "second.mp4"),
         };
         let stop = Arc::new(AtomicBool::new(false));
-        run_job(&cfg, job, &stop, &ov);
+        run_job(&cfg, job, &stop, &ov, None);
 
         let edits = bot.edited_messages();
         assert!(
@@ -4613,7 +6547,7 @@ mod tests {
             assert_eq!(
                 e.pointer("/reply_markup/inline_keyboard/0/0/callback_data")
                     .and_then(Value::as_str),
-                Some("cancel:7"),
+                Some("cancel:7:7"),
                 "تعديل **أثناء العمل** بلا زرّ إلغاء ⇒ الزر يختفي في تلغرام: {e}"
             );
         }
@@ -4650,7 +6584,7 @@ mod tests {
             &cfg,
             &mut poll_state(),
             &ov,
-            &press(7, 1001, "cancel:7"),
+            &press(7, 1001, "cancel:7:7"),
             &tx,
         );
         let answers: Vec<String> = bot
@@ -4773,10 +6707,11 @@ mod tests {
         let mut store = PendingStore::default();
         let mk = |token: &str| Pending {
             chat_id: 5,
+            user_id: 5,
             token: token.into(),
             source: Source::Link(format!("https://x/{token}")),
             src_msg_id: 1,
-            ask_msg_id: 900,
+            ask_msg_id: Arc::new(AtomicI64::new(900)),
             file: format!("{token}.mp4"),
             row_id: 1,
         };
@@ -4869,6 +6804,7 @@ mod tests {
         // رسالة السؤال الحقيقية للملف الثاني هي رقم 1001 في الخادم الوهمي.
         let job = Job {
             chat_id: 7,
+            user_id: 7,
             source: Source::File {
                 file_id: "F12".into(),
                 name: "second.mp4".into(),
@@ -4881,7 +6817,7 @@ mod tests {
             row_id: jobs_arrived(7, "المالك", "second.mp4"),
         };
         let stop = Arc::new(AtomicBool::new(false));
-        run_job(&cfg, job, &stop, &ov);
+        run_job(&cfg, job, &stop, &ov, None);
 
         let edits = bot.edited_messages();
         assert!(!edits.is_empty(), "لا تحرير لرسالة الحالة");
@@ -5067,6 +7003,7 @@ mod tests {
         for i in 0..2 {
             let ask = OversizeAsk {
                 chat_id: 7,
+                user_id: 7,
                 src_msg_id: 60 + i,
                 produced: &produced,
                 duration_secs: 600.0,
@@ -5117,6 +7054,7 @@ mod tests {
         std::fs::write(&produced, vec![9u8; 128]).unwrap();
         ov.lock().unwrap().insert(Oversize {
             chat_id: 7,
+            user_id: 7,
             msg_id: 777,
             src_msg_id: 61,
             path: produced.clone(),
@@ -5177,6 +7115,7 @@ mod tests {
         std::fs::write(&produced, vec![1u8; 64]).unwrap();
         ov.lock().unwrap().insert(Oversize {
             chat_id: 7,
+            user_id: 7,
             msg_id: 778,
             src_msg_id: 62,
             path: produced.clone(),
@@ -5231,6 +7170,7 @@ mod tests {
         let now = Instant::now();
         let mk = |msg_id: i64, asked: Instant| Oversize {
             chat_id: 7,
+            user_id: 7,
             msg_id,
             src_msg_id: 63,
             path: produced.clone(),
@@ -5280,6 +7220,7 @@ mod tests {
         let ov = new_oversize_store();
         ov.lock().unwrap().insert(Oversize {
             chat_id: 7,
+            user_id: 7,
             msg_id: 779,
             src_msg_id: 64,
             path: PathBuf::from("does-not-matter.mp3"),
@@ -5298,13 +7239,14 @@ mod tests {
 
         assert_eq!(ov.lock().unwrap().len(), 1, "المتطفل استهلك السؤال");
         assert_eq!(bot.count("editMessageText"), 0, "المتطفل حرّر رسالة");
-        let answers: Vec<String> = bot
-            .bodies("answerCallbackQuery")
-            .iter()
-            .filter_map(|b| serde_json::from_str::<Value>(b).ok())
-            .filter_map(|v| v.get("text").and_then(Value::as_str).map(str::to_string))
-            .collect();
-        assert_eq!(answers, vec!["غير مصرّح".to_string()]);
+        let answers = callback_answers(&bot);
+        // **م٤: الرفض صار مُسنَداً إلى صاحب الناتج** لا إلى «غير مصرّح» العام:
+        // السؤال يحمل `user_id` صاحبه، فالحكم دقيق (والمعنى واحد: لا تنفيذ).
+        assert_eq!(
+            answers,
+            vec!["هذا الزرّ ليس لك".to_string()],
+            "الرفض يجب أن يكون بسبب الملكية لا صمتاً"
+        );
     }
 
     /// **ضغطتان متزامنتان** (سؤال الجاسوس ٢): الضغطة الثانية لا تجد مدخلاً
@@ -5318,6 +7260,7 @@ mod tests {
         let ov = new_oversize_store();
         ov.lock().unwrap().insert(Oversize {
             chat_id: 7,
+            user_id: 7,
             msg_id: 780,
             src_msg_id: 65,
             // مسار غير موجود: ffmpeg يفشل فوراً فلا يعتمد القياس على ترميز حقيقي.
@@ -5534,15 +7477,47 @@ mod tests {
         );
     }
 
-    /// `setMyCommands` يُرسَل بالقائمة نفسها — سطرٌ واحد لا قائمتان تفترقان.
+    /// **الأوامر بنطاق محادثة (م٤/٣)**: النطاق الافتراضي **يُفرَّغ** فلا يظهر
+    /// أمرٌ في مجموعةٍ سيُرفض فيها (`/kill` و`/status` للمالك وحده)، وقائمة
+    /// المالك الكاملة تُسجَّل في **نطاق محادثته** وحدها.
+    ///
+    /// وهذا الحارس **مُقوّى لا مُرخّى**: كان يقيس «سطراً واحداً بالقائمة نفسها»،
+    /// وصار يقيس ثلاثة أضعاف ذلك — صفرُ أوامر عامة، ونطاقٌ لمحادثة المالك
+    /// بعينها، والقائمة حرفاً بحرف، وحدود الـAPI (١٠٠ · ٣٢ · ٢٥٦).
     #[test]
-    fn the_commands_are_registered_with_telegram_verbatim() {
+    fn the_commands_are_registered_in_the_owners_scope_only() {
         let bot = FakeBot::start();
         let cfg = bot.cfg(7);
         register_commands(&cfg);
+
+        // ① النطاق الافتراضي: **صفر أوامر** — طلبٌ صريح لا تركٌ ضمني.
+        let deletes = bot.bodies("deleteMyCommands");
+        assert_eq!(deletes.len(), 1, "لم يُفرَّغ النطاق الافتراضي مرة واحدة");
+        let dv: Value = serde_json::from_str(&deletes[0]).unwrap();
+        assert_eq!(
+            dv.pointer("/scope/type").and_then(Value::as_str),
+            Some("default"),
+            "الإفراغ يجب أن يكون للنطاق الافتراضي صراحةً: {dv}"
+        );
+
+        // ② القائمة الكاملة: تسجيلٌ **واحد** بنطاق محادثة المالك.
         let bodies = bot.bodies("setMyCommands");
-        assert_eq!(bodies.len(), 1, "لم يُسجَّل الأمر مرة واحدة");
+        assert_eq!(
+            bodies.len(),
+            1,
+            "الأوامر تُسجَّل مرة واحدة — ولا قائمة عامة ثانية: {bodies:?}"
+        );
         let v: Value = serde_json::from_str(&bodies[0]).unwrap();
+        assert_eq!(
+            v.pointer("/scope/type").and_then(Value::as_str),
+            Some("chat"),
+            "القائمة الكاملة في نطاق محادثةٍ بعينها لا في النطاق الافتراضي: {v}"
+        );
+        assert_eq!(
+            v.pointer("/scope/chat_id").and_then(Value::as_i64),
+            Some(7),
+            "النطاق محادثة المالك نفسها: {v}"
+        );
         let listed: Vec<(String, String)> = v["commands"]
             .as_array()
             .unwrap()
@@ -5559,6 +7534,45 @@ mod tests {
             .map(|(a, b)| (a.to_string(), b.to_string()))
             .collect();
         assert_eq!(listed, declared, "قائمة الإعلان ≠ قائمة العرض");
+
+        // ③ **حدود الـAPI** على القائمة المنشورة نفسها — لا نيّةً في تعليق:
+        //    ١٠٠ أمر · اسم ١–٣٢ (إنجليزي صغير/أرقام/`_`) · وصف ١–٢٥٦.
+        assert!(
+            listed.len() <= MAX_BOT_COMMANDS,
+            "عدد الأوامر {} فوق حدّ الـAPI {MAX_BOT_COMMANDS}",
+            listed.len()
+        );
+        for (name, desc) in &listed {
+            assert!(
+                !name.is_empty() && name.len() <= MAX_COMMAND_NAME,
+                "طول اسم الأمر خارج ١–{MAX_COMMAND_NAME}: {name:?}"
+            );
+            assert!(
+                name.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'),
+                "اسم أمر غير مقبول في Bot API: {name:?}"
+            );
+            assert!(
+                !desc.is_empty() && desc.len() <= MAX_COMMAND_DESC,
+                "طول الوصف خارج ١–{MAX_COMMAND_DESC}: {desc:?}"
+            );
+        }
+        // ④ ولا أمر عام أصلاً (فلا يظهر في مجموعةٍ ما سيُرفض فيها).
+        assert!(
+            PUBLIC_COMMANDS.is_empty(),
+            "قائمة عامة غير فارغة تعني أمراً ظاهراً في المجموعات: {PUBLIC_COMMANDS:?}"
+        );
+        // ⑤ ونطاق المحادثة **لا يُرسَل لقناة**: بلا مالك موجب لا تسجيل أصلاً.
+        bot.clear();
+        let mut anon = bot.cfg(7);
+        anon.owner_id = None;
+        register_commands(&anon);
+        assert_eq!(
+            bot.bodies("setMyCommands").len(),
+            0,
+            "سُجّلت أوامر بلا معرّف مالك ⇒ نطاقٌ بلا محادثة"
+        );
+        assert_eq!(bot.bodies("deleteMyCommands").len(), 1, "الإفراغ يقع دائماً");
     }
 
     /// `/status` **نقيّ**: يقول ما يعمل ولمن، ويعدّ المنتظر والمعلَّق.
@@ -5567,7 +7581,7 @@ mod tests {
         let running = vec![
             slots::JobInfo {
                 id: 1,
-                label: job_label(7),
+                label: job_label(7, 7),
                 path: Some("C:\\tmp\\mysong.mp4".into()),
                 started_ms: 12_000,
                 cancelled: false,
@@ -5676,13 +7690,27 @@ mod tests {
         let (tx, _rx) = chan();
         spawn_poll_thread(cfg, stop.clone(), tx, new_oversize_store());
         for _ in 0..200 {
-            if bot.count("setMyCommands") > 0 && bot.count("getUpdates") > 0 {
+            // **م٤**: صار التسجيل تسجيليْن — إفراغٌ افتراضيّ وقائمةُ المالك —
+            // فينتظر الفحص كليهما (وحارسُه اختبار التسجيل نفسه).
+            if bot.count("setMyCommands") > 0
+                && bot.count("deleteMyCommands") > 0
+                && bot.count("getUpdates") > 0
+            {
                 break;
             }
             std::thread::sleep(Duration::from_millis(10));
         }
         stop.store(true, Ordering::SeqCst);
-        assert_eq!(bot.count("setMyCommands"), 1, "الأوامر لم تُسجَّل عند الإقلاع");
+        assert_eq!(
+            bot.count("setMyCommands"),
+            1,
+            "أوامر المالك لم تُسجَّل عند الإقلاع"
+        );
+        assert_eq!(
+            bot.count("deleteMyCommands"),
+            1,
+            "لم يُفرَّغ النطاق الافتراضي عند الإقلاع (فأوامر قديمة تظهر في المجموعات)"
+        );
         assert!(bot.count("getUpdates") >= 1, "لم يبدأ الاستطلاع");
     }
 
@@ -5749,8 +7777,8 @@ mod tests {
         let _ = &cfg;
 
         // (أ) الجواب يُقرأ من السِجلّ: مهمّة مُسجَّلة في التحضير (لم تدخل الجسم).
-        let early = slots::register_early(&job_label(7), None);
-        let reply = cancel_chat_jobs_with(7, Duration::ZERO);
+        let early = slots::register_early(&job_label(7, 7), None);
+        let reply = cancel_chat_jobs_with(7, 7, Duration::ZERO);
         assert!(
             reply.contains("مرحلة التحضير"),
             "الجواب ليس جواب مرحلة التحضير: {reply}"
@@ -5813,7 +7841,7 @@ mod tests {
         let cfg = bot.cfg(7);
         let msg = 4001;
         let cancel = Arc::new(AtomicBool::new(false));
-        let status = std::cell::RefCell::new(StatusMsg::new(7, msg, cancel.clone()));
+        let status = std::cell::RefCell::new(StatusMsg::new(7, 7, msg, cancel.clone()));
         status
             .borrow_mut()
             .set(&cfg, "🎛️ فصل الصوت… 50%".into(), true);
@@ -5941,7 +7969,7 @@ mod tests {
             msg,
             StatusRank::Running,
             &running_text("أغنية"),
-            cancel_button(7)
+            cancel_button(7, 7)
         ));
         // ② خيط التحديثات: إشعار الانتظار يصل **متأخّراً** (وهو موضعه المقيس:
         //    بعد `tx.send`) — فيُسقَط ولا يمحو البدء.
@@ -5951,7 +7979,7 @@ mod tests {
             msg,
             StatusRank::Queued,
             &waiting_text("أغنية", 1),
-            cancel_button(7),
+            cancel_button(7, 7),
         );
         assert!(!late, "إشعار انتظار متأخّر قُبل فمحا «بدأت المعالجة»");
 
@@ -5998,7 +8026,7 @@ mod tests {
                         waiting_text("أغنية", 1)
                     };
                     gate.wait();
-                    status_push(&cfg, 7, msg, rank, &text, cancel_button(7))
+                    status_push(&cfg, 7, msg, rank, &text, cancel_button(7, 7))
                 }));
             }
             for h in handles {
@@ -6157,7 +8185,7 @@ mod tests {
         let cfg = bot.cfg(7);
         let msg = 4401;
         let cancel = Arc::new(AtomicBool::new(false));
-        let status = std::cell::RefCell::new(StatusMsg::new(7, msg, cancel));
+        let status = std::cell::RefCell::new(StatusMsg::new(7, 7, msg, cancel));
         status
             .borrow_mut()
             .set(&cfg, "🎛️ فصل الصوت… 10%".into(), true);
@@ -6185,7 +8213,7 @@ mod tests {
         // وبعد `end` (إزالة صريحة) لا يُرسل الحارس تعديلاً زائداً.
         let msg2 = 4402;
         let cancel2 = Arc::new(AtomicBool::new(false));
-        let status2 = std::cell::RefCell::new(StatusMsg::new(7, msg2, cancel2));
+        let status2 = std::cell::RefCell::new(StatusMsg::new(7, 7, msg2, cancel2));
         status2
             .borrow_mut()
             .set(&cfg, "🎛️ فصل الصوت… 20%".into(), true);
@@ -6223,7 +8251,7 @@ mod tests {
         let cfg = bot.cfg(7);
         let msg = 5101;
         let status =
-            std::cell::RefCell::new(StatusMsg::new(7, msg, Arc::new(AtomicBool::new(false))));
+            std::cell::RefCell::new(StatusMsg::new(7, 7, msg, Arc::new(AtomicBool::new(false))));
         status
             .borrow_mut()
             .set(&cfg, "🎛️ فصل الصوت… 40%".into(), true);
@@ -6235,7 +8263,7 @@ mod tests {
             edits[0]
                 .pointer("/reply_markup/inline_keyboard/0/0/callback_data")
                 .and_then(Value::as_str),
-            Some("cancel:7"),
+            Some("cancel:7:7"),
             "تعديل أثناء العمل بلا زرّ الإلغاء: {}",
             edits[0]
         );
@@ -6283,7 +8311,7 @@ mod tests {
         assert_eq!(asks.len(), 2, "سؤالان (الوصول ثم إعادة العرض): {asks:?}");
         let live_ask = *asks.last().unwrap();
         assert_ne!(first_ask, live_ask, "إعادة العرض لم تُنشئ رسالة جديدة");
-        let row_id = poll.pending.for_chat(55)[0].row_id;
+        let row_id = poll.pending.for_user(55, 55)[0].row_id;
 
         // (أ) الضغطة على **القديمة**: صمتٌ عن التحرير وصدقٌ في الجواب.
         bot.clear();
@@ -6342,5 +8370,1074 @@ mod tests {
         // تنظيف: صفّ `telegram-jobs` الذي سجّله الوصول لا يبقى لفحصٍ آخر
         // (السِجلّ عامّ للعملية، والصفّ يُبَثّ مرّةً ثم يُزال عند الانتهاء).
         jobs_finished(row_id, false);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  م٤ — المجموعات: قائمة السماح · المصادقة · الطوابير · الأوامر
+    //  · الفانية والسقوط · رسالة التعريف · الوضعان
+    //
+    //  كلٌّ من هذه الفحوص له **مُفسَد** أثبته المشرف بيده (في التقرير): يُعبَّث
+    //  الشرط فيسقط الفحص، ثم يُستعاد الملف ببصمته.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// ينتظر فراغ طابور الإرسال.
+    ///
+    /// **م٤**: الإرسال في المجموعة **غير متزامن** (يستهلكه خيط الكاتب)، فالفحص
+    /// الذي يقرأ ما وصل الخادم يجب أن ينتظر الكاتب — وإلا قاس «لم يُرسَل بعد»
+    /// وقرأه «لم يُرسَل». وهو انتظارُ **الفحص** لا المنتَج.
+    fn drain_sends() {
+        assert!(
+            wait_sends(Duration::from_secs(60)),
+            "طابور الإرسال لم يفرغ خلال المهلة"
+        );
+    }
+
+    /// مشغّل مهامّ حقيقي بسقفٍ صريح: نفس `spawn_job_thread` الإنتاجي (خيط
+    /// استقبال + عاملان)، فما يُقاس هو الجدولة الفعلية لا شبيهٌ لها.
+    fn spawn_dispatcher(
+        cfg: TgConfig,
+        limit: u32,
+    ) -> (Sender<Job>, Arc<AtomicBool>, Arc<JobQueue>) {
+        let (tx, rx) = mpsc::channel::<Job>();
+        let stop = Arc::new(AtomicBool::new(false));
+        let queue = Arc::new(JobQueue::new(limit));
+        spawn_job_thread(cfg, stop.clone(), rx, new_oversize_store(), queue.clone());
+        (tx, stop, queue)
+    }
+
+    /// مهمّة ملفٍّ لمستخدمٍ بعينه في مجموعة.
+    fn group_job(chat_id: i64, user_id: i64, status_msg_id: i64, name: &str) -> Job {
+        Job {
+            chat_id,
+            user_id,
+            source: Source::File {
+                file_id: format!("F{user_id}"),
+                name: name.into(),
+                size: 0,
+            },
+            mode: Mode::Song,
+            src_msg_id: 900 + user_id,
+            status_msg_id,
+            file: name.into(),
+            row_id: jobs_arrived(chat_id, &format!("عضو{user_id}"), name),
+        }
+    }
+
+    /// المهامّ الحيّة لهذه المحادثة في **السِجلّ العام** (‏`slots`) — مصدر
+    /// مستقلّ عن عدّادات الطابور، فلا يقيس الفحص عدّاده بنفسه.
+    fn live_jobs_in(chat_id: i64) -> Vec<slots::JobInfo> {
+        let prefix = chat_label_prefix(chat_id);
+        slots::active_jobs()
+            .into_iter()
+            .filter(|j| j.label.starts_with(&prefix))
+            .collect()
+    }
+
+    fn cancelled_job(id: u64) -> bool {
+        slots::active_jobs()
+            .into_iter()
+            .find(|j| j.id == id)
+            .map(|j| j.cancelled)
+            .unwrap_or(false)
+    }
+
+    /// عدد رسائل الحالة التي **انتهت** (تعديلٌ نهائي بلوحة فارغة) — علامة
+    /// انتهاءٍ يوزّعها الخادم نفسه، فلا تُقاس بعدّاد الطابور.
+    fn finished_status_messages(bot: &FakeBot) -> usize {
+        let mut ids: Vec<i64> = bot
+            .edited_messages()
+            .iter()
+            .filter(|e| e.pointer("/reply_markup/inline_keyboard") == Some(&json!([])))
+            .filter_map(|e| e.get("message_id").and_then(Value::as_i64))
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids.len()
+    }
+
+    /// ترتيب **بدء** المهامّ كما وصل الخادم: أول كتابة «▶ بدأت المعالجة» على
+    /// كل رسالة حالة.
+    fn started_status_messages(bot: &FakeBot) -> Vec<i64> {
+        let mut started: Vec<i64> = Vec::new();
+        for e in bot.edited_messages() {
+            let text = e.get("text").and_then(Value::as_str).unwrap_or("");
+            if text.starts_with('▶') {
+                if let Some(mid) = e.get("message_id").and_then(Value::as_i64) {
+                    if !started.contains(&mid) {
+                        started.push(mid);
+                    }
+                }
+            }
+        }
+        started
+    }
+
+    // ── ت١: غير المسموح لا يُشغّل مهمّة ──────────────────────────────────────
+
+    /// **ت١**: عضوٌ في مجموعة ليس في قائمة السماح **لا يُشغّل مهمّة** — ولا
+    /// يُسأل عن الوضع، ولا يُسجَّل ملفٌّ معلَّق، ولا تصل القناة مهمّة. ويُردّ
+    /// عليه **برسالة واحدة موجزة** لا بصمت (تصميم §٢-٣).
+    ///
+    /// **ولا يمرّ الفحص بفراغ**: بعد إضافة الزوج إلى القائمة يعمل الطلب نفسه —
+    /// فالقياس «مُنع ثم سُمح»، لا «لم يقع شيء».
+    #[test]
+    fn t1_a_member_outside_the_allowlist_never_starts_a_job() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg_group(7, GroupMode::Mentions);
+        let mut poll = group_poll("MyBot", 99, &[]);
+        let ov = new_oversize_store();
+        let (tx, rx) = chan();
+
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &group_msg(55, -101, 11, "@MyBot https://youtu.be/aaaa"),
+            &tx,
+        );
+        drain_sends();
+        assert!(
+            mode_questions_to(&bot, -101).is_empty(),
+            "غير المسموح سُئل عن الوضع ⇒ بدأت معالجة على جهاز المالك"
+        );
+        assert_eq!(poll.pending.count_for(-101), 0, "معلَّقٌ سُجّل لغير مسموح");
+        assert!(rx.try_recv().is_err(), "مهمّة انطلقت من عضوٍ غير مسموح");
+        assert!(
+            !sent_to(&bot, -101).is_empty(),
+            "غير المسموح قوبل بصمت تام — الصمت يجعل البوت يبدو معطّلاً"
+        );
+
+        // **رسالة واحدة**: تكرار الطلب — رابطاً كان أو ملفاً — لا يُنتج سيلاً.
+        let first = sent_to(&bot, -101).len();
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &group_msg(55, -101, 12, "@MyBot https://youtu.be/bbbb"),
+            &tx,
+        );
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &group_file(55, -101, 13, "song.mp4"),
+            &tx,
+        );
+        drain_sends();
+        assert_eq!(
+            sent_to(&bot, -101).len(),
+            first,
+            "أُعيدت رسالة «غير مسموح» — المطلوب **واحدة** موجزة"
+        );
+        assert_eq!(poll.pending.count_for(-101), 0, "ملفٌّ سُجّل لغير مسموح");
+
+        // **والضابط**: نفس الطلب من عضوٍ مسموح يعمل (فالمنع سببه القائمة).
+        poll.access.allow(-101, 55);
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &group_msg(55, -101, 14, "@MyBot https://youtu.be/cccc"),
+            &tx,
+        );
+        drain_sends();
+        assert_eq!(
+            mode_questions_to(&bot, -101).len(),
+            1,
+            "المسموح لم يُسأل عن الوضع ⇒ القائمة تمنع الجميع لا غير المسموح"
+        );
+        assert_eq!(poll.pending.count_for(-101), 1);
+    }
+
+    // ── ت٢ · ت٥: مصادقة كل ضغطة، وإلغاء لا يمسّ غيره ────────────────────────
+
+    /// **ت٢**: ضغطةٌ من **غير صاحب المهمّة** تُرفض ولا تُلغي شيئاً؛ وصاحبها
+    /// يُلغيها، **والمالك** يُلغيها نيابةً. والثلاثة تُقاس على سِجلّ المهامّ
+    /// الحقيقي (‏`cancelled`)، لا على نصّ جواب.
+    #[test]
+    fn t2_a_cancel_press_is_authenticated_against_the_owner_of_the_job() {
+        let _reg = crate::slots::registry_test_lock();
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg_group(7, GroupMode::Mentions);
+        let mut poll = group_poll("MyBot", 99, &[]);
+        let ov = new_oversize_store();
+        let (tx, _rx) = chan();
+
+        let mine = slots::register_early(&job_label(-102, 55), None);
+        let mine_id = mine.id();
+        let button = "cancel:-102:55";
+
+        // ① غريب (٦٦) يضغط زرّ ٥٥ ⇒ رفض، والمهمّة كما هي.
+        handle_update(&cfg, &mut poll, &ov, &press_in(66, -102, 1001, button), &tx);
+        assert!(
+            !cancelled_job(mine_id),
+            "غريبٌ ألغى مهمّة غيره — المصادقة غائبة"
+        );
+        assert_eq!(
+            callback_answers(&bot).last().map(String::as_str),
+            Some("هذا الزرّ ليس لك"),
+            "الرفض يجب أن يُقال صراحةً: {:?}",
+            callback_answers(&bot)
+        );
+
+        // ② وصاحبها يضغط ⇒ الإلغاء يقع فعلاً.
+        handle_update(&cfg, &mut poll, &ov, &press_in(55, -102, 1001, button), &tx);
+        assert!(cancelled_job(mine_id), "صاحب المهمّة لم يُلغِ مهمّته");
+        drop(mine);
+
+        // ③ والمالك يضغط زرّ غيره ⇒ مقبول (تصميم §٣: «صاحب المهمّة **أو** المالك»).
+        let other = slots::register_early(&job_label(-102, 66), None);
+        let other_id = other.id();
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &press_in(7, -102, 1002, "cancel:-102:66"),
+            &tx,
+        );
+        assert!(cancelled_job(other_id), "المالك مُنع من إلغاء مهمّة عضوه");
+        drop(other);
+    }
+
+    /// **ت٥**: إيقافُ أحدهم **لا يمسّ** مهمّة غيره — والفرق بين `cancel_job`
+    /// و`cancel_all` هو هذا الفحص بعينه (والأخير يُسقطه فوراً).
+    #[test]
+    fn t5_cancelling_one_user_never_touches_anothers_jobs() {
+        let _reg = crate::slots::registry_test_lock();
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg_group(7, GroupMode::Mentions);
+        let mut poll = group_poll("MyBot", 99, &[]);
+        let ov = new_oversize_store();
+        let (tx, _rx) = chan();
+
+        let a = slots::register_early(&job_label(-103, 55), None);
+        let b = slots::register_early(&job_label(-103, 66), None);
+        let (a_id, b_id) = (a.id(), b.id());
+        assert_ne!(a_id, b_id);
+
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &press_in(55, -103, 1003, "cancel:-103:55"),
+            &tx,
+        );
+        assert!(cancelled_job(a_id), "مهمّة الضاغط لم تُلغَ");
+        assert!(
+            !cancelled_job(b_id),
+            "إلغاء مستخدمٍ ألغى مهمّة غيره — cancel_all بدل cancel_job"
+        );
+        // ومهمّةٌ في **محادثة أخرى** لم تُمسّ أيضاً (الوسم يحمل المحادثة).
+        let c = slots::register_early(&job_label(-203, 55), None);
+        let c_id = c.id();
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &press_in(55, -103, 1004, "cancel:-103:55"),
+            &tx,
+        );
+        assert!(!cancelled_job(c_id), "الإلغاء تعدّى حدود المحادثة");
+        drop((a, b, c));
+    }
+
+    /// زرّ الإلغاء **يحمل صاحبه**: الشكل القديم بلا صاحب لا يُقبل — لأن قبوله
+    /// يعني إلغاء مهامّ كل من في المحادثة.
+    #[test]
+    fn the_cancel_button_data_always_carries_its_owner() {
+        assert_eq!(parse_cancel_button("cancel:-100:55"), Some((-100, 55)));
+        assert_eq!(parse_cancel_button("cancel:7:7"), Some((7, 7)));
+        assert_eq!(
+            parse_cancel_button("cancel:7"),
+            None,
+            "شكلٌ بلا صاحب لا يمكن مصادقته"
+        );
+        assert_eq!(parse_cancel_button("cancel:-100:55:9"), None);
+        assert_eq!(parse_cancel_button("mode:song:tok"), None);
+        assert_eq!(parse_cancel_button(""), None);
+        let kb = cancel_button(-100, 55);
+        assert_eq!(
+            kb.pointer("/inline_keyboard/0/0/callback_data")
+                .and_then(Value::as_str),
+            Some("cancel:-100:55"),
+            "الزرّ لا يحمل صاحبه: {kb}"
+        );
+    }
+
+    // ── ت٣ · ت٤: الطابور لكل مستخدم والسقف العام ────────────────────────────
+
+    /// **ت٣**: مستخدمان يعملان **متوازيين** والسقف ٢، والسقف **محترم**.
+    ///
+    /// القياس على المسار الإنتاجي كاملاً: `spawn_job_thread` الحقيقي، و`run_job`
+    /// الحقيقي (الخادم الوهمي يُبطئ `getFile` ٤٠٠ مللي فنافذة التوازي قائمة)،
+    /// والعدّ من **سِجلّ المهامّ العام** لا من عدّاد الطابور.
+    ///
+    /// والمُفسَد الذي يُسقطه: سقفٌ لا يُفحص (‏٣ مستخدمين ⇒ ذروة ٣).
+    #[test]
+    fn t3_two_users_run_in_parallel_up_to_the_global_cap() {
+        let _serial = crate::paths::serial_guard();
+        let _env = crate::paths::env_restore("HARAMLITE_DATA_DIR");
+        let base = temp_dir("m4_parallel");
+        std::env::set_var("HARAMLITE_DATA_DIR", &base);
+        let _reg = crate::slots::registry_test_lock();
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+
+        for cap in [2u32, 1u32] {
+            reset_counters();
+            bot.clear();
+            let (tx, stop, queue) = spawn_dispatcher(cfg.clone(), cap);
+            for user in [55i64, 66, 77] {
+                // رسالة حالة لكل مستخدم: بها يُقاس **انتهاء** المهمّة من
+                // الخادم نفسه، لا من عدّاد الطابور (فلا يسبق الانتظارُ التنفيذَ).
+                tx.send(group_job(-111, user, 2000 + user, &format!("u{user}.mp4")))
+                    .expect("القناة مفتوحة");
+            }
+            // نراقب الذروة من السِجلّ العام حتى تنتهي المهامّ الثلاث فعلاً.
+            let mut peak = 0usize;
+            let deadline = Instant::now() + Duration::from_secs(60);
+            while Instant::now() < deadline {
+                peak = peak.max(live_jobs_in(-111).len());
+                if finished_status_messages(&bot) == 3 {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            stop.store(true, Ordering::SeqCst);
+            queue.shutdown();
+            assert_eq!(
+                finished_status_messages(&bot),
+                3,
+                "لم تنتهِ المهامّ الثلاث (السقف {cap})"
+            );
+            if cap == 2 {
+                assert!(
+                    peak >= 2,
+                    "مستخدمون لم يعملوا متوازيين مع سقف ٢ (الذروة {peak}) — طابورٌ عالميّ واحد"
+                );
+            }
+            assert!(
+                peak <= cap as usize,
+                "الذروة {peak} تجاوزت السقف العام {cap} — البطاقة غير محميّة"
+            );
+            eprintln!("م٤/توازٍ: السقف {cap} ⇒ الذروة المقيسة {peak}");
+        }
+    }
+
+    /// **ت٤**: مستخدمٌ بأربعة ملفات **لا يعطّل غيره**.
+    ///
+    /// القياس **ترتيب البدء الفعلي** كما وصل الخادمَ: كل مهمّة تكتب «▶ بدأت
+    /// المعالجة» على رسالة حالتها، فترتيب تلك الكتابات هو ترتيب الجدولة.
+    /// والمتوقَّع: ملفات أ ثم ملف ب ثم بقيّة ملفات أ — لا ب في الذيل.
+    #[test]
+    fn t4_a_user_with_four_files_does_not_block_another_user() {
+        let _serial = crate::paths::serial_guard();
+        let _env = crate::paths::env_restore("HARAMLITE_DATA_DIR");
+        let base = temp_dir("m4_fairness");
+        std::env::set_var("HARAMLITE_DATA_DIR", &base);
+        let _reg = crate::slots::registry_test_lock();
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        // **الطابور يُمتلأ قبل أن يبدأ أي عامل**: فيقيس الفحص ترتيب الدور لا
+        // سباق وصول الطلبات (وهو ما يجعل «ب في الذيل» نتيجةً لا صدفة).
+        let queue = Arc::new(JobQueue::new(1));
+        for (i, name) in ["a1.mp4", "a2.mp4", "a3.mp4", "a4.mp4"].iter().enumerate() {
+            queue.push(group_job(-112, 55, 1000 + i as i64, name));
+        }
+        queue.push(group_job(-112, 66, 2000, "b1.mp4"));
+        assert_eq!(queue.waiting(), 5, "الطابور لم يُمتلأ قبل البدء");
+        let stop = Arc::new(AtomicBool::new(false));
+        spawn_job_workers(
+            cfg.clone(),
+            stop.clone(),
+            new_oversize_store(),
+            queue.clone(),
+        );
+
+        // ننتظر **البدء الفعلي للخمسة** (والسقف ١ ⇒ كلٌّ يبدأ بعد انتهاء سابقه).
+        let deadline = Instant::now() + Duration::from_secs(60);
+        while Instant::now() < deadline && started_status_messages(&bot).len() < 5 {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        // ثم انتهاءها — والشutdown بعد ذلك حتى لا تُقطع الخامسة في منتصفها.
+        let deadline = Instant::now() + Duration::from_secs(60);
+        while Instant::now() < deadline && finished_status_messages(&bot) < 5 {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        stop.store(true, Ordering::SeqCst);
+        queue.shutdown();
+
+        // ترتيب البدء = ترتيب أول كتابة «▶ بدأت المعالجة» على كل رسالة حالة.
+        let started = started_status_messages(&bot);
+        assert_eq!(started.len(), 5, "لم تبدأ المهامّ الخمس: {started:?}");
+        assert_eq!(
+            started[..2].to_vec(),
+            vec![1000, 2000],
+            "ملفات المستخدم الأول حجبت الثاني عن الدور: {started:?}"
+        );
+        assert_eq!(
+            started,
+            vec![1000, 2000, 1001, 1002, 1003],
+            "الترتيب ليس دوراً بين المستخدمين مع FIFO لكل مستخدم: {started:?}"
+        );
+        assert_eq!(
+            finished_status_messages(&bot),
+            5,
+            "لم تنتهِ المهامّ الخمس رغم بدئها"
+        );
+        eprintln!("م٤/إنصاف: ترتيب البدء المقيس {started:?} (أ×٤ ثم ب×١ · السقف ١)");
+    }
+
+    /// الطابور نفسه **نقيّاً**: دورٌ بين المستخدمين، وFIFO داخل المستخدم،
+    /// والسقف لا يُتجاوز، والإيقاف يفتح كل منتظر.
+    #[test]
+    fn the_queue_is_fifo_per_user_and_round_robin_between_users() {
+        let q = JobQueue::new(1);
+        for name in ["a1", "a2", "a3", "a4"] {
+            q.push(group_job(-100, 55, 0, name));
+        }
+        q.push(group_job(-100, 66, 0, "b1"));
+        let mut order = Vec::new();
+        for _ in 0..5 {
+            let job = q.pop().expect("مهمّة متاحة");
+            order.push(job.file.clone());
+            // **الفتحة تُحرَّر** كي يقيس الفحص الترتيب لا السقف (والسقف يقيسه
+            // الفحص التالي في الأسفل).
+            q.finish_one();
+        }
+        assert_eq!(order, vec!["a1", "b1", "a2", "a3", "a4"], "ترتيب الدور");
+        // والسقف: مع فتحةٍ مشغولة لا يخرج شيء (و`waiting` تحدّد أنّ الانتظار لا
+        // يعني فقدان المهمّة).
+        let q2 = JobQueue::new(1);
+        q2.push(group_job(-100, 55, 0, "x"));
+        q2.push(group_job(-100, 66, 0, "y"));
+        let _first = q2.pop().unwrap();
+        assert_eq!(q2.waiting(), 1, "المهمّة الثانية ضاعت");
+        assert_eq!(q2.running(), 1);
+        q2.finish_one();
+        assert_eq!(q2.pop().unwrap().file, "y");
+        q2.shutdown();
+        assert!(q2.pop().is_none(), "الإيقاف لم يفتح المنتظر");
+    }
+
+    // ── ت٧: الأوامر في المجموعة ─────────────────────────────────────────────
+
+    /// **ت٧**: `/kill` و`/status` **للمالك وحده في المجموعة** — تُرفض لغير
+    /// المالك ولا تُنفَّذ، والقائمة العامة صفر فلا يُعلَن أمرٌ يُرفض.
+    #[test]
+    fn t7_owner_only_commands_are_refused_for_members_in_a_group() {
+        let _reg = crate::slots::registry_test_lock();
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg_group(7, GroupMode::Mentions);
+        // العضو **مسموح** — فالرفض سببه الأمر لا القائمة (وهو ما يقيسه ت٧).
+        let mut poll = group_poll("MyBot", 99, &[(-104, 55)]);
+        let ov = new_oversize_store();
+        let (tx, _rx) = chan();
+
+        let job = slots::register_early(&job_label(-104, 55), None);
+        let job_id = job.id();
+
+        for (i, cmd) in ["/kill", "/status"].iter().enumerate() {
+            handle_update(
+                &cfg,
+                &mut poll,
+                &ov,
+                &group_msg(55, -104, 30 + i as i64, cmd),
+                &tx,
+            );
+        }
+        assert!(
+            !cancelled_job(job_id),
+            "عضوٌ نفّذ /kill على مهمّته ⇒ الأمر لم يُرفض"
+        );
+        drain_sends();
+        let replies = sent_to(&bot, -104);
+        assert_eq!(replies.len(), 2, "كل أمرٍ يُجاب: {replies:?}");
+        for r in &replies {
+            assert!(
+                r["text"].as_str().unwrap_or("").contains("للمالك وحده"),
+                "الرفض غير صريح: {r}"
+            );
+            assert!(
+                !r["text"].as_str().unwrap_or("").contains("📊 الحال"),
+                "‏/status نُفِّذ لعضو: {r}"
+            );
+        }
+
+        // **والضابط**: المالك نفسه يُنفَّذ أمره — ويوقف مهامّ محادثته كلها
+        // (ومهامّ غيره في محادثةٍ **أخرى** لا تُمسّ: هذا فرقُه عن `cancel_all`).
+        let elsewhere = slots::register_early(&job_label(-204, 55), None);
+        let elsewhere_id = elsewhere.id();
+        bot.clear();
+        handle_update(&cfg, &mut poll, &ov, &group_msg(7, -104, 40, "/kill"), &tx);
+        assert!(cancelled_job(job_id), "المالك مُنع من /kill في مجموعته");
+        assert!(
+            !cancelled_job(elsewhere_id),
+            "‏/kill تعدّى المحادثة — cancel_all بدل cancel_job"
+        );
+        drop((job, elsewhere));
+
+        // والقائمة: المالك يرى `/kill`، والعضو لا يراه.
+        assert!(help_text_for(true).contains("/kill"));
+        assert!(help_text_for(true).contains("/status"));
+        assert!(!help_text_for(false).contains("/kill"));
+        assert!(!help_text_for(false).contains("/status"));
+    }
+
+    // ── ت٨: الفانية غير مدعومة ⇒ السقوط لا الفشل ────────────────────────────
+
+    /// **ت٨**: الرسالة الفانية **تحسينٌ لا عماد**. وشكلها تغيّر بين 10.2
+    /// و10.3، فالكود يجرّب الشكلين ثم يسقط إلى **الخاص** ثم إلى المحادثة —
+    /// ولا يُسقِط التنبيه أبداً.
+    ///
+    /// **والقياس على الأثر لا على قيمةٍ مُعادة** (م٤): السلسلة تُسلك على **خيط
+    /// الكاتب**، فما يُقاس هو **أيّ محادثةٍ وصلها النصّ فعلاً** — وهو ما يراه
+    /// العضو، وأقوى من قراءة قيمةٍ من دالّة.
+    #[test]
+    fn t8_when_ephemeral_is_unsupported_the_notice_falls_back_instead_of_failing() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg_group(7, GroupMode::Mentions);
+        let drain = || assert!(wait_sends(Duration::from_secs(40)), "الطابور لم يفرغ");
+
+        // ① الشكلان مرفوضان (‏10.3 و10.2) ⇒ **الخاص**، وقد وقع فعلاً.
+        bot.reject_containing(EPHEMERAL_PARAMS_V10_3);
+        bot.reject_containing(EPHEMERAL_PARAMS_V10_2);
+        assert!(
+            notify_member(&cfg, -105, 55, "نصّ التنبيه"),
+            "لم يُدرَج التنبيه"
+        );
+        drain();
+        assert!(
+            sent_to(&bot, 55).iter().any(|m| m["text"] == "نصّ التنبيه"),
+            "غياب دعم الفانية لم يسقط إلى الخاص: {:?}",
+            bot.sent_messages()
+        );
+
+        // ② والخاص نفسه مرفوض (العضو لم يبدأ محادثة) ⇒ **المحادثة**، بلا فشل.
+        bot.clear();
+        bot.reject_chat_id(55);
+        assert!(notify_member(&cfg, -105, 55, "نصّ ثانٍ"));
+        drain();
+        assert!(
+            sent_to(&bot, -105)
+                .iter()
+                .any(|m| m["text"].as_str().unwrap_or("").contains("نصّ ثانٍ")),
+            "التنبيه ضاع تماماً — فشلٌ صامت"
+        );
+
+        // ③ ولا رفض ⇒ الفانية نفسها، وبالشكل **الأحدث** (‏10.3) لا القديم —
+        //    **ونجحت من أول محاولة**: لا نداء خاصّ ولا رسالة في المحادثة.
+        let fresh = FakeBot::start();
+        let cfg2 = fresh.cfg_group(7, GroupMode::Mentions);
+        assert!(notify_member(&cfg2, -105, 55, "فانية"));
+        drain();
+        let bodies = fresh.bodies("sendMessage");
+        assert_eq!(bodies.len(), 1, "أكثر من محاولةٍ واحدة: {bodies:?}");
+        let v: Value = serde_json::from_str(&bodies[0]).unwrap();
+        assert_eq!(
+            v.pointer("/ephemeral_message_parameters/receiver_user_id")
+                .and_then(Value::as_i64),
+            Some(55),
+            "الشكل الأحدث هو ما يُجرَّب أولاً: {v}"
+        );
+        assert!(
+            v.get(EPHEMERAL_PARAMS_V10_2).is_none(),
+            "الشكلان معاً في طلبٍ واحد: {v}"
+        );
+
+        // ④ و10.3 وحدها مرفوضة ⇒ يجرّب 10.2 بنجاح (الشكل مُكتشَف لا مثبَّت).
+        let legacy = FakeBot::start();
+        legacy.reject_containing(EPHEMERAL_PARAMS_V10_3);
+        let cfg3 = legacy.cfg_group(7, GroupMode::Mentions);
+        assert!(notify_member(&cfg3, -105, 55, "قديمة"));
+        drain();
+        let bodies = legacy.bodies("sendMessage");
+        assert_eq!(bodies.len(), 2, "لم تُجرَّب الصيغتان: {bodies:?}");
+        let v2: Value = serde_json::from_str(&bodies[1]).unwrap();
+        assert_eq!(
+            v2.get(EPHEMERAL_PARAMS_V10_2).and_then(Value::as_i64),
+            Some(55),
+            "لم يُجرَّب شكل 10.2 بعد رفض 10.3: {v2}"
+        );
+    }
+
+    // ── ت٩: رسالة التعريف تُثبَّت مرة واحدة ─────────────────────────────────
+
+    /// **ت٩**: رسالة التعريف تُثبَّت **عند الإضافة مرة واحدة** — لا مع كل رسالة.
+    /// والعدّ من الخادم نفسه (`pinChatMessage` و`sendMessage`).
+    #[test]
+    fn t9_the_intro_is_pinned_once_at_the_moment_the_bot_is_added() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg_group(7, GroupMode::Mentions);
+        let mut poll = group_poll("MyBot", 99, &[(-106, 55)]);
+        let ov = new_oversize_store();
+        let (tx, _rx) = chan();
+
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &bot_joined(-106, "left", "member"),
+            &tx,
+        );
+        drain_sends();
+        assert_eq!(bot.count("pinChatMessage"), 1, "لم تُثبَّت رسالة التعريف");
+        let intro = sent_to(&bot, -106);
+        assert_eq!(intro.len(), 1, "أُرسلت رسالة التعريف أكثر من مرة");
+        let text = intro[0]["text"].as_str().unwrap_or("");
+        assert_eq!(text.lines().count(), 2, "النصّ سطران كما في التصميم: {text}");
+        assert!(text.contains("@MyBot"), "معرّف البوت مذكور: {text}");
+        assert!(
+            text.contains("جهاز المالك"),
+            "المعالجة على جهاز المالك: {text}"
+        );
+
+        // **عشر رسائل عادية** لا تُثبّت شيئاً آخر — هذا هو المُفسَد المحروس.
+        for i in 0..10 {
+            handle_update(
+                &cfg,
+                &mut poll,
+                &ov,
+                &group_msg(55, -106, 100 + i, "@MyBot https://youtu.be/x"),
+                &tx,
+            );
+        }
+        // وتحديث إضافةٍ ثانٍ لا يُعيد الكرّ أيضاً.
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &bot_joined(-106, "left", "administrator"),
+            &tx,
+        );
+        drain_sends();
+        assert_eq!(
+            bot.count("pinChatMessage"),
+            1,
+            "رسالة التعريف ثُبّتت أكثر من مرة عند الإضافة"
+        );
+        assert_eq!(
+            sent_to(&bot, -106)
+                .iter()
+                .filter(|m| m["text"].as_str().unwrap_or("").contains("للاستخدام"))
+                .count(),
+            1,
+            "أُعيد إرسال رسالة التعريف"
+        );
+
+        // **ونصيحة المعالج** (م٤/٨) تُبنى على **المقيس** لا على تحليل نظري.
+        assert!(cpu_advice_line(Some("CPU")).is_some(), "CPU ⇒ نصيحة");
+        assert!(cpu_advice_line(Some("CUDA")).is_none(), "CUDA ليست CPU");
+        assert!(cpu_advice_line(Some("DirectML")).is_none());
+        assert!(
+            cpu_advice_line(None).is_none(),
+            "بلا قياس مزوّد لا نصيحة — ولا رقم مُختلق"
+        );
+        let unknown = intro_text(&BotIdentity::default(), None);
+        assert!(
+            !unknown.contains("@MyBot"),
+            "اختُلق اسم بوت لم يُقرأ: {unknown}"
+        );
+        assert!(
+            intro_text(&BotIdentity::default(), cpu_advice_line(Some("CPU"))).contains("CPU"),
+            "نصيحة المعالج لا تظهر في رسالة التعريف"
+        );
+    }
+
+    // ── الوضعان: mentions-only افتراضاً، والموسَّع بموافقة المالك ─────────────
+
+    /// **الوضع الافتراضي (بالمنشن)**: رسالةٌ في المجموعة لا تخاطب البوت
+    /// **صمتٌ مقصود** — لا ردّ ولا معالجة. ومع المنشن تعمل.
+    #[test]
+    fn mentions_only_silences_a_group_message_that_does_not_address_the_bot() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg_group(7, GroupMode::Mentions);
+        let mut poll = group_poll("MyBot", 99, &[(-107, 55)]);
+        let ov = new_oversize_store();
+        let (tx, _rx) = chan();
+
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &group_msg(55, -107, 50, "شوفوا هذا https://youtu.be/zzz"),
+            &tx,
+        );
+        assert_eq!(bot.calls().len(), 0, "البوت ردّ على رسالةٍ لا تخاطبه");
+        assert_eq!(poll.pending.count_for(-107), 0);
+
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &group_msg(55, -107, 51, "@MyBot https://youtu.be/zzz"),
+            &tx,
+        );
+        drain_sends();
+        assert_eq!(mode_questions_to(&bot, -107).len(), 1, "المنشن لم يُعرَف");
+    }
+
+    /// كشف المنشن نفسه — بالحالات المتكافئة (ترقيم ملتصق، حالة أحرف، ردّ على
+    /// رسالة البوت) وبلا هويةٍ معروفة.
+    #[test]
+    fn mention_detection_accepts_the_equivalent_spellings_and_refuses_lookalikes() {
+        let id = BotIdentity {
+            id: 99,
+            username: "MyBot".into(),
+        };
+        // `mentions_bot` تقرأ **رسالة** لا تحديثاً — ومن يمرّر التحديث كاملاً
+        // يقيس `None` فيبدو المنشن غير معروف.
+        let m = |t: &str| group_msg(55, -100, 1, t)["message"].clone();
+        assert!(mentions_bot(&m("@MyBot https://x"), &id));
+        assert!(mentions_bot(&m("@mybot https://x"), &id), "حالة الأحرف");
+        assert!(mentions_bot(&m("يا @MyBot, شوف"), &id), "ترقيم ملتصق");
+        assert!(!mentions_bot(&m("https://x"), &id));
+        assert!(!mentions_bot(&m("@OtherBot https://x"), &id));
+        assert!(
+            !mentions_bot(&m("@MyBotX https://x"), &id),
+            "اسمٌ يبدأ بنا ليس اسمنا"
+        );
+        assert!(
+            !mentions_bot(&m("@MyBot https://x"), &BotIdentity::default()),
+            "بلا هويةٍ لا يُدَّعى منشن"
+        );
+        let reply = json!({
+            "text": "شكراً",
+            "reply_to_message": { "from": { "id": 99 } }
+        });
+        assert!(mentions_bot(&reply, &id), "الردّ على رسالة البوت منشن");
+        let reply_other = json!({
+            "text": "شكراً",
+            "reply_to_message": { "from": { "id": 100 } }
+        });
+        assert!(!mentions_bot(&reply_other, &id));
+    }
+
+    /// **الوضع الموسَّع**: الرابط بلا منشن يُعرَض على المالك في خاصّه كبطاقة
+    /// أزرار ثلاثة، **ولا معالجة قبل ضغطته**، و«اسمح دائماً» تُضيف الزوج إلى
+    /// قائمة السماح فيُخدَم الطلب مباشرةً بعدها.
+    #[test]
+    fn the_expanded_mode_asks_the_owner_before_anything_runs() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg_group(7, GroupMode::All);
+        let mut poll = group_poll("MyBot", 99, &[]);
+        let ov = new_oversize_store();
+        let (tx, _rx) = chan();
+
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &group_msg(55, -108, 60, "https://youtu.be/free"),
+            &tx,
+        );
+        // ① بطاقةٌ واحدة في **خاصّ المالك** بأزرارها الثلاثة.
+        drain_sends();
+        let cards = sent_to(&bot, 7);
+        assert_eq!(cards.len(), 1, "لم تُرسَل بطاقة موافقة واحدة: {cards:?}");
+        let buttons: Vec<String> = cards[0]
+            .pointer("/reply_markup/inline_keyboard/0")
+            .and_then(Value::as_array)
+            .map(|row| {
+                row.iter()
+                    .filter_map(|b| {
+                        b.get("callback_data")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert_eq!(buttons.len(), 3, "الأزرار الثلاثة: {buttons:?}");
+        assert!(buttons.iter().any(|d| d.starts_with("apv:yes:")));
+        assert!(buttons.iter().any(|d| d.starts_with("apv:no:")));
+        assert!(buttons.iter().any(|d| d.starts_with("apv:always:")));
+        // ② **ولا معالجة**: لا سؤال وضع ولا معلَّق ولا مهمّة.
+        assert!(
+            mode_questions_to(&bot, -108).is_empty(),
+            "عُولج الطلب قبل ضغطة المالك"
+        );
+        assert_eq!(poll.pending.count_for(-108), 0);
+        assert_eq!(poll.approvals.len(), 1);
+
+        // ③ المالك يضغط «♾️ اسمح دائماً».
+        let always = buttons
+            .iter()
+            .find(|d| d.starts_with("apv:always:"))
+            .unwrap()
+            .clone();
+        let card_msg = sent_message_ids_to(&bot, 7)[0];
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &press_in(7, 7, card_msg, &always),
+            &tx,
+        );
+        assert!(
+            poll.access.allows(-108, 55, Some(7)),
+            "«اسمح دائماً» لم تُضف الزوج إلى قائمة السماح"
+        );
+        assert_eq!(poll.approvals.len(), 0, "الطلب لم يُستهلك بالقرار");
+        drain_sends();
+        assert_eq!(
+            mode_questions_to(&bot, -108).len(),
+            1,
+            "لم يُطرح سؤال الوضع بعد الموافقة"
+        );
+
+        // ④ **وطلبٌ ثانٍ من العضو نفسه يمرّ مباشرةً**: لا بطاقة ثانية.
+        bot.clear();
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &group_msg(55, -108, 61, "https://youtu.be/second"),
+            &tx,
+        );
+        drain_sends();
+        assert!(
+            sent_to(&bot, 7).is_empty(),
+            "بطاقة موافقة ثانية بعد السماح الدائم"
+        );
+        assert_eq!(
+            mode_questions_to(&bot, -108).len(),
+            1,
+            "الطلب المسموح لم يُسأل عن وضعه"
+        );
+    }
+
+    /// **ضغطة الموافقة ليست للجميع**: غير المالك لا يقرّر، والطلب يبقى قائماً.
+    #[test]
+    fn only_the_owner_can_answer_an_approval_card() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg_group(7, GroupMode::All);
+        let mut poll = group_poll("MyBot", 99, &[]);
+        let ov = new_oversize_store();
+        let (tx, _rx) = chan();
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &group_msg(55, -109, 70, "https://youtu.be/x"),
+            &tx,
+        );
+        let token = {
+            let a = poll.approvals.by_token.keys().next().cloned().unwrap();
+            a
+        };
+        let card = sent_message_ids_to(&bot, 7)[0];
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &press_in(55, 7, card, &format!("apv:always:{token}")),
+            &tx,
+        );
+        assert_eq!(
+            callback_answers(&bot).last().map(String::as_str),
+            Some("هذا القرار للمالك وحده")
+        );
+        assert!(!poll.access.allows(-109, 55, Some(7)), "غريبٌ وسّع القائمة");
+        assert_eq!(poll.approvals.len(), 1, "غريبٌ استهلك الطلب");
+    }
+
+    /// **قائمة السماح تُحفظ وتُقرأ**، والمفتاح **الزوج** لا العضو، والملف
+    /// التالف يعني قائمةً فارغة لا خطأً (الأساس الضيّق يُصلَح بضغطة).
+    #[test]
+    fn the_allowlist_is_persisted_per_chat_and_user() {
+        let dir = temp_dir("access");
+        let p = access_path(&dir);
+        let _ = std::fs::remove_file(&p);
+        let mut a = AccessStore::from_path(p.clone());
+        assert_eq!(a.len(), 0);
+        assert!(a.allows(-100, 7, Some(7)), "المالك مسموح دائماً بلا مدخل");
+        assert!(!a.allows(-100, 55, Some(7)));
+        assert!(a.allow(-100, 55), "الإضافة الأولى جديدة");
+        assert!(!a.allow(-100, 55), "الإضافة الثانية ليست جديدة");
+        a.save().unwrap();
+
+        let b = AccessStore::from_path(p.clone());
+        assert_eq!(b.len(), 1);
+        assert!(
+            b.allows(-100, 55, Some(7)),
+            "السماح لم ينجُ من إعادة القراءة"
+        );
+        assert!(
+            !b.allows(-200, 55, Some(7)),
+            "السماح تسرّب إلى محادثةٍ أخرى — المفتاح الزوج لا العضو"
+        );
+        assert!(!b.allows(-100, 66, Some(7)), "السماح تسرّب إلى عضوٍ آخر");
+
+        std::fs::write(&p, "{ ليس JSON").unwrap();
+        assert_eq!(
+            AccessStore::from_path(p.clone()).len(),
+            0,
+            "ملفٌ تالف يجب أن يعني قائمةً فارغة لا قائمةً مخترعة"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── سقف إرسال المجموعة (٢٠/دقيقة · رسالة/ثانية) ─────────────────────────
+
+    /// **سقف تلغرام للمجموعة** مفروضٌ في الشيفرة وليس في النيّة: الحصّة
+    /// تُقاس بساعةٍ مُمرَّرة (بلا انتظار دقيقة)، **ووصلتها** في `send_message`
+    /// تُقاس على الخادم الوهمي (‏سقفٌ غير موصول ليس سقفاً).
+    #[test]
+    fn the_group_send_cap_is_enforced_and_wired_into_send_message() {
+        let _g = state_lock();
+        let mut p = SendPacer::default();
+        let t0 = Instant::now();
+        assert!(p.admit_at(-110, t0), "الأولى تمرّ");
+        assert!(
+            !p.admit_at(-110, t0 + Duration::from_millis(500)),
+            "رسالتان في أقلّ من ثانية"
+        );
+        for i in 1..GROUP_MSG_PER_MINUTE {
+            assert!(
+                p.admit_at(-110, t0 + Duration::from_secs(i as u64)),
+                "الحصّة انقطعت عند {i}"
+            );
+        }
+        assert!(
+            !p.admit_at(-110, t0 + Duration::from_secs(GROUP_MSG_PER_MINUTE as u64)),
+            "السقف {GROUP_MSG_PER_MINUTE}/دقيقة تُجوز"
+        );
+        assert!(
+            p.admit_at(-110, t0 + Duration::from_secs(61)),
+            "النافذة لا تنزلق ⇒ حجبٌ دائم"
+        );
+        // والخاص بلا حصّة: السقف سقف **مجموعة**.
+        assert!(p.admit_at(7, t0));
+        assert!(p.admit_at(7, t0));
+
+        // **الوصلة**: إرسالٌ حقيقي في مجموعة يمرّ من المُنظِّم — **عبر خيط
+        // الكاتب** (فلا بدّ من انتظاره: الإدراج وحده لا يستهلك حصّة).
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let t = Instant::now();
+        send_message(&cfg, -110, "مرحبا", None, None).unwrap();
+        let enqueue = t.elapsed();
+        assert!(
+            enqueue < Duration::from_millis(200),
+            "الإدراج في الطابور انتظر {enqueue:?} — الإرسال ما زال متزامناً"
+        );
+        send_message(&cfg, 7, "خاص", None, None).unwrap();
+        drain_sends();
+        let pacer = send_pacer().lock().unwrap_or_else(|e| e.into_inner());
+        assert!(
+            pacer.last_hit(-110).is_some(),
+            "إرسال المجموعة لم يمرّ من مُنظِّم المعدّل"
+        );
+        assert!(pacer.last_hit(7).is_none(), "المحادثة الخاصة حُصِّصت بلا سبب");
+        drop(pacer);
+        // وتعديلٌ تجميلي فوق الحصّة **يُسقَط** بدل أن يُرسَل بلا حدّ.
+        let _ = send_message(&cfg, -110, "ثانية", None, None);
+        assert!(!pace_group_edit(-110), "تعديلٌ تجميلي مرّ فوق السقف");
+    }
+
+    // ── الاستجابة تحت ضغط الإرسال: خيط الاستطلاع لا ينام على المعدّل ────────
+
+    /// **الحارس الذي يقيس الاستجابة لا وجود الطابور**: مع طابور إرسالٍ ممتلئ
+    /// (‏٨ رسائل في مجموعةٍ واحدة ⇒ ≥٨ ث على الكاتب بحصّة رسالة/ثانية) فإن
+    /// تحديث `/kill` **يُقرأ ويُلغي المهمّة**، والزمن المقيس هو زمن قراءته.
+    ///
+    /// **والمُفسَد هو بيت القصيد**: إعادة الانتظار إلى داخل مسار التحديث (أي
+    /// جعل الإرسال متزامناً في `handle_update`) تُسقطه — لأن الزمن يصير زمن
+    /// الحصّة لا زمن القراءة.
+    #[test]
+    fn under_a_saturated_send_queue_a_kill_update_is_still_read_and_acts() {
+        let _reg = crate::slots::registry_test_lock();
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg_group(7, GroupMode::Mentions);
+        let mut poll = group_poll("MyBot", 99, &[(-113, 7)]);
+        let ov = new_oversize_store();
+        let (tx, _rx) = chan();
+
+        // مهمّة حيّة للمالك في هذه المجموعة، **تنتهي فعلاً عند الإلغاء** (وإلا
+        // قاس الفحص انتظار `CANCEL_CONFIRM_WAIT` لا زمن قراءة التحديث).
+        let early = slots::register_early(&job_label(-113, 7), None);
+        let job_id = early.id();
+        let flag = early.cancel_flag();
+        let reaper = std::thread::spawn(move || {
+            while !flag.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            drop(early); // المهمّة تخرج من السِجلّ ⇒ `wait_until_gone` يعود فوراً
+        });
+
+        // **إشباع الطابور مباشرةً**: ٨ رسائل في المجموعة نفسها ⇒ الكاتب مشغول
+        // ≥٨ ث (‏`GROUP_MIN_GAP` = ١ ث).
+        //
+        // **ولماذا لا عبر المسار المفحوص**: لو ملأناه بـ`send_group_async` لصار
+        // المُفسَد (إعادة الإرسال متزامناً) يمنع الإشباع أصلاً، فيسقط الفحص على
+        // **غياب الطابور** لا على **الاستجابة** — وذلك ليس ما يُدَّعى. فالإشباع
+        // هنا **شرطٌ مُهيَّأ** لا موضعُ قياس.
+        ensure_send_writer();
+        for i in 0..8 {
+            send_queue().push(SendJob {
+                cfg: cfg.clone(),
+                item: SendItem::Message {
+                    chat_id: -113,
+                    text: format!("إشباع {i}"),
+                    keyboard: None,
+                    reply_to: None,
+                    pin: false,
+                    id_slot: None,
+                },
+            });
+        }
+        assert!(
+            send_queue().depth() >= 8,
+            "الطابور لم يُشبَع ⇒ الفحص لا يقيس ما يدّعيه"
+        );
+
+        // والمعالجة تستمرّ: التحديث يُقرأ الآن.
+        let started = Instant::now();
+        handle_update(&cfg, &mut poll, &ov, &group_msg(7, -113, 90, "/kill"), &tx);
+        let read = started.elapsed();
+        let reaped = {
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while Instant::now() < deadline && slots::active_jobs().iter().any(|j| j.id == job_id) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            !slots::active_jobs().iter().any(|j| j.id == job_id)
+        };
+        let _ = reaper.join();
+        assert!(reaped, "المهمّة لم تُلغَ");
+        // **والحدّ مقيس من الطرفين**: السليم ~٠٫١ ث (`wait_until_gone` يستطلع
+        // كل ١٠٠ مللي)، والمُفسَد (إرسالٌ متزامن) ينتظر حصّة **ثانيةً كاملة**
+        // على الأقل. فـ٦٠٠ مللي تفصل بينهما بلا التباس.
+        assert!(
+            read < Duration::from_millis(600),
+            "قراءة التحديث تأخّرت {read:?} والطابور مُشبَع — الإرسال ما زال يحجب خيط الاستطلاع"
+        );
+        eprintln!("م٤/استجابة: طابور مُشبَع بثمانِ رسائل · /kill قُرئ ونُفِّذ في {read:?}");
+        drain_sends();
     }
 }

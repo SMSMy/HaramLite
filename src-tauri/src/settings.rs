@@ -49,6 +49,13 @@ pub struct Settings {
     pub telegram_api_id: String,
     pub telegram_api_hash: String,
     pub telegram_local_url: String, // e.g. "http://127.0.0.1:8081" (empty ⇒ cloud)
+    /// م٤: وضع المجموعة — `"mentions"` (افتراضيّ، قرار المالك) أو `"all"`.
+    ///
+    /// **ولماذا الافتراضيّ «بالمنشن»**: البوت يعالج **على جهاز المالك**، فمجموعةٌ
+    /// يرسل فيها كل عضو رابطاً بلا منشن = معالجة بلا إذن على حاسبه. والوضع
+    /// الموسَّع («كل الرسائل») لا يعالج شيئاً بلا ضغطة المالك (بطاقة موافقة في
+    /// خاصّه)، فهو توسيعٌ **مُصرَّح** لا فتحٌ أعمى.
+    pub telegram_group_mode: String,
 }
 
 impl Default for Settings {
@@ -78,7 +85,25 @@ impl Default for Settings {
             telegram_api_id: String::new(),
             telegram_api_hash: String::new(),
             telegram_local_url: String::new(),
+            telegram_group_mode: GROUP_MODE_MENTIONS.to_string(),
         }
+    }
+}
+
+/// م٤ — وضعا المجموعة. **قيمتان لا أكثر**، وما خالفهما يُقيَّد عند التحميل.
+pub const GROUP_MODE_MENTIONS: &str = "mentions";
+/// الوضع الموسَّع: كل رسالة تُعرَض على المالك في خاصّه، ولا معالجة قبل ضغطته.
+pub const GROUP_MODE_ALL: &str = "all";
+
+/// تقييد وضع المجموعة: قيمة غير معروفة ⇒ الافتراضيّ الآمن.
+///
+/// **ولماذا التقييد لا القبول**: قيمة مجهولة تعني «وضعاً» لا وجود له في الكود،
+/// فتمرّ إلى `TgConfig` ويُبنى عليها سلوك غير معرَّف (وهو أسوأ من سلوكٍ ضيّق).
+/// والقاعدة: المجهول يُقيَّد إلى الأضيق لا إلى الأوسع.
+pub fn clamp_group_mode(v: &str) -> String {
+    match v.trim() {
+        GROUP_MODE_ALL => GROUP_MODE_ALL.to_string(),
+        _ => GROUP_MODE_MENTIONS.to_string(),
     }
 }
 
@@ -96,6 +121,9 @@ impl Settings {
     /// الواجهة تقول 7 والمحرّك يعمل بـ2.
     pub fn normalize(&mut self) {
         self.max_concurrent_jobs = crate::slots::clamp_limit(self.max_concurrent_jobs);
+        // م٤: وضع المجموعة يُقيَّد هنا أيضاً — والقصّ في `normalize` وحدها
+        // يستدعيه `load` (ملف عُدّل يدوياً) و`set_settings` (‏serde مباشرةً).
+        self.telegram_group_mode = clamp_group_mode(&self.telegram_group_mode);
     }
 }
 
@@ -318,6 +346,48 @@ mod tests {
             1,
             "ملف بناء قديم ⇒ الافتراضي (1)"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// م٤: وضع المجموعة — الافتراضيّ «بالمنشن» (قرار المالك)، الموسَّع اختيارٌ
+    /// صريح، **وكل ما ليس قيمةً معروفة يُقيَّد إلى الافتراضيّ الأضيق** عند
+    /// التحميل. (مُفسَد محروس: إسقاط التقييد ⇒ يبقى `"garbage"` ويكسر مقارنة
+    /// `TgConfig` ويُبنى عليه سلوك غير معرَّف.)
+    #[test]
+    fn telegram_group_mode_defaults_to_mentions_and_clamps_unknown_values() {
+        assert_eq!(
+            Settings::default().telegram_group_mode,
+            GROUP_MODE_MENTIONS,
+            "الافتراضيّ قرار المالك: بالمنشن"
+        );
+        // القيمتان المعروفتان تمرّان كما هما.
+        assert_eq!(clamp_group_mode("all"), GROUP_MODE_ALL);
+        assert_eq!(clamp_group_mode("mentions"), GROUP_MODE_MENTIONS);
+        // وكل ما خالفهما — حتى الفراغ وتغيّر الحالة والصيغة القريبة — يُقيَّد.
+        for bad in [
+            "", "  ", "ALL", "All", "alll", "everyone", "1", "true", "منشن", "all ",
+        ] {
+            let got = clamp_group_mode(bad);
+            assert!(
+                got == GROUP_MODE_MENTIONS || got == GROUP_MODE_ALL,
+                "قيمة خارج المجموعة نجت من التقييد: {bad:?} ⇒ {got:?}"
+            );
+            if bad.trim() != "all" {
+                assert_eq!(
+                    got, GROUP_MODE_MENTIONS,
+                    "المجهول يجب أن يُقيَّد إلى الأضيق لا إلى الأوسع: {bad:?}"
+                );
+            }
+        }
+        // ومن ملف على القرص: القيمة المجهولة لا تصل إلى الذاكرة أصلاً.
+        let dir = tmp("group_mode");
+        std::fs::write(path(&dir), r#"{"telegram_group_mode":"garbage"}"#).unwrap();
+        assert_eq!(load(&dir).telegram_group_mode, GROUP_MODE_MENTIONS);
+        std::fs::write(path(&dir), r#"{"telegram_group_mode":"all"}"#).unwrap();
+        assert_eq!(load(&dir).telegram_group_mode, GROUP_MODE_ALL);
+        // وملف بناء قديم لا يعرف الحقل ⇒ الافتراضيّ.
+        std::fs::write(path(&dir), r#"{"lang":"ar"}"#).unwrap();
+        assert_eq!(load(&dir).telegram_group_mode, GROUP_MODE_MENTIONS);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
