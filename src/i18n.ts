@@ -108,19 +108,23 @@ const i18n = {
     tg_token: 'توكن البوت (من BotFather)',
     tg_owner: 'معرّف المستخدم المسموح (اختياري)',
     tg_audio_only: 'إرسال الصوت فقط (MP3) دائماً',
-    // م٤: وضوح رسائل المجموعة — نصّ **صادق ومحدود**، ولا يَعِد بميزة غير منفَّذة.
-    //   • لا ذكر لتحويل الرابط إلى المالك للموافقة ولا لـ«اسمح دائماً» — تلك
-    //     بنود تصميم م٤ (§٢) لا كود قائم؛ ذكرها هنا وعد كاذب.
-    //   • ولا يُطلَق وعد بأن «بالمنشن فقط» يحجب: نصف Rust (الحجب) لم يُدمج بعد،
-    //     فالنصّ يقول ما يفعله تلغرام نفسه (privacy mode) ولا يدّعي فعلاً للبوت.
-    // والقرار في `src/__tests__/tgGroupMode.test.ts` **يُقاس لحظة التشغيل** لا
-    // يُخزَّن هنا: الفحص يقرأ `src-tauri/src/settings.rs` فإن وُجد فيه
-    // `telegram_group_mode` سقط الاختبار مطالباً بتحرير هذا النصّ — فلا يبقى
-    // تعليقٌ يزعم غياب الميزة بعد وجودها.
+    // (م٤ — جولة الدمج 2026-09-21) حُرِّر بعد هبوط نصف Rust: صار المفتاح يبدّل
+    // سلوكاً فعلاً (بوابة الوضع ثم قائمة السماح في telegram.rs قبل أي معالجة)،
+    // فالتلميح يذكر ما يفعله الكود — لا ما كان يَعِد به قبل الدمج:
+    //   • «بالمنشن فقط»: `mentions_bot` (منشن · `text_mention` · ردّ على البوت)
+    //     أو أمرٌ موجَّه إليه ⇒ وغيره يُسكَت. والرسالة التي لا تخاطبه **لا تصله**
+    //     أصلاً في مجموعة privacy mode فيها مفعّل (شرط تلغرام لا شرطنا).
+    //   • «كل الرسائل»: تُقرأ الرسالة، وغير المسموح يُرسَل رابطُه إلى **خاصّ
+    //     المالك** كبطاقة `apv:<yes|no|always>` ولا معالجة قبل ضغطته، و«اسمح
+    //     دائماً» تُضيف الزوج إلى قائمة السماح وتحفظه.
+    //   • والحدّ التقني يُذكر **كحدّ لا كوعد**: البوت لا يبدأ محادثة خاصة مع عضو
+    //     لم يبدأها بنفسه.
+    // ومربوط بالكود في `tgGroupMode.test.ts` **في الاتجاهين**: إن ذُكرت الموافقة
+    // فليكن `apv:always` في telegram.rs، وإن ذُكر الحجب فليكن منطق الإسكات.
     settings_group_mode: 'وضوح رسائل المجموعة:',
     settings_group_mode_mentions: 'بالمنشن فقط',
     settings_group_mode_all: 'كل الرسائل',
-    settings_group_mode_hint: '«بالمنشن فقط»: لا يرى البوت إلا ما وُجِّه إليه؛ والرسالة التي لا تذكره لا تصله أصلاً في مجموعة privacy mode فيها مفعّل. «كل الرسائل»: يراه ما لم يُقصد به أيضاً، فيلزم إطفاء privacy mode من @BotFather، وإلا لم يصل شيء.',
+    settings_group_mode_hint: '«بالمنشن فقط»: لا يعالج البوت إلا ما وُجِّه إليه — اذكره مع الرابط. والرسالة التي لا تذكره لا تصله أصلاً في مجموعة privacy mode فيها مفعّل. «كل الرسائل»: يرى ما لم يُقصد به أيضاً، فيلزم إطفاء privacy mode من @BotFather، وحينها يُرسَل رابط غير المسموح إلى خاصّ المالك كبطاقة موافقة (✅ اسمح · ❌ ارفض · ♾️ اسمح دائماً) ولا معالجة قبل ضغطته؛ و«اسمح دائماً» تُضيفه إلى قائمة السماح. ومن ليس في القائمة لا تُشغَّل له معالجة. (حدّ: البوت لا يبدأ محادثة خاصة مع عضو لم يبدأها.)',
     tg_paircode: 'رمز الاقتران',
     tg_pair_hint: 'أرسل هذا الرمز إلى بوتك في تيليجرام لربط حسابك (صالح 10 دقائق).',
     tg_advanced: 'إعدادات متقدمة: خادم Bot API محلي (حتى 2GB وبالجودة الأصلية)',
@@ -396,12 +400,14 @@ const i18n = {
     tg_token: 'Bot token (from BotFather)',
     tg_owner: 'Allowed user id (optional)',
     tg_audio_only: 'Always send audio only (MP3)',
-    // م٤: same limited, truthful text as `ar` — no promise of a behaviour that
-    // is not implemented yet (owner approval routing / "allow always").
+    // م٤ — merge round 2026-09-21: rewritten once the Rust half landed, because the
+    // key now really changes behaviour (mode gate, then the allow list, before any
+    // processing). Same statements as `ar`, and the technical limit is stated as a
+    // limit, not as a promise: the bot cannot start a private chat with a member.
     settings_group_mode: 'Group message visibility:',
     settings_group_mode_mentions: 'Mentions only',
     settings_group_mode_all: 'All messages',
-    settings_group_mode_hint: 'Mentions only: the bot sees only what is addressed to it; with privacy mode on in a group, a message that does not mention it never reaches it at all. All messages: it also receives what was not addressed to it, so privacy mode must be turned off from @BotFather — otherwise nothing arrives.',
+    settings_group_mode_hint: 'Mentions only: the bot processes only what is addressed to it — mention it with the link. With privacy mode on in a group, a message that does not mention it never reaches it at all. All messages: it also sees what was not addressed to it, so privacy mode must be turned off from @BotFather; then a non-allowed member\'s link is sent to the owner\'s private chat as an approval card (✅ Allow · ❌ Deny · ♾️ Always allow) and nothing is processed before that press, while "always allow" adds them to the allow list. Anyone not on the list never starts processing. (Limit: the bot cannot start a private chat with a member who has not started one.)',
     tg_paircode: 'Pairing code',
     tg_pair_hint: 'Send this code to your bot on Telegram to link your account (valid 10 minutes).',
     tg_advanced: 'Advanced: local Bot API server (up to 2GB, original quality)',

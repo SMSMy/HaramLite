@@ -27,7 +27,22 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import indexHtml from '../../index.html?raw';
-import settingsRs from '../../src-tauri/src/settings.rs?raw';
+import telegramRs from '../../src-tauri/src/telegram.rs?raw';
+import I18N_TS from '../i18n.ts?raw';
+
+/** نصّ التلميح **من الملف المشحون** (لا من نسخة في الاختبار): يُقرأ بـ`?raw`
+ *  فلا حاجة إلى تصدير جديد في `i18n.ts`، ويُقرأ **لحظة التشغيل** فحين يُحرَّر
+ *  النصّ يتبعه الفحص بلا وسيط. والقسمان `ar` و`en` يُفصلان بموضع `en: {`. */
+const HINT_OF = (lang: 'ar' | 'en'): string => {
+  const src = I18N_TS as unknown as string;
+  const enAt = src.indexOf('\n  en: {');
+  expect(enAt, 'قسم `en` موجود في i18n.ts').toBeGreaterThan(0);
+  const region = lang === 'ar' ? src.slice(0, enAt) : src.slice(enAt);
+  const m = /settings_group_mode_hint:\s*'((?:[^'\\]|\\.)*)'/.exec(region);
+  if (!m) throw new Error(`settings_group_mode_hint غير موجود في ${lang}`);
+  return m[1].replace(/\\'/g, "'");
+};
+const TG_RS = telegramRs as unknown as string;
 
 const h = vi.hoisted(() => ({
   invoke: vi.fn<(cmd: string, args?: unknown) => Promise<unknown>>(async () => ({})),
@@ -298,45 +313,70 @@ describe('م٤ · النصّ لا يَعِد بميزة غير منفَّذة', 
     expect(en.toLowerCase()).toContain('privacy mode');
   });
 
-  it('لا يَعِد بتحويل الرابط إلى المالك ولا بـ«اسمح دائماً» ولا بأي موافقة', async () => {
+  /* ── الفخّ مقلوباً (جولة الدمج 2026-09-21) ────────────────────────────────
+   * كان هذا الفحص **يمنع** ذكر الموافقة و«اسمح دائماً» لأنها لم تكن منفَّذة.
+   * وقد هبط نصف Rust، فصار الكود يُصدر `apv:<yes|no|always>` ويُضيف الزوج إلى
+   * قائمة السماح عند `always` ⇒ **منعُ ذكرها اليوم هو الخطأ**، وصار الفحص
+   * **يطلبها**. ولم يبقَ ممنوعاً إلا ما بقي غير صحيح فعلاً: أن يَعِد النصّ بأن
+   * البوت **يبدأ** محادثة خاصة (وهو ما لا يفعله). */
+  it('يذكر ما نُفِّذ: الموافقة و«اسمح دائماً» — لأن الكود يفعلها (عكس الفحص السابق)', async () => {
     const { ar, en } = await hints();
-    for (const s of [ar, en]) {
-      expect(s).not.toContain('اسمح دائماً');
-      expect(s).not.toContain('allow always');
-      expect(s).not.toContain('يُحوَّل');
-      expect(s).not.toContain('للموافقة');
-      expect(s.toLowerCase()).not.toContain('approval');
-      expect(s.toLowerCase()).not.toContain('approved');
+    expect(ar, 'اسمح دائماً').toContain('اسمح دائماً');
+    expect(ar, 'بطاقة الموافقة').toContain('بطاقة موافقة');
+    expect(ar, 'لا معالجة قبل الضغطة').toContain('لا معالجة قبل ضغطته');
+    expect(ar, 'قائمة السماح').toContain('قائمة السماح');
+    expect(en).toContain('Always allow');
+    expect(en).toContain('approval card');
+    expect(en).toContain('allow list');
+  });
+
+  it('ولا يَعِد إلا بما يفعله الكود: لا ادّعاء بأن البوت يبدأ محادثة خاصة', async () => {
+    const { ar, en } = await hints();
+    // حجب «بالمنشن فقط» مذكور كفعل بوت لا كشرط تلغرام وحده.
+    expect(ar).toContain('لا يعالج البوت إلا ما وُجِّه إليه');
+    // والحدّ التقني مذكور **كحدّ**.
+    expect(ar).toMatch(/حدّ.*لا يبدأ محادثة خاصة/);
+    expect(en.toLowerCase()).toContain('cannot start a private chat');
+    // ولا وعد بأن البوت يبدأ محادثة.
+    expect(ar).not.toMatch(/يبدأ البوت محادثة/);
+    expect(en.toLowerCase()).not.toMatch(/the bot (starts|will start|can start) a private chat/);
+  });
+
+  /* ── الفخّ معكوساً: النصّ مربوط بالكود في **الاتجاهين** ────────────────────
+   * الفحصان السابقان هنا كانا فخّاً **باتجاه واحد**: «إن دُمج نصف Rust فسقط
+   * الفحص مطالِباً بتحرير النصّ»، و«النمط ليس أعمى». وقد أدّيا دورهما: سقطا
+   * لحظة الدمج، وحُرِّر النصّ، **وحُذفا** (وهو ما كان تعليقهما يأمر به).
+   *
+   * وموضعهما فحصٌ يقيس **اقتران النصّ بالميزة** لا وجودَ حقل: إن ذُكرت الموافقة
+   * في التلميح فليكن الكود يُصدر `apv:always`، وإن ذُكر حجب «بالمنشن فقط»
+   * فليكن الكود يحمل منطق الإسكات. فيسقط الفحص إن حُذفت الميزة من الكود وبقي
+   * النصّ يَعِد بها — وهو ما لا يمنعه اتجاهٌ واحد. */
+  it('النصّ ↔ الكود: كل ما يَعِد به النصّ موجودٌ في telegram.rs', () => {
+    const hintAr = HINT_OF('ar');
+    const hintEn = HINT_OF('en');
+    // ① الموافقة و«اسمح دائماً»: النصّ يذكرهما ⇒ الكود يُصدر زرّهما.
+    const promisesAlways = hintAr.includes('اسمح دائماً') || hintEn.includes('Always allow');
+    const promisesApproval = hintAr.includes('بطاقة موافقة') || hintEn.includes('approval card');
+    expect(promisesAlways || promisesApproval, 'النصّ يَعِد بالموافقة').toBe(true);
+    expect(TG_RS, 'الكود لا يُصدر apv:always والنصّ يَعِد بـ«اسمح دائماً»')
+      .toContain('apv:always');
+    expect(TG_RS, 'الكود لا يُصدر بطاقة الموافقة والنصّ يذكرها')
+      .toContain('approval_keyboard');
+    // ② الإضافة إلى قائمة السماح عند «اسمح دائماً»: مذكورة ⇒ منفَّذة.
+    expect(hintAr.includes('قائمة السماح') || hintEn.includes('allow list')).toBe(true);
+    expect(TG_RS, 'لا إضافة إلى قائمة السماح والنصّ يذكرها').toContain('fn allow(');
+    // ③ الحجب في «بالمنشن فقط»: النصّ يقول «لا يعالج البوت إلا ما وُجِّه إليه»
+    //    ⇒ الكود يحمل بوابة `addressed` (و`mentions_bot` التي تحسبها).
+    const claimsGating = hintAr.includes('لا يعالج البوت إلا ما وُجِّه إليه')
+      || hintEn.includes('processes only what is addressed to it');
+    expect(claimsGating, 'النصّ يدّعي الحجب').toBe(true);
+    if (claimsGating) {
+      expect(TG_RS, 'النصّ يدّعي الحجب ولا بوابة في الكود').toContain('let addressed =');
+      expect(TG_RS, 'لا حساب للمنشن في الكود').toContain('fn mentions_bot(');
+      expect(TG_RS).toContain('if !addressed {');
     }
-  });
-
-  it('النصّ مربوط بالكود: يسقط إن دُمج نصف Rust (settings.rs فيه telegram_group_mode)', () => {
-    // يقرأ الملف المشحون لحظة التشغيل — لا ثابت مكتوب هنا.
-    // `(?:^|\n)[ \t]*` يشترط أن يكون `pub` **أول ما في السطر** بعد فراغ: فسطر
-    // مُعلَّق (`// pub telegram_group_mode`) لا يُحتسب. قِيس الفرق فعلاً: النمط
-    // بلا الشرط كان يطابق المعلَّق ⇒ إنزالٌ كاذب للنصّ بدل تنبيه حقيقي.
-    const merged = /(?:^|\n)[ \t]*pub\s+telegram_group_mode\s*:/.test(settingsRs as unknown as string);
-    expect(
-      merged,
-      'نصف Rust دُمج (telegram_group_mode في Settings) ⇒ نصّ التلميح أعلاه صار ' +
-        'يَصِف ميزة قائمة جزئياً: حرِّر settings_group_mode_hint في i18n.ts ' +
-        'ليذكر ما يفعله المفتاح فعلاً (والحجب في «بالمنشن فقط») بدل أن يترك ' +
-        'المستخدم يظنّ أن الخيار لا يفعل شيئاً، ثم أزِل هذا الفحص.',
-    ).toBe(false);
-  });
-
-  it('وشرط الفحص نفسه مقيس على الصورتين (لا نمط أعمى)', () => {
-    // يُقاس النمط على محتوى حقيقي: الملف المشحون (لا شيء) وصورة مضافاً فيها
-    // الحقل (يُطابق) وصورة الحقل معلَّقاً فيها (لا يُطابق). وهذا يقيس **النمط**
-    // لا الملف، فوسم نصف Rust بنفسه لا يُقاس هنا (خارج نطاق هذا العامل).
-    const rs = settingsRs as unknown as string;
-    const withField = rs.replace('    pub telegram_audio_only: bool,',
-      '    pub telegram_audio_only: bool,\n    pub telegram_group_mode: String,');
-    const commented = rs.replace('    pub telegram_audio_only: bool,',
-      '    pub telegram_audio_only: bool,\n    // pub telegram_group_mode: String,');
-    const re = /(?:^|\n)[ \t]*pub\s+telegram_group_mode\s*:/;
-    expect(re.test(withField), 'الحقل مضافاً ⇒ يُطابق').toBe(true);
-    expect(re.test(commented), 'الحقل معلَّقاً ⇒ لا يُطابق').toBe(false);
+    // ④ والحدّ التقني: مذكور كحدّ ⇒ لا `start` تلقائي في مجموعة.
+    expect(hintAr.includes('لا يبدأ محادثة خاصة')).toBe(true);
   });
 
   it('والبوّابة ليست باطلة: العنصر والتلميح مرئيان فعلاً في DOM المُركَّب', async () => {
