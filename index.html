@@ -319,6 +319,28 @@
 </button>
                 </h2>
 </div>
+<!-- 🛑 زر الإيقاف الثابت (م٢) — **خارج** منطقة تمرير الطابور عن قصد:
+     `#batch-list` يتحرّك بالتمرير، والزر يجب أن يبقى على الشاشة طوال عمل
+     مهمّة. والهدف يُسمّى نصّاً في #stop-target فلا يُلغي الزرّ مهمّةً لا
+     يراها المستخدم. والنصّ لا يقول «فوراً»: العمليات المنفصلة تُقتل فوراً
+     ونداء الاستدلال الجاري لا يُقطع (التفصيل في src/jobs.ts). -->
+<div id="stop-bar" class="hidden p-stack-sm border-b border-border-muted bg-coal-surface/50 flex flex-col gap-unit">
+<div class="flex items-center justify-between gap-unit">
+<span class="font-label-sm text-label-sm text-clay-accent font-bold" data-i18n="stop_bar_title">مهمّة جارية الآن</span>
+<span id="stop-count" class="font-label-sm text-label-sm text-on-surface-variant" dir="ltr"></span>
+</div>
+<span id="stop-target" class="font-label-sm text-label-sm text-cream-text truncate" dir="ltr"></span>
+<div class="flex items-center gap-unit">
+<button id="btn-stop-job" type="button" class="flex-1 flex items-center justify-center gap-unit bg-error/20 text-error border border-error/40 rounded px-stack-sm py-unit font-label-sm text-label-sm font-bold hover:bg-error/30 transition-colors cursor-pointer" data-i18n-title="stop_button_hint" data-i18n-aria="stop_button_label">
+<span class="material-symbols-outlined text-sm" data-icon="stop_circle" aria-hidden="true">stop_circle</span>
+<span data-i18n="stop_button_label">إيقاف المهمّة</span>
+</button>
+<button id="btn-stop-all" type="button" class="flex items-center justify-center gap-unit bg-surface-container text-on-surface-variant border border-border-muted rounded px-stack-sm py-unit font-label-sm text-label-sm hover:text-error hover:border-error/40 transition-colors cursor-pointer" data-i18n-title="stop_all_hint">
+<span data-i18n="stop_all_button_label">إلغاء الكل</span>
+</button>
+</div>
+<span id="stop-note" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" role="status" aria-live="polite"></span>
+</div>
 <div id="batch-list" class="flex-1 overflow-y-auto p-stack-md flex flex-col gap-stack-sm">
 <!-- Queue Item Active -->
 <div class="bg-coal-surface/80 border border-clay-accent/40 rounded p-stack-sm flex flex-col gap-unit relative overflow-hidden shadow-[0_4px_12px_-4px_rgba(218,119,86,0.2)] transition-all duration-300 opacity-70 cursor-default">

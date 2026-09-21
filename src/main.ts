@@ -13,7 +13,7 @@ import {
 import { wireWatchSettings } from './watch';
 import * as session from './session';
 import { outDirOf, setVerdictHtml, verdictHtml } from './media';
-import { ingestFiles, restoreBatchState, wireSeparate, wireUrlDownload } from './queue';
+import { ingestFiles, restoreBatchState, wireSeparate, wireStopBar, wireUrlDownload } from './queue';
 import { wirePlayer } from './player';
 import { wireAutostart, wireBridge, wireExtJobs, wireTelegram } from './integration';
 import { autoHealthCheck, wireRepair } from './repair';
@@ -221,6 +221,7 @@ function wire(): void {
   wireKinds();
   wireDropzone();
   wireSeparate();
+  wireStopBar(); // م٢: الزرّ الثابت لوقف المهمّة المعروضة (خارج تمرير الطابور)
   wireUrlDownload();
   wireLogToggle();
   wireOpenFolder();
