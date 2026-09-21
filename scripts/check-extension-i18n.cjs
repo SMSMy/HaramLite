@@ -123,104 +123,132 @@ function scanLiterals(text, keepExpr) {
   const out = [];
   let i = 0, line = 1;
   const n = text.length;
-  let tpl = null;
+  /* آخر رمز ذي دلالة — يميّز بداية **تعبير نمطي** من **قسمة**. بدونه كان
+   * `/نصّ/` يُقرأ بداية سلسلة فيبتلع نصَّين حرفيين حتى القوس التالي، فتُفقد
+   * عربية حقيقية (قيس بمحاولتَي إخفاء في تعبير نمطي). */
+  let prev = '';
 
   const push = (rec) => out.push(rec);
+  /** هل يصلح `/` هنا بداية تعبير نمطي؟ (قاعدة معروفة: يسبقه عامل أو فاتح أو كلمة مفتاحية) */
+  const regexAllowed = () => prev === '' || /[=(,:[!&|?{};+\-*%^~<>]/.test(prev) ||
+    /^(?:return|typeof|instanceof|in|of|new|delete|void|do|else|case|yield|await)$/.test(prev);
 
   while (i < n) {
     const c = text[i], d = text[i + 1];
 
-    /* داخل جسم قالب */
-    if (tpl) {
-      if (c === '\\') { const [ch, len] = decodeEscape(text, i); tpl.text += ch; i += len; continue; }
-      if (c === '`') {
-        tpl.text += c; tpl.end = i + 1; push(tpl); tpl = null; i++; continue;
+    if (c === '/' && d === '/') { while (i < n && text[i] !== '\n') i++; prev = ';'; continue; }
+    if (c === '/' && d === '*') { i += 2; while (i < n && !(text[i] === '*' && text[i + 1] === '/')) { if (text[i] === '\n') line++; i++; } i += 2; continue; }
+
+    if (c === '/' && regexAllowed()) {
+      // تعبير نمطي: يُتخطّى كاملاً (صنف المحارف `[…]` يحمي `/` داخله، والهروب `\/`)
+      i++;
+      let inClass = false;
+      while (i < n && text[i] !== '\n') {
+        if (text[i] === '\\') { i += 2; continue; }
+        if (text[i] === '[') inClass = true;
+        else if (text[i] === ']') inClass = false;
+        else if (text[i] === '/' && !inClass) { i++; break; }
+        i++;
       }
-      if (c === '$' && d === '{') {
-        tpl.text += keepExpr ? '${' : '';
-        i += 2;
-        let depth = 1;
-        while (i < n) {
-          const cc = text[i], dd = text[i + 1];
-          if (cc === '\n') { line++; if (keepExpr) tpl.text += cc; i++; continue; }
-          if (cc === '/' && dd === '/') { i += 2; while (i < n && text[i] !== '\n') { if (keepExpr) tpl.text += text[i]; i++; } continue; }
-          if (cc === '/' && dd === '*') {
-            i += 2;
-            while (i < n && !(text[i] === '*' && text[i + 1] === '/')) { if (text[i] === '\n') line++; i++; }
-            i += 2; continue;
-          }
-          if (cc === "'" || cc === '"') {
-            const q = cc;
-            if (keepExpr) tpl.text += cc;
-            i++;
-            while (i < n && text[i] !== q) {
-              if (text[i] === '\\') {
-                const [ch, len] = decodeEscape(text, i);
-                if (keepExpr) tpl.text += ch;
-                i += len;
-                continue;
-              }
-              if (keepExpr) tpl.text += text[i];
-              i++;
-            }
-            if (i < n) { if (keepExpr) tpl.text += text[i]; i++; }
-            continue;
-          }
-          if (cc === '`') {
-            if (keepExpr) tpl.text += cc;
-            i++;
-            let d2 = 0;
-            while (i < n) {
-              const e = text[i], f = text[i + 1];
-              if (e === '\\') {
-                const [ch, len] = decodeEscape(text, i);
-                if (keepExpr) tpl.text += ch;
-                i += len;
-                continue;
-              }
-              if (e === '`' && d2 === 0) { if (keepExpr) tpl.text += e; i++; break; }
-              if (e === '$' && f === '{') { d2++; if (keepExpr) tpl.text += '${'; i += 2; continue; }
-              if (e === '}' && d2 > 0) { d2--; if (keepExpr) tpl.text += e; i++; continue; }
-              if (e === '\n') line++;
-              if (keepExpr) tpl.text += e;
-              i++;
-            }
-            continue;
-          }
-          if (cc === '{') depth++;
-          if (cc === '}') { depth--; if (depth === 0) { if (keepExpr) tpl.text += cc; i++; break; } }
-          if (keepExpr) tpl.text += cc;
-          i++;
-        }
-        continue;
-      }
-      if (c === '\n') line++;
-      tpl.text += c; i++; continue;
+      while (i < n && /[a-z]/.test(text[i])) i++;   // الأعلام g i m s u y d
+      prev = ')';                                   // نتاجه قيمة
+      continue;
     }
 
-    if (c === '/' && d === '/') { while (i < n && text[i] !== '\n') i++; continue; }
-    if (c === '/' && d === '*') { i += 2; while (i < n && !(text[i] === '*' && text[i + 1] === '/')) { if (text[i] === '\n') line++; i++; } i += 2; continue; }
     if (c === "'" || c === '"') {
       const q = c, startLine = line, start = i;
       let s = c; i++;
       while (i < n && text[i] !== q) {
-        if (text[i] === '\\') {
-          const [ch, len] = decodeEscape(text, i);
-          s += ch; i += len;
-          continue;
-        }
+        if (text[i] === '\\') { const [ch, len] = decodeEscape(text, i); s += ch; i += len; continue; }
         s += text[i]; i++;
       }
       if (i < n) { s += text[i]; i++; }
       push({ kind: 'str', text: s, start, end: i, line: startLine });
+      prev = ')';
       continue;
     }
+
     if (c === '`') {
-      tpl = { kind: 'tpl', text: '`', start: i, end: -1, line, lineEnd: line };
+      /* القالب يُقرأ **بتعبيراته**: كل `${…}` يُمسح مسحاً كاملاً (بتوازن الأقواس
+       * وبمعرفة النصوص والتعليقات والقوالب المتداخلة داخله) فتُلتقط النصوص
+       * الحرفية التي فيه **كتسجيلات مستقلة**. وهذا بالضبط ما كان يسقط: صيغة سابقة
+       * كانت تُنكر القالب المتداخل داخل `${…}` فتفقد عربيته (قيس بمحاولة إخفاء
+       * `toast(\`${x ? \`نصّ عربي\` : ''}\`)` ⇒ أفلتت). */
+      const startLine = line, start = i;
+      let s = '`';
       i++;
+      for (;;) {
+        if (i >= n) break;
+        const e = text[i], f = text[i + 1];
+        if (e === '\\') {
+          const [ch, len] = decodeEscape(text, i);
+          s += ch;                        // الهروب يُفكّ دائماً في نصّ القالب
+          i += len;
+          continue;
+        }
+        if (e === '`') { s += '`'; i++; break; }
+        if (e === '$' && f === '{') {
+          if (keepExpr) s += '${';
+          i += 2;
+          /* جسم التعبير: يُمسح بنفس المُحلِّل فيُلتقط كل نصّ حرفيّ فيه، وتُحفظ
+           * الأسطر. والمصدر الأصلي هو المرجع لأرقام الأسطر، فالإزاحة تُزاد. */
+          const exprStart = i;
+          let depth = 1;
+          while (i < n && depth > 0) {
+            const cc = text[i], dd = text[i + 1];
+            if (cc === '\n') { line++; i++; continue; }
+            if (cc === '/' && dd === '/') { while (i < n && text[i] !== '\n') i++; continue; }
+            if (cc === '/' && dd === '*') { i += 2; while (i < n && !(text[i] === '*' && text[i + 1] === '/')) { if (text[i] === '\n') line++; i++; } i += 2; continue; }
+            if (cc === "'" || cc === '"' || cc === '`') {
+              const q = cc;
+              i++;
+              if (q === '`') {
+                let d2 = 0;
+                while (i < n) {
+                  const g = text[i], h = text[i + 1];
+                  if (g === '\\') { i += 2; continue; }
+                  if (g === '`' && d2 === 0) { i++; break; }
+                  if (g === '$' && h === '{') { d2++; i += 2; continue; }
+                  if (g === '}' && d2 > 0) { d2--; i++; continue; }
+                  if (g === '\n') line++;
+                  i++;
+                }
+              } else {
+                while (i < n && text[i] !== q) { if (text[i] === '\\') i++; i++; }
+                i++;
+              }
+              continue;
+            }
+            if (cc === '(' || cc === '[' || cc === '{') depth++;
+            else if (cc === ')' || cc === ']' || cc === '}') { depth--; if (depth === 0) { i++; break; } }
+            i++;
+          }
+          /* النصوص الحرفية داخل التعبير تُسجَّل مستقلة (بإزاحة حقيقية في المصدر). */
+          const inner = scanLiterals(text.slice(exprStart, i - 1), false);
+          for (const rec of inner) {
+            push({ kind: rec.kind, text: rec.text, start: exprStart + rec.start, end: exprStart + rec.end, line: rec.line });
+          }
+          if (keepExpr) s += text.slice(exprStart, i - 1) + '}';
+          continue;
+        }
+        if (e === '\n') line++;
+        s += e; i++;
+      }
+      push({ kind: 'tpl', text: s, start, end: i, line: startLine });
+      prev = ')';
       continue;
     }
-    if (c === '\n') line++;
+
+    // تحديث «آخر رمز» لاكتشاف بداية التعبير النمطي في الدورة التالية.
+    if (c === '\n') { line++; i++; continue; }
+    if (/[A-Za-z0-9_$]/.test(c)) {
+      let j = i;
+      while (j < n && /[A-Za-z0-9_$]/.test(text[j])) j++;
+      prev = text.slice(i, j);
+      i = j;
+      continue;
+    }
+    if (!/\s/.test(c)) prev = c;
     i++;
   }
   return out;
@@ -554,6 +582,27 @@ function audit(text, label) {
       dynArab.join(' · ') + ' — النصّ لا يُبنى ديناميكياً (§٢٦)، ويُخفى عن هذا الحارس.');
   }
 
+  /* ── ⑫ عربية **مُرمَّزة** (base64 ⇒ atob / Buffer.from) ────────────────────
+   * ثقب قيس بمحاولة إخفاء: `toast(atob('2YbYtSDYudix2KjZig=='))` — لا محرف عربي
+   * في الشيفرة إطلاقاً، فيمرّ من كل فحص أعلاه. والعلاج: يُفكّ كل نصّ حرفيّ يُمرَّر
+   * إلى `atob(` أو `Buffer.from(…,'base64')`، ويُقاس الناتج. */
+  res.checks++;
+  const decoded = [];
+  {
+    const decRe = /\b(?:atob|btoa)\s*\(\s*(['"])([A-Za-z0-9+/=\s]{8,})\1|\bBuffer\s*\.\s*from\s*\(\s*(['"])([A-Za-z0-9+/=\s]{8,})\3\s*,\s*(['"])base64\5/gs;
+    let dm;
+    while ((dm = decRe.exec(noCom)) !== null) {
+      const b64 = (dm[2] !== undefined ? dm[2] : dm[4]) || '';
+      let txt = '';
+      try { txt = Buffer.from(b64.replace(/\s+/g, ''), 'base64').toString('utf8'); } catch { txt = ''; }
+      if (AR.test(txt)) decoded.push(lineOf(text, dm.index) + ' ⇒ «' + txt.slice(0, 40) + '»');
+    }
+  }
+  if (decoded.length) {
+    res.failures.push('✗ ' + decoded.length + ' نصّاً عربياً **مُرمَّزاً** (base64) في ' + label + ': ' +
+      decoded.join(' · ') + ' — الإخفاء بالترميز لا يُعفي النصّ من الجدول.');
+  }
+
   return res;
 }
 
@@ -589,13 +638,17 @@ function main() {
   console.log('\n=== ٣) الأحكام ===');
 
   const shown = Math.max(r.checks, 1);
-  if (r.checks === 0) {
-    console.error('✗ صفر مدخل: لم يُنفَّذ فحص واحد — لا نجاح فارغ.');
-    process.exit(1);
-  }
+  /* الترتيب مقصود: **الأحكام المُسمّاة أولاً**، ثم بوابة «صفر فحص». لو قُدّمت
+   * بوابة الصفر لطمست الرسالة المسمّاة: قيس ذلك على نسخة ما قبل التعريب — الحارس
+   * كان يقول «صفر مدخل: لم يُنفَّذ فحص واحد» وهو يخفي السبب الحقيقي («جدول الترجمة
+   * مفقود»)، ورسالة لا تسمّي العيب تُخالف §③ من بوّابة الحرّاس. */
   if (r.failures.length) {
     for (const f of r.failures) console.error(f);
     console.error('✗ حارس التعريب: فشل ' + r.failures.length + ' من ' + shown + ' فحصاً.');
+    process.exit(1);
+  }
+  if (r.checks === 0) {
+    console.error('✗ صفر مدخل: لم يُنفَّذ فحص واحد — لا نجاح فارغ.');
     process.exit(1);
   }
   console.log('✓ ' + r.checks + ' فحصاً ناجحاً / 0 فاشل — ' +
