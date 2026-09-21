@@ -17,7 +17,7 @@
 //! finished video that would not fit is re-encoded down to a computed bitrate —
 //! or the audio is sent instead, with the reason said out loud.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -74,6 +74,24 @@ pub const CANCEL_CONFIRM_WAIT: Duration = Duration::from_secs(2);
 /// الحالة**، وكلاهما من عيّنة ١٤٠ ث قديمة أقلّ من أطول ما قيس بأكثر من ثلاث
 /// مرات. فالثابت الآن واحد، والصياغة تقول «أطول ما قيس» لا «≤ كذا ث».
 pub const INFERENCE_BAIL_HINT_SECS: u64 = crate::pipeline::ENGINE_CALL_CEILING_SECS;
+/// **النصّ النهائي الواحد للإلغاء** — تُستعمله المواضع الثلاثة: جواب الزرّ،
+/// وجواب `/kill`، والتعديل النهائي لرسالة الحالة. فواحدٌ لا ثلاثة، والشاشة
+/// تقول الشيء نفسه حيث نظر المستخدم.
+pub(crate) const CANCELLED_TEXT: &str = "🛑 أُلغيت";
+/// **أطول زمن مقيس لإلغاء مهمّة في مرحلة التحضير** (تنزيل رابط أو استلام ملف)
+/// — ثوانٍ لا دقائق، لأن أدوات التحضير (yt-dlp/ffmpeg) عمليات فرعية مسجَّلة في
+/// سياق المهمّة فيقتلها `cancel_job` فوراً (`proc::kill_children`).
+///
+/// **من أين جاء الرقم**: قياس مدقّق مستقلّ (م٣): ضغطة الإلغاء أثناء التنزيل
+/// عادت بعد **٣.٦ ث** فعلية — مقابل سقف نداء المحرّك
+/// [`INFERENCE_BAIL_HINT_SECS`] في مرحلة المعالجة. فلا رقم مكتوب بيد في نصّ:
+/// النصّ يقرأ هذا الثابت وحده.
+///
+/// **ولا يُخفَّض بلا قياس**: حارس
+/// `the_prepare_phase_cancel_reply_carries_a_measured_number` يقيس الإلغاء
+/// الفعلي في هذه المرحلة على هذه الآلة ويسقط إن تجاوز الرقم (فلا يصير وعداً
+/// أقصر من الواقع) — ويسقط كذلك إن كبُر الرقم كبُراً يجعله سقفاً مطّاطاً بلا قياس.
+pub const CANCEL_PREPARE_WORST_SECS: f64 = 3.6;
 
 // ── pairing (OTP) ───────────────────────────────────────────────────────────
 /// Six digits: a four-digit code is guessable inside the attempt budget.
@@ -412,6 +430,13 @@ fn no_keyboard() -> Value {
 /// `pub(crate)` لأن قياس **زمن الحجب** يحتاج سِجلّ المهامّ الحقيقي، ومرافقه في
 /// `slots::tests` حيث يوجد (`registry_lock` + `run_registered`).
 pub(crate) fn cancel_chat_jobs(chat_id: i64) -> String {
+    cancel_chat_jobs_with(chat_id, CANCEL_CONFIRM_WAIT)
+}
+
+/// نفس العمل بمهلة انتظار صريحة — والمنتَج ينادي [`cancel_chat_jobs`] بمهلة
+/// [`CANCEL_CONFIRM_WAIT`]، وهذه تُقاس بها **نصوص المراحل** بلا انتظار ثانيتين
+/// في كل فحص (والمهلة لا تغيّر النصّ، بل تُغيّر جواب «هل فرغت فعلاً؟»).
+pub(crate) fn cancel_chat_jobs_with(chat_id: i64, wait: Duration) -> String {
     let ids = active_job_ids(chat_id);
     if ids.is_empty() {
         return "لا مهمّة جارية".to_string();
@@ -425,26 +450,53 @@ pub(crate) fn cancel_chat_jobs(chat_id: i64) -> String {
     if marked == 0 {
         return "لا مهمّة جارية".to_string();
     }
-    // الانتظار **محدود**: بعد انتهائه نقول الحقيقة لا الوعد.
-    cancel_reply(slots::wait_until_gone(&ids, CANCEL_CONFIRM_WAIT))
+    // الانتظار **محدود**: بعد انتهائه نقول الحقيقة لا الوعد. **والمرحلة تُقرأ
+    // من السِجلّ** (م٣/إصلاح)، فلا يُقال «بعد انتهاء نداء المحرّك» لمهمّة ما
+    // زالت تنزّل: عدد صادق لمرحلةٍ صادقة.
+    let gone = slots::wait_until_gone(&ids, wait);
+    cancel_reply(gone, slots::phase_of(&ids))
 }
 
 /// الجواب الواحد بعد طلب الإلغاء — دالّة **نقيّة** لتُقاس بلا مهمّة حقيقية،
 /// ولئلا يفترق نصّان لنفس الحالة.
 ///
+/// **والنصّ بحسب المرحلة** (م٣/إصلاح): كان نصّاً واحداً يقول دائماً «سيتوقّف بعد
+/// انتهاء نداء المحرّك الجاري… أطول ما قيس ٩.٤ دقيقة» — **حتى في مرحلة
+/// التنزيل**، والمدقّق قاس الإلغاء هناك **٣.٦ ث** فعلية (قتل `yt-dlp`/`ffmpeg`
+/// فوريّ). فالآن:
+/// * [`slots::JobPhase::Preparing`] ⇒ الرقم المقيس لتلك المرحلة
+///   ([`CANCEL_PREPARE_WORST_SECS`])، ويُقال إن الأدوات تُقتل فوراً (وهو صحيح
+///   هناك وحده — لا يُقال عن نداء المحرّك).
+/// * [`slots::JobPhase::Processing`] ⇒ الحدّ الصادق لتلك المرحلة:
+///   [`INFERENCE_BAIL_HINT_SECS`] لنداء المحرّك الذي لا يُقطع داخل العملية،
+///   و[`slots::DEFAULT_WAIT`] لفتحة الجهاز التي قد تنتظرها (والانتظار لا يقرأ
+///   رمز الإلغاء، فذكره صدقٌ لا زيادة).
+///
 /// **ولا يُقال «فوراً»** عن نداء المحرّك (نصيحة المالك): هو نداء واحد داخل
-/// العملية لا نقطة إلغاء فيه، فالصياغة تقول **«بعد انتهاء نداء المحرّك الجاري»**
-/// وتذكر **أطول ما قيس** (‏٩.٤ دقيقة) وتُصرّح بأنّ الغالب أقلّ بكثير.
-pub(crate) fn cancel_reply(gone: bool) -> String {
+/// العملية لا نقطة إلغاء فيه، فالصياغة تقول **«أطول ما قيس»** وتُصرّح بأنّ
+/// الغالب أقلّ بكثير.
+pub(crate) fn cancel_reply(gone: bool, phase: slots::JobPhase) -> String {
     if gone {
-        return "🛑 أُلغيت".to_string();
+        return CANCELLED_TEXT.to_string();
     }
-    let secs = INFERENCE_BAIL_HINT_SECS;
-    let mins = secs as f64 / 60.0;
-    format!(
-        "🛑 طُلب الإلغاء — سيتوقّف بعد انتهاء نداء المحرّك الجاري (لا يُقطع داخل \
-         العملية). أطول ما قيس {mins:.1} دقيقة ({secs} ث)، والغالب أقلّ بكثير."
-    )
+    match phase {
+        slots::JobPhase::Preparing => format!(
+            "🛑 طُلب الإلغاء — المهمّة في **مرحلة التحضير** (تنزيل/استلام): أدواتها \
+             (yt-dlp/ffmpeg) تُقتل فوراً. أطول ما قيس في هذه المرحلة {:.1} ث.",
+            CANCEL_PREPARE_WORST_SECS
+        ),
+        slots::JobPhase::Processing => {
+            let secs = INFERENCE_BAIL_HINT_SECS;
+            let mins = secs as f64 / 60.0;
+            let slot_mins = slots::DEFAULT_WAIT.as_secs() / 60;
+            format!(
+                "🛑 طُلب الإلغاء — المهمّة في **مرحلة المعالجة**: إمّا تنتظر فتحة \
+                 جهاز (حتى {slot_mins} دقيقة)، وإمّا داخل نداء محرّك لا يُقطع داخل \
+                 العملية (لا نقطة إلغاء فيه). أطول ما قيس {mins:.1} دقيقة ({secs} ث)، \
+                 والغالب أقلّ بكثير."
+            )
+        }
+    }
 }
 
 /// First http(s) URL in a message — the only "link" the bot will chase.
@@ -926,6 +978,14 @@ struct Pending {
     source: Source,
     /// رسالة المستخدم التي جاء منها الملف.
     src_msg_id: i64,
+    /// **رسالة السؤال التي تحمل أزرار هذا الملف الآن** (م٣/إصلاح).
+    ///
+    /// كانت الأزرار تُرسَل ولا يُحفظ موضعها، فضغطة على سؤال **قديم** (نسخة
+    /// سابقة من السؤال — يُنشئها `/mode` ولا يمحو القديمة) تُقبل ويصير
+    /// معرّفها **مرجعَ الحالة** للمهمّة الجارية: تُحرَّر رسالةٌ قديمة ويبقى
+    /// السؤال الحقيقي بأزراره. والحقل يربط الضغطة بسؤالها: ما لا يطابق يُردّ
+    /// بصدق ولا يُحرَّر شيء. و`/mode` **ينقل** الربط إلى الرسالة الجديدة.
+    ask_msg_id: i64,
     /// الاسم المعروض (بلا مسار).
     file: String,
     /// صفّ `telegram-jobs` (يُسجَّل عند الوصول).
@@ -961,6 +1021,19 @@ impl PendingStore {
     /// يأخذ معلَّقاً **بعينه** بالرمز — فلا يُلغي اختيارُ ملفٍ ملفاً آخر.
     fn take(&mut self, chat_id: i64, token: &str) -> Option<Pending> {
         self.by_token.remove(&(chat_id, token.to_string()))
+    }
+
+    /// معلَّقٌ بعينه بلا سحبه (للقراءة قبل الحكم — فلا يُفقد معلَّقٌ برفض ضغطة).
+    fn get(&self, chat_id: i64, token: &str) -> Option<&Pending> {
+        self.by_token.get(&(chat_id, token.to_string()))
+    }
+
+    /// **ينقل ربط المعلَّق إلى رسالة السؤال الجديدة** (`/mode` يعيد الأزرار في
+    /// رسالة جديدة ولا يمحو القديمة) — فالرسالة الحيّة هي الأحدث وحدها.
+    fn set_ask_msg(&mut self, chat_id: i64, token: &str, ask_msg_id: i64) {
+        if let Some(p) = self.by_token.get_mut(&(chat_id, token.to_string())) {
+            p.ask_msg_id = ask_msg_id;
+        }
     }
 
     /// معلَّقات محادثةٍ بترتيب الوصول.
@@ -2094,7 +2167,12 @@ fn handle_update(
             if msg_id != 0 {
                 // الزرّ يُزال **صراحةً** بلوحة فارغة: الرسالة كانت تحمله، وتعديلٌ
                 // بلا لوحة يحذفه في تلغرام — فالطلب صريح لا ضمني.
-                let _ = edit_message_kb(cfg, chat_id, msg_id, &reply, Some(no_keyboard()));
+                //
+                // **والرتبة بحسب النصّ** (م٣/إصلاح): «🛑 أُلغيت» نهائية تُجمّد
+                // الرسالة، فلا يطمسها تعديلٌ متأخّر من خيط المهمّة (كان يصل
+                // بعدها «✗ فشلت المعالجة: أُلغيت المعالجة»).
+                let rank = cancel_reply_rank(&reply);
+                let _ = status_push(cfg, chat_id, msg_id, rank, &reply, no_keyboard());
             }
             set_activity(reply);
             return;
@@ -2109,6 +2187,20 @@ fn handle_update(
             return;
         };
         // **البحث بالرمز لا بالمحادثة** (م٣/١): اختيار وضع ملفٍ لا يُلغي غيره.
+        //
+        // **وقبل السحب: هل الرسالة المضغوطة هي سؤال هذا المعلَّق؟** (م٣/إصلاح)
+        // ضغطة على نسخةٍ قديمة من السؤال (يبقى زرّها على الشاشة — `/mode` يُنشئ
+        // سؤالاً جديداً ولا يمحو القديم) كانت تُقبل، فيصير معرّف الرسالة القديمة
+        // **مرجعَ الحالة**: تُحرَّر رسالةٌ منسيّة ويبقى السؤال الحيّ بأزراره.
+        // والحكم **قبل `take`**: يُردّ بصدق ويبقى المعلَّق كما هو.
+        let Some(current) = poll.pending.get(chat_id, &token) else {
+            answer_callback(cfg, cb_id, "انتهت صلاحية هذا الطلب — أعد الإرسال");
+            return;
+        };
+        if current.ask_msg_id != 0 && msg_id != current.ask_msg_id {
+            answer_callback(cfg, cb_id, "هذا سؤال قديم — استعمل أزرار آخر رسالة سؤال");
+            return;
+        }
         let Some(p) = poll.pending.take(chat_id, &token) else {
             answer_callback(cfg, cb_id, "انتهت صلاحية هذا الطلب — أعد الإرسال");
             return;
@@ -2150,11 +2242,22 @@ fn handle_update(
         }
         // **ولا يُقال «بدأت» هنا**: المهمّة في القائمة، و`run_job` وحدها تقول
         // «بدأت المعالجة» لحظة دخولها التنفيذ.
+        //
+        // **والرتبة `Queued`** (م٣/إصلاح): هذا التعديل يقع **بعد** `tx.send`،
+        // فقد يصل بعد أن يكون خيط المهمّة كتب «▶ بدأت المعالجة» — والبوابة
+        // تُسقطه حينها، فلا تبقى «دورك: 1» على مهمّة بدأت.
         let text = waiting_text(label, position);
         if msg_id != 0 {
             // زرّ الإلغاء **يحلّ محلّ أزرار الوضع** على الرسالة نفسها: زرٌّ واحد
             // صادق بدل زرَّين لا يفعلان شيئاً بعد الاختيار.
-            let _ = edit_message_kb(cfg, chat_id, msg_id, &text, Some(cancel_button(chat_id)));
+            let _ = status_push(
+                cfg,
+                chat_id,
+                msg_id,
+                StatusRank::Queued,
+                &text,
+                cancel_button(chat_id),
+            );
         } else {
             let _ = send_message(
                 cfg,
@@ -2258,13 +2361,16 @@ fn handle_update(
             });
             let text = mode_question_text(&hint, ahead);
             match send_message(cfg, chat_id, &text, Some(keyboard), Some(src_msg_id)) {
-                Ok(_) => {
+                Ok(ask_msg_id) => {
                     let row_id = jobs_arrived(chat_id, &user, &file);
                     let inserted = poll.pending.insert(Pending {
                         chat_id,
                         token,
                         source,
                         src_msg_id,
+                        // **موضع الأزرار يُحفظ مع المعلَّق** (م٣/إصلاح): الضغطة
+                        // تُطابَق به، فلا تُقبل ضغطة على سؤالٍ قديم.
+                        ask_msg_id,
                         file,
                         row_id,
                     });
@@ -2345,7 +2451,15 @@ fn handle_update(
                             });
                             let text =
                                 format!("📎 {file}\n\n{}", waiting_text("لم يُختر بعد", position));
-                            let _ = send_message(cfg, chat_id, &text, Some(keyboard), Some(src));
+                            // **والربط ينتقل إلى الرسالة الجديدة** (م٣/إصلاح): هي
+                            // التي تحمل الأزرار الحيّة، والقديمة يُردّ ضغطُها بصدق
+                            // («هذا سؤال قديم») بدل أن تُحرَّر وتصير مرجع الحالة.
+                            match send_message(cfg, chat_id, &text, Some(keyboard), Some(src)) {
+                                Ok(new_ask) => {
+                                    poll.pending.set_ask_msg(chat_id, &token, new_ask);
+                                }
+                                Err(e) => set_error(e),
+                            }
                         }
                     }
                 }
@@ -2431,12 +2545,257 @@ fn epoch_ms() -> u128 {
         .unwrap_or(0)
 }
 
+// ── بوابة الكتابة على رسالة الحالة: «آخر ما يُكتب هو الأحدث» (م٣/إصلاح) ─────
+
+/// رتبة الحالة المكتوبة على رسالة واحدة. **الكتابة لا تتراجع**: ما رتبته أدنى
+/// من آخر ما كُتب **يُسقَط**، و[`StatusRank::Cancelled`] تُجمّد الرسالة نهائياً
+/// فلا يطمسها تعديلٌ متأخّر.
+///
+/// **والعطل المقيس**: «⏳ في قائمة الانتظار — دورك: 1» و«▶ بدأت المعالجة»
+/// يُحرَّران من **خيطين** (خيط تحديثات البوت بعد `tx.send`، وخيط
+/// `telegram-jobs`)، فوصل التعديلان في المللي ثانية نفسها وبقيت على الشاشة
+/// «دورك: 1» لمهمّة **بدأت فعلاً**. والترتيب هنا هو الحارس.
+///
+/// **وعطل ثانٍ بالآلية نفسها**: بعد «🛑 أُلغيت» كان يصل تعديلٌ متأخّر بنصّ
+/// «✗ فشلت المعالجة: أُلغيت المعالجة» فيمحو أثر الإلغاء — و`Cancelled`
+/// (وهي أعلى رتبة) تمنعه.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum StatusRank {
+    /// «⏳ في قائمة الانتظار» — تُحرَّر لحظة الاختيار، وقد تصل بعد البدء.
+    Queued = 0,
+    /// «▶ بدأت المعالجة» — دخول التنفيذ فعلاً.
+    Running = 1,
+    /// تقدّم/مرحلة أثناء العمل (لا تسبق البدء ولا تتبع النهاية).
+    Progress = 2,
+    /// «🛑 طُلب الإلغاء…» — طلبٌ سُجّل ولم تفرغ المهمّة بعد.
+    CancelRequested = 3,
+    /// نهاية عادية (‏✅ أو ✗).
+    Finished = 4,
+    /// «🛑 أُلغيت» — **نهائية**: لا يُكتب على الرسالة بعدها شيء.
+    Cancelled = 5,
+}
+
+/// سطرٌ في سِجلّ الكتابات: **زمن وصول التعديل وترتيبه** — وهما المقياس المطلوب
+/// في عطل السباق — وهل قُبل أم أُسقط.
+///
+/// **وزمنان لا زمن**: `at_ms` لحظة وصول الكتابة (قبل قفل الرسالة)، و`decided_ms`
+/// لحظة القرار داخل القسم الحرج. فالأول يكشف **ترتيب الوصول الحقيقي** بين
+/// الخيطين، والثاني مرتّبٌ بحكم القفل (وهو ما يقع على السلك).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StatusWrite {
+    rank: StatusRank,
+    at_ms: u128,
+    decided_ms: u128,
+    applied: bool,
+    text: String,
+}
+
+/// عدد الكتابات المحفوظة لكل رسالة (الأقدم يُسقَط) — السِجلّ للتشخيص والقياس،
+/// فلا ينمو بلا حدّ على رسالة مهمّةٍ طويلة.
+const STATUS_LOG_CAP: usize = 32;
+/// عدد البوابات المحفوظة. والحدّ يحمي من نموّ أبدي في عمليةٍ تعمل أسابيع.
+///
+/// **وما يعنيه الإسقاط**: بوابةٌ خرجت من الحدّ تعود فارغة، فكتابةٌ متأخّرة
+/// جداً (بعد ٢٥٦ رسالة أخرى) قد تُقبل نصّاً قديماً. والحدّ **معلَن** لا مخفيّ،
+/// والواقع أن معرّف الرسالة في تلغرام لا يُعاد (رسالة الحالة لكل مهمّة جديدة).
+const STATUS_GATE_CAP: usize = 256;
+/// بوابة ساكنة هذه المدة تُعدّ جديدة عند أول كتابة عليها: حارسٌ لا يبني على
+/// «المعرّفات لا تُعاد» وحدها (سلامةٌ احتياطية لا مسار مستعمَل اليوم).
+const STATUS_GATE_IDLE_MS: u128 = 6 * 60 * 60 * 1000;
+
+/// بوابة **رسالة واحدة**: آخر رتبة كُتبت، وهل جُمّدت بالإلغاء، وسِجلّ ما وقع.
+#[derive(Default)]
+struct MessageGate {
+    last_rank: Option<StatusRank>,
+    /// جُمّدت بـ[`StatusRank::Cancelled`]: لا كتابة بعدها، أبداً.
+    frozen: bool,
+    writes: u32,
+    dropped: u32,
+    log: Vec<StatusWrite>,
+}
+
+impl MessageGate {
+    /// يقبل الكتابة أو يُسقطها، **ويسجّل الزمن والترتيب** في الحالين.
+    fn admit(&mut self, rank: StatusRank, at_ms: u128, decided_ms: u128, text: &str) -> bool {
+        // بوابة ساكنة ساعاتٍ تُعدّ جديدة (سلامةٌ احتياطية، انظر الثابت).
+        if let Some(StatusWrite { at_ms: last, .. }) = self.log.last() {
+            if at_ms.saturating_sub(*last) > STATUS_GATE_IDLE_MS {
+                self.last_rank = None;
+                self.frozen = false;
+            }
+        }
+        let applied = !self.frozen && self.last_rank.map(|l| rank >= l).unwrap_or(true);
+        if applied {
+            self.last_rank = Some(rank);
+            self.frozen = rank == StatusRank::Cancelled;
+            self.writes += 1;
+        } else {
+            self.dropped += 1;
+        }
+        self.log.push(StatusWrite {
+            rank,
+            at_ms,
+            decided_ms,
+            applied,
+            text: text.to_string(),
+        });
+        if self.log.len() > STATUS_LOG_CAP {
+            self.log.remove(0);
+        }
+        applied
+    }
+}
+
+/// بوابات الرسائل: `(chat_id, message_id) → MessageGate`.
+///
+/// **قفلٌ لكل رسالة** (لا قفلٌ واحد للكل): يُحتجز عبر **الكتابة نفسها**، فيقع
+/// «القرار + الإرسال» في قسمٍ حرج واحد ⇒ ترتيب ما يصل تلغرام هو ترتيب الرتب،
+/// **وهو ما لا يكفيه القرار وحده**: قِيس في اختبار السباق أن قرارين صحيحين
+/// (انتظارٌ ثم بدء) وصلا مقلوبين على السلك لأن النداءين شبكيّان متوازيان.
+#[derive(Default)]
+struct StatusGates {
+    order: VecDeque<(i64, i64)>,
+    by_key: HashMap<(i64, i64), Arc<Mutex<MessageGate>>>,
+}
+
+fn status_gates() -> &'static Mutex<StatusGates> {
+    static G: OnceLock<Mutex<StatusGates>> = OnceLock::new();
+    G.get_or_init(|| Mutex::new(StatusGates::default()))
+}
+
+/// **البوابة الوحيدة لكل كتابة على رسالة حالة** — من أي خيط. تُرتِّب الكتابة
+/// وتسجّل زمنها، فإن قُبلت أُرسل التعديل، وإلا فلا شيء (والنصّ الأحدث يبقى).
+///
+/// **والقفل يُحتجز عبر نداء الشبكة**: بدونه كان القرار مرتّباً والوصول مقلوباً
+/// (قاسه اختبار السباق: الرتبة `Running` قُبلت بعد `Queued` ووصلت **قبلها**).
+/// والقفل **لكل رسالة**، فلا تُبطئ رسالةٌ رسالةً أخرى.
+///
+/// **والفشل الشبكي لا يُرجِع الرتبة**: التعديلات في هذا الملف كلها بأفضل جهد
+/// (`let _ =`)، فلو فشل تعديلٌ حسبت البوابة أنه وقع — النصّ على الشاشة قد يبقى
+/// أقدم من الرتبة المحفوظة. والبديل (إرجاع الرتبة عند الفشل) يفتح باب السباق
+/// من جديد، فالحدّ **معلَن** لا مخفيّ.
+///
+/// `message_id == 0` تعني «لا رسالة» (فشل الإنشاء) ⇒ لا كتابة ولا سِجلّ.
+fn status_push(
+    cfg: &TgConfig,
+    chat_id: i64,
+    message_id: i64,
+    rank: StatusRank,
+    text: &str,
+    keyboard: Value,
+) -> bool {
+    if message_id == 0 {
+        return false;
+    }
+    let key = (chat_id, message_id);
+    // **زمن الوصول** يُلتقط قبل أي قفل: هو ترتيب وصول الخيطين الحقيقي.
+    let at_ms = epoch_ms();
+    let gate = {
+        let mut g = status_gates().lock().unwrap_or_else(|p| p.into_inner());
+        // ترتيب «الأحدث كتابةً في الخلف»: المفتاح المكتوب الآن يُنقل إلى الخلف.
+        g.order.retain(|k| *k != key);
+        g.order.push_back(key);
+        while g.order.len() > STATUS_GATE_CAP {
+            // يُسقَط الأقدم **غير المجمّد**: المجمّد هو ما يمنع عودة نصٍّ قديم
+            // (عطل الإلغاء)، وإسقاطه يعيد العطل. وإن كانت كلها مجمّدة يسقط
+            // الأقدم — فالحدّ يمنع نموّاً أبدياً ولا يُخفي ذلك.
+            //
+            // **و`try_lock` لا `lock`**: المسح يقع وقفلُ السِجلّ مُحتجز، فانتظار
+            // قفل رسالةٍ يكتب عليها خيطٌ الآن (حتى مهلة الشبكة) كان سيُجمّد كل
+            // الرسائل. والبوابة المشغولة **تُحتفظ** بها (فهي الفاعلة الآن).
+            let victim = g
+                .order
+                .iter()
+                .position(|k| match g.by_key.get(k) {
+                    None => true,
+                    Some(m) => {
+                        let frozen = match m.try_lock() {
+                            Ok(mg) => mg.frozen,
+                            Err(std::sync::TryLockError::Poisoned(p)) => p.into_inner().frozen,
+                            Err(std::sync::TryLockError::WouldBlock) => true,
+                        };
+                        !frozen
+                    }
+                })
+                .unwrap_or(0);
+            if let Some(old) = g.order.remove(victim) {
+                g.by_key.remove(&old);
+            }
+        }
+        g.by_key
+            .entry(key)
+            .or_insert_with(|| Arc::new(Mutex::new(MessageGate::default())))
+            .clone()
+    };
+    // **القفل يُحتجز عبر الإرسال**: القرار والكتابة في قسمٍ حرج واحد، فلا
+    // يسبق تعديلٌ أقدمُ رتبةً تعديلاً أحدث منها على السلك.
+    let mut gate = gate.lock().unwrap_or_else(|p| p.into_inner());
+    let decided_ms = epoch_ms();
+    if !gate.admit(rank, at_ms, decided_ms, text) {
+        return false;
+    }
+    let _ = edit_message_kb(cfg, chat_id, message_id, text, Some(keyboard));
+    true
+}
+
+/// رتبة الكتابة المناسبة لجواب الإلغاء: «🛑 أُلغيت» **نهائية** تُجمّد الرسالة،
+/// وما دونها (طلبٌ معلَّق أو «لا مهمّة جارية») لا يُجمّد — فقد يأتي بعدها نهايةٌ
+/// حقيقية تُكتب.
+fn cancel_reply_rank(reply: &str) -> StatusRank {
+    if reply == CANCELLED_TEXT {
+        StatusRank::Cancelled
+    } else {
+        StatusRank::CancelRequested
+    }
+}
+
+/// سِجلّ كتابات رسالةٍ ما — **للقياس وحده**: زمن وصول كل تعديل وترتيبه، وهل
+/// قُبل. (`#[cfg(test)]` لأن المنتج لا يقرأ السِجلّ، بل يبني عليه القرار فقط.)
+#[cfg(test)]
+fn status_write_log(chat_id: i64, message_id: i64) -> Option<Vec<StatusWrite>> {
+    let g = status_gates().lock().unwrap_or_else(|p| p.into_inner());
+    let gate = g.by_key.get(&(chat_id, message_id))?.clone();
+    drop(g);
+    let log = gate.lock().unwrap_or_else(|p| p.into_inner()).log.clone();
+    Some(log)
+}
+
+/// عدد المقبول والمُسقَط على رسالة — للقياس في الاختبارات.
+#[cfg(test)]
+fn status_write_counts(chat_id: i64, message_id: i64) -> Option<(u32, u32)> {
+    let g = status_gates().lock().unwrap_or_else(|p| p.into_inner());
+    let gate = g.by_key.get(&(chat_id, message_id))?.clone();
+    drop(g);
+    let mg = gate.lock().unwrap_or_else(|p| p.into_inner());
+    Some((mg.writes, mg.dropped))
+}
+
+/// تصفير البوابات — **بين الاختبارات**: السِجلّ واحد للعملية كلها، وبوابةٌ
+/// مجمّدة من فحصٍ سابق كانت ستُسقط كتابات فحصٍ لاحق على الرسالة نفسها (‏1001).
+#[cfg(test)]
+fn reset_status_gates() {
+    let mut g = status_gates().lock().unwrap_or_else(|p| p.into_inner());
+    g.order.clear();
+    g.by_key.clear();
+}
+
+/// هل اللوحة فارغة صراحةً؟ (هي علامة «انتهت» في هذا الملف.)
+fn keyboard_is_empty(keyboard: &Value) -> bool {
+    keyboard
+        .pointer("/inline_keyboard")
+        .and_then(Value::as_array)
+        .map(|a| a.is_empty())
+        .unwrap_or(false)
+}
+
 /// Throttled status message: Telegram rate-limits edits, and progress is
 /// cosmetic — 3s granularity is plenty.
 ///
 /// **واللوحة تُمرَّر مع كل تعديل**: زرّ الإلغاء يبقى ما دامت المهمّة، ويُزال
 /// **بلوحة فارغة صراحةً** في التعديل النهائي (`end`) — لأن تعديلاً بلا
 /// `reply_markup` يمحو اللوحة في تلغرام، وهو عطل المالك المقيس.
+///
+/// **وكل كتابة تمرّ بـ[`status_push`]** (م٣/إصلاح): فلا خيطان يكتبان بلا ترتيب.
 struct StatusMsg {
     chat_id: i64,
     message_id: i64,
@@ -2444,47 +2803,88 @@ struct StatusMsg {
     text: String,
     /// هل اللوحة المرفقة الآن هي زرّ الإلغاء؟ (يُصفَّر عند الإنهاء.)
     button_live: bool,
+    /// **علم إلغاء المهمّة نفسه** (الرمز الذي يضبطه الزرّ و`/kill`): مهمّة
+    /// أُلغيَت تُوصَف بإلغاء لا بفشل — ولا يُبنى ذلك على نصّ الخطأ.
+    cancel: Arc<AtomicBool>,
 }
 
 impl StatusMsg {
-    fn new(chat_id: i64, message_id: i64) -> Self {
+    fn new(chat_id: i64, message_id: i64, cancel: Arc<AtomicBool>) -> Self {
         Self {
             chat_id,
             message_id,
             last: Instant::now(),
             text: String::new(),
             button_live: message_id != 0,
+            cancel,
         }
     }
 
     /// تحديث **أثناء العمل**: يمرّر زرّ الإلغاء فيبقى على الرسالة.
     fn set(&mut self, cfg: &TgConfig, text: String, force: bool) {
-        self.push(cfg, text, force, cancel_button(self.chat_id));
+        self.push(
+            cfg,
+            text,
+            force,
+            cancel_button(self.chat_id),
+            StatusRank::Progress,
+        );
     }
 
     /// تحديث **نهائي**: يمرّر لوحة فارغة **صراحةً** فيزول الزر — ولا يُترك
     /// زواله لسلوك ضمني هشّ.
+    ///
+    /// **ومهمّة أُلغيَت لا تُوصَف بفشل** (م٣/إصلاح): كان الخروج بعد الإلغاء
+    /// يكتب «✗ فشلت المعالجة: أُلغيت المعالجة» بعد «🛑 أُلغيت» فيمحو أثره
+    /// ويُظهر فشلاً لعملٍ أُلغي عمداً. فالنصّ ورتبته يُختاران هنا في موضع واحد.
     fn end(&mut self, cfg: &TgConfig, text: String) {
-        self.push(cfg, text, true, no_keyboard());
+        let (rank, text) = self.terminal(text);
+        self.push(cfg, text, true, no_keyboard(), rank);
     }
 
-    fn push(&mut self, cfg: &TgConfig, text: String, force: bool, keyboard: Value) {
-        if !force && self.last.elapsed() < EDIT_MIN_GAP && text == self.text {
-            return;
+    /// النصّ والرتبة عند الخروج: إلغاءٌ صريح، أو النصّ كما هو.
+    fn terminal(&self, text: String) -> (StatusRank, String) {
+        if self.cancel.load(Ordering::SeqCst) {
+            (StatusRank::Cancelled, CANCELLED_TEXT.to_string())
+        } else {
+            (StatusRank::Finished, text)
         }
+    }
+
+    fn push(
+        &mut self,
+        cfg: &TgConfig,
+        text: String,
+        force: bool,
+        keyboard: Value,
+        rank: StatusRank,
+    ) {
         if !force && self.last.elapsed() < EDIT_MIN_GAP {
             return;
         }
         self.last = Instant::now();
-        self.text = text.clone();
-        // اللوحة الفارغة تعني «انتهت» — يُسجَّل ذلك حتى لا تُعاد الإزالة مرّتين.
-        self.button_live = !keyboard
-            .pointer("/inline_keyboard")
-            .and_then(Value::as_array)
-            .map(|a| a.is_empty())
-            .unwrap_or(false);
-        if self.message_id != 0 {
-            let _ = edit_message_kb(cfg, self.chat_id, self.message_id, &text, Some(keyboard));
+        let terminal = rank >= StatusRank::Finished;
+        let shown = if self.message_id == 0 {
+            true
+        } else {
+            status_push(
+                cfg,
+                self.chat_id,
+                self.message_id,
+                rank,
+                &text,
+                keyboard.clone(),
+            )
+        };
+        if shown {
+            self.text = text;
+            // اللوحة الفارغة تعني «انتهت» — يُسجَّل ذلك حتى لا تُعاد الإزالة مرّتين.
+            self.button_live = !keyboard_is_empty(&keyboard);
+        } else if terminal {
+            // رتبتُنا النهائية رُفضت لأن رسالةً أحدث سبقتنا (إلغاءٌ كتب نصّه
+            // عليها) ⇒ الرسالة **منتهية** وإن لم نكتب نحن، ويجب ألا يبقى زرٌّ
+            // عليها. **ولا نكتب نصّنا القديم** — كان سيطمس الإلغاء.
+            self.button_live = false;
         }
     }
 }
@@ -2492,6 +2892,13 @@ impl StatusMsg {
 /// **ضمانة بنيوية**: على كل باب خروج من `run_job` — نجاحاً أو خطأً أو ذعراً —
 /// يُزال زرّ الإلغاء بلوحة فارغة صراحةً إن لم يكن فرعٌ قد أزاله. فلا يبقى زرّ
 /// إلغاء على مهمّة منتهية، ولا يتوقّف ذلك على تذكّر كل فرع.
+///
+/// **وحدّه المعلَن اليوم**: كل فروع `run_job` الحالية تُنادي `end()` أو تُزيل
+/// اللوحة صراحةً، فلا فرعَ يُنفّذ هذا الحارس وحده **إلا الذعر** (فكّ مكدّس) —
+/// ولا يُصطنَع ذعرٌ من البيانات (`Job` كلّها بيانات عاديّة، والمقابض تُعالَج
+/// من التسمّم بـ`unwrap_or_else(|p| p.into_inner())`). فالاختبارات تقيس الحارس
+/// **في موضعه**: إسقاطٌ صريح بلا `end` (يُزيل الزرّ)، وبعد `end` (لا يُرسل
+/// تعديلاً زائداً).
 struct CancelButtonGuard<'a> {
     cfg: &'a TgConfig,
     status: &'a std::cell::RefCell<StatusMsg>,
@@ -2501,12 +2908,16 @@ impl Drop for CancelButtonGuard<'_> {
     fn drop(&mut self) {
         let s = self.status.borrow();
         if s.message_id != 0 && s.button_live && !s.text.is_empty() {
-            let _ = edit_message_kb(
+            // **النصّ بحسب الحال**: مهمّة أُلغيَت لا يُعاد كتابة تقدّمها القديم
+            // فوق نصّ الإلغاء — يُكتب نصّ الإلغاء نفسه، ورتبته نهائية.
+            let (rank, text) = s.terminal(s.text.clone());
+            let _ = status_push(
                 self.cfg,
                 s.chat_id,
                 s.message_id,
-                &s.text,
-                Some(no_keyboard()),
+                rank,
+                &text,
+                no_keyboard(),
             );
         }
     }
@@ -2627,16 +3038,27 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>, oversize: &Arc<Mute
     } = job;
 
     let label = mode_label(mode);
+    // رمز الإلغاء **رمز المهمّة نفسه**: ضغطة الزرّ تضبطه، فيتوقّف التنزيل
+    // (‏yt-dlp يستقبل هذا العلم بعينه ويستطلع عليه)، وتُقتل شجرته لأن سياق
+    // المهمّة مثبَّت على هذا الخيط منذ `register_early`.
+    //
+    // **ويُقرأ قبل إنشاء رسالة الحالة** (م٣/إصلاح): نصّ الخروج يُختار به —
+    // فمهمّة أُلغيَت تُوصَف بإلغاء لا بفشل.
+    let cancel = early.cancel_flag();
     // ② «بدأت المعالجة» تُقال **الآن** لا عند الضغط على الزرّ. ورسالة الحالة هي
     //    **رسالة السؤال نفسها** حين أمكن: رسالة واحدة للملف تُحرَّر في مكانها
     //    (لا رسالة لكل تحديث)، وزرّ الإلغاء يحلّ محلّ أزرار الوضع.
+    //
+    //    **ورتبتها `Running`** (م٣/إصلاح): هي أعلى من `Queued`، فإشعار الانتظار
+    //    المتأخّر (يُحرَّر من خيط التحديثات) لا يمحوها إن وصل بعدها.
     let msg_id = if status_msg_id != 0 {
-        let _ = edit_message_kb(
+        let _ = status_push(
             cfg,
             chat_id,
             status_msg_id,
+            StatusRank::Running,
             &running_text(label),
-            Some(cancel_button(chat_id)),
+            cancel_button(chat_id),
         );
         status_msg_id
     } else {
@@ -2651,7 +3073,7 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>, oversize: &Arc<Mute
     };
     // RefCell: the progress closure AND the stage closure both report through
     // the same status message, and two `&mut` captures cannot coexist.
-    let status = std::cell::RefCell::new(StatusMsg::new(chat_id, msg_id));
+    let status = std::cell::RefCell::new(StatusMsg::new(chat_id, msg_id, cancel.clone()));
     // ضمانة بنيوية: **على كل باب خروج** يُزال زرّ الإلغاء صراحةً لو نسي فرعٌ
     // ذلك، فلا يبقى زرّ على مهمّة منتهية أبداً.
     let _cancel_button_guard = CancelButtonGuard {
@@ -2661,10 +3083,6 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>, oversize: &Arc<Mute
 
     // 1. Obtain the input. Everything this job creates inside the scratch dir
     //    is disposable and tracked here, so no exit path can leak it.
-    // رمز الإلغاء **رمز المهمّة نفسه**: ضغطة الزرّ تضبطه، فيتوقّف التنزيل
-    // (‏yt-dlp يستقبل هذا العلم بعينه ويستطلع عليه)، وتُقتل شجرته لأن سياق
-    // المهمّة مثبَّت على هذا الخيط منذ `register_early`.
-    let cancel = early.cancel_flag();
     let mut scratch_files = ScratchGuard::default();
     let input: PathBuf = match &source {
         Source::Link(url) => {
@@ -2695,18 +3113,17 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>, oversize: &Arc<Mute
             size,
         } => {
             if !cfg.is_local() && *size > 0 && *size > CLOUD_DOWNLOAD_MAX_BYTES {
-                // الرسالة تحمل زرّ الإلغاء من إنشائها، فيُزال **صراحةً** هنا.
-                let _ = edit_message_kb(
+                // الرسالة تحمل زرّ الإلغاء من إنشائها، فيُزال **صراحةً** هنا —
+                // ومن البوابة الواحدة (`end`) لا بتعديلٍ مباشر: كل كتابة على
+                // رسالة الحالة تمرّ من موضع واحد، فلا خيطان بلا ترتيب.
+                status.borrow_mut().end(
                     cfg,
-                    chat_id,
-                    msg_id,
-                    &format!(
+                    format!(
                         "✗ حجم الملف {} يتجاوز حد تيليجرام للتنزيل ({}).\n\
                          أرسل المقطع كرابط (بلا حد)، أو فعّل الخادم المحلي من الإعدادات.",
                         human_mb(*size),
                         human_mb(CLOUD_DOWNLOAD_MAX_BYTES)
                     ),
-                    Some(no_keyboard()),
                 );
                 return;
             }
@@ -3073,6 +3490,13 @@ mod tests {
     struct SeenCall {
         method: String,
         body: String,
+        /// **ردّ الخادم الوهمي** كما أُرسل — ومنه تُقرأ المعرّفات التي وزّعها
+        /// (`message_id`) بلا تخمين رقمٍ متسلسل يبدأ من 1000.
+        reply: String,
+        /// **زمن وصول الطلب** (ميلي ثانية منذ حقبة يونكس) — يُسجّله الخادم
+        /// الوهمي عند القراءة، فتُقاس **أزمنة التعديلات وترتيبها** لا وجودها
+        /// وحده (وهو مقياس عطل السباق في م٣).
+        at_ms: u128,
     }
 
     struct FakeBot {
@@ -3183,15 +3607,17 @@ mod tests {
                                 sock.set_nonblocking(false).ok();
                                 sock.set_read_timeout(Some(Duration::from_secs(5))).ok();
                                 let (method, body) = read_http_request(&mut sock);
+                                let reply = fake_reply(&method, &mut next_msg_id);
                                 if !method.is_empty() {
                                     seen.lock()
                                         .unwrap_or_else(|p| p.into_inner())
                                         .push(SeenCall {
                                             method: method.clone(),
                                             body,
+                                            reply: reply.clone(),
+                                            at_ms: epoch_ms(),
                                         });
                                 }
-                                let reply = fake_reply(&method, &mut next_msg_id);
                                 let _ = sock.write_all(reply.as_bytes());
                                 let _ = sock.flush();
                             }
@@ -3257,6 +3683,20 @@ mod tests {
                 .filter_map(|b| serde_json::from_str::<Value>(b).ok())
                 .collect()
         }
+
+        /// **معرّفات الرسائل التي وزّعها الخادم** على `sendMessage`، من ردوده
+        /// نفسها — فلا يخمّن الاختبار رقماً متسلسلاً داخلياً.
+        fn sent_message_ids(&self) -> Vec<i64> {
+            self.calls()
+                .iter()
+                .filter(|c| c.method == "sendMessage")
+                .filter_map(|c| {
+                    let body = c.reply.rsplit("\r\n\r\n").next().unwrap_or(&c.reply).trim();
+                    let v: Value = serde_json::from_str(body).ok()?;
+                    v.pointer("/result/message_id").and_then(Value::as_i64)
+                })
+                .collect()
+        }
     }
 
     impl Drop for FakeBot {
@@ -3281,10 +3721,13 @@ mod tests {
         }
     }
 
-    /// يصفّر العدّادات — يُنادى **بعد** أخذ `state_lock` فقط.
+    /// يصفّر العدّادات — يُنادى **بعد** أخذ `state_lock` فقط. **وبوابات
+    /// الرسائل معها**: بوابةٌ مجمّدة (إلغاء) من فحصٍ سابق تُسقط كتابات الفحص
+    /// التالي على الرسالة نفسها، فيبدو الفحص ساقطاً لسببٍ ليس عطلاً.
     fn reset_counters() {
         QUEUE_DEPTH.store(0, Ordering::SeqCst);
         IN_FLIGHT.store(0, Ordering::SeqCst);
+        reset_status_gates();
     }
 
     fn temp_dir(tag: &str) -> PathBuf {
@@ -3380,6 +3823,32 @@ mod tests {
         let calls = bot.calls();
         assert_eq!(calls.len(), 1, "الخادم الوهمي لم يسجّل الطلب");
         assert_eq!(calls[0].method, "getMe", "اسم الدوال مقروء من المسار");
+    }
+
+    /// **وحارسٌ ثانٍ على الأداة** (م٣/إصلاح): القياس المطلوب في عطل السباق هو
+    /// **زمن وصول كل تعديل وترتيبه**، فالخادم يجب أن يسجّل الطلبات بترتيب
+    /// وصولها وأن تكون أزمنتها غير متناقصة — وإلا كان «الترتيب» المُقاس وهماً.
+    #[test]
+    fn the_fake_bot_records_arrival_order_and_time() {
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        for i in 0..3 {
+            let _ = edit_message_kb(&cfg, 7, 1001 + i, &format!("ن{i}"), Some(no_keyboard()));
+        }
+        let calls = bot.calls();
+        assert_eq!(calls.len(), 3, "لم تُسجَّل التعديلات الثلاثة: {calls:?}");
+        let bodies: Vec<String> = calls.iter().map(|c| c.body.clone()).collect();
+        for i in 0..3 {
+            assert!(
+                bodies[i].contains(&format!("ن{i}")),
+                "ترتيب التسجيل ليس ترتيب الوصول: {bodies:?}"
+            );
+        }
+        assert!(
+            calls.windows(2).all(|w| w[1].at_ms >= w[0].at_ms),
+            "أزمنة الوصول متناقصة: {:?}",
+            calls.iter().map(|c| c.at_ms).collect::<Vec<_>>()
+        );
     }
 
     /// حالة استطلاع فارغة — للاختبارات التي لا تقرأ المعلَّقات.
@@ -3907,10 +4376,24 @@ mod tests {
     ///
     /// (وسابقة مُصلَحة: كان الجواب يَعِد بسقف مطلق «خلال ١٥٠ ث» — وعدٌ أقصر
     /// من الواقع ٣.٨× — والآن يقول «أطول ما قيس» ورقمه.)
+    ///
+    /// **والنصّ بحسب المرحلة (م٣/إصلاح)**: كان نصّاً واحداً يذكر سقف نداء المحرّك
+    /// (٩.٤ دقيقة) **حتى في مرحلة التنزيل**، والمدقّق قاس الإلغاء هناك **٣.٦ ث**
+    /// فعلية ⇒ وعدٌ أطول من الواقع بعشرات المرات في أكثر الحالات وقوعاً.
     #[test]
     fn the_cancel_reply_states_the_measured_worst_case_and_never_promises_instant() {
-        assert_eq!(cancel_reply(true), "🛑 أُلغيت", "الفراغ = إلغاء وقع فعلاً");
-        let pending = cancel_reply(false);
+        use crate::slots::JobPhase;
+        assert_eq!(
+            cancel_reply(true, JobPhase::Preparing),
+            "🛑 أُلغيت",
+            "الفراغ = إلغاء وقع فعلاً"
+        );
+        assert_eq!(
+            cancel_reply(true, JobPhase::Processing),
+            "🛑 أُلغيت",
+            "وجواب الفراغ واحد لا يختلف بالمرحلة"
+        );
+        let pending = cancel_reply(false, JobPhase::Processing);
         let secs = crate::pipeline::ENGINE_CALL_CEILING_SECS;
         assert!(
             pending.contains(&secs.to_string()),
@@ -3929,6 +4412,38 @@ mod tests {
             "لا «فوراً» عن نداء المحرّك: {pending}"
         );
         assert!(!pending.contains('≤'), "لا سقف مطلق في الجواب: {pending}");
+
+        // **ومرحلة التحضير تقول مرحلتها ورقمها المقيس** — لا رقم نداء المحرّك.
+        let prep = cancel_reply(false, JobPhase::Preparing);
+        assert!(
+            prep.contains("مرحلة التحضير"),
+            "المرحلة مذكورة صراحةً: {prep}"
+        );
+        assert!(
+            prep.contains(&format!("{CANCEL_PREPARE_WORST_SECS:.1}")),
+            "رقم المرحلة المقيس مذكور: {prep}"
+        );
+        assert!(
+            !prep.contains(&secs.to_string()),
+            "رقم نداء المحرّك لا يُقال عن التنزيل (كان العطل): {prep}"
+        );
+        assert_ne!(prep, pending, "نصّان لحالتين — لا نصّ واحد يوحّدهما");
+        // ومرحلة المعالجة تقول مرحلتها، وتذكر انتظار الفتحة الذي لا يُقطع أيضاً.
+        assert!(
+            pending.contains("مرحلة المعالجة"),
+            "المرحلة مذكورة صراحةً: {pending}"
+        );
+        assert!(
+            pending.contains(&format!(
+                "{} دقيقة",
+                crate::slots::DEFAULT_WAIT.as_secs() / 60
+            )),
+            "انتظار فتحة الجهاز مذكور بمدّته من ثابته: {pending}"
+        );
+        assert!(
+            !pending.contains(&format!("{CANCEL_PREPARE_WORST_SECS:.1} ث")),
+            "رقم التحضير لا يُقال عن المعالجة: {pending}"
+        );
     }
 
     /// **حجب خيط تحديثات البوت محدود (م٢/إصلاح)**: كان الانتظار ٢٠ ث لكل
@@ -4015,6 +4530,22 @@ mod tests {
         );
 
         let _ = worker.join();
+        // **ومهمّة أُلغيَت لا تُوصَف بفشل (م٣/إصلاح)** — قياسٌ من الطرفين على
+        // المسار الحقيقي: رسالة الحالة آخرُ ما كُتب عليها **نصّ إلغاء**، ولا
+        // نصَّ فشل بعد الإلغاء (كان يصل «✗ فشلت المعالجة: أُلغيت المعالجة»
+        // بعد «🛑 أُلغيت» فيمحو أثره).
+        let status_texts = edit_texts_on(&bot, 1001);
+        assert!(!status_texts.is_empty(), "لا تعديل على رسالة الحالة");
+        assert_eq!(
+            status_texts.last().map(String::as_str),
+            Some(CANCELLED_TEXT),
+            "آخر ما على رسالة الحالة لمهمّة أُلغيت: {status_texts:?}"
+        );
+        assert!(
+            status_texts.iter().all(|t| !t.contains('✗')),
+            "نصّ فشل على مهمّة أُلغيت بأمر المالك: {status_texts:?}"
+        );
+
         // وبعد الانتهاء لا تبقى مهمّة معلّقة في السِجلّ.
         assert!(
             !slots::active_jobs().iter().any(|j| j.label == job_label(7)),
@@ -4231,6 +4762,7 @@ mod tests {
             token: token.into(),
             source: Source::Link(format!("https://x/{token}")),
             src_msg_id: 1,
+            ask_msg_id: 900,
             file: format!("{token}.mp4"),
             row_id: 1,
         };
@@ -5160,5 +5692,665 @@ mod tests {
         assert_eq!(parse_command("/"), None);
         assert_eq!(parse_command(""), None);
         assert_eq!(parse_command("//x"), None);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  م٣/إصلاح — ستّة عيوب أثبتها مدقّق مستقلّ، ولكلٍّ مُفسَد يُسقطه
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// نصوص التعديلات على رسالةٍ بعينها (ما يراه المستخدم فعلاً).
+    fn edit_texts_on(bot: &FakeBot, message_id: i64) -> Vec<String> {
+        bot.edited_messages()
+            .iter()
+            .filter(|m| m.get("message_id").and_then(Value::as_i64) == Some(message_id))
+            .filter_map(|m| m.get("text").and_then(Value::as_str).map(str::to_string))
+            .collect()
+    }
+
+    // ── ① نصّ الإلغاء بحسب المرحلة، ورقمه مقيس لا مكتوب بيد ──────────────────
+
+    /// **العطل (١)**: `cancel_reply` كانت تقول دائماً «سيتوقّف بعد انتهاء نداء
+    /// المحرّك الجاري… أطول ما قيس ٩.٤ دقيقة» **حتى في مرحلة التنزيل**، والمدقّق
+    /// قاس الإلغاء هناك **٣.٦ ث** فعلية ⇒ وعدٌ أطول من الواقع بعشرات المرات في
+    /// أكثر الحالات وقوعاً.
+    ///
+    /// **القياس هنا**: (أ) الجواب يأتي من **السِجلّ الحقيقي** لا من وسيط،
+    /// (ب) ورقمه يُقاس بإلغاء عملية نائمة **حقيقية** في هذه المرحلة على هذه
+    /// الآلة — فيسقط الاختبار إن صار الرقم أقصر من الواقع (وإن كبُر كبُراً
+    /// يجعله سقفاً مطّاطاً بلا قياس).
+    ///
+    /// (مُفسَد محروس: توحيد النصّين ⇒ يسقط الفحص على «مرحلة التحضير».)
+    #[cfg(windows)]
+    #[test]
+    fn the_prepare_phase_cancel_reply_carries_a_measured_number() {
+        let _reg = crate::slots::registry_test_lock();
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let _ = &cfg;
+
+        // (أ) الجواب يُقرأ من السِجلّ: مهمّة مُسجَّلة في التحضير (لم تدخل الجسم).
+        let early = slots::register_early(&job_label(7), None);
+        let reply = cancel_chat_jobs_with(7, Duration::ZERO);
+        assert!(
+            reply.contains("مرحلة التحضير"),
+            "الجواب ليس جواب مرحلة التحضير: {reply}"
+        );
+        assert!(
+            reply.contains(&format!("{CANCEL_PREPARE_WORST_SECS:.1}")),
+            "الرقم المقيس لهذه المرحلة مذكور: {reply}"
+        );
+        assert!(
+            !reply.contains(&crate::pipeline::ENGINE_CALL_CEILING_SECS.to_string()),
+            "رقم نداء المحرّك لا يُقال عن مرحلة التحضير (العطل الأصلي): {reply}"
+        );
+        drop(early);
+
+        // (ب) الزمن: عملية حقيقية نائمة داخل سياق المهمّة (كما يفعل yt-dlp)،
+        //     ويُلغى من خيط آخر — فيُقاس من لحظة طلب الإلغاء إلى عودة الأداة.
+        //     **والحارس يبقى حيّاً** حتى نهاية القياس: لو سقط لخرجت المهمّة من
+        //     السِجلّ فما وجد الإلغاء ما يُلغيه.
+        let _early = slots::register_early(&job_label(7), None);
+        let (tx_done, rx_done) = mpsc::channel::<()>();
+        let killer = std::thread::spawn(move || {
+            // مهلة ولادة العملية: الإلغاء يقع وهي حيّة (وهي الحالة المقيسة).
+            std::thread::sleep(Duration::from_millis(600));
+            let t0 = Instant::now();
+            let reply = cancel_chat_jobs_with(7, Duration::ZERO);
+            rx_done.recv().expect("انتظار عودة الأداة");
+            (reply, t0.elapsed())
+        });
+        let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
+        let ping = PathBuf::from(sysroot).join("System32").join("ping.exe");
+        let out = crate::proc::run_cancellable(
+            &ping,
+            &["-n", "60", "127.0.0.1"],
+            crate::proc::current_cancel().as_ref(),
+        );
+        // الأداة عادت: نُعلم القائس ثم نحكم.
+        let _ = tx_done.send(());
+        let (killed_reply, measured) = killer.join().expect("خيط القياس");
+
+        // **حارس على القياس نفسه**: الأداة عادت **مقتولة** لا منتهية (نوم ٦٠ ث
+        // لم يكتمل)، وإلا كان «الزمن المقيس» زمن انتهاءٍ طبيعي لا إلغاء.
+        let err = match out {
+            Ok(_) => panic!("الأداة النائمة عادت بنجاح رغم الإلغاء"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains(crate::proc::CANCELLED),
+            "الخطأ ليس إلغاءً: {err}"
+        );
+        assert!(
+            measured < Duration::from_secs(30),
+            "الأداة لم تُقتل في الإلغاء (انتُظر انتهاؤها): {measured:?}"
+        );
+        assert!(
+            killed_reply.contains("مرحلة التحضير"),
+            "جواب زمن القياس من مرحلة أخرى: {killed_reply}"
+        );
+        assert!(
+            measured.as_secs_f64() <= CANCEL_PREPARE_WORST_SECS,
+            "الإلغاء الفعلي في التحضير {measured:?} تجاوز الرقم المعلَن {CANCEL_PREPARE_WORST_SECS} ث"
+        );
+        // **ولا يصير الرقم سقفاً مطّاطاً بلا قياس**: يبقى في حدود زمن إلغاءٍ
+        // مقيس (عشرة أضعاف المقيس هنا، وبحدٍّ أعلى ١٠ ث على أي آلة) — ولا
+        // يُطوى في التصريف لأنه مشتقٌّ من قياسٍ جارٍ لا من ثابتين.
+        let ceiling = 10.0_f64.max(measured.as_secs_f64() * 10.0);
+        assert!(
+            CANCEL_PREPARE_WORST_SECS <= ceiling,
+            "الرقم المعلَن {CANCEL_PREPARE_WORST_SECS} ث تجاوز {ceiling:.1} ث — سقفٌ مطّاط لا زمن مقيس"
+        );
+        eprintln!(
+            "م٣/إلغاء التحضير: المقيس {measured:?} · المعلَن {CANCEL_PREPARE_WORST_SECS} ث · الجواب «{killed_reply}»"
+        );
+    }
+
+    // ── ② الإلغاء حالة نهائية لا تُطمس ──────────────────────────────────────
+
+    /// **العطل (٢)**: بعد «🛑 أُلغيت» يصل بعد ~٣ ث تعديلٌ ثانٍ بنصّ «✗ فشلت
+    /// المعالجة: أُلغيت المعالجة» فيمحو أثر الإلغاء ويُظهر فشلاً لعملٍ أُلغي عمداً.
+    ///
+    /// **الطرف الأول من العلاج**: علم إلغاء المهمّة نفسه هو ما يختار النصّ
+    /// النهائي — فمسار الخروج لا يوصف بفشل بعد إلغاء (أيًّا كان الخطأ: تنزيل أو
+    /// محرّك أو إرسال).
+    ///
+    /// (مُفسَد محروس: تمرير نصّ الخطأ كما هو في `end` ⇒ يسقط هذا الفحص.)
+    #[test]
+    fn a_cancelled_job_ends_with_the_cancel_text_not_a_failure() {
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let msg = 4001;
+        let cancel = Arc::new(AtomicBool::new(false));
+        let status = std::cell::RefCell::new(StatusMsg::new(7, msg, cancel.clone()));
+        status
+            .borrow_mut()
+            .set(&cfg, "🎛️ فصل الصوت… 50%".into(), true);
+        // الزرّ أو `/kill` يضبطان الرمز، ثم يخرج المسار بخطأ المحرّك نفسه.
+        cancel.store(true, Ordering::SeqCst);
+        status
+            .borrow_mut()
+            .end(&cfg, format!("✗ فشلت المعالجة: {}", crate::proc::CANCELLED));
+
+        let texts = edit_texts_on(&bot, msg);
+        assert_eq!(
+            texts.last().map(String::as_str),
+            Some(CANCELLED_TEXT),
+            "التعديل النهائي لمهمّة أُلغيت: {texts:?}"
+        );
+        assert!(
+            texts.iter().all(|t| !t.contains('✗')),
+            "نصّ فشل لعملٍ أُلغي عمداً: {texts:?}"
+        );
+        // والزرّ أُزيل صراحةً في التعديل النهائي.
+        let last = bot
+            .edited_messages()
+            .into_iter()
+            .rfind(|m| m.get("message_id").and_then(Value::as_i64) == Some(msg))
+            .unwrap();
+        assert_eq!(
+            last.pointer("/reply_markup/inline_keyboard"),
+            Some(&json!([])),
+            "زرّ الإلغاء بقي على رسالة إلغاء: {last}"
+        );
+    }
+
+    /// **العطل (٢) — الطرف الثاني**: التعديل المتأخّر نفسه. بعد أن كُتب نصّ
+    /// الإلغاء على الرسالة تُجمَّد: **لا يُقبل بعدها شيء**، فلا يمحوها تعديلٌ
+    /// متأخّر من خيط المهمّة (وهو ما قاسه المدقّق: ~٣ ث ثم «✗ …»).
+    ///
+    /// **والسِجلّ يشهد**: الكتابة الثانية مسجَّلة **بزمن وصولها وترتيبها**
+    /// ومُسقطة (`applied: false`).
+    ///
+    /// (مُفسَد محروس: إسقاط شرط التجميد/الرتبة ⇒ التعديل المتأخّر يمرّ ⇒ يسقط.)
+    #[test]
+    fn the_cancel_text_freezes_the_message_against_late_edits() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let msg = 4101;
+
+        // ① «🛑 أُلغيت» من الزرّ — بنفس الدالّة التي يناديها المعالج.
+        let reply = cancel_reply(true, crate::slots::JobPhase::Processing);
+        assert_eq!(reply, CANCELLED_TEXT);
+        assert!(status_push(
+            &cfg,
+            7,
+            msg,
+            cancel_reply_rank(&reply),
+            &reply,
+            no_keyboard()
+        ));
+        // ② ثم تعديلٌ متأخّر بنصّ فشل (خيط المهمّة بعد دوائه) — يجب ألا يُقبل.
+        let late = status_push(
+            &cfg,
+            7,
+            msg,
+            StatusRank::Finished,
+            "✗ فشلت المعالجة: أُلغيت المعالجة",
+            no_keyboard(),
+        );
+        assert!(!late, "تعديل متأخّر طمس أثر الإلغاء");
+        // وحتى نصّ الإلغاء نفسه لا يُعاد كتابته (الرسالة مجمّدة نهائياً).
+        assert!(!status_push(
+            &cfg,
+            7,
+            msg,
+            StatusRank::Cancelled,
+            CANCELLED_TEXT,
+            no_keyboard()
+        ));
+
+        let texts = edit_texts_on(&bot, msg);
+        assert_eq!(
+            texts,
+            vec![CANCELLED_TEXT.to_string()],
+            "ما وصل إلى الشاشة: {texts:?}"
+        );
+        let log = status_write_log(7, msg).expect("سِجلّ الكتابات");
+        assert_eq!(log.len(), 3, "السِجلّ لا يشهد بكل كتابة: {log:?}");
+        assert_eq!(
+            log.iter().map(|w| (w.rank, w.applied)).collect::<Vec<_>>(),
+            vec![
+                (StatusRank::Cancelled, true),
+                (StatusRank::Finished, false),
+                (StatusRank::Cancelled, false)
+            ]
+        );
+        assert!(
+            log.windows(2).all(|w| w[1].at_ms >= w[0].at_ms),
+            "أزمنة الوصول غير مرتّبة: {log:?}"
+        );
+        eprintln!("م٣/تجميد الإلغاء: {log:?}");
+    }
+
+    // ── ③ سباق الرسالة نفسها: آخر ما يُكتب هو الحالة الأحدث ─────────────────
+
+    /// **العطل (٣)**: «▶ بدأت المعالجة» و«⏳ في قائمة الانتظار — دورك: 1» يصلان
+    /// في المللي ثانية نفسها من خيطين (خيط التحديثات يحرّر **بعد** `tx.send`
+    /// وخيط المهمّة يحرّر عند البدء) ⇒ قد تبقى على الشاشة «دورك: 1» لمهمّة بدأت.
+    ///
+    /// **القياس**: الكتابة المتأخّرة تُسقَط، وآخر ما على الرسالة هو الأحدث —
+    /// والسِجلّ يسجّل **زمن وصول كل تعديل وترتيبه**.
+    ///
+    /// (مُفسَد محروس: إسقاط مقارنة الرتبة ⇒ إشعار الانتظار المتأخّر يمحو البدء ⇒ يسقط.)
+    #[test]
+    fn a_late_queue_notice_never_overwrites_the_started_state() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let msg = 4201;
+
+        // ① خيط المهمّة: «▶ بدأت المعالجة» (رتبة Running).
+        assert!(status_push(
+            &cfg,
+            7,
+            msg,
+            StatusRank::Running,
+            &running_text("أغنية"),
+            cancel_button(7)
+        ));
+        // ② خيط التحديثات: إشعار الانتظار يصل **متأخّراً** (وهو موضعه المقيس:
+        //    بعد `tx.send`) — فيُسقَط ولا يمحو البدء.
+        let late = status_push(
+            &cfg,
+            7,
+            msg,
+            StatusRank::Queued,
+            &waiting_text("أغنية", 1),
+            cancel_button(7),
+        );
+        assert!(!late, "إشعار انتظار متأخّر قُبل فمحا «بدأت المعالجة»");
+
+        let texts = edit_texts_on(&bot, msg);
+        assert_eq!(texts.len(), 1, "تعديلٌ ثانٍ وقع: {texts:?}");
+        assert!(
+            texts[0].contains("▶ بدأت المعالجة"),
+            "آخر ما على الشاشة: {texts:?}"
+        );
+        assert!(!texts[0].contains("دورك"), "«دورك» بقيت على مهمّة بدأت");
+        let log = status_write_log(7, msg).expect("سِجلّ الكتابات");
+        assert_eq!(
+            log.iter().map(|w| (w.rank, w.applied)).collect::<Vec<_>>(),
+            vec![(StatusRank::Running, true), (StatusRank::Queued, false)]
+        );
+        assert_eq!(status_write_counts(7, msg), Some((1, 1)));
+        eprintln!("م٣/سباق الرسالة (متأخّر): {log:?}");
+    }
+
+    /// **ونفس العطل بسباقٍ حقيقي**: خيطان يكتبان في اللحظة نفسها (`Barrier`)،
+    /// ويتكرّر القياس — والمحكوم عليه **ثابتٌ في كل ترتيب**: آخر ما على الرسالة
+    /// هو «بدأت المعالجة» لا «دورك: N».
+    ///
+    /// (والترتيب المُقاس يُطبع من السِجلّ: من وصل أولاً.)
+    #[test]
+    fn the_message_shows_the_newest_state_under_a_real_two_thread_race() {
+        use std::sync::Barrier;
+        let rounds = 12;
+        let mut orders: Vec<String> = Vec::new();
+        for round in 0..rounds {
+            let _g = state_lock();
+            reset_counters();
+            let bot = FakeBot::start();
+            let cfg = bot.cfg(7);
+            let msg = 4300 + round;
+            let gate = Arc::new(Barrier::new(2));
+            let mut handles = Vec::new();
+            for rank in [StatusRank::Queued, StatusRank::Running] {
+                let (cfg, gate) = (cfg.clone(), gate.clone());
+                handles.push(std::thread::spawn(move || {
+                    let text = if rank == StatusRank::Running {
+                        running_text("أغنية")
+                    } else {
+                        waiting_text("أغنية", 1)
+                    };
+                    gate.wait();
+                    status_push(&cfg, 7, msg, rank, &text, cancel_button(7))
+                }));
+            }
+            for h in handles {
+                let _ = h.join();
+            }
+            let texts = edit_texts_on(&bot, msg);
+            let last = texts.last().cloned().unwrap_or_default();
+            let log = status_write_log(7, msg).unwrap_or_default();
+            orders.push(format!(
+                "جولة {round}: {:?} ⇒ «{}»",
+                log.iter().map(|w| w.rank).collect::<Vec<_>>(),
+                last
+            ));
+            assert!(
+                last.contains("▶ بدأت المعالجة") && !last.contains("دورك"),
+                "آخر ما على الرسالة ليس الأحدث (جولة {round}): {texts:?} · السِجلّ {log:?}"
+            );
+        }
+        eprintln!("م٣/سباق خيطين حقيقي:\n{}", orders.join("\n"));
+    }
+
+    // ── ④ الحرّاس الناقصة ───────────────────────────────────────────────────
+
+    /// **العطل (٤-أ)**: جعل `MAX_PENDING_PER_CHAT` = ٣ ⇒ **302/302 نجحت**، لأن
+    /// كل الفحوص تستعمل الثابت نفسه لا الرقم ⇒ الوعد الظاهر للمستخدم
+    /// («عندك ١٠ ملفات…») بلا حارس على **الرقم**.
+    ///
+    /// **القياس**: الرقم مكتوب هنا **مرّة** بيدٍ (وهو الوعد المقصود)، ويُقاس
+    /// على **نصّ الرسالة** التي يراها المستخدم — فلا يكفي أن يتساوى الثابت مع
+    /// نفسه في كل موضع.
+    ///
+    /// (مُفسَد محروس: ١٠ ⟶ ٣ ⇒ يسقط هذا الفحص وحده بينما تبقى فحوص السقف خضراء.)
+    #[test]
+    fn the_pending_cap_is_the_number_the_user_is_promised() {
+        // الرقم المعلَن للمستخدم — مصدره هذا السطر وحده في الاختبارات.
+        const PROMISED_PENDING_CAP: usize = 10;
+        assert_eq!(
+            MAX_PENDING_PER_CHAT, PROMISED_PENDING_CAP,
+            "الحدّ المعلَن للملفات المعلّقة تغيّر بلا تحديث الوعد"
+        );
+        let text = pending_full_text();
+        assert!(
+            text.contains(&format!("{PROMISED_PENDING_CAP} ملفات")),
+            "نصّ بلوغ السقف لا يذكر الرقم الموعود: {text}"
+        );
+        // ورسالة `/help` لا تذكر هذا الرقم (لا وعد ثانٍ يفترق عنه) — يُقاس لا يُفترض.
+        assert!(
+            !help_text().contains(&format!("{PROMISED_PENDING_CAP} ملفات")),
+            "وعدٌ ثانٍ بالرقم في /help: {}",
+            help_text()
+        );
+    }
+
+    /// **العطل (٤-ب)**: جعل نصّ `/lang` يقول «تم تبديل اللغة إلى العربية» ⇒ نجحت
+    /// الاختبارات (لا حارس على **مصداقية النصّ**).
+    ///
+    /// **القياس**: (أ) لا صيغة تبديل في أي جواب من أجوبة `/lang` — والأمر لا
+    /// يبدّل شيئاً فعلاً (لا مفتاح لغة في الإعدادات)، و(ب) والدليل السلوكي:
+    /// تنفيذ الأمر لا يُغيّر شيئاً في المحادثة (رسالة واحدة، ونصّ `/help` نفسه
+    /// حرفياً قبله وبعده) — فالنصّ الذي يدّعي تبديلاً يكذّب هذا القياس.
+    ///
+    /// (مُفسَد محروس: نصّ يدّعي التبديل ⇒ يسقط الفحص (أ) و(ب) معاً.)
+    #[test]
+    fn the_lang_command_never_claims_a_switch_it_does_not_make() {
+        // صيغ «فعل التبديل» — قائمة **معلَنة الحدّ**: مرادفٌ غير مُدرَج يعضّها،
+        // ولهذا يقيس (ب) عدمَ وقوع الفعل لا غياب الكلمة وحدها.
+        const SWITCH_CLAIMS: [&str; 8] = [
+            "تم تبديل",
+            "تم التبديل",
+            "تم تغيير",
+            "تم التغيير",
+            "بدّلت اللغة",
+            "غيّرت اللغة",
+            "سأبدّل",
+            "تم ضبط اللغة",
+        ];
+        for arg in [None, Some("ar"), Some("AR"), Some("en"), Some("ar-EG")] {
+            let t = lang_text(arg);
+            for claim in SWITCH_CLAIMS {
+                assert!(
+                    !t.contains(claim),
+                    "نصّ /lang يدّعي تبديلاً لا يقع («{claim}»): {t}"
+                );
+            }
+            assert!(t.contains("المتاح"), "النصّ يعرض المتاح (لا فعل): {t}");
+        }
+        // والحالة الصادقة لكل جواب: لا تبديل، أو لغة غير متوفّرة.
+        assert!(
+            lang_text(Some("ar")).contains("لا تغيير"),
+            "اللغة العاملة أصلاً: يُقال إنها لا تغيير: {}",
+            lang_text(Some("ar"))
+        );
+        assert!(
+            lang_text(Some("en")).contains("لا تتوفّر لغة"),
+            "{}",
+            lang_text(Some("en"))
+        );
+        // والوصف المُسجَّل في تلغرام يقول الحقيقة نفسها (لا قائمتان تفترقان).
+        let described = COMMANDS
+            .iter()
+            .find(|(c, _)| *c == "lang")
+            .map(|(_, d)| *d)
+            .unwrap_or("");
+        assert!(
+            described.contains("العربية وحدها"),
+            "وصف الأمر لا يقول إن لغةً واحدة متاحة: {described}"
+        );
+
+        // (ب) سلوكي عبر الأمر نفسه: لا أثر — لا رسالة ثانية ولا تغيّر في نصّ /help.
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let mut poll = PollState::default();
+        let ov = new_oversize_store();
+        let (tx, _rx) = chan();
+        handle_update(&cfg, &mut poll, &ov, &text_msg(7, 601, "/help"), &tx);
+        let help_before = sent_texts(&bot).last().cloned().unwrap_or_default();
+        bot.clear();
+        handle_update(&cfg, &mut poll, &ov, &text_msg(7, 602, "/lang ar"), &tx);
+        assert_eq!(
+            bot.count("sendMessage"),
+            1,
+            "أمر /lang أرسل أكثر من جوابه: {:?}",
+            sent_texts(&bot)
+        );
+        assert_eq!(
+            bot.count("editMessageText"),
+            0,
+            "أمر /lang حرّر رسالة (فعلٌ لم يُعلَن)"
+        );
+        handle_update(&cfg, &mut poll, &ov, &text_msg(7, 603, "/help"), &tx);
+        let help_after = sent_texts(&bot).last().cloned().unwrap_or_default();
+        assert_eq!(
+            help_before, help_after,
+            "نصّ المحادثة تغيّر بعد /lang ar — تبديلٌ وقع بلا إعلان"
+        );
+    }
+
+    /// **العطل (٤-ج)**: تعطيل شرط `Drop` في `CancelButtonGuard` بالكامل ⇒
+    /// **302/302 نجحت**، لأن كل مسارات الإنتاج الحالية تُنهي الزرّ صراحةً
+    /// (`end`) فالحارس «ضمانة بلا مُفسَد».
+    ///
+    /// **والحقيقة المعلَنة**: لا فرعَ في `run_job` اليوم يمرّ بالحارس وحده إلا
+    /// **الذعر** (فكّ مكدّس) — ولا يُصطنَع ذعرٌ من بيانات `Job`. فالقياس هنا
+    /// **على الحارس نفسه**: إسقاطٌ صريح بلا `end` يُزيل الزرّ (فحارسٌ لا يفعله
+    /// ساقط)، وبعد `end` لا يُرسل تعديلاً زائداً (فلا يُكرّر ما وقع).
+    ///
+    /// (مُفسَد محروس: تفريغ جسم `Drop` ⇒ يسقط الفحص الأول؛ وإسقاط فحص
+    /// `button_live` ⇒ يسقط الثاني.)
+    #[test]
+    fn the_cancel_button_guard_removes_the_button_when_no_branch_did() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let msg = 4401;
+        let cancel = Arc::new(AtomicBool::new(false));
+        let status = std::cell::RefCell::new(StatusMsg::new(7, msg, cancel));
+        status
+            .borrow_mut()
+            .set(&cfg, "🎛️ فصل الصوت… 10%".into(), true);
+        assert_eq!(bot.count("editMessageText"), 1, "لم تُكتب الحالة أصلاً");
+
+        // خروجٌ **بلا `end`** (وهو الذعر في الإنتاج): الحارس وحده يُزيل الزرّ.
+        drop(CancelButtonGuard {
+            cfg: &cfg,
+            status: &status,
+        });
+        let edits = bot.edited_messages();
+        assert_eq!(edits.len(), 2, "الحارس لم يُرسل إزالة الزرّ: {edits:?}");
+        assert_eq!(
+            edits[1].pointer("/reply_markup/inline_keyboard"),
+            Some(&json!([])),
+            "اللوحة ليست فارغة صراحةً: {}",
+            edits[1]
+        );
+        assert_eq!(
+            edits[1].get("text").and_then(Value::as_str),
+            Some("🎛️ فصل الصوت… 10%"),
+            "الحارس غيّر النصّ بدل أن يُزيل الزرّ وحده"
+        );
+
+        // وبعد `end` (إزالة صريحة) لا يُرسل الحارس تعديلاً زائداً.
+        let msg2 = 4402;
+        let cancel2 = Arc::new(AtomicBool::new(false));
+        let status2 = std::cell::RefCell::new(StatusMsg::new(7, msg2, cancel2));
+        status2
+            .borrow_mut()
+            .set(&cfg, "🎛️ فصل الصوت… 20%".into(), true);
+        status2.borrow_mut().end(&cfg, "✅ تم".into());
+        let before = edit_texts_on(&bot, msg2).len();
+        assert_eq!(before, 2, "بدءٌ ثم نهاية: {before}");
+        drop(CancelButtonGuard {
+            cfg: &cfg,
+            status: &status2,
+        });
+        assert_eq!(
+            edit_texts_on(&bot, msg2).len(),
+            before,
+            "الحارس أرسل تعديلاً بعد نهاية صريحة (تكرار بلا معنى)"
+        );
+        // والرسالة الثانية لم تُلمس من الحارس الأول.
+        assert!(
+            edit_texts_on(&bot, msg2).last().unwrap().contains('✅'),
+            "نصّ النهاية تغيّر"
+        );
+    }
+
+    /// **العطل (٤-د)**: `StatusMsg::end` يمرّر **الزرّ** بدل اللوحة الفارغة ⇒
+    /// يبقى زرّ إلغاء كاذب على مهمّة منتهية (ضغطُه يقول «لا مهمّة جارية»).
+    ///
+    /// **القياس على مسار الحالة نفسه**: تعديلات العمل تحمل الزرّ، والتعديل
+    /// **النهائي** يحمل `inline_keyboard: []` **صراحةً** — ولا تعديل بعده.
+    ///
+    /// (مُفسَد محروس: `end` يمرّر `cancel_button` ⇒ يسقط هذا الفحص.)
+    #[test]
+    fn the_final_edit_passes_an_explicitly_empty_keyboard() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let msg = 5101;
+        let status =
+            std::cell::RefCell::new(StatusMsg::new(7, msg, Arc::new(AtomicBool::new(false))));
+        status
+            .borrow_mut()
+            .set(&cfg, "🎛️ فصل الصوت… 40%".into(), true);
+        status.borrow_mut().end(&cfg, "✅ تم".into());
+
+        let edits = bot.edited_messages();
+        assert_eq!(edits.len(), 2, "تعديلان: أثناء العمل ثم النهائي: {edits:?}");
+        assert_eq!(
+            edits[0]
+                .pointer("/reply_markup/inline_keyboard/0/0/callback_data")
+                .and_then(Value::as_str),
+            Some("cancel:7"),
+            "تعديل أثناء العمل بلا زرّ الإلغاء: {}",
+            edits[0]
+        );
+        assert_eq!(
+            edits[1].pointer("/reply_markup/inline_keyboard"),
+            Some(&json!([])),
+            "الإنهاء لم يمرّر لوحة فارغة صراحةً (زرّ كاذب على مهمّة منتهية): {}",
+            edits[1]
+        );
+        assert!(
+            edits[1]["text"].as_str().unwrap_or("").contains('✅'),
+            "نصّ النهاية ليس نصّ النهاية: {}",
+            edits[1]
+        );
+    }
+
+    /// **العطل (ع٤)**: ضغطة على **نسخة قديمة** من سؤال الوضع. و`/mode` يُنشئ
+    /// سؤالاً جديداً **ولا يمحو القديم**، فيبقى زرّه على الشاشة — وكانت ضغطته
+    /// تُقبل، فيصير معرّف الرسالة القديمة **مرجعَ الحالة**: تُحرَّر رسالةٌ منسيّة
+    /// ويبقى السؤال الحيّ بأزراره (ولا يرى المستخدم ما يجري).
+    ///
+    /// **القياس**: (أ) الضغطة القديمة تُجاب بصدق ولا تُحرَّر ولا تُسحب المعلَّق
+    /// ولا تنطلق مهمّة، (ب) والضغطة على الرسالة الحيّة تعمل ومرجع الحالة هو
+    /// **الرسالة الحيّة** بالذات.
+    ///
+    /// (مُفسَد محروس: إزالة مطابقة `ask_msg_id` ⇒ الضغطة القديمة تُحرَّر ⇒ يسقط.)
+    #[test]
+    fn a_press_on_an_old_question_never_moves_the_status_anchor() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        // محادثة بعينها لهذا الفحص (٥٥): صفوف `telegram-jobs` عامّة للعملية،
+        // فمحادثةٌ مشتركة مع فحصٍ آخر تعني قياساً على صفوف غيره.
+        let cfg = bot.cfg(55);
+        let mut poll = PollState::default();
+        let ov = new_oversize_store();
+        let (tx, rx) = chan();
+
+        // ملف يصل ⇒ سؤالٌ في رسالة، ثم `/mode` يعيد الأزرار في رسالة جديدة.
+        handle_update(&cfg, &mut poll, &ov, &file_msg(55, 61, "old.mp4"), &tx);
+        let token = mode_tokens(&bot).remove(0);
+        let first_ask = bot.sent_message_ids()[0];
+        handle_update(&cfg, &mut poll, &ov, &text_msg(55, 62, "/mode"), &tx);
+        let asks = bot.sent_message_ids();
+        assert_eq!(asks.len(), 2, "سؤالان (الوصول ثم إعادة العرض): {asks:?}");
+        let live_ask = *asks.last().unwrap();
+        assert_ne!(first_ask, live_ask, "إعادة العرض لم تُنشئ رسالة جديدة");
+        let row_id = poll.pending.for_chat(55)[0].row_id;
+
+        // (أ) الضغطة على **القديمة**: صمتٌ عن التحرير وصدقٌ في الجواب.
+        bot.clear();
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &press(55, first_ask, &format!("mode:song:{token}")),
+            &tx,
+        );
+        assert_eq!(
+            bot.count("editMessageText"),
+            0,
+            "حُرِّرت رسالة سؤال قديم فصارت مرجع الحالة"
+        );
+        assert_eq!(
+            poll.pending.count_for(55),
+            1,
+            "سُحب المعلَّق بضغطةٍ مرفوضة (يضيع الملف)"
+        );
+        assert!(rx.try_recv().is_err(), "انطلقت مهمّة من ضغطة على سؤال قديم");
+        let answers: Vec<String> = bot
+            .bodies("answerCallbackQuery")
+            .iter()
+            .filter_map(|b| serde_json::from_str::<Value>(b).ok())
+            .filter_map(|v| v.get("text").and_then(Value::as_str).map(str::to_string))
+            .collect();
+        assert!(
+            answers.iter().any(|a| a.contains("سؤال قديم")),
+            "الضغطة القديمة لم تُجَب بصدق: {answers:?}"
+        );
+
+        // (ب) والضغطة على **الحيّة**: تعمل، ومرجع الحالة هو الرسالة الحيّة.
+        bot.clear();
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &press(55, live_ask, &format!("mode:clip:{token}")),
+            &tx,
+        );
+        let job = rx.try_recv().expect("مهمّة الاختيار لم تصل القناة");
+        assert_eq!(
+            job.status_msg_id, live_ask,
+            "مرجع الحالة ليس الرسالة التي ضُغط عليها"
+        );
+        let edits = bot.edited_messages();
+        assert_eq!(edits.len(), 1, "تحريرٌ واحد (إشعار الانتظار): {edits:?}");
+        assert_eq!(
+            edits[0].get("message_id").and_then(Value::as_i64),
+            Some(live_ask),
+            "التحرير وقع على رسالةٍ غير المضغوطة: {}",
+            edits[0]
+        );
+        assert_eq!(poll.pending.count_for(55), 0, "المعلَّق لم يُسحب بعد الاختيار");
+        // تنظيف: صفّ `telegram-jobs` الذي سجّله الوصول لا يبقى لفحصٍ آخر
+        // (السِجلّ عامّ للعملية، والصفّ يُبَثّ مرّةً ثم يُزال عند الانتهاء).
+        jobs_finished(row_id, false);
     }
 }
