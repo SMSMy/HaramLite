@@ -8,13 +8,16 @@
  * أي مفتاح localStorage، ولا أي أمر (`cuda_install`، `cuda_status`،
  * `autostart_status`، `get_settings`، `push_log`، `tg_*`)، ولا أي مفتاح
  * ترجمة. الوحيد المضاف: `export`.
+ * وم٤ أضاف: عنصر `#tg-group-mode` ومفتاح `hl.tg_group_mode` بمفتاحَي ترجمة
+ * (`settings_group_mode` · `..._hint`) — والربط أدناه على نمط `#max-jobs` (م١)
+ * حرفياً: التطبيع من `groupModeFrom` في settings.ts، لا نسخة ثانية هنا.
  */
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { t } from './i18n';
 import { trapFocus } from './util';
-import { notifyWatchUiChanged, pushSettings, type RustSettings } from './settings';
+import { groupModeFrom, notifyWatchUiChanged, pushSettings, type RustSettings } from './settings';
 import { showCudaHint, updateCudaBanner } from './cuda';
 import { askAutostartOnce, refreshAutostart, refreshBridgeExt } from './integration';
 import { refreshYtdlpUpdateUi } from './ytdlpUi';
@@ -127,6 +130,21 @@ export function wireSettings(): void {
     });
   }
 
+  // م٤: وضوح رسائل المجموعة — عنصر `#tg-group-mode` **داخل قسم الإعدادات**
+  // (قرار المالك: مثل هذا الخيار مكانه الإعدادات، لا الواجهة الرئيسية).
+  // والقائمة تحمل `mentions` و`all` وحدهما، والتطبيع عبر `groupModeFrom` —
+  // مصدر واحد يشاركه `collectSettings`، فالمعروض = المُرسَل إلى الخلف.
+  const groupMode = document.getElementById('tg-group-mode') as HTMLSelectElement | null;
+  if (groupMode) {
+    groupMode.value = groupModeFrom(localStorage.getItem('hl.tg_group_mode'));
+    groupMode.addEventListener('change', () => {
+      const v = groupModeFrom(groupMode.value);
+      groupMode.value = v; // قيمة دخيلة في DOM تُصحَّح قبل أن تُخزَّن
+      localStorage.setItem('hl.tg_group_mode', v);
+      pushSettings();
+    });
+  }
+
   if (btnSettings && menu) {
     let menuRelease: (() => void) | null = null;
     const closeMenu = (): void => {
@@ -208,6 +226,14 @@ export function wireSettings(): void {
       if (inp && inp.value !== s.telegram_user_id) inp.value = s.telegram_user_id;
     }
     if (typeof s.watch_path === 'string') localStorage.setItem('hl.watch_path', s.watch_path);
+    // م٤: القائمة تتبع حقيقة الخلف كجيرانها (telegram_enabled/telegram_user_id) —
+    // وقيمة الخلف تمرّ بـ`groupModeFrom` فلا تُدخل قيمة ثالثة إلى التخزين.
+    if (typeof s.telegram_group_mode === 'string') {
+      const v = groupModeFrom(s.telegram_group_mode);
+      localStorage.setItem('hl.tg_group_mode', v);
+      const sel = document.getElementById('tg-group-mode') as HTMLSelectElement | null;
+      if (sel && sel.value !== v) sel.value = v;
+    }
     notifyWatchUiChanged();
   });
 }

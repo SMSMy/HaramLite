@@ -108,6 +108,23 @@ const i18n = {
     tg_token: 'توكن البوت (من BotFather)',
     tg_owner: 'معرّف المستخدم المسموح (اختياري)',
     tg_audio_only: 'إرسال الصوت فقط (MP3) دائماً',
+    // (م٤ — جولة الدمج 2026-09-21) حُرِّر بعد هبوط نصف Rust: صار المفتاح يبدّل
+    // سلوكاً فعلاً (بوابة الوضع ثم قائمة السماح في telegram.rs قبل أي معالجة)،
+    // فالتلميح يذكر ما يفعله الكود — لا ما كان يَعِد به قبل الدمج:
+    //   • «بالمنشن فقط»: `mentions_bot` (منشن · `text_mention` · ردّ على البوت)
+    //     أو أمرٌ موجَّه إليه ⇒ وغيره يُسكَت. والرسالة التي لا تخاطبه **لا تصله**
+    //     أصلاً في مجموعة privacy mode فيها مفعّل (شرط تلغرام لا شرطنا).
+    //   • «كل الرسائل»: تُقرأ الرسالة، وغير المسموح يُرسَل رابطُه إلى **خاصّ
+    //     المالك** كبطاقة `apv:<yes|no|always>` ولا معالجة قبل ضغطته، و«اسمح
+    //     دائماً» تُضيف الزوج إلى قائمة السماح وتحفظه.
+    //   • والحدّ التقني يُذكر **كحدّ لا كوعد**: البوت لا يبدأ محادثة خاصة مع عضو
+    //     لم يبدأها بنفسه.
+    // ومربوط بالكود في `tgGroupMode.test.ts` **في الاتجاهين**: إن ذُكرت الموافقة
+    // فليكن `apv:always` في telegram.rs، وإن ذُكر الحجب فليكن منطق الإسكات.
+    settings_group_mode: 'وضوح رسائل المجموعة:',
+    settings_group_mode_mentions: 'بالمنشن فقط',
+    settings_group_mode_all: 'كل الرسائل',
+    settings_group_mode_hint: '«بالمنشن فقط»: لا يعالج البوت إلا ما وُجِّه إليه — اذكره مع الرابط. والرسالة التي لا تذكره لا تصله أصلاً في مجموعة privacy mode فيها مفعّل. «كل الرسائل»: يرى ما لم يُقصد به أيضاً، فيلزم إطفاء privacy mode من @BotFather، وحينها يُرسَل رابط غير المسموح إلى خاصّ المالك كبطاقة موافقة (✅ اسمح · ❌ ارفض · ♾️ اسمح دائماً) ولا معالجة قبل ضغطته؛ و«اسمح دائماً» تُضيفه إلى قائمة السماح. ومن ليس في القائمة لا تُشغَّل له معالجة. (حدّ: البوت لا يبدأ محادثة خاصة مع عضو لم يبدأها.)',
     tg_paircode: 'رمز الاقتران',
     tg_pair_hint: 'أرسل هذا الرمز إلى بوتك في تيليجرام لربط حسابك (صالح 10 دقائق).',
     tg_advanced: 'إعدادات متقدمة: خادم Bot API محلي (حتى 2GB وبالجودة الأصلية)',
@@ -182,12 +199,29 @@ const i18n = {
     ytdlp_local_missing: 'لا توجد نسخة محلية من yt-dlp على هذا الجهاز بعد.',
     queue_title: 'طابور المعالجة',
     open_out_folder: 'فتح مجلد الإخراج',
-    queue_processing_3: '1/3 جاري المعالجة...',
+    // 2026-09-21: حالتان صريحتان بدل ترميز تصميمي ثابت كان يُقرأ كعمل جارٍ.
+    queue_empty: 'لا ملفات في الطابور بعد',
+    queue_empty_add: 'أفلت ملفات في النافذة أو أضف رابطاً لتبدأ المعالجة.',
+    // ع٢ (جولة الجاسوس المستقل): طابور الواجهة فارغ **ومهمّة حيّة في الخلفية**
+    // (طلب تلغرام/الجسر، أو إعادة تحميل الواجهة أثناء عمل Rust) — فلا يُقال
+    // «لا شيء، ابدأ» وشريط الإيقاف فوقه يقول «المهامّ النشطة: 1». النصّ يسمّي
+    // الحقيقة بدل أن يناقضها.
+    queue_empty_running: 'لا ملفات في الطابور — ومهمّة جارية في الخلفية',
+    queue_empty_running_hint: 'المهمّة الجارية تتابع في الخلفية؛ وأفلت ملفات أو أضف رابطاً لإضافة عمل جديد.',
+    // الجولة الثالثة: فشل قراءة السِجلّ ⇒ **لا نعرف**. ولا «لا ملفات … لتبدأ
+    // المعالجة» (قد تكون ثمّة مهمّة) ولا «مهمّة جارية» (لم نُثبتها) — بل تصريح
+    // بالجهل. فالخمول **ادّعاء معرفة** كالعمل، ولا يُطلق بلا دليل.
+    queue_empty_unknown: '⚠ تعذّر قراءة حالة المهامّ — لا نعرف إن كان شيء يعمل',
+    queue_empty_unknown_hint: 'تعذّرت قراءة سِجلّ المهامّ من الخلفية؛ انتظر قليلاً أو أعد المحاولة قبل بدء عمل جديد.',
     queue_processing: 'جاري المعالجة...',
     queue_pending: 'في الانتظار',
     ext_title: 'وظائف خارجية',
     ext_empty: 'لا وظائف خارجية جارية',
     log_toggle: 'سجل الأحداث / Activity Log',
+    // ع٣ (جولة الجاسوس): حالتان تُكتبان في اللوحة عند غياب سطور حقيقية — بدل
+    // سطور ثابتة كانت تُقرأ كسجلّ، ومنها خطأ لم يقع.
+    log_empty: 'لا سطور في السجلّ بعد.',
+    log_unavailable: '⚠ تعذّر قراءة السجلّ من الخلفية — لا سطور معروضة.',
     log_demo_info: 'yt-dlp update check: already up to date.',
     log_demo_warn: 'Track 2 audio format might cause slight degradation.',
     log_demo_error: 'Failed to locate model weights in ./models directory.',
@@ -366,6 +400,14 @@ const i18n = {
     tg_token: 'Bot token (from BotFather)',
     tg_owner: 'Allowed user id (optional)',
     tg_audio_only: 'Always send audio only (MP3)',
+    // م٤ — merge round 2026-09-21: rewritten once the Rust half landed, because the
+    // key now really changes behaviour (mode gate, then the allow list, before any
+    // processing). Same statements as `ar`, and the technical limit is stated as a
+    // limit, not as a promise: the bot cannot start a private chat with a member.
+    settings_group_mode: 'Group message visibility:',
+    settings_group_mode_mentions: 'Mentions only',
+    settings_group_mode_all: 'All messages',
+    settings_group_mode_hint: 'Mentions only: the bot processes only what is addressed to it — mention it with the link. With privacy mode on in a group, a message that does not mention it never reaches it at all. All messages: it also sees what was not addressed to it, so privacy mode must be turned off from @BotFather; then a non-allowed member\'s link is sent to the owner\'s private chat as an approval card (✅ Allow · ❌ Deny · ♾️ Always allow) and nothing is processed before that press, while "always allow" adds them to the allow list. Anyone not on the list never starts processing. (Limit: the bot cannot start a private chat with a member who has not started one.)',
     tg_paircode: 'Pairing code',
     tg_pair_hint: 'Send this code to your bot on Telegram to link your account (valid 10 minutes).',
     tg_advanced: 'Advanced: local Bot API server (up to 2GB, original quality)',
@@ -434,12 +476,19 @@ const i18n = {
     ytdlp_local_missing: 'No local copy of yt-dlp on this machine yet.',
     queue_title: 'Processing queue',
     open_out_folder: 'Open the output folder',
-    queue_processing_3: '1/3 processing...',
+    queue_empty: 'No files in the queue yet',
+    queue_empty_add: 'Drop files on the window or add a link to start processing.',
+    queue_empty_running: 'No files in the queue — a job is running in the background',
+    queue_empty_running_hint: 'The running job continues in the background; drop files or add a link to queue more work.',
+    queue_empty_unknown: '⚠ Could not read the job state — we do not know whether anything is running',
+    queue_empty_unknown_hint: 'The backend job registry could not be read; wait a moment or retry before starting new work.',
     queue_processing: 'Processing...',
     queue_pending: 'Waiting',
     ext_title: 'External jobs',
     ext_empty: 'No external jobs running',
     log_toggle: 'Activity Log',
+    log_empty: 'No log lines yet.',
+    log_unavailable: '⚠ Could not read the log from the backend — no lines shown.',
     log_demo_info: 'yt-dlp update check: already up to date.',
     log_demo_warn: 'Track 2 audio format might cause slight degradation.',
     log_demo_error: 'Failed to locate model weights in ./models directory.',

@@ -2753,12 +2753,12 @@ mod tests {
         let name = unique_name("kill-block");
         let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
         let (started_tx, started_rx) = std::sync::mpsc::channel::<()>();
-        let label = format!("telegram:{chat_id}");
+        let label = format!("telegram:{chat_id}:7");
         let n = name.clone();
         let job = std::thread::spawn(move || {
             let _ = run_registered(&n, &label, None, move |_tok| {
                 let _ = started_tx.send(());
-                // مهمّة **لا تستجيب للإلغاء** — تماماً كنداء محرّك داخل العملية.
+                // مهمّة **لا تستجيب للإلغاء** — تماماً كنداء محرّر داخل العملية.
                 let _ = release_rx.recv_timeout(Duration::from_secs(30));
                 Ok::<(), String>(())
             });
@@ -2768,7 +2768,9 @@ mod tests {
             .expect("المهمّة بدأت خلال المهلة");
 
         let t = std::time::Instant::now();
-        let reply = crate::telegram::cancel_chat_jobs(chat_id);
+        // **بصاحبٍ بعينه** (م٤): الوسم صار `telegram:<chat>:<user>`، والإلغاء
+        // يقع على مهامّ ذلك المستخدم وحده.
+        let reply = crate::telegram::cancel_chat_jobs(chat_id, 7);
         let blocked = t.elapsed();
         eprintln!("م٢/حجب البوت: cancel_chat_jobs عاد في {blocked:?} · الردّ «{reply}»");
         let _ = release_tx.send(());

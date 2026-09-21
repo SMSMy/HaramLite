@@ -137,7 +137,19 @@ export async function stopBatch(): Promise<void> {
   session.setBatchQueue([]);
   batchStatus.clear();
   localStorage.removeItem('hl.batch');
-  document.getElementById('batch-list')?.classList.add('hidden');
+  // ع١ (جولة الجاسوس): الصفوف **المنتظرة/الجارية** تُمحى لأنها لم تعد تقابل
+  // شيئاً في القائمة — وكانت تبقى مرسومة تقول «دورك: 1» و«دورك: 2» (أرقام
+  // بائتة) **مع** رسالة «لا ملفات في الطابور بعد». والحكم بحالة الصفّ المُعلَنة
+  // (`data-state`، يكتبها `setBatchItemState`) لا بنصّه: مطابقة النصّ تتفرّق عن
+  // الحقيقة بأول صياغة جديدة. وصفوف `ok`/`fail` تبقى عن قصد: سِجلّ ما جرى حتى
+  // الرسم التالي (موثَّق في ترويسة `stopBatch`).
+  const finished = new Set<BatchItemState>(['ok', 'fail']);
+  for (const row of visibleBatchRows()) {
+    if (!finished.has((row.dataset.state ?? 'pending') as BatchItemState)) row.remove();
+  }
+  // 2026-09-21: كانت هذه تُخفي `#batch-list` كلها — وحالة الفراغ تعيش داخلها
+  // فكان الإفراغ يُخفيها هي أيضاً (شاشة صامتة). واليوم الحالة الفارغة تُعلَن.
+  updateBatchEmptyState();
   document.getElementById('batch-counter')?.classList.add('hidden');
   // Phantom-cancel fix: stopBatch runs on EVERY single-file ingest, and it
   // used to fire the cancel command (and its scary backend WARN line) even
@@ -179,7 +191,7 @@ function refreshWaitingPositions(except?: HTMLElement | null): void {
   const list = document.getElementById('batch-list');
   if (!list) return;
   const queue = session.getBatchQueue();
-  const positions = pendingQueuePositions(queue.map((f) => batchStatus.get(f) ?? 'pending'));
+  const positions = pendingQueuePositions(queue.map((f) => itemStateOf(f)));
   const at = new Map(queue.map((f, i) => [f, positions[i]] as const));
   list.querySelectorAll<HTMLElement>('div[data-file]').forEach((row) => {
     if (row === except) return;
@@ -194,52 +206,138 @@ function renderBatchList(): void {
   const ul = document.getElementById('batch-list');
   if (!ul) return;
   ul.classList.remove('hidden');
-  ul.replaceChildren(
-    ...session.getBatchQueue().map((f) => {
-      const div = document.createElement('div');
-      div.dataset.file = f;
-      div.className = 'batch-item bg-coal-surface/40 border border-border-muted rounded p-stack-sm flex flex-col gap-unit opacity-60 transition-all duration-300 apple-ease cursor-default relative overflow-hidden';
-      styleBatchItem(div);
-      
-      const progBg = document.createElement('div');
-      progBg.className = 'absolute inset-0 bg-clay-accent/10 w-0 transition-all duration-1000 ease-linear batch-prog-bg hidden';
-      
-      const headerDiv = document.createElement('div');
-      headerDiv.className = 'flex justify-between items-center relative z-10';
-      const nameSpan = document.createElement('span');
-      nameSpan.className = 'font-label-sm text-label-sm text-cream-text truncate font-semibold';
-      nameSpan.dir = 'ltr';
-      nameSpan.textContent = f.split(/[\\/]/).pop() ?? f;
-      const pctSpan = document.createElement('span');
-      pctSpan.className = 'batch-pct font-label-sm text-label-sm text-clay-accent font-bold drop-shadow-sm hidden';
-      pctSpan.textContent = '0%';
-      headerDiv.append(nameSpan, pctSpan);
-      
-      const progWrap = document.createElement('div');
-      progWrap.className = 'h-1.5 bg-border-muted rounded-full overflow-hidden relative z-10 shadow-inner batch-prog-wrap hidden';
-      const progBar = document.createElement('div');
-      progBar.className = 'batch-prog-bar h-full bg-clay-accent w-0 rounded-full relative transition-all duration-1000 ease-linear shadow-[0_0_10px_rgba(218,119,86,0.8)]';
-      progWrap.appendChild(progBar);
-      
-      const actionsDiv = document.createElement('div');
-      actionsDiv.className = 'batch-actions flex gap-2 z-10 hidden mt-1';
-      
-      const statusSpan = document.createElement('span');
-      statusSpan.className = 'status-text font-label-sm text-label-sm text-on-surface-variant relative z-10 flex-1';
-      statusSpan.textContent = t('queue_pending');
-      
-      const bottomRow = document.createElement('div');
-      bottomRow.className = 'flex justify-between items-center w-full relative z-10';
-      bottomRow.append(statusSpan, actionsDiv);
-      
-      div.append(progBg, headerDiv, progWrap, bottomRow);
-      return div;
-    }),
-  );
+  // 2026-09-21: `replaceChildren` كانت تمحو **كل** أولاد `#batch-list` — ومنهم
+  // `#batch-empty` الثابت — فيختفي عنصر الحالة الفارغة من DOM بعد أول رسم
+  // (قيست: `getElementById('batch-empty')` ⟶ null بعد `renderBatchList`).
+  // فالإزالة اليوم تخصّ **الصفوف** (`div[data-file]`) وحدها، والحالة تبقى.
+  ul.querySelectorAll('div[data-file]').forEach((row) => row.remove());
+  ul.append(...batchRows(session.getBatchQueue()));
+  updateBatchEmptyState();
   batchStatus.clear();
-  for (const f of session.getBatchQueue()) batchStatus.set(f, 'pending');
+  for (const f of session.getBatchQueue()) setBatchItemState(f, 'pending');
   refreshWaitingPositions(); // م٣: كل صفٍّ منتظر يقول موضعه لا «في الانتظار» فقط
   saveBatchState();
+}
+
+/** صفوف الطابور — **المنشئ الوحيد** لصفوف `#batch-list`.
+ *
+ *  العطل الميداني 2026-09-21: كان في `index.html` ترميز تصميمي ثابت (صفّ
+ *  `track_01_vocals.mp3` بنسبة 33% وشريط تقدّم و«1/3 جاري المعالجة...»، وصفّ
+ *  `podcast_ep44.wav` «في الانتظار») يبقى ظاهراً متى كان الطابور فارغاً، فيُقرأ
+ *  كعمل جارٍ لا وجود له. وسببه المقيس أن `restoreBatchState()` تُرجع مبكراً عند
+ *  غياب `hl.batch` ولا تمسّ DOM. فالعلاج بنيوي: **لا صفّ ملف في الترميز أصلاً**،
+ *  والصفوف تُبنى هنا وحدها من قائمة الجلسة. */
+function batchRows(queue: readonly string[]): HTMLElement[] {
+  return queue.map((f) => {
+    const div = document.createElement('div');
+    div.dataset.file = f;
+    div.className = 'batch-item bg-coal-surface/40 border border-border-muted rounded p-stack-sm flex flex-col gap-unit opacity-60 transition-all duration-300 apple-ease cursor-default relative overflow-hidden';
+    styleBatchItem(div);
+
+    const progBg = document.createElement('div');
+    progBg.className = 'absolute inset-0 bg-clay-accent/10 w-0 transition-all duration-1000 ease-linear batch-prog-bg hidden';
+
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'flex justify-between items-center relative z-10';
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'font-label-sm text-label-sm text-cream-text truncate font-semibold';
+    nameSpan.dir = 'ltr';
+    nameSpan.textContent = f.split(/[\\/]/).pop() ?? f;
+    const pctSpan = document.createElement('span');
+    pctSpan.className = 'batch-pct font-label-sm text-label-sm text-clay-accent font-bold drop-shadow-sm hidden';
+    pctSpan.textContent = '0%';
+    headerDiv.append(nameSpan, pctSpan);
+
+    const progWrap = document.createElement('div');
+    progWrap.className = 'h-1.5 bg-border-muted rounded-full overflow-hidden relative z-10 shadow-inner batch-prog-wrap hidden';
+    const progBar = document.createElement('div');
+    progBar.className = 'batch-prog-bar h-full bg-clay-accent w-0 rounded-full relative transition-all duration-1000 ease-linear shadow-[0_0_10px_rgba(218,119,86,0.8)]';
+    progWrap.appendChild(progBar);
+
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'batch-actions flex gap-2 z-10 hidden mt-1';
+
+    const statusSpan = document.createElement('span');
+    statusSpan.className = 'status-text font-label-sm text-label-sm text-on-surface-variant relative z-10 flex-1';
+    statusSpan.textContent = t('queue_pending');
+
+    const bottomRow = document.createElement('div');
+    bottomRow.className = 'flex justify-between items-center w-full relative z-10';
+    bottomRow.append(statusSpan, actionsDiv);
+
+    div.append(progBg, headerDiv, progWrap, bottomRow);
+    return div;
+  });
+}
+
+/** حالة الفراغ — **مصدر واحد للحقيقة**، لا علامة في الترميز.
+ *
+ *  الجولة الثانية (جاسوس مستقل، 2026-09-21) كشفت أن الدالة كانت تقرأ **طول
+ *  الطابور وحده**، فوقع ازدواجان مقيسان:
+ *    • **ع١**: بعد `stopBatch()` تُفرَّغ القائمة **وتبقى الصفوف مرسومة** ⇒ رسالة
+ *      «لا ملفات في الطابور بعد» مع صفّين يقولان «دورك: 1» و«دورك: 2» (أرقام
+ *      بائتة لقائمة لم تعد موجودة).
+ *    • **ع٢**: طابور واجهة فارغ ومهمّة **حيّة في السِجلّ** (تلغرام/الجسر/إعادة
+ *      تحميل أثناء عمل Rust) ⇒ الواجهة تقول «لا شيء، ابدأ المعالجة» وشريط
+ *      الإيقاف فوقها يقول «المهامّ النشطة: 1».
+ *
+ *  فالشرط اليوم ثلاثة معاً: **لا انتظار في القائمة** · **لا صفّ مرسوم** ·
+ *  **لا مهمّة حيّة**. وهذا يجعل الإعلان مشتقّاً من الشاشة نفسها فلا يمكن أن
+ *  يناقضها (`visibleBatchRows()` تقرأ DOM لا وسيطاً).
+ *
+ *  والنصّ يتبع الحالة: مهمّة حيّة بطابور فارغ ⇒ «مهمّة جارية من الخلفية» لا
+ *  «لا ملفات». ولا يُلمس مُفتاح الترجمة الثابت: النصّ يُكتب من `t()` كالريندر. */
+function updateBatchEmptyState(): void {
+  const empty = document.getElementById('batch-empty');
+  if (!empty) return;
+  const noQueue = session.getBatchQueue().length === 0;
+  const noRows = visibleBatchRows().length === 0;
+  // **ثلاث حالات لا ثنائية** (جولة ثالثة): «يعمل» / «خامل» / **«مجهول»**.
+  // كان `liveBackendJob` منطقياً يُبنى على قراءة ناجحة، فالشرط الثلاثي يتقلّص
+  // إلى شرطين حين تُفقد المعرفة ⇒ تُعلن اللوحة «لا ملفات … لتبدأ المعالجة» في
+  // اللحظة التي يقول فيها شريط الإيقاف «✗ تعذّرت قراءة المهامّ النشطة». والخمول
+  // **ادّعاء معرفة** لا يجوز إطلاقه بلا دليل، كما لا يجوز إطلاق «يعمل».
+  const busy = noQueue && noRows && jobKnowledge === 'running';
+  const unknown = noQueue && noRows && jobKnowledge === 'unknown';
+  empty.classList.toggle('hidden', !(noQueue && noRows));
+  const main = empty.querySelector<HTMLElement>('[data-i18n="queue_empty"]');
+  const add = empty.querySelector<HTMLElement>('[data-i18n="queue_empty_add"]');
+  // والمجهول لا يَعِد بشيء: لا دعوة لبدء المعالجة (قد تكون هناك مهمّة)، ولا
+  // ادّعاء عمل (لم نُثبته) — بل نصّ يقول إن الحالة غير معروفة.
+  const mainKey = unknown ? 'queue_empty_unknown' : busy ? 'queue_empty_running' : 'queue_empty';
+  const addKey = unknown ? 'queue_empty_unknown_hint' : busy ? 'queue_empty_running_hint' : 'queue_empty_add';
+  if (main) main.textContent = t(mainKey);
+  if (add) add.textContent = t(addKey);
+}
+/** صفوف الطابور المرسومة فعلاً — **تُقرأ من DOM**، فلا تفترق عن الشاشة. */
+function visibleBatchRows(): HTMLElement[] {
+  const list = document.getElementById('batch-list');
+  return list ? [...list.querySelectorAll<HTMLElement>('div[data-file]')] : [];
+}
+/** ما نعرفه عن مهامّ الخلفية — **أربع حالات**، والمعروض ثلاث:
+ *
+ *  • `'unchecked'` — **الابتداء**: لم نقرأ بعد. لا ادّعاء عمل ولا ادّعاء جهل:
+ *    «لا ملفات … ابدأ المعالجة» صادقة عن **طابور الواجهة** (وهو ما يقيسه هذا
+ *    السطر)، ولا تُناقض شيئاً لأن الشريط لم يقل شيئاً بعد.
+ *  • `'idle'`    — قراءة **ناجحة** قالت: لا مهامّ.
+ *  • `'running'` — قراءة **ناجحة** قالت: ثمّة مهامّ.
+ *  • `'unknown'` — **فشلت قراءة** (بعد أن كان ثمّة محاولة) ⇒ لا «لا ملفات» ولا
+ *    «مهمّة جارية»، بل تصريح بالجهل.
+ *
+ *  والفرق بين `'unchecked'` و`'unknown'` جوهري ومقيس: الأول لا يعلم أحدٌ أنه
+ *  سُئل، والثاني **سُئل وفشل** — والشريط حينها يقول «✗ تعذّرت قراءة المهامّ»،
+ *  فلا يجوز أن تناقضه اللوحة. (وكان الأول يُعرض «مجهول» فيُفزع كل إقلاع سليم —
+ *  أسقطه الحارس فأُصلح.)
+ *
+ *  ولا يُحفظ شيء من قراءة قديمة: كل دورة استطلاع **تكتب** هذه القيمة من نتيجتها
+ *  (نجاح ⇒ idle/running، فشل ⇒ unknown)، فزوال المعرفة يُعلَن في الدورة نفسها
+ *  ولا يبقى ادّعاء عمل أبديّاً بعد أن رُئيت مهمّة مرّة (وهو لاتش مقيس في الجولة
+ *  الثالثة: `P2c failing {"claimsRunning":true}`). */
+let jobKnowledge: 'unchecked' | 'idle' | 'running' | 'unknown' = 'unchecked';
+function setJobKnowledge(next: 'unchecked' | 'idle' | 'running' | 'unknown'): void {
+  if (jobKnowledge === next) return;
+  jobKnowledge = next;
+  updateBatchEmptyState();
 }
 
 /* ── batch persistence (functional gap: memory-only queue) ──────────── */
@@ -248,11 +346,24 @@ function renderBatchList(): void {
 /// never reprocesses finished ones.
 type BatchItemState = 'pending' | 'run' | 'ok' | 'fail';
 const batchStatus = new Map<string, BatchItemState>();
+/** الحالة تُخزَّن في **موضعين متلازمين**: الخريطة (المصدر المنطقي) و`data-state`
+ *  على الصفّ (المصدر الذي تقرأه `stopBatch` والفحوص). ولا تُكتب إحداهما دون
+ *  الأخرى — وإلا صار الحكم على الصفّ بالنصّ المعروض، وهو ما يتفرّق عن الحقيقة
+ *  بأول تغيير صياغة (وهو أصل ع١ في جولة الجاسوس). */
+function setBatchItemState(file: string, state: BatchItemState): void {
+  batchStatus.set(file, state);
+  const row = document.querySelector<HTMLElement>(`#batch-list div[data-file="${CSS.escape(file)}"]`);
+  if (row) row.dataset.state = state;
+}
+/** حالة الصفّ المخزَّنة (والافتراض `pending` كالسابق). */
+function itemStateOf(file: string): BatchItemState {
+  return batchStatus.get(file) ?? 'pending';
+}
 function saveBatchState(): void {
   try {
     if (session.getBatchQueue().length) {
       localStorage.setItem('hl.batch', JSON.stringify(
-        session.getBatchQueue().map((f) => ({ f, s: batchStatus.get(f) ?? 'pending' })),
+        session.getBatchQueue().map((f) => ({ f, s: itemStateOf(f) })),
       ));
     } else localStorage.removeItem('hl.batch');
   } catch { /* storage full/blocked — queue simply stays volatile */ }
@@ -276,10 +387,24 @@ export function restoreBatchState(): void {
   const skipped = items.length - files.length;
   if (!files.length) {
     if (items.length) localStorage.removeItem('hl.batch');
+    // 2026-09-21: كان هنا `return` وحده — فلا يُمَسّ DOM ويبقى ترميز الصفوف
+    // الوهمي من `index.html` معروضاً كعمل جارٍ في كل إقلاع بطابور فارغ.
+    // واليوم الحالة الفارغة تُعلَن صراحةً من قائمة الجلسة (وهي فارغة هنا).
+    updateBatchEmptyState();
     return;
   }
   session.setBatchQueue(files);
   renderBatchList();
+  // ع٤ (جولة الجاسوس): `renderBatchList` تكتب `pending` لكل الصفوف، فكان صفٌّ
+  // مُستعاد بحالة `fail` (مهمّة انقطعت) أو `run` (إعادة تحميل أثناء عمل مهمّة)
+  // يُقرأ «دورك: 1» ويُمحى فشله من التخزين معه. واليوم الحالة المخزَّنة تُعاد
+  // **بعد** الرسم: `fail` يعلن فشله (`markBatchItem('fail')`)، و`run` يُعلن
+  // تشغيله، ثم يصحّحه استطلاع السِجلّ أدناه (`reconcileBatchRows`): مهمّة حيّة
+  // ⇒ يبقى يعمل، ولا مهمّة ⇒ `stop_row_stale` («أُعيد إلى الانتظار») — فلا
+  // تُدّعى مهمّة ولا يُكتم انقطاع.
+  for (const it of items) {
+    if (it.s === 'fail' || it.s === 'run') markBatchItem(it.f, it.s);
+  }
   setBatchCounter(0, session.getBatchQueue().length);
   // م٢: الصفوف المُستعادة تُبنى «في الانتظار» (`renderBatchList` تكتب pending
   // لكل الصفوف)، وقد تكون مهمّة أحدها **حيّة في الخلف** (إعادة تحميل الواجهة
@@ -294,7 +419,7 @@ export function restoreBatchState(): void {
 }
 
 function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?: string): void {
-  batchStatus.set(file, status);
+  setBatchItemState(file, status);
   const item = document.querySelector<HTMLElement>(`#batch-list div[data-file="${CSS.escape(file)}"]`);
   if (!item) { refreshWaitingPositions(); saveBatchState(); return; }
   styleBatchItem(item); // className swaps below wipe classes — re-apply after each
@@ -484,6 +609,12 @@ async function syncJobsOnce(): Promise<void> {
     lastJobsError = reg.error;
   }
   renderStopBar();
+  // ع٢ (جولة الجاسوس): الحالة الفارغة تُشتقّ من **الطابور والسِجلّ معاً** —
+  // فمهمّة حيّة بطابور واجهة فارغ (تلغرام/الجسر/إعادة تحميل أثناء عمل Rust)
+  // لا يجوز أن تُقرأ «لا ملفات في الطابور بعد … ابدأ المعالجة».
+  // والجولة الثالثة: **كل دورة تكتب المعرفة من نتيجتها** — فشل ⇒ «مجهول»
+  // (لا «خامل»)، فلا يتقلّص الشرط الثلاثي إلى شرطين عند فقد المعرفة.
+  setJobKnowledge(reg.ok ? (reg.jobs.length > 0 ? 'running' : 'idle') : 'unknown');
   if (reg.ok && !reg.jobs.length && session.isIdle() && !runInFlightPath) {
     stopJobsPolling();
   } else if (!reg.ok && failedPolls >= FAILED_POLL_LIMIT && session.isIdle() && !runInFlightPath) {
@@ -514,12 +645,12 @@ function reconcileBatchRows(jobs: readonly JobInfo[]): void {
   const queue = session.getBatchQueue();
   if (!queue.length) return;
   for (const f of queue) {
-    const local = batchStatus.get(f) ?? 'pending';
+    const local = itemStateOf(f);
     const hasJob = jobForPath(jobs, f) !== null;
     const r = reconcileItemState(local, hasJob, runInFlightPath === f);
     if (!r.changed) continue;
     if (r.stale) {
-      batchStatus.set(f, 'pending');
+      setBatchItemState(f, 'pending');
       const item = document.querySelector<HTMLElement>(`#batch-list div[data-file="${CSS.escape(f)}"]`);
       if (item) resetBatchItemProgress(item, t('stop_row_stale'));
       // الرسالة الصريحة أهمّ من الرقم، فلا تُدهَس في صفّها — وبقية الصفوف تُحدَّث
