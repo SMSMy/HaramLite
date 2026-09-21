@@ -238,12 +238,49 @@ interface TgStatus {
   queue: number;
   paired_id: number | null;
   pairing_code_active: boolean;
+  /** م٥: هوية البوت — **الواقع من القرص** (`refresh_identity_status` في الخلف)
+   *  لا نيّة الواجهة. و`error` آخر خطأ تطبيق إن وقع. */
+  identity?: { applied: boolean; name: string; error: string };
+}
+/** م٥: عائد `telegram_set_bot_identity` عند النجاح (والفشل `Err` بنصّ عربي). */
+interface TgIdentityResult {
+  applied: boolean;
+  changed: boolean;
+  name: string;
+  previous_name?: string;
+  photo_bytes?: number;
+}
+/** م٥: عائد `telegram_set_commands` عند النجاح. */
+interface TgCommandsResult {
+  commands: number;
+  scope_chat: number | null;
+}
+/** م٥: عائد `telegram_stats` — و`known:false` تعني **لا سجلّ بعد**، لا أصفاراً. */
+interface TgStats {
+  id: number;
+  name: string;
+  files: number;
+  known: boolean;
+  bytes: number;
+  text: string;
 }
 interface TgPairCode {
   code: string;
   expires_in_secs: number;
   fails_left: number;
   paired: boolean;
+}
+
+/** حجم مقروء — بالوحدات العربية كما في `tg_stats::human_size` بالخلف.
+ *  ويُحسب في الواجهة من `bytes` كي يُترجم النصّ، والنصّ الجاهز من الخلف يبقى
+ *  متاحاً في `stats.text` لمن يريد رسالة تلغرام نفسها. */
+function humanSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 بايت';
+  const units = ['بايت', 'ك.ب', 'م.ب', 'ج.ب', 'ت.ب'];
+  let v = bytes;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i += 1; }
+  return i === 0 ? `${Math.round(v)} ${units[i]}` : `${v.toFixed(1)} ${units[i]}`;
 }
 
 export function wireTelegram(): void {
@@ -317,6 +354,119 @@ export function wireTelegram(): void {
     localStorage.setItem('hl.tg_audio', audioOnly.checked ? '1' : '0');
     pushSettings();
   });
+
+  wireBotIdentity();
+
+  /** م٥: هوية البوت — **المربّع يعكس الواقع لا النيّة**.
+   *
+   *  و`applied` مصدره `telegram_status().identity.applied` (واقعٌ من القرص في
+   *  الخلف: `refresh_identity_status` تقرأ ملف الحالة)، والنتيجة الصريحة من
+   *  `telegram_set_bot_identity`. فلا يُعلن التطبيق قبل أن يصير `applied`
+   *  صحيحاً، ولا يُعلن العكس قبل أن يصير خاطئاً، **والفشل يُعيد المربّع إلى
+   *  حالته الحقيقية** ويُعلن سببه (`Err` بنصّه أو `identity.error`).
+   *  و`checked` هنا **لا يُقرأ من localStorage**: التخزين يحمل ما أراده المستخدم،
+   *  والمربّع يعرض ما جرى. */
+  function wireBotIdentity(): void {
+    const box = document.getElementById('tg-bot-identity') as HTMLInputElement | null;
+    const note = document.getElementById('tg-identity-note');
+    const cmdBtn = document.getElementById('tg-set-commands');
+    const cmdNote = document.getElementById('tg-commands-note');
+    const statsBtn = document.getElementById('tg-stats');
+    const statsBody = document.getElementById('tg-stats-body');
+    if (!box) return;
+
+    const setNote = (text: string, isError = false): void => {
+      if (!note) return;
+      note.textContent = text;
+      note.className = isError
+        ? 'font-label-sm text-label-sm text-error leading-relaxed'
+        : 'font-label-sm text-label-sm text-on-surface-variant leading-relaxed';
+    };
+    const setBox = (applied: boolean, error: string | null, name: string): void => {
+      box.checked = applied;
+      if (error) { setNote(t('tg_identity_failed', { err: error.slice(0, 120) }), true); return; }
+      setNote(applied ? t('tg_identity_on', { name }) : t('tg_identity_off'));
+    };
+
+    // الواقع عند التركيب — من قراءة الخلف وحدها، لا من التخزين.
+    void (async () => {
+      try {
+        const st = await invoke<TgStatus>('telegram_status');
+        setBox(!!st.identity?.applied, st.identity?.error || null, String(st.identity?.name ?? ''));
+      } catch {
+        // لا قراءة ⇒ لا ادّعاء: المربّع مُعطَّل حتى تُعرف الحقيقة.
+        box.checked = false;
+        box.disabled = true;
+        setNote(t('tg_identity_unknown'), true);
+      }
+    })();
+
+    box.addEventListener('change', () => {
+      const want = box.checked; // ما أراده المستخدم الآن
+      const before = !want;     // ما كان عليه قبل الضغطة (للعودة عند الفشل)
+      box.disabled = true;
+      setNote(t('tg_identity_working'));
+      void (async () => {
+        try {
+          const r = await invoke<TgIdentityResult>('telegram_set_bot_identity', { enabled: want });
+          localStorage.setItem('hl.tg_identity', r.applied ? '1' : '0');
+          pushSettings();
+          // **والحكم للواقع**: `applied` من الردّ، ويُعاد تأكيده من الحالة.
+          setBox(!!r.applied, null, String(r.name ?? ''));
+        } catch (e) {
+          // تفاؤل كاذب ممنوع: يُعاد المربّع إلى حالته السابقة ويُعلن السبب.
+          box.checked = before;
+          setNote(t('tg_identity_failed', { err: String(e).slice(0, 120) }), true);
+        } finally {
+          box.disabled = false;
+        }
+      })();
+    });
+
+    cmdBtn?.addEventListener('click', () => {
+      if (cmdNote) { cmdNote.textContent = t('tg_identity_working'); cmdNote.className = 'font-label-sm text-label-sm text-on-surface-variant leading-relaxed'; }
+      void (async () => {
+        try {
+          const r = await invoke<TgCommandsResult>('telegram_set_commands');
+          if (cmdNote) {
+            cmdNote.textContent = t('tg_commands_ok', { n: Number(r.commands ?? 0) });
+            cmdNote.className = 'font-label-sm text-label-sm text-tertiary leading-relaxed';
+          }
+        } catch (e) {
+          if (cmdNote) {
+            cmdNote.textContent = t('tg_commands_failed', { err: String(e).slice(0, 120) });
+            cmdNote.className = 'font-label-sm text-label-sm text-error leading-relaxed';
+          }
+        }
+      })();
+    });
+
+    statsBtn?.addEventListener('click', () => {
+      if (statsBody) { statsBody.textContent = t('tg_stats_working'); statsBody.className = 'font-label-sm text-label-sm text-on-surface-variant leading-relaxed whitespace-pre-line'; }
+      void (async () => {
+        try {
+          const s = await invoke<TgStats>('telegram_stats');
+          if (!statsBody) return;
+          // `known:false` ⇒ **لا أصفار مُختلقة**: نصّ صادق بأن لا سجلّ بعد.
+          // (و«0 ملف · 0 بايت» كانت ستُقرأ قياساً — وهي صنف «سطح يدّعي حالة».)
+          statsBody.textContent = s.known
+            ? t('tg_stats_body', {
+                name: String(s.name || '').trim() || t('tg_stats_no_name'),
+                id: String(s.id),
+                files: String(s.files),
+                size: humanSize(Number(s.bytes) || 0),
+              })
+            : t('tg_stats_unknown');
+          statsBody.className = 'font-label-sm text-label-sm text-on-surface-variant leading-relaxed whitespace-pre-line';
+        } catch {
+          if (statsBody) {
+            statsBody.textContent = t('tg_stats_failed');
+            statsBody.className = 'font-label-sm text-label-sm text-error leading-relaxed whitespace-pre-line';
+          }
+        }
+      })();
+    });
+  }
 
   let lastCode = '';
   async function refresh(withCode: boolean): Promise<void> {

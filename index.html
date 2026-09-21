@@ -117,6 +117,33 @@
             </div>
             <span class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="settings_group_mode_hint">«بالمنشن فقط»: لا يرى البوت إلا ما وُجِّه إليه؛ والرسالة التي لا تذكره لا تصله أصلاً في مجموعة privacy mode فيها مفعّل. «كل الرسائل»: يراه ما لم يُقصد به أيضاً، فيلزم إطفاء privacy mode من @BotFather، وإلا لم يصل شيء.</span>
         </div>
+        <!-- م٥: هوية البوت — مربّع اختيار **يعكس الواقع لا النيّة**.
+             `applied` يُقرأ من `telegram_status().identity.applied` (واقعٌ من
+             القرص)، والنتيجة الصريحة من `telegram_set_bot_identity`. ولا ادّعاء
+             قبل أن يصير `applied` صحيحاً، ولا نفيٌ قبل أن يصير خاطئاً، والفشل
+             يُعيد المربّع إلى حالته الحقيقية ويُعلن سببه.
+             واسم المستخدم `@…` **لا يُغيَّر من هنا** — من @BotFather وحده، ويُقال
+             كحدّ لا كوعد. -->
+        <div class="flex flex-col gap-unit mt-1">
+            <label class="flex items-center gap-stack-sm cursor-pointer group">
+                <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="tg-bot-identity" type="checkbox"/>
+                <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="tg_identity">استخدم اسم HaramLite وصورته للبوت</span>
+            </label>
+            <span id="tg-identity-note" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" role="status" aria-live="polite"></span>
+            <span class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="tg_identity_hint">يُغيَّر الاسم والصورة من هنا وقابل للعكس. أما معرّف البوت نفسه (@…) فمن @BotFather وحده.</span>
+            <button id="tg-set-commands" type="button" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
+                <span class="material-symbols-outlined text-sm" data-icon="terminal">terminal</span>
+                <span class="font-body-sm" data-i18n="tg_set_commands">اضبط أوامر البوت</span>
+            </button>
+            <span id="tg-commands-note" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" role="status" aria-live="polite"></span>
+            <button id="tg-stats" type="button" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
+                <span class="material-symbols-outlined text-sm" data-icon="bar_chart">bar_chart</span>
+                <span class="font-body-sm" data-i18n="tg_stats">📊 إحصاءات</span>
+            </button>
+            <!-- الإحصاءات تُعرض **من الردّ** لا من ترميز ثابت: وقبل أول قراءة
+                 تكون فارغة (لا «0 ملف · 0 بايت» — و`known:false` له نصّه الصادق). -->
+            <span id="tg-stats-body" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed whitespace-pre-line" role="status" aria-live="polite"></span>
+        </div>
     </div>
 
     <!-- 🖥️ النظام -->
