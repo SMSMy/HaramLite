@@ -121,10 +121,13 @@
 //!
 //! ## ما لا يفعله هذا الملف (بصراحة)
 //!
-//! * **لا يقتل شجرة العمليات** عند الإلغاء: `cancel_job` يضبط رمز إلغاء
-//!   **لكل مهمّة** فقط، ولا مسار إنتاجي يقرأه في م١ — بند م٢ هو الذي سيقرأه
-//!   ويقتل الشجرة. فحتى الآن الإلغاء الفعلي يمرّ بالعلم العام القائم
-//!   (`AppState::cancel_flag`) كما كان.
+//! * **~~لا يقتل شجرة العمليات~~ — صار يقتلها (م٢)**: `cancel_job` يضبط رمز
+//!   الإلغاء **لكل مهمّة** **ويقتل أبناءها فوراً** (`proc::kill_children`:
+//!   مقابض العمليات المسجَّلة، بـ`taskkill /T /F`)، و`proc::enter` في
+//!   `run_registered_with` يجعل كل نداء أداة داخل المهمّة يسجّل مقبضه.
+//!   والحدّ الباقي **معلَن لا مخفيّ**: نداء ONNX داخل العملية
+//!   (`separator::separate`) غير قابل للقطع، فالمهمّة داخله تُهجر عند أول حدّ
+//!   بعده وتُعاد بلا ناتج (دلالة على مرحلتين — قرار المالك).
 //! * **سقف الكائن لا يُعاد ضبطه على عملية تعمل**: الرمزان ملكيّتان لا عدّاد،
 //!   فإعداد هذه العملية (`set_limit`) يغيّر **ما تأخذه مهامّها الجديدة**
 //!   (رمزاً أو رمزين) ولا يمسّ مهاماً جارية ولا كائناً قائماً — وهذا هو
@@ -139,13 +142,16 @@
 //!   ناقصاً حتى زوال آخر مقبض): بالـmutex يصير **abandoned** ويُستعاد فوراً.
 //!   ودليله الدائم `a_killed_owner_releases_its_slots_without_waiting_for_handles`
 //!   (عملية تُقتل بـ`TerminateProcess` **بينما عملية الفحص تحمل مقبضاً**).
-//! * **الرمز يعود فوراً بموت مالكه، ولا يعود قفل الملف كذلك**: هذا الملف
-//!   يحرّر **الفتحة** لحظة موت المالك (‏mutex ⇒ abandoned)، **لكن** قفل الملف
-//!   في `pipeline.rs` (`ProcessingClaim` · `STALE_LOCK_SECS = 12 * 3600` عند
-//!   `pipeline.rs:115`) يبقى **١٢ ساعة** بعد موت العملية القاسر: فإعادة معالجة
-//!   **الملف نفسه** تفشل حتى حينها برسالة «الملف قيد المعالجة حالياً — تخطي»
-//!   (`pipeline.rs:158`). فتحرير الفتحة **لا يعني** أن الملف صار قابلاً لإعادة
-//!   المعالجة — وهذا **شرط قبول في م٢** لا بند خلفي.
+//! * **الرمز يعود فوراً بموت مالكه، وقفل الملف كذلك (م٢)**: هذا الملف يحرّر
+//!   **الفتحة** لحظة موت المالك (‏mutex ⇒ abandoned)، وقفل الملف في
+//!   `pipeline.rs` (`ProcessingClaim`) كان يبقى **١٢ ساعة** بعد موت العملية
+//!   القاسر (`STALE_LOCK_SECS` القديم) فتفشل إعادة معالجة **الملف نفسه** —
+//!   وهو **عطل مقيس** صار الإلغاء بسببه عقوبة. والآن القفل يخزّن **PID
+//!   وطابعاً زمنياً** ويُسترجع بفحص **حياة العملية المالكة** (`pipeline.rs`:
+//!   `lock_owner_is_dead`) ⇒ إعادة المحاولة على الملف نفسه تنجح **فوراً** بعد
+//!   قتل مهمّة، والطابع الزمني بقي **مساراً بديلاً** لحالة قفل بلا PID.
+//!   ودليله الدائم `a_dead_owner_lock_is_reclaimed_immediately` في `pipeline.rs`
+//!   و`a_cancelled_job_reprocesses_the_same_file_immediately` هنا.
 //! * **المسار غير ويندوز** (`mod local`) لا يعرف «المالك الميّت» أصلاً: زوج
 //!   الرموز هناك **داخل العملية** (`Mutex`+`Condvar`)، ولا عبور عمليات — فلا
 //!   عملية أجنبية تموت وهي تحمل رمزاً. وإن مات **خيط** داخل العملية وهو يحمل
@@ -153,11 +159,12 @@
 //!   والمقصود بها `cargo test` على أي منصّة لا الإنتاج).
 
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::pipeline::{self, Mode, OutKind, PipelineOutput};
+use crate::proc::{self, CancelToken, JobCtx};
 
 // ───────────────────────────── الاسم والسقف ─────────────────────────────
 
@@ -271,8 +278,13 @@ fn now_ms() -> u128 {
 
 struct JobEntry {
     label: String,
+    /// مسار الإدخال (م٢): الواجهة تُطابق عنصر الطابور بالمهمّة **عبر المسار**،
+    /// و`None` لمهمّة بلا ملف (نداءات التشخيص في الاختبارات).
+    path: Option<String>,
     started_ms: u128,
-    cancel: Arc<AtomicBool>,
+    /// **سياق المهمّة**: الرمز الذي تقرؤه حدود المراحل ونداءات الأدوات،
+    /// ومقابض العمليات الفرعية الحيّة (فيقتلها `cancel_job` فوراً).
+    ctx: Arc<JobCtx>,
 }
 
 fn registry() -> &'static Mutex<Vec<(u64, JobEntry)>> {
@@ -286,28 +298,50 @@ fn next_id() -> u64 {
 }
 
 /// صورة مهمّة نشطة — تُقرأ من `active_jobs()` لمن يريد عرضها أو إلغاءها.
+///
+/// **العقد مُجمَّد (م٢)**: هذه الحقول الأربعة بأسمائها وأنواعها هي ما تُبنى
+/// عليه الواجهة (`invoke("active_jobs")`)، و`path` هو ما تُطابق به عنصر
+/// الطابور بالمهمّة. لا تُغيَّر بلا تصريح.
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct JobInfo {
     pub id: u64,
     /// الوسم/المصدر: `"gui"` · `"cli"` · `"bridge"` · `"watch"` · `"telegram"`.
     pub label: String,
+    /// مسار ملف الإدخال — `None` إن كانت المهمّة بلا ملف.
+    pub path: Option<String>,
     /// طابع البدء (ميلي ثانية منذ حقبة يونكس) — يشمل زمن انتظار الفتحة.
     pub started_ms: u128,
-    /// هل طُلب إلغاؤها؟ (الرمز يُضبط بـ`cancel_job`، ويقرؤه م٢.)
+    /// هل طُلب إلغاؤها؟ (الرمز يضبطه `cancel_job`، وتقرؤه حدود المراحل
+    /// ونداءات الأدوات — فالإلغاء صار يوقف فعلاً في م٢.)
     pub cancelled: bool,
 }
 
 /// حارس تسجيل المهمّة: إلغاء التسجيل في `Drop` — أي عند النجاح **وعند الخطأ
 /// وعند الذعر** (`Drop` يعمل أثناء فكّ المكدّس). ولا شيء هنا يفكّ الذعر ولا
 /// يقفل قفلاً يُميت: القفل يُعالَج من التسمّم دائماً.
+///
+/// وهو أيضاً **مالك سياق المهمّة**: يبقى `Arc<JobCtx>` حيّاً ما دام الحارس،
+/// فيضمن `proc::enter` في `run_registered_with` أن المؤشّر لا يشيخ.
 pub struct JobGuard {
     id: u64,
     label: String,
     started_ms: u128,
-    cancel: Arc<AtomicBool>,
+    ctx: Arc<JobCtx>,
+}
+
+impl JobGuard {
+    /// رمز إلغاء **هذه المهمّة** — يُمرَّر إلى `pipeline::process_file` فيقرؤه
+    /// كل حدّ مرحلة وكل نداء أداة.
+    pub fn token(&self) -> CancelToken {
+        self.ctx.cancel.clone().unwrap_or_default()
+    }
 }
 
 impl Drop for JobGuard {
     fn drop(&mut self) {
+        // خيوط قراءة المخرجات تُضمّ **قبل** إلغاء التسجيل: لا يبقى قارئ على
+        // أنبوب طفل قُتل (وإلا وُجد خيط يتيم بعد «انتهت المهمّة» في السجلّ).
+        proc::join_reader_threads(&self.ctx);
         let removed = {
             let mut jobs = registry().lock().unwrap_or_else(|p| p.into_inner());
             let before = jobs.len();
@@ -315,11 +349,17 @@ impl Drop for JobGuard {
             before != jobs.len()
         };
         let elapsed = now_ms().saturating_sub(self.started_ms);
+        let cancelled = self
+            .ctx
+            .cancel
+            .as_ref()
+            .map(|c| c.is_cancelled())
+            .unwrap_or(false);
         if removed {
             tracing::info!(
                 target: "slots",
-                "انتهت المهمة #{} ({}) بعد {elapsed}ms — أُلغيت: {}",
-                self.id, self.label, self.cancel.load(Ordering::SeqCst)
+                "انتهت المهمة #{} ({}) بعد {elapsed}ms — أُلغيت: {cancelled}",
+                self.id, self.label
             );
         } else {
             tracing::warn!(target: "slots", "المهمة #{} ({}) لم تكن مسجَّلة عند الانتهاء", self.id, self.label);
@@ -328,27 +368,35 @@ impl Drop for JobGuard {
 }
 
 /// يسجّل مهمّة ويعيد حارساً يلغي التسجيل عند سقوطه.
-fn register_job(label: &str) -> JobGuard {
+fn register_job(label: &str, path: Option<&str>) -> JobGuard {
     let id = next_id();
     let started_ms = now_ms();
-    let cancel = Arc::new(AtomicBool::new(false));
+    let ctx = Arc::new(JobCtx {
+        cancel: Some(CancelToken::new()),
+        ..Default::default()
+    });
     {
         let mut jobs = registry().lock().unwrap_or_else(|p| p.into_inner());
         jobs.push((
             id,
             JobEntry {
                 label: label.to_string(),
+                path: path.map(str::to_string),
                 started_ms,
-                cancel: cancel.clone(),
+                ctx: ctx.clone(),
             },
         ));
     }
-    tracing::info!(target: "slots", "بدأت المهمة #{id} ({label})");
+    tracing::info!(
+        target: "slots",
+        "بدأت المهمة #{id} ({label}){}",
+        path.map(|p| format!(" — {p}")).unwrap_or_default()
+    );
     JobGuard {
         id,
         label: label.to_string(),
         started_ms,
-        cancel,
+        ctx,
     }
 }
 
@@ -360,34 +408,53 @@ pub fn active_jobs() -> Vec<JobInfo> {
         .map(|(id, e)| JobInfo {
             id: *id,
             label: e.label.clone(),
+            path: e.path.clone(),
             started_ms: e.started_ms,
-            cancelled: e.cancel.load(Ordering::SeqCst),
+            cancelled: e
+                .ctx
+                .cancel
+                .as_ref()
+                .map(|c| c.is_cancelled())
+                .unwrap_or(false),
         })
         .collect();
     out.sort_by_key(|j| j.id);
     out
 }
 
-/// يضبط رمز الإلغاء **لهذه المهمّة وحدها**. يعيد `false` إن لم تكن المهمّة
-/// نشطة (انتهت أو معرّف خاطئ) — فلا يُدَّعى إلغاء لم يقع.
+/// يضبط رمز الإلغاء **لهذه المهمّة وحدها** **ويقتل أبناءها فوراً**.
 ///
-/// **حدّ صريح**: لا يقتل شجرة عمليات ولا يوقف `pipeline::process_file` في م١؛
-/// الرمز يقرؤه بند م٢. أي أن `true` هنا تعني «سُجِّل الطلب»، لا «توقّف العمل».
+/// يعيد `false` إن لم تكن المهمّة نشطة (انتهت أو معرّف خاطئ) — فلا يُدَّعى
+/// إلغاء لم يقع. وعند `true` يكون الإلغاء **قد وقع**: الرمز مضبوط (فتسقط
+/// حدود المراحل عند أول فحص) وشجرة العمليات المنفصلة (ffmpeg/yt-dlp ومخدّم
+/// مُدمِجها) قُتلت بـ`taskkill /T /F` في هذا النداء نفسه.
+///
+/// **حدّ صريح باقٍ**: نداء ONNX داخل العملية غير قابل للقطع؛ مهمّة داخل
+/// `separator::separate` تُهجر عند أول حدّ بعده (دلالة على مرحلتين — قرار المالك).
 pub fn cancel_job(id: u64) -> bool {
-    let jobs = registry().lock().unwrap_or_else(|p| p.into_inner());
-    match jobs.iter().find(|(jid, _)| *jid == id) {
-        Some((_, e)) => {
-            e.cancel.store(true, Ordering::SeqCst);
-            tracing::warn!(target: "slots", "طُلب إلغاء المهمة #{id} ({})", e.label);
-            true
+    let (ctx, label) = {
+        let jobs = registry().lock().unwrap_or_else(|p| p.into_inner());
+        match jobs.iter().find(|(jid, _)| *jid == id) {
+            Some((_, e)) => (e.ctx.clone(), e.label.clone()),
+            None => return false,
         }
-        None => false,
+    };
+    if let Some(c) = ctx.cancel.as_ref() {
+        c.set();
     }
+    let killed = proc::kill_children(&ctx);
+    tracing::warn!(
+        target: "slots",
+        "طُلب إلغاء المهمة #{id} ({label}) — قُتلت {killed} عملية فرعية حيّة"
+    );
+    true
 }
 
 /// يطلب إلغاء كل المهامّ النشطة (يستدعيه أمر الواجهة `cancel_process` إضافةً
-/// إلى العلم العام القائم، فلا يتغيّر سلوك المستخدم: من يقرأ الرمز لم يُبنَ
-/// بعد). يعيد عدد ما سُجِّل إلغاؤه.
+/// إلى العلم العام القائم). يعيد عدد المهامّ التي وُسمت.
+///
+/// وكل مهمّة تُلغي **أبناءها هي** (`cancel_job` لكل معرّف) — فلا تلمس مهمّةٌ
+/// عمليات مهمّة أخرى.
 pub fn cancel_all() -> usize {
     let jobs = active_jobs();
     if !jobs.is_empty() {
@@ -410,7 +477,43 @@ pub fn cancel_all() -> usize {
             .collect();
         tracing::info!(target: "slots", "إلغاء {} مهمّة نشطة: {}", jobs.len(), described.join(" · "));
     }
-    jobs.iter().filter(|j| cancel_job(j.id)).count()
+    // قائمة المعرّفات تُقرأ أولاً (وإلا تغيّر السِجلّ أثناء المرور).
+    let ids: Vec<u64> = jobs.iter().map(|j| j.id).collect();
+    ids.into_iter().filter(|id| cancel_job(*id)).count()
+}
+
+/// ينتظر حتى يفرغ السِجلّ أو تنتهي المهلة. يعيد `true` إن فرغ.
+///
+/// **لماذا هو موجود**: من يقول «أُلغيت» يجب أن يكون صادقاً. `cancel_job`
+/// يعيد «سُجِّل الطلب» لا «توقّف العمل»، وهذا النداء هو الفرق بينهما — يستعمله
+/// `/kill` في تلغرام فينتظر قبل أن يجيب.
+pub fn wait_until_idle(timeout: Duration) -> bool {
+    let started = std::time::Instant::now();
+    loop {
+        if active_jobs().is_empty() {
+            return true;
+        }
+        if started.elapsed() >= timeout {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// ينتظر انتهاء **مهامّ بعينها** (بمعرّفاتها) أو انتهاء المهلة. يعيد `true`
+/// إن لم يبقَ منها شيء في السِجلّ.
+pub fn wait_until_gone(ids: &[u64], timeout: Duration) -> bool {
+    let started = std::time::Instant::now();
+    loop {
+        let live = active_jobs();
+        if !live.iter().any(|j| ids.contains(&j.id)) {
+            return true;
+        }
+        if started.elapsed() >= timeout {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
 
 // ─────────────────────── الفتحة (mutex نواة/عملية) ───────────────────────
@@ -980,20 +1083,29 @@ fn acquire_now_or_wait(
 fn run_registered<T>(
     slot_name: &str,
     label: &str,
-    body: impl FnOnce() -> Result<T, String>,
+    path: Option<&str>,
+    body: impl FnOnce(&CancelToken) -> Result<T, String>,
 ) -> Result<T, String> {
-    run_registered_with(slot_name, label, current_limit(), body)
+    run_registered_with(slot_name, label, path, current_limit(), body)
 }
 
 /// نفس النواة بسقف صريح — يفصل «ما تأخذه هذه المهمّة» عن الحالة العامة
 /// (`LIMIT`)، فيُقاس سقف بعينه بلا لمس إعداد العملية كلها (والاختبارات تحتاجه).
+///
+/// **و`proc::enter` هنا هو ما يجعل الإلغاء حقيقيّاً**: كل نداء أداة داخل الجسم
+/// (عبر خيوط المهمّة هذه وأبنائها المسجّلة) يجد سياق المهمّة فيسجّل مقبضه،
+/// فيقتله `cancel_job(id)` فوراً. والحارس يُزيل السياق في `Drop` — حتى عند
+/// الذعر وعند الخروج المبكر لفشل الفتحة.
 fn run_registered_with<T>(
     slot_name: &str,
     label: &str,
+    path: Option<&str>,
     limit: u32,
-    body: impl FnOnce() -> Result<T, String>,
+    body: impl FnOnce(&CancelToken) -> Result<T, String>,
 ) -> Result<T, String> {
-    let _job = register_job(label);
+    let job = register_job(label, path);
+    let token = job.token();
+    let _ctx = proc::enter(&job.ctx);
     // **الإعلان صادق أو لا يكون**: محاولة فورية أولاً، ولا سطر انتظار إطلاقاً
     // إن أُخذت الفتحة فوراً. وإن وقع انتظار فعلاً أُعلن **قبله** (فالانتظار كان
     // صامتاً في السجلّ: قاس المدقّق ٣٤٢ ثانية بلا أثر)، ثم يُسجَّل **زمنه
@@ -1015,7 +1127,7 @@ fn run_registered_with<T>(
             got.waited_for.as_secs_f64()
         );
     }
-    body()
+    body(&token)
 }
 
 /// فصل ملف عبر `pipeline::process_file` تحت فتحة جهاز — **المدخل الواحد**.
@@ -1023,6 +1135,10 @@ fn run_registered_with<T>(
 /// `label` هو وسم المصدر (`"gui"` · `"cli"` · `"bridge"` · `"watch"` ·
 /// `"telegram"`) ويظهر في سِجلّ المهامّ. والوسائط بعدها بنفس ترتيب
 /// `pipeline::process_file` حرفياً، فلا يتغيّر شيء في `progress`/`stage`.
+///
+/// **م٢**: يُسجَّل مسار الإدخال مع المهمّة (`active_jobs()[i].path`)، ويُبنى
+/// **رمز إلغاء لكل مهمّة** يُمرَّر إلى `process_file` — فـ`cancel_job(id)`
+/// يوقف هذه المهمّة وحدها (ويقتل أدواتها الجارية).
 ///
 /// الخطأ `String` لا `PipelineError`: الخطأ صار من مصدرين (الفتحة والمحرّك)،
 /// وكل المواضع الخمسة تحوّله إلى نصّ أصلاً.
@@ -1071,7 +1187,7 @@ fn run_separation_as(
     progress: &dyn Fn(f32) -> bool,
     stage: &dyn Fn(&str, f32),
 ) -> Result<PipelineOutput, String> {
-    run_registered(slot_name, label, || {
+    run_registered(slot_name, label, Some(&input.to_string_lossy()), |token| {
         pipeline::process_file(
             input,
             out_dir,
@@ -1081,6 +1197,7 @@ fn run_separation_as(
             keep_vocals,
             use_cuda,
             preview_seconds,
+            token,
             progress,
             stage,
         )
@@ -1093,6 +1210,7 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
     use std::process::{Command, Stdio};
+    use std::sync::atomic::AtomicBool;
 
     /// **إثبات التملّك قبل الحكم، دائماً**: كائن النواة قد لا يكون موجوداً بعد
     /// (وإن كان الاسم فريداً)، فننتظر ظهور العلامة في ملف السجلّ بمهلة صريحة —
@@ -1444,7 +1562,7 @@ mod tests {
             let name = name.clone();
             let events = events.clone();
             threads.push(std::thread::spawn(move || {
-                run_registered(&name, "inproc", || {
+                run_registered(&name, "inproc", None, |_| {
                     events.lock().unwrap().push((now_ms(), 1));
                     std::thread::sleep(Duration::from_millis(HOLD_MS));
                     events.lock().unwrap().push((now_ms(), -1));
@@ -1505,7 +1623,7 @@ mod tests {
             let name = name.clone();
             let events = events.clone();
             std::thread::spawn(move || {
-                run_registered_with(&name, "holder", MAX_LIMIT, || {
+                run_registered_with(&name, "holder", None, MAX_LIMIT, |_| {
                     events.lock().unwrap().push((0, now_ms(), 1));
                     std::thread::sleep(Duration::from_millis(HOLD_MS));
                     events.lock().unwrap().push((0, now_ms(), -1));
@@ -1535,7 +1653,7 @@ mod tests {
             let name = name.clone();
             let events = events.clone();
             std::thread::spawn(move || {
-                run_registered(&name, "newcomer", || {
+                run_registered(&name, "newcomer", None, |_| {
                     events.lock().unwrap().push((1, now_ms(), 1));
                     std::thread::sleep(Duration::from_millis(HOLD_MS));
                     events.lock().unwrap().push((1, now_ms(), -1));
@@ -1774,7 +1892,7 @@ mod tests {
         // أن مهمّتَي السقف الكامل تتقاطعان وأن الحصرية لا تتقاطع (ضابط موجب).
         std::thread::sleep(Duration::from_millis(delay_ms));
 
-        run_registered_with(&slot, "helper", limit, || {
+        run_registered_with(&slot, "helper", None, limit, |_| {
             append_line(&log, &format!("{id} START {}\n", now_ms()));
             std::thread::sleep(Duration::from_millis(HOLD_MS));
             append_line(&log, &format!("{id} END {}\n", now_ms()));
@@ -1961,7 +2079,7 @@ mod tests {
             let (limit, delay) = (*limit, *delay);
             threads.push(std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_millis(delay));
-                run_registered_with(&name, "inproc-mix", limit, || {
+                run_registered_with(&name, "inproc-mix", None, limit, |_| {
                     events.lock().unwrap().push((id, now_ms(), 1));
                     std::thread::sleep(Duration::from_millis(HOLD_MS));
                     events.lock().unwrap().push((id, now_ms(), -1));
@@ -1988,7 +2106,7 @@ mod tests {
 
         // ضابط موجب: المهمّة **مسجَّلة وهي تعمل** — لولا هذا لكان «السِجلّ
         // فارغ» صحيحاً حتى لو لم يُسجَّل شيء قطّ (نجاح كاذب).
-        let seen = run_registered(&name, "jobs-live", || {
+        let seen = run_registered(&name, "jobs-live", None, |_| {
             Ok::<_, String>(
                 active_jobs()
                     .iter()
@@ -2005,7 +2123,9 @@ mod tests {
         assert!(active_jobs().is_empty(), "نجاح ⇒ لا شيء يبقى مسجَّلاً");
 
         // مسار الفشل: نفس الشيء.
-        let failed = run_registered(&name, "jobs-fail", || Err::<(), String>("عطل مصطنع".into()));
+        let failed = run_registered(&name, "jobs-fail", None, |_| {
+            Err::<(), String>("عطل مصطنع".into())
+        });
         assert!(failed.is_err(), "الجسم أعاد خطأً");
         assert!(active_jobs().is_empty(), "فشل ⇒ لا شيء يبقى مسجَّلاً");
 
@@ -2013,7 +2133,7 @@ mod tests {
         let previous_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(|_| {})); // ذعر متوقَّع: لا نُلوّث الخرج
         let caught = std::panic::catch_unwind(|| {
-            let _ = run_registered::<()>(&name, "jobs-panic", || panic!("ذعر مصطنع"));
+            let _ = run_registered::<()>(&name, "jobs-panic", None, |_| panic!("ذعر مصطنع"));
         });
         std::panic::set_hook(previous_hook);
         assert!(caught.is_err(), "الذعر فعلاً وقع");
@@ -2025,7 +2145,7 @@ mod tests {
         let _lock = registry_lock();
         let name = unique_name("cancel");
         let mut inside = Vec::new();
-        run_registered(&name, "cancel-me", || {
+        run_registered(&name, "cancel-me", None, |_| {
             let alive = active_jobs();
             assert_eq!(alive.len(), 1, "مهمّة واحدة نشطة");
             let id = alive[0].id;
@@ -2045,11 +2165,236 @@ mod tests {
         assert!(active_jobs().is_empty(), "السِجلّ فارغ في النهاية");
     }
 
+    // ── م٢: الإلغاء الحقيقي — قتل الشجرة، صفر يتيم، إعادة معالجة فورية ──
+
+    /// كم ينام المساعد وأبناؤه (ثانية) إن لم يُقتلوا — أطول بكثير من كل مهلة
+    /// في هذه الاختبارات، فلا يمرّ اختبارٌ لأن النوم انتهى من نفسه.
+    const HELPER_SLEEP_SECS: u32 = 60;
+
+    /// أمر «نائم» **بعملية حقيقية**: `pwsh -Command Start-Sleep N` ثم كتابة
+    /// علامة النجاة. و`pwsh` نفسه يبقى حيّاً (`Start-Sleep` مدمج، بلا عملية
+    /// فرعية إضافية من عنده).
+    #[cfg(windows)]
+    fn sleeper_command(marker: &Path, secs: u32) -> (String, Vec<std::ffi::OsString>) {
+        let script = format!(
+            "Start-Sleep -Seconds {secs}; New-Item -Path '{}' -ItemType File -Force | Out-Null",
+            marker.display()
+        );
+        (
+            "pwsh".to_string(),
+            ["-NoProfile", "-NonInteractive", "-Command", &script]
+                .iter()
+                .map(std::ffi::OsString::from)
+                .collect(),
+        )
+    }
+
+    /// **الادّعاء (ت٢ · ت١)**: `cancel_job(id)` يقتل **شجرة** العمليات فوراً،
+    /// والسِجلّ يفرغ، ولا يبقى أثر.
+    ///
+    /// القياس على **مسار الإنتاج نفسه**: مهمّة حقيقية في السِجلّ، وأداة طويلة
+    /// **حقيقية** (`pwsh` نائم 60 ث) تُشغَّل بـ`proc::run_cancellable_cmd` على
+    /// **الخيط نفسه** الذي دخل سياق المهمّة — وهو شرط المسار الإنتاجي (سياق
+    /// المهمّة `thread_local`، فلا يراه خيط آخر لم يدخل). والإلغاء يجري من خيط
+    /// ثانٍ **كما في الإنتاج** (زر الإيقاف/`/kill` من خيط آخر أثناء الحجب).
+    ///
+    /// والدليل **علامتان لا تُكتبان إلا عند النجاة**: علامة الابن
+    /// (`tree_done`) تُكتب بعد 60 ث، وعلامة الأداة (`tool_done`) في نهاية
+    /// سكربت pwsh — فغيابهما يعني أن الشجرة كلها ماتت قبل أوانها.
+    #[cfg(windows)]
+    #[test]
+    fn cancel_kills_the_whole_process_tree_and_frees_the_registry() {
+        let _lock = registry_lock();
+        let dir = tmp_dir("cancel_tree");
+        let tree_done = dir.join("tree_done");
+        let tool_done = dir.join("tool_done");
+        assert!(
+            !tree_done.exists() && !tool_done.exists(),
+            "ملفات علامة قديمة — القياس سيكون على أثر سابق"
+        );
+
+        let name = unique_name("cancel-tree");
+        let (program, args) = sleeper_command(&tree_done, HELPER_SLEEP_SECS);
+        let mut stopped = Duration::MAX;
+        let mut message = String::new();
+        let outcome = run_registered(&name, "cancel-tree", None, |token| {
+            let id = active_jobs().first().map(|j| j.id).expect("مسجَّلة");
+            // خيط المُلغِي: ينتظر أن تستقر الأداة جارية ثم يُلغي — تماماً كما
+            // يقع في الإنتاج (الطلب من خيط آخر أثناء حجب نداء الأداة).
+            let killer = std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(1500));
+                let t = std::time::Instant::now();
+                let ok = cancel_job(id);
+                (ok, t.elapsed())
+            });
+            // ضابط موجب: الأداة **جارية** لحظة الطلب (لا نوم انتهى من نفسه).
+            let r = proc::run_cancellable_cmd(
+                Path::new(&program),
+                &args,
+                proc::current_cancel().as_ref(),
+            );
+            let (ok, elapsed) = killer.join().expect("خيط الإلغاء");
+            assert!(ok, "cancel_job على مهمّة نشطة");
+            stopped = elapsed;
+            message = match r {
+                Ok(o) => format!("نجحت ({:?})", o.status),
+                Err(e) => e,
+            };
+            assert!(token.is_cancelled(), "رمز المهمّة انضبط في السِجلّ");
+            Err::<(), String>("انتهت المهمّة بعد الإلغاء (متوقَّع)".into())
+        });
+        assert!(outcome.is_err(), "الإلغاء لا يُعيد نجاحاً");
+        assert_eq!(message, proc::CANCELLED, "نداء الأداة عاد بالإلغاء");
+        for (p, what) in [
+            (&tree_done, "الابن نجا 60 ث (الشجرة لم تُقتل)"),
+            (&tool_done, "الأداة أكملت نومها (لم تُقتل)"),
+        ] {
+            assert!(!p.exists(), "{what}: {}", p.display());
+        }
+        assert!(
+            stopped < Duration::from_secs(2),
+            "من الطلب إلى انتهاء النداء {stopped:?} — تجاوز السقف (النوم 60 ث)"
+        );
+        // والسِجلّ يفرغ (ت٤).
+        assert!(wait_until_idle(Duration::from_secs(5)), "السِجلّ يفرغ");
+        // **صفر يتيم**: لا `pwsh` نائمة على `Start-Sleep` في الجهاز.
+        let strays = stray_sleepers();
+        assert!(strays.is_empty(), "عمليات يتيمة بعد الإلغاء: {strays:?}");
+        eprintln!(
+            "م٢/اليتيم: الرسالة «{message}» · من الطلب إلى العودة {stopped:?} · \
+             علامات النجاة (0 متوقَّعة): tree={} tool={} · مجرَّدات pwsh النائمة: {}",
+            tree_done.exists(),
+            tool_done.exists(),
+            strays.len()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// جرد `pwsh` النائمة على `Start-Sleep` **بعينها** — لا جرد كل `pwsh` على
+    /// الجهاز (وإلا قاس الاختبار عمليات غيره).
+    #[cfg(windows)]
+    fn stray_sleepers() -> Vec<u32> {
+        let out = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Get-CimInstance Win32_Process -Filter \"Name='pwsh.exe'\" | \
+                 Where-Object { $_.CommandLine -like '*Start-Sleep*' } | \
+                 Select-Object -ExpandProperty ProcessId",
+            ])
+            .output();
+        let text = out
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .unwrap_or_default();
+        text.split_whitespace()
+            .filter_map(|t| t.trim().parse::<u32>().ok())
+            .collect()
+    }
+
+    /// **الادّعاء (ت٣ · ت٦)**: لا ناتج جزئي ولا مجلد عمل بعد الإلغاء، والخطأ
+    /// يحمل «أُلغيت».
+    ///
+    /// والمسار المقيس هو مسار الإنتاج: أداة حقيقية تفشل بخطأ على `stderr`
+    /// (مخرج ≠0)، والأداة الثانية تُلغى **قبل** أن تكتب ناتجها.
+    #[cfg(windows)]
+    #[test]
+    fn a_cancelled_tool_reports_cancellation_and_leaves_no_output() {
+        let _lock = registry_lock();
+        let dir = tmp_dir("cancel_out");
+        let never = dir.join("never_written.mp3");
+        let done = dir.join("tool_done");
+        let name = unique_name("cancel-out");
+        let mut message = String::new();
+        let outcome = run_registered(&name, "cancel-out", None, |token| {
+            let id = active_jobs().first().map(|j| j.id).expect("مسجَّلة");
+            token.set();
+            assert!(cancel_job(id), "الإلغاء يقع");
+            // الأداة تُشغَّل برمز مضبوط سلفاً: أول دورة استطلاع تقتلها.
+            let (program, args) = sleeper_command(&done, HELPER_SLEEP_SECS);
+            let r = proc::run_cancellable_cmd(
+                Path::new(&program),
+                &args,
+                proc::current_cancel().as_ref(),
+            );
+            message = match r {
+                Ok(o) => format!("نجحت ({:?})", o.status),
+                Err(e) => e,
+            };
+            Ok::<(), String>(())
+        });
+        assert!(outcome.is_ok(), "الجسم نفسه لم يفشل — الفشل من الأداة");
+        assert_eq!(message, proc::CANCELLED, "الرسالة هي رسالة الإلغاء الواحدة");
+        assert!(!done.exists(), "الأداة لم تكمل: {}", done.display());
+        assert!(!never.exists(), "لا ناتج جزئي: {}", never.display());
+        assert!(stray_sleepers().is_empty(), "لا يتيم بعد إلغاء الأداة");
+        eprintln!("م٢/لا ناتج: الرسالة «{message}» · ناتج={}", never.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **الادّعاء (ت٦)**: مسار الفشل يحفظ `stderr` — إسقاط القراءة يُسقط هذا.
+    ///
+    /// **حدّ أمانة في القياس**: النصّ المقصود **ASCII** عن قصد. محاولة أولى
+    /// بعلامة عربية فشلت لأن تمرير وسيطة عربية عبر `CreateProcess` إلى
+    /// `powershell` يعبر ترميز وحدة التحكّم (cp1256 على هذا الجهاز) — فالفرق
+    /// المرصود كان في **الأداة لا في الأنبوب**. والاتّباع الدقيق (UTF-8 عبر
+    /// الأنبوب) هو ما يقيسه `a_utf8_stderr_survives_the_pipe` أدناه.
+    #[cfg(windows)]
+    #[test]
+    fn a_failing_tool_still_reports_the_last_stderr_line() {
+        let out = proc::run_cancellable(
+            Path::new("powershell"),
+            &[
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "[Console]::Error.WriteLine('stderr-tail-marker'); exit 3",
+            ],
+            None,
+        )
+        .expect("النداء نجح (الخروج ≠0 ليس فشل تشغيل)");
+        assert!(!out.status.success(), "رمز الخروج ≠0");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            err.contains("stderr-tail-marker"),
+            "stderr محفوظ في المخرجات: {err:?}"
+        );
+    }
+
+    /// **الادّعاء**: الأنبوب يحمل UTF-8 سليماً (وهو ما يمرّ فعلاً في الإنتاج:
+    /// رسائل ffmpeg و`PYTHONIOENCODING=utf-8` في yt-dlp). والعلامة تُبنى في
+    /// الأداة من بايتات صريحة، فلا يعبر النصّ ترميز وسائط ويندوز.
+    #[cfg(windows)]
+    #[test]
+    fn a_utf8_stderr_survives_the_pipe() {
+        let out = proc::run_cancellable(
+            Path::new("powershell"),
+            &[
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "[Console]::OpenStandardError().Write([byte[]](0xD8,0xB3,0xD8,0xB7,0xD8,0xB1),0,6); exit 3",
+            ],
+            None,
+        )
+        .expect("النداء نجح");
+        assert!(!out.status.success(), "رمز الخروج ≠0");
+        assert_eq!(
+            String::from_utf8_lossy(&out.stderr).trim(),
+            "سطر",
+            "ثلاثة بايتات UTF-8 تعبر الأنبوب كما هي"
+        );
+    }
+
     // ── الغلاف نفسه على المحرّك الحقيقي ────────────────────────────────
 
     /// `run_separation` الحقيقي (بلا محرّك مُبدَّل): ملف غير موجود ⇒ فشل سريع
     /// من المحرّك، والسِجلّ يعود فارغاً والفتحة تُحرَّر. اسم الفتحة فريد، فلا
     /// ينتظر الاختبار فتحات تطبيق المالك.
+    ///
+    /// **وهو أيضاً مُفسَد إعادة المعالجة**: قبل إصلاح القفل كان القفل الميت
+    /// يبقى ١٢ ساعة — ومسار هذا الاختبار لا يلمسه (لا يُقتل حامله)، فالمُفسَد
+    /// المقصود هناك في `pipeline::tests` حيث يُقتل المالك فعلاً.
     #[test]
     fn the_real_wrapper_fails_fast_on_a_missing_file_and_leaves_no_trace() {
         let _lock = registry_lock();
@@ -2082,7 +2427,7 @@ mod tests {
         );
         assert!(active_jobs().is_empty(), "السِجلّ فارغ بعد الفشل الحقيقي");
         // والفتحة تحرّرت فعلاً: مهمّة ثانية بالاسم نفسه تجدها فوراً.
-        run_registered(&name, "after-failure", || Ok(())).expect("الفتحة متاحة بعد الفشل");
+        run_registered(&name, "after-failure", None, |_| Ok(())).expect("الفتحة متاحة بعد الفشل");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2491,17 +2836,19 @@ mod tests {
         let name = unique_name("paths");
 
         // ١) النجاح: المهمّة تحمل الرمز ثم تُسقطه.
-        run_registered(&name, "ok", || Ok::<_, String>(())).expect("مهمّة ناجحة");
+        run_registered(&name, "ok", None, |_| Ok::<_, String>(())).expect("مهمّة ناجحة");
 
         // ٢) الخطأ: الجسم يعيد خطأً — الحارس يُسقط الرمز أثناء الانتشار.
-        let failed = run_registered(&name, "err", || Err::<(), String>("عطل مصطنع".into()));
+        let failed = run_registered(&name, "err", None, |_| {
+            Err::<(), String>("عطل مصطنع".into())
+        });
         assert!(failed.is_err(), "الجسم أعاد خطأً");
 
         // ٣) الذعر: الحارس يُسقط الرمز أثناء فكّ المكدّس.
         let previous_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(|_| {})); // ذعر متوقَّع: لا نُلوّث الخرج
         let caught = std::panic::catch_unwind(|| {
-            let _ = run_registered::<()>(&name, "panic", || panic!("ذعر مصطنع"));
+            let _ = run_registered::<()>(&name, "panic", None, |_| panic!("ذعر مصطنع"));
         });
         std::panic::set_hook(previous_hook);
         assert!(caught.is_err(), "الذعر وقع فعلاً");
@@ -2706,7 +3053,7 @@ mod tests {
         let previous_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(|_| {})); // ذعر متوقَّع: لا نُلوّث الخرج
         let caught = std::panic::catch_unwind(|| {
-            let _ = run_registered::<()>(&name, "panic-holder", || panic!("ذعر مصطنع"));
+            let _ = run_registered::<()>(&name, "panic-holder", None, |_| panic!("ذعر مصطنع"));
         });
         std::panic::set_hook(previous_hook);
         assert!(caught.is_err(), "الذعر وقع فعلاً");
