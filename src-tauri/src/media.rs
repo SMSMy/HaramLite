@@ -1385,6 +1385,40 @@ pub fn target_video_kbps(duration_secs: f64, target_mb: f64, audio_kbps: u32) ->
     }
 }
 
+/// مدة أو هدف **غير صالح**: يمسك الصفر و`NaN` معاً.
+///
+/// و`x.is_nan() || x <= 0.0` تساوي `!(x > 0.0)` حرفاً — لكن بصيغة صريحة
+/// يقرؤها clippy (الصيغة المنفية على نوع ذي ترتيب جزئي تُعدّ عنده صعبة القراءة).
+/// والسلوك واحد: `NaN` ليس مدةً صالحة.
+pub(crate) fn invalid_budget(x: f64) -> bool {
+    x.is_nan() || x <= 0.0
+}
+
+/// أدنى معدّل صوتي معقول: تحته يصير الكلام غير مفهوم، فلا معنى لتقديمه.
+pub const MIN_AUDIO_KBPS: u32 = 32;
+/// أعلى معدّل صوتي مفيد لملف يُرسل في محادثة: فوقه لا يشتري شيئاً مسموعاً.
+pub const MAX_AUDIO_KBPS: u32 = 320;
+
+/// معدّل الصوت الذي يدخل `target_mb` في `duration_secs` — معكوسُ
+/// [`target_video_kbps`] نفسه (‏`mb × 8192 / ث`)، بنفس فسحة الحاوية ٤٪.
+///
+/// **ويُقصّ إلى `[MIN_AUDIO_KBPS, MAX_AUDIO_KBPS]`**: هذا **هدف** لا وعد،
+/// فالقصّ إلى الأعلى يعني أن الهدف تحقّق بفسحة، والقصّ إلى الأسفل يعني أن
+/// المدة أطول من أن يحملها أدنى معدّل — **وهنا على المستدعي أن يفحص**
+/// (`projected_mb`) ويقول للمستخدم إنه لا يدخل بدل أن يَعِد بما لا يقع.
+///
+/// صفر تعني «مدة أو هدف غير صالح» — لا قسمة على صفر ولا `NaN`.
+pub fn target_audio_kbps(duration_secs: f64, target_mb: f64) -> u32 {
+    if invalid_budget(duration_secs) || invalid_budget(target_mb) {
+        return 0;
+    }
+    let total_kbps = (target_mb * 8192.0) / duration_secs;
+    let usable = total_kbps * 0.96;
+    // `as u32` على `NaN`/سالب يعطي صفراً في Rust (محدَّد منذ 1.45)، والقصّ
+    // بعدها يرفعه إلى الحدّ الأدنى — بلا ذعر.
+    (usable as u32).clamp(MIN_AUDIO_KBPS, MAX_AUDIO_KBPS)
+}
+
 /// Full ffmpeg argument list for the **byte-budget** path. Pure, so the flag
 /// guard test can assert the rate constraint and the pixel format without
 /// spawning ffmpeg.
@@ -1495,6 +1529,57 @@ pub fn transcode_to_bitrate(
     Ok(out_path.to_path_buf())
 }
 
+/// إعادة ترميز **الصوت وحده** إلى معدّل بايتاتي محدَّد — المسار الذي يشتغل
+/// عليه زرّ «🗜️ اضغط وأرسل» حين يكون الناتج صوتاً (أو حين يُختار إرسال الصوت).
+///
+/// **ولماذا دالّة جديدة ولماذا mp3**: `extract_audio` تكتب `-b:a 320k` ثابتاً
+/// (ولا تُعيد ترميز الصوت أصلاً إن كان المصدر صوتاً — تُنسخ نسخاً)، فتمرير
+/// معدّلٍ محسوب إليها مستحيل بلا تغيير سلوك مسار قائم. وهذه دالّة **مستقلّة**
+/// لا تلمس `extract_audio` ولا `transcode_to_bitrate`، فهما محفوظتان حرفاً
+/// (شرط قبول م٣: «لا تغيير في سلوك مسار الفيديو القائم»).
+///
+/// و`-vn` مقصود: لو كان الدخل فيديو فالمطلوب صوت لا صورة.
+pub fn compress_audio(input: &Path, out_path: &Path, kbps: u32) -> Result<PathBuf, MediaError> {
+    if kbps == 0 {
+        return Err(MediaError::InvalidOutput(
+            "معدّل صوتي صفر — لا هدف يُرمَّز إليه".into(),
+        ));
+    }
+    let ffmpeg = resolve_tool("ffmpeg")?;
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
+    }
+    let bitrate = format!("{kbps}k");
+    let in_str = input.to_string_lossy().into_owned();
+    let out_str = out_path.to_string_lossy().into_owned();
+    let args: Vec<&str> = vec![
+        "-y",
+        "-v",
+        "error",
+        "-i",
+        &in_str,
+        "-vn",
+        "-c:a",
+        "libmp3lame",
+        "-b:a",
+        &bitrate,
+        &out_str,
+    ];
+    run_ffmpeg(&ffmpeg, &args)?;
+    if !out_path.is_file() {
+        return Err(MediaError::InvalidOutput(format!(
+            "لم يُنتج ffmpeg ملفاً: {}",
+            out_path.display()
+        )));
+    }
+    tracing::info!(
+        target: "media",
+        "أُعيد ترميز الصوت إلى {kbps} kbps: {}",
+        out_path.display()
+    );
+    Ok(out_path.to_path_buf())
+}
+
 #[cfg(test)]
 mod telegram_size_tests {
     use super::*;
@@ -1530,6 +1615,54 @@ mod telegram_size_tests {
         assert_eq!(target_video_kbps(-5.0, 40.0, 96), 0);
         assert_eq!(target_video_kbps(60.0, 0.0, 96), 0);
         assert_eq!(target_video_kbps(f64::NAN, 40.0, 96), 0);
+    }
+
+    // ── م٣: معدّل الصوت المحسوب (زرّ «اضغط وأرسل» للناتج الصوتي) ─────────────
+
+    /// المعدّل المحسوب **يدخل الهدف فعلاً** عند مدة معقولة: 30 دقيقة في 40 م.ب
+    /// ⇒ `40×8192/1800 = 182` كيلوبت، ×0.96 = 174 ⇒ داخل [32,320] فلا قصّ.
+    #[test]
+    fn target_audio_kbps_matches_the_inverse_of_the_owner_formula() {
+        let k = target_audio_kbps(1800.0, 40.0);
+        assert!((k as i64 - 174).abs() <= 4, "got {k}");
+        // ولا يتجاوز الهدف: kbps×ث/8192 = م.ب
+        let mb = f64::from(k) * 1800.0 / 8192.0;
+        assert!(mb <= 40.0, "المعدّل يتجاوز الهدف: {mb} م.ب");
+        // و10 دقائق في 40 م.ب تطلب 524 كيلوبت ⇒ تُقصّ إلى السقف، والمقصوص
+        // **يدخل الهدف بفسحة** (320×600/8192 = 23.4 م.ب) فلا وعد كاذب.
+        let k = target_audio_kbps(600.0, 40.0);
+        assert_eq!(k, MAX_AUDIO_KBPS);
+        assert!(f64::from(k) * 600.0 / 8192.0 <= 40.0);
+    }
+
+    /// **القصّ إلى [32, 320]** مقيس من الطرفين: مدة قصيرة جداً (المعدّل المطلوب
+    /// آلاف الكيلوبتات) تُقصّ إلى 320، ومدة طويلة تُقصّ إلى 32 — والقصر يعني أن
+    /// على المستدعي أن **يفحص** أن الهدف تحقّق، لا أن يفترضه.
+    #[test]
+    fn target_audio_kbps_is_clamped_at_both_ends() {
+        assert_eq!(target_audio_kbps(1.0, 40.0), MAX_AUDIO_KBPS, "قصّ أعلى");
+        assert_eq!(
+            target_audio_kbps(100_000.0, 40.0),
+            MIN_AUDIO_KBPS,
+            "قصّ أدنى"
+        );
+        // ومدة 5 ساعات في 40 م.ب ⇒ 18 كيلوبت مطلوبة ⇒ تُقصّ إلى 32 ⇒ **لا يدخل**،
+        // وهذا ما يجب أن يراه المستدعي ويقوله صراحةً.
+        let k = target_audio_kbps(5.0 * 3600.0, 40.0);
+        assert_eq!(k, MIN_AUDIO_KBPS);
+        assert!(f64::from(k) * (5.0 * 3600.0) / 8192.0 > 40.0);
+    }
+
+    /// مُفسَد محروس: مدة أو هدف غير صالح ⇒ **صفر**، لا قسمة على صفر ولا `NaN`
+    /// ولا ذعر من `as u32`.
+    #[test]
+    fn target_audio_kbps_returns_zero_for_invalid_input() {
+        assert_eq!(target_audio_kbps(0.0, 40.0), 0);
+        assert_eq!(target_audio_kbps(-3.0, 40.0), 0);
+        assert_eq!(target_audio_kbps(60.0, 0.0), 0);
+        assert_eq!(target_audio_kbps(60.0, -1.0), 0);
+        assert_eq!(target_audio_kbps(f64::NAN, 40.0), 0);
+        assert_eq!(target_audio_kbps(f64::INFINITY, 40.0), MIN_AUDIO_KBPS);
     }
 }
 
