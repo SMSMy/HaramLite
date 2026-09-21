@@ -1517,6 +1517,51 @@ mod tests {
 
     // ── القيمة والاسم (دوالّ نقية) ─────────────────────────────────────
 
+    // ── عقد الالتحام مع الواجهة (م٢) ─────────────────────────────────
+
+    /// **عقد الالتحام (م٢)**: الواجهة تُطابق عنصر الطابور بالمهمّة عبر `path`
+    /// (`src/jobs.ts`)، فإن لم يُملأ المسار لم يجد الزرّ مهمّته فقال «لا مهمّة
+    /// خلفية» — صادق لكنه غير مفيد. وهذا الاختبار يثبّت أن المسار **يُسجَّل
+    /// فعلاً** عبر المسار الإنتاجي نفسه (`run_registered_with` الذي يناديه
+    /// `run_separation`)، وأن وسم مهمّة الواجهة يبقى `"gui"` (الواجهة تقارنه
+    /// نصّاً: `String(job.label).toLowerCase() === 'gui'`).
+    ///
+    /// (أُضيف عند الدمج لأن العاملَين أشارا إليه كنقطة التحام ولم يثبّتها
+    /// أحدٌ منهما: عامل الواجهة لا يملك Rust، وعامل النواة لا يملك الواجهة.)
+    #[test]
+    fn a_running_job_exposes_its_input_path_and_the_gui_label() {
+        let _lock = registry_lock();
+        let name = unique_name("ui-contract");
+        let input = r"C:\in\song with space.mp3";
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let n = name.clone();
+        let t = std::thread::spawn(move || {
+            run_registered_with(&n, "gui", Some(input), MAX_LIMIT, |_tok| {
+                let _ = tx.send(());
+                std::thread::sleep(Duration::from_millis(300));
+                Ok(())
+            })
+            .expect("المهمّة أُخذت فتحة");
+        });
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("المهمّة بدأت خلال المهلة");
+        let jobs = active_jobs();
+        let me = jobs
+            .iter()
+            .find(|j| j.path.as_deref() == Some(input))
+            .expect("مهمّة بمسار الإدخال مسجّلة في السِجلّ");
+        assert_eq!(me.label, "gui", "وسم مهمّة الواجهة يبقى gui نصّاً");
+        assert!(!me.cancelled, "ولا تكون ملغاة قبل أي طلب إلغاء");
+        assert!(me.started_ms > 0, "وطابع البدء مسجَّل");
+        t.join().expect("لا ذعر في خيط المهمّة");
+        assert!(
+            active_jobs()
+                .iter()
+                .all(|j| j.path.as_deref() != Some(input)),
+            "وتُزال من السِجلّ بعد الانتهاء (فلا صفوف عالقة في الطابور)"
+        );
+    }
+
     #[test]
     fn the_limit_is_clamped_to_the_card_ceiling() {
         // `current_limit()` حالة عامّة للعملية: القفل يمنع أن يقرأها هذا
