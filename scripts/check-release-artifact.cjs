@@ -120,7 +120,10 @@ if (!exists(EXE)) {
       }
     }
   }
-  for (const rel of ['index.html', 'package.json', 'src-tauri/tauri.conf.json', 'src-tauri/Cargo.toml']) {
+  /* تُقاس **مدخلات البناء المُصرَّفة** وحدها: `package.json` و`docs/**` و`scripts/**`
+     لا تدخل في صورة الثنائي (سكربتات npm ووثائق)، فتعديلها لا يُبطل نسخة سليمة —
+     وإدخالها كان يُنتج إنذاراً كاذباً بعد كل تحرير سكربت. */
+  for (const rel of ['index.html', 'src-tauri/tauri.conf.json', 'src-tauri/Cargo.toml']) {
     if (exists(path.join(root, rel))) set.push(path.join(root, rel));
   }
   /* من `dist` تُقاس الشيفرة المبنيّة وحدها (‏index.html وjs/css): الخطوط
