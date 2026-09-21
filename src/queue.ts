@@ -541,7 +541,7 @@ function renderStopBar(): void {
   if (targetEl) {
     targetEl.textContent = target
       ? t('stop_target_line', { name: jobDisplayName(target) })
-      : t('stop_local_queued');
+      : t('stop_target_none'); // «لا مهمّة معروفة» ≠ رسالة الإلغاء المحلي: لم يُلغَ شيء بعد
   }
   const note = document.getElementById('stop-note');
   if (note && lastJobsError) {
