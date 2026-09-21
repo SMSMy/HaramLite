@@ -623,18 +623,54 @@ fn clip_video_run_keeps_the_deliverable_full_length() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+// ───────────────────────────── عقد `clip` — حضور الحقل وقيمته ────────────────────
+
+/// **المرحلة ٢ — مسبار الحضور**: بناء `PipelineOutput` حرفياً مع `page_kept`
+/// يجعل **غياب** الحقل خطأَ بناءٍ صريحاً (`error[E0560]: struct PipelineOutput
+/// has no field named page_kept` — وهو ما قِيس على `main` قبل الدمج)، لا نجاحاً
+/// صامتاً. والقيمة المقيسة هنا: مسار `clip` يحمل خريطته في الحقل **المستقل**
+/// و`kept_ranges` تبقى فارغة (ب٥ على مستوى البيانات).
+#[test]
+fn the_clip_contract_carries_page_kept_and_keeps_kept_ranges_empty() {
+    let (l0, r0) = sparse_clip(9.0);
+    let page_map = compute_kept_ranges(&l0, &r0, SR, &SilenceConfig::default());
+    assert!(!page_map.is_empty(), "خريطة الصفحة يجب أن تحمل قصّاً");
+    let map_secs: Vec<(f64, f64)> = page_map
+        .iter()
+        .map(|(a, b)| (*a as f64 / SR as f64, *b as f64 / SR as f64))
+        .collect();
+
+    let clip = crate::pipeline::PipelineOutput {
+        vocals: None,
+        instrumental: None,
+        video: None,
+        kept_ranges: Vec::new(),
+        page_kept: map_secs.clone(),
+        seconds: 1.0,
+    };
+    assert!(
+        clip.kept_ranges.is_empty(),
+        "ب٥: مسار clip لا يملأ kept_ranges"
+    );
+    assert_eq!(clip.page_kept, map_secs, "ب٣: الحقل المستقل يحمل خريطة الصفحة");
+    // والقانون ② على الحقل الجديد: خريطته تصف ملف صوت الصفحة (المقصوص).
+    law_published_map_matches_file(&clip.page_kept, kept_sum(&page_map) as f64 / SR as f64)
+        .expect("خريطة الصفحة تصف ملفها");
+    println!(
+        "M6B-GUARD claim=contract result=PASS page_kept_ranges={} kept_ranges={}",
+        clip.page_kept.len(),
+        clip.kept_ranges.len()
+    );
+}
+
 // ───────────────────────────── ما لم يُقَس: يُسمّى ولا يُسكت ─────────────────────
 
-/// ادّعاءات **لم تُقَس** في المرحلة ١، مسمّاةً صراحةً: الحارس الذي «ينجح» على ادّعاء
-/// لم يُقَس هو النجاح الكاذب نفسه. تُقلَّص هذه القائمة في المرحلة ٢ (‏`m6b_clip_guard_frozen.rs`).
+/// ادّعاء **لم يُقَس بالتشغيل** — مسمّىً صراحةً: الحارس الذي «ينجح» على ادّعاء لم
+/// يُقَس هو النجاح الكاذب نفسه.
 const M6B_UNMEASURED: &[(&str, &str)] = &[
     (
-        "ب٢",
-        "عقد `last` يحمل `mode` ويميّزه: يُبنى inline في `bridge` داخل مهمّة كاملة (تنزيل+ffmpeg+محرّك) ولا واجهة نقيّة له ⇒ يُقاس في المرحلة ٢ بمسبار على الالتزام المجمَّد",
-    ),
-    (
-        "ب٣-وصل",
-        "خريطة صوت الصفحة مقابل ملف صوت الصفحة (الوصل بين القصّ والخريطة في مسار clip): موضع بناء صوت الصفحة يتغيّر بتصميم العامل ⇒ يُقاس في المرحلة ٢ على الواجهة الحقيقية",
+        "ب٢-الأثر",
+        "«بلا mode يخلط المشغّل خريطة أغنية بخريطة clip»: الحقل **يوجد ويميّز** (مقيس: `last_ok_payload`)، لكن **لا مستهلك له** — الإضافة صفر تغيير في المرحلة ١ (`content.js:1243-1267` يقرأ `last.kept` بلا تمييز) و`src/**` لا يقرأ `mode`/`page_kept` (مقيس بالبحث في الشجرة) ⇒ الخلط **قائم** حتى يُستهلك الحقل: عقدٌ لا علاج",
     ),
 ];
 
@@ -645,7 +681,7 @@ fn unmeasured_claims_are_named_not_silently_green() {
     }
     assert_eq!(
         M6B_UNMEASURED.len(),
-        2,
+        1,
         "قائمة غير المقيس تغيّرت ⇒ يجب تحديث التقرير لا إسكات الحارس"
     );
 }

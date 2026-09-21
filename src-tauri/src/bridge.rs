@@ -2439,3 +2439,238 @@ mod tests {
         );
     }
 }
+
+/// ── **مسبار الجاسوس المستقلّ (م٦-ب)** — اختبارات فقط، ولا سطر إنتاجي واحد ──
+///
+/// كُتب من نصّ المتطلَّب (`ARCHIVE/0.2.9PLAN.md` §٩-ب · `m6b-brief.md` §٣/§٥) ثم
+/// صُفِّي على الالتزام المجمَّد `f1c5215`. وموضعه **داخل `bridge.rs`** لأن
+/// `ensure_page_audio` و`cut_page_audio` و`last_ok_payload` **خاصّة بهذا الملف**
+/// ولا تصل إليها وحدةٌ شقيقة مثل `m6b_clip_guard` — فالقياس على دالّة الإنتاج
+/// نفسها لا على حارسٍ موازٍ لها.
+#[cfg(test)]
+mod m6b_spy_probe {
+    use super::*;
+
+    fn tools_available() -> bool {
+        crate::media::resolve_tool("ffmpeg").is_ok() && crate::media::resolve_tool("ffprobe").is_ok()
+    }
+
+    fn tmp_dir(name: &str) -> PathBuf {
+        let p = std::env::temp_dir().join(format!("hl_m6b_spy_{name}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).expect("مجلد مؤقّت");
+        p
+    }
+
+    /// ٦ ثوانٍ: نغمة ٢ / صمت ٢ / نغمة ٢ — فجوة وسطى واحدة (نفس شكل اختبار العامل).
+    fn tone_silence_tone(sr: u32) -> (Vec<f32>, Vec<f32>) {
+        let mut l: Vec<f32> = Vec::new();
+        for loud in [true, false, true] {
+            for i in 0..sr as usize * 2 {
+                let t = i as f32 / sr as f32;
+                l.push(if loud {
+                    (2.0 * std::f32::consts::PI * 440.0 * t).sin() * 0.5
+                } else {
+                    0.0
+                });
+            }
+        }
+        (l.clone(), l)
+    }
+
+    /// **ب٢ + السؤال ٢**: عقد السلك يميّز المسارين، و`page_kept` **ليس مستقلاً عن
+    /// `kept` على السلك**: في `clip` هما القيمة نفسها (`served_kept`) دائماً،
+    /// والاختلاف يقع **بين المسارين** لا بين الحقلين.
+    #[test]
+    fn the_wire_contract_distinguishes_modes_and_page_kept_mirrors_kept_in_clip() {
+        let song_map = vec![(0.0f64, 10.0), (20.0, 30.0)];
+        let clip_map = vec![(0.0f64, 12.0), (18.0, 30.0)];
+        let p = PathBuf::from("C:\\pa\\a.mp3");
+        let mk = |m: &[(f64, f64)], mode: Mode| {
+            last_ok_payload(&LastJob {
+                name: "a.mp4",
+                seconds: 12.5,
+                vocals: Some(&p),
+                video: None,
+                page_audio: Some(&p),
+                served_kept: m,
+                mode,
+                url: "https://youtu.be/x",
+            })
+        };
+        let song = mk(&song_map, Mode::Song);
+        let clip = mk(&clip_map, Mode::Clip);
+        let uncut = mk(&[], Mode::Clip);
+
+        assert_eq!(song["mode"], serde_json::json!("song"));
+        assert_eq!(clip["mode"], serde_json::json!("clip"));
+        assert_eq!(song["kept"], serde_json::json!(song_map));
+        assert_eq!(clip["kept"], serde_json::json!(clip_map));
+        assert_eq!(song["page_kept"], serde_json::json!([]), "أغنية: الحقل الجديد فارغ");
+        assert_eq!(clip["page_kept"], clip["kept"], "clip: الحقلان متطابقان دائماً");
+        assert_eq!(uncut["kept"], serde_json::json!([]));
+        assert_eq!(uncut["page_kept"], serde_json::json!([]));
+        println!(
+            "M6B-SPY claim=b2 result=PASS mode_song={} mode_clip={} clip_kept_eq_page_kept={} song_page_kept_empty={}",
+            song["mode"], clip["mode"], clip["page_kept"] == clip["kept"], song["page_kept"] == serde_json::json!([])
+        );
+    }
+
+    /// **ب٣-وصل + ب٤ (طرفٌ لطرف على دالّة الإنتاج)**: `ensure_page_audio` في وضع
+    /// `clip` يُسلِّم **نسخة مقصوصة**، وخريطتها المُسلَّمة هي **خريطة المصدر نفسها**،
+    /// وطول المُسلَّم (مقيساً من الملف بـffprobe) = مجموع الخريطة، وملف المستخدم
+    /// **لم يُمَس بايتاً واحداً**. وشكل المصدر هنا شكل الإنتاج: `o.vocals` في مجلد
+    /// المستخدم، ومجلد صوت الصفحة **آخر**.
+    #[test]
+    fn clip_page_audio_is_a_cut_copy_whose_map_describes_the_served_file() {
+        if !tools_available() {
+            println!("M6B-SPY claim=b3+b4 status=UNMEASURED reason=ffmpeg-or-ffprobe-missing");
+            return;
+        }
+        let _serial = crate::paths::serial_guard();
+        let sr = 44100u32;
+        let base = tmp_dir("page_cut");
+        let user_dir = base.join("user_out");
+        let pa_dir = base.join("page-audio");
+        std::fs::create_dir_all(&user_dir).unwrap();
+        std::fs::create_dir_all(&pa_dir).unwrap();
+
+        let (l, r) = tone_silence_tone(sr);
+        let src_wav = base.join("src.wav");
+        crate::separator::write_wav_stereo_f32_pub(&src_wav, &l, &r, sr).unwrap();
+        let user_file = crate::media::extract_audio(&src_wav, "mp3", &user_dir).expect("mp3");
+        let before = std::fs::read(&user_file).unwrap();
+
+        let map = crate::silence::kept_ranges_sec(&l, &r, sr, &crate::silence::SilenceConfig::default());
+        assert_eq!(map.len(), 2, "فجوة وسطى واحدة ⇒ مقطعان محفوظان: {map:?}");
+        let sum: f64 = map.iter().map(|(a, b)| b - a).sum();
+
+        let o = crate::pipeline::PipelineOutput {
+            vocals: Some(user_file.clone()),
+            instrumental: None,
+            video: None,
+            kept_ranges: Vec::new(),
+            page_kept: map.clone(),
+            seconds: 1.0,
+        };
+        let served = ensure_page_audio(&o, &pa_dir, Mode::Clip).expect("صوت الصفحة مُسلَّم");
+
+        assert!(user_file.is_file(), "ملف المستخدم اختفى");
+        assert_eq!(
+            std::fs::read(&user_file).unwrap(),
+            before,
+            "ملف المستخدم تغيّر — وعد i18n.ts:22 منقوض"
+        );
+        assert_ne!(served.path, user_file, "المُسلَّم هو ملف المستخدم نفسه (بلا قصّ)");
+        assert_eq!(served.kept, map, "الخريطة المُسلَّمة ليست خريطة المصدر");
+        let served_secs = crate::media::probe(&served.path)
+            .map(|i| i.duration_secs)
+            .unwrap_or(0.0);
+        assert!(served_secs > 0.0, "لم تُقَس مدّة المُسلَّم");
+        assert!(
+            (served_secs - sum).abs() <= crate::playermap::MAP_TOLERANCE_SECS,
+            "الخريطة لا تصف ملفها: keptSum={sum:.3}s · المُسلَّم={served_secs:.3}s"
+        );
+        assert!(
+            (served_secs - 4.0).abs() < 0.5,
+            "المُسلَّم يجب أن يكون ≈4s: {served_secs:.3}s"
+        );
+
+        let o_full = crate::pipeline::PipelineOutput {
+            vocals: Some(user_file.clone()),
+            instrumental: None,
+            video: None,
+            kept_ranges: Vec::new(),
+            page_kept: Vec::new(),
+            seconds: 1.0,
+        };
+        let uncut = ensure_page_audio(&o_full, &pa_dir, Mode::Clip).expect("المصدر يُسلَّم");
+        assert_eq!(uncut.path, user_file, "بلا خريطة: المصدر نفسه");
+        assert!(uncut.kept.is_empty(), "بلا قصّ: لا خريطة");
+        println!(
+            "M6B-SPY claim=b3+b4 result=PASS full=6.000 kept_sum={sum:.3} served={served_secs:.3} map_ranges={} source_untouched=true",
+            served.kept.len()
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// **قيد مقيس في بوّابة النشر**: الفحص الثالث في
+    /// [`crate::playermap::verified_map`] يقارن مجموع الخريطة بـ`served_secs`،
+    /// و`served_secs` ناتج القصّ **بالخريطة نفسها** ⇒ المجموع = الطول بالبناء.
+    /// فيكشف خريطة **خارجة المدى** ولا يكشف خريطة منزاحة داخل المدى.
+    #[test]
+    fn the_length_check_is_self_fulfilling_for_an_in_range_shifted_map() {
+        if !tools_available() {
+            println!("M6B-SPY claim=b3-limit status=UNMEASURED reason=ffmpeg-missing");
+            return;
+        }
+        let _serial = crate::paths::serial_guard();
+        let sr = 44100u32;
+        let dir = tmp_dir("page_shift");
+        let (l, r) = tone_silence_tone(sr);
+        let user_file = dir.join("user_page.wav");
+        crate::separator::write_wav_stereo_f32_pub(&user_file, &l, &r, sr).unwrap();
+
+        let shifted = vec![(0.5f64, 2.5), (3.5, 5.5)];
+        let sum: f64 = shifted.iter().map(|(a, b)| b - a).sum();
+        let served = cut_page_audio(&user_file, &shifted, &dir).expect("القصّ بخريطة منزاحة");
+        let served_secs = crate::media::probe(&served.path)
+            .map(|i| i.duration_secs)
+            .unwrap_or(0.0);
+        assert!(
+            (served_secs - sum).abs() <= crate::playermap::MAP_TOLERANCE_SECS,
+            "المجموع = الطول بالبناء: keptSum={sum:.3}s · المُسلَّم={served_secs:.3}s"
+        );
+        assert_eq!(
+            served.kept, shifted,
+            "الخريطة المنزاحة نُشرت — وهو القيد المقيس (لا يميّز الانزياح داخل المدى)"
+        );
+        let oversized = vec![(0.0f64, 60.0)];
+        assert!(
+            cut_page_audio(&user_file, &oversized, &dir).is_none(),
+            "خريطة تتجاوز الملف يجب أن تُرفض"
+        );
+        println!(
+            "M6B-SPY claim=b3-limit result=PASS shifted_published=true shifted_sum={sum:.3} served={served_secs:.3} oversized_rejected=true"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **شرط مُضمَر مقيس**: `cut_page_audio` تقول «ملف المصدر لا يُمَس إطلاقاً»،
+    /// لكن مسار القصّ يكتسح مجلد صوت الصفحة ([`sweep_page_audio_dir`]) ⇒ مصدرٌ
+    /// **داخل ذلك المجلد** يُحذف. والضرر في الإنتاج صفر (مصدر فرع الصوت في مجلد
+    /// المستخدم، ومصدر فرع الفيديو استخراجٌ مؤقّت بنيتُه الحذف) — فالدعوى صحيحة
+    /// **بشرط** لا بإطلاق، والشرط مُعلَن هنا.
+    #[test]
+    fn the_page_dir_sweep_deletes_a_source_that_lives_inside_it() {
+        if !tools_available() {
+            println!("M6B-SPY claim=precondition status=UNMEASURED reason=ffmpeg-missing");
+            return;
+        }
+        let _serial = crate::paths::serial_guard();
+        let sr = 44100u32;
+        let dir = tmp_dir("page_inside");
+        let (l, r) = tone_silence_tone(sr);
+        let source_inside = dir.join("user_page.wav");
+        crate::separator::write_wav_stereo_f32_pub(&source_inside, &l, &r, sr).unwrap();
+        let map = crate::silence::kept_ranges_sec(&l, &r, sr, &crate::silence::SilenceConfig::default());
+        let o = crate::pipeline::PipelineOutput {
+            vocals: Some(source_inside.clone()),
+            instrumental: None,
+            video: None,
+            kept_ranges: Vec::new(),
+            page_kept: map,
+            seconds: 1.0,
+        };
+        let served = ensure_page_audio(&o, &dir, Mode::Clip).expect("مُسلَّم");
+        assert_ne!(served.path, source_inside);
+        assert!(
+            !source_inside.is_file(),
+            "توقّعنا أن يكتسح المجلد المصدرَ الداخلي — تغيّر السلوك فحدِّث التقرير"
+        );
+        println!(
+            "M6B-SPY claim=precondition result=PASS source_inside_page_dir_deleted=true note=production-sources-live-outside"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
