@@ -316,6 +316,72 @@ CASES.push({
     args: (dir) => ['--spec', path.join(dir, 'spec.cjs')] },
 });
 
+/* ═══ ٥ب) حارس تعريب الإضافة (م٦-أ) ═════════════════════════════════════════
+ * البيئة المصنوعة تحمل `browser-extension/content.js` مصنوعاً و`scripts/` فيه
+ * الحارسان (حارس التعريب وحاكم مُفسَداته). والضابط يشترط أن **يرى** الحارس
+ * مدخلاً غير صفري: عدد النصوص العربية داخل الجدول ⇒ يوازي `sawExpected`.
+ * والمُفسَدات تُشغَّل عبر حاكم مُفسَدات التعريب نفسه (لا عبر
+ * `check-extension-mutants.cjs`، فذاك مربوط بـcontent.js وحارس المزامنة).
+ * و«صفر مدخل» = ملف فارغ تماماً ⇒ الحارس يسقط بـ«صفر مدخل» لا بنجاح فارغ. */
+const I18N_OK = "const I18N = {\n  ar: { 'a.one': 'نصّ عربي' },\n  en: { 'a.one': 'English' },\n};\n" +
+  "function pickLang(list) {\n" +
+  "  const arr = Array.isArray(list) ? list : [list];\n" +
+  "  for (const raw of arr) {\n" +
+  "    if (typeof raw !== 'string') continue;\n" +
+  "    const tag = raw.toLowerCase();\n" +
+  "    if (tag === 'ar' || tag.indexOf('ar-') === 0) return 'ar';\n" +
+  "    if (tag === 'en' || tag.indexOf('en-') === 0) return 'en';\n" +
+  "  }\n" +
+  "  return 'en';\n" +
+  "}\n" +
+  "(function () {\n" +
+  "  const t = (k) => I18N.ar[k];\n" +
+  "  toast(t('a.one'));\n" +
+  "})();\n";
+CASES.push({
+  name: 'check-extension-i18n.cjs',
+  script: S('check-extension-i18n.cjs'),
+  build(dir) {
+    mk(dir, 'browser-extension/content.js', I18N_OK);
+    copyInto(dir, 'scripts/check-extension-i18n.cjs', S('check-extension-i18n.cjs'));
+    copyInto(dir, 'scripts/check-extension-i18n-mutants.cjs', S('check-extension-i18n-mutants.cjs'));
+  },
+  controlArgs: (dir) => ['--root', dir],
+  // «المدخل المقيس» يليه `): N` في السطر، فالمطابقة تحتاج تجاوزاً غير رقمي.
+  saw: (dir, res) => { const m = res.out.match(/المدخل المقيس\D+(\d+)/); return m ? Number(m[1]) : 0; },
+  sawExpected: 1,
+  mutants: [
+    { label: 'نصّ عربي خام خارج جدول الترجمة (toast)',
+      apply: (dir) => mk(dir, 'browser-extension/content.js',
+        I18N_OK.replace("  toast(t('a.one'));", "  toast('نصّ عربي خام');")),
+      mustMatch: /خارج جدول الترجمة/ },
+    // القسم `en` يبقى **غير فارغ** والمفتاح وحده يُحذف: لو أُفرغ القسم لسقط فحص
+    // آخر («صفر مدخل» / وجود القسمين) فلا يُقاس تكافؤ المفاتيح — وهو المقصود هنا.
+    { label: 'مفتاح في ar غائب من en (والقسم قائم وغير فارغ)',
+      apply: (dir) => mk(dir, 'browser-extension/content.js',
+        I18N_OK.replace("  en: { 'a.one': 'English' },", "  en: { 'b.keep': 'Kept' },")),
+      mustMatch: /بلا مقابل في `en`/ },
+    { label: 'قيمة إنجليزية فارغة',
+      apply: (dir) => mk(dir, 'browser-extension/content.js',
+        I18N_OK.replace("'English'", "''")),
+      mustMatch: /قيمة فارغة/ },
+    { label: 'عربية بلا نصّ حرفيّ: String.fromCharCode (ثقب مقيس أُغلق)',
+      apply: (dir) => mk(dir, 'browser-extension/content.js',
+        I18N_OK.replace("  toast(t('a.one'));", '  toast(String.fromCharCode(0x639));')),
+      mustMatch: /بلا نصّ حرفيّ/ },
+    { label: 'عربية مفكوكة بالمفاتيح \\u0600 (ثقب مقيس أُغلق)',
+      apply: (dir) => mk(dir, 'browser-extension/content.js',
+        I18N_OK.replace("  toast(t('a.one'));", "  toast('\\u0646\\u0635');")),
+      mustMatch: /خارج جدول الترجمة/ },
+    { label: 'جدول الترجمة محذوف كاملاً',
+      apply: (dir) => mk(dir, 'browser-extension/content.js',
+        I18N_OK.replace(/const I18N = \{[\s\S]*?\n\};\n/, '')),
+      mustMatch: /جدول الترجمة/ },
+  ],
+  zero: { label: 'content.js فارغ تماماً',
+    apply: (dir) => mk(dir, 'browser-extension/content.js', '') },
+});
+
 /* ═══ 6) خادم المعاينة ══════════════════════════════════════════════════════ */
 const SERVE_MARK = 'OUTSIDE-DOCS-SECRET';
 CASES.push({

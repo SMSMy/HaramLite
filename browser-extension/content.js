@@ -36,6 +36,139 @@
     accent: '#DA7756', text: '#F5F2ED', sub: '#A38C85', ok: '#5DDAC8', err: '#FFB4AB',
   };
 
+  /* ── i18n: كائن ثابت، لا بناء ديناميكي ──────────────────────────────────────
+   * §٢٦ يمنع تركيب النصوص (نصّ + نصّ · `].join(` · eval · وصول محسوب)، وهذا الجدول
+   * **كائن ثابت** على نمط STAGE_AR القائم في popup.js: كل نصّ واجهة عربي في هذا
+   * الملف يحمل مفتاحاً، وقيمته نصّ حرفيّ واحد لكل لغة. لا يُبنى منه شيء وقت التشغيل.
+   *
+   * والعربية **مرجع التغطية**: الحارس check-extension-i18n.cjs يمسح هذا الملف
+   * بالمرشّح الواسع (أي نصّ يحمل محرفاً عربياً واحداً، والمختلط مثل
+   * «HaramLite — جاهز للمشاهدة» عربيٌّ عند مستخدم إنجليزي) ويُسقط أيّ نصّ عربي
+   * خارج هذا الجدول، ويفرض تكافؤ المفاتيح في الاتجاهين.
+   *
+   * واختيار اللغة بلا مفتاح تخزين جديد (§٢٧ يقفل localStorage على 'hl.synclog') وبلا
+   * chrome.i18n وبلا _locales (مقيس: لا وجود لهما في هذا المشروع ولا في المانيفست)
+   * ⇒ الاختيار من `navigator.language`/`navigator.languages` وهو **لغة واجهة
+   * المتصفح** لا لغة الصفحة، وهذا هو الصواب: مستخدم إنجليزي يشاهد فيديو عربياً
+   * يجب أن يرى واجهة إنجليزية، والعكس.
+   */
+  const I18N = {
+    ar: {
+      // أزرار الشريط
+      'btn.proc.idle': 'عالج هذا الفيديو',
+      'btn.proc.workingTitle': 'HaramLite — جارٍ العمل (نقرة للإلغاء)',
+      'btn.proc.done': 'تم التجهيز ✓',
+      'btn.proc.doneTitle': 'HaramLite — جاهز للمشاهدة',
+      'btn.proc.idleTitle': 'HaramLite — معالجة هذا الفيديو على جهازك',
+      'btn.watch.ready': 'شاهد بعد إزالة الموسيقى ▶',
+      'btn.watch.readyTitle': 'HaramLite — مشاهدة مفلترة',
+      'btn.watch.stop': '⏸ إيقاف',
+      'btn.watch.stopTitle': 'HaramLite — إيقاف المشاهدة المفلترة',
+      'btn.watch.fetching': 'جارٍ الجلب…',
+      'btn.watch.fetchingTitle': 'HaramLite — جلب الصوت المفلتر',
+      'btn.watch.disabledTitle': 'HaramLite — يفعَّل بعد التجهيز',
+      'btn.watch.fetchingPct': 'جارٍ الجلب… {pct}%',
+      // قائمة النقر الأيمن
+      'menu.reprocess': '↻ معالجة كاملة',
+      // الجسر
+      'bridge.noResponse': 'فشل الاتصال',
+      // بدء المعالجة
+      'start.sendFailed': 'فشل الإرسال',
+      'start.received': '✓ استُلم الرابط — بدء التنزيل...',
+      'cancel.done': '⏹ أُلغيت المعالجة — اضغط للبدء من جديد',
+      // نتيجة الاستطلاع
+      'poll.ok': 'تم التجهيز ✓ — شاهد بعد إزالة الموسيقى ▶',
+      'poll.failed': 'فشلت المعالجة',
+      'poll.bridgeLost': '⚠ انقطع الاتصال بتطبيق HaramLite — شغّل التطبيق وفعّل التكامل ثم أعد المحاولة',
+      // جلب الصوت المفلتر
+      'fetch.emptyReply': 'رد فارغ من التطبيق — أعد المحاولة',
+      'fetch.partialFile': 'ملف ناقص — أعد المحاولة',
+      'fetch.failed': 'تعذر الجلب',
+      'fetch.decodeFailed': 'تعذر قراءة الصوت المفلتر',
+      'fetch.unsupported': 'صيغة غير مدعومة في المتصفح',
+      // سطر المشاهدة
+      'watch.line': '▶ مشاهدة مفلترة — الصوت من المعالجة المحلية',
+      'watch.lineAgo': '▶ مشاهدة مفلترة — الصوت من المعالجة المحلية (عولجت في {s} ث)',
+      // المشاهدة
+      'watch.needMap': '✗ ابنِ الخريطة أولاً — اضغط «عالج هذا الفيديو»',
+      'watch.noVideo': '✗ لم يُعثر على فيديو الصفحة',
+      'watch.mapMissing': '✗ إخراج مقصوص الصمت بلا خريطة — اطلب المعالجة من جديد',
+      'watch.playAudio': '▶ اضغط تشغيل لبدء الصوت المفلتر',
+      'watch.playVideo': '▶ اضغط تشغيل الفيديو لبدء المشاهدة',
+      'watch.stopped': '⏹ توقفت المشاهدة — عاد صوت الصفحة الأصلي',
+    },
+    en: {
+      'btn.proc.idle': 'Process this video',
+      'btn.proc.workingTitle': 'HaramLite — working (click to cancel)',
+      'btn.proc.done': 'Ready ✓',
+      'btn.proc.doneTitle': 'HaramLite — ready to watch',
+      'btn.proc.idleTitle': 'HaramLite — process this video on your machine',
+      'btn.watch.ready': 'Watch without music ▶',
+      'btn.watch.readyTitle': 'HaramLite — watch filtered',
+      'btn.watch.stop': '⏸ Stop',
+      'btn.watch.stopTitle': 'HaramLite — stop filtered watching',
+      'btn.watch.fetching': 'Fetching…',
+      'btn.watch.fetchingTitle': 'HaramLite — fetching the filtered audio',
+      'btn.watch.disabledTitle': 'HaramLite — enabled after processing',
+      'btn.watch.fetchingPct': 'Fetching… {pct}%',
+      'menu.reprocess': '↻ Full reprocess',
+      'bridge.noResponse': 'Connection failed',
+      'start.sendFailed': 'Send failed',
+      'start.received': '✓ Link received — starting the download...',
+      'cancel.done': '⏹ Processing cancelled — press to start again',
+      'poll.ok': 'Ready ✓ — watch without music ▶',
+      'poll.failed': 'Processing failed',
+      'poll.bridgeLost': '⚠ Lost connection to the HaramLite app — run the app, enable the integration, then retry',
+      'fetch.emptyReply': 'Empty reply from the app — retry',
+      'fetch.partialFile': 'Incomplete file — retry',
+      'fetch.failed': 'Fetch failed',
+      'fetch.decodeFailed': 'Could not read the filtered audio',
+      'fetch.unsupported': 'Format not supported in this browser',
+      'watch.line': '▶ Filtered watching — audio from local processing',
+      'watch.lineAgo': '▶ Filtered watching — audio from local processing (processed in {s}s)',
+      'watch.needMap': '✗ Build the map first — press «Process this video»',
+      'watch.noVideo': '✗ No page video found',
+      'watch.mapMissing': '✗ Silence-cut output without a map — request processing again',
+      'watch.playAudio': '▶ Press play to start the filtered audio',
+      'watch.playVideo': '▶ Press play on the video to start watching',
+      'watch.stopped': '⏹ Watching stopped — the page audio is back',
+    },
+  };
+
+  /* اختيار اللغة: دالّة **نقية** (قائمة لغات ⇒ لغة مدعومة) ليستخرجها الحارس
+   * ويختبرها بمدخلات مصنوعة بلا متصفّح — كما تُستخرج بقية الدوال النقية.
+   *
+   * والقائمة تُقرأ **بترتيب المتصفح** (`navigator.languages` مرتَّبة بتفضيل
+   * المستخدم) فيُختار أول لغة مدعومة فيها. مقصود: من ضبط [fr, ar] لا نُلبسه
+   * الإنجليزية وهو قد أعلن أنه يقرأ العربية؛ ومن ضبط [de, en] يأخذ الإنجليزية.
+   * وإن لم تكن في القائمة عربية ولا إنجليزية ⇒ **الإنجليزية** (لغة المتصفح
+   * الافتراضية في المتجر، والعربية تُدرَج صريحةً فتصل لأهلها).
+   */
+  function pickLang(list) {
+    const arr = Array.isArray(list) ? list : [list];
+    for (const raw of arr) {
+      if (typeof raw !== 'string') continue;
+      const tag = raw.toLowerCase();
+      if (tag === 'ar' || tag.indexOf('ar-') === 0) return 'ar';
+      if (tag === 'en' || tag.indexOf('en-') === 0) return 'en';
+    }
+    // لغة غير عربية ولا إنجليزية (فرنسية · تركية · …) ⇒ الإنجليزية.
+    return 'en';
+  }
+  const LANG = pickLang(
+    (typeof navigator !== 'undefined' && navigator.languages && navigator.languages.length)
+      ? navigator.languages
+      : [(typeof navigator !== 'undefined' && navigator.language) || 'en']
+  );
+  const RTL = LANG === 'ar';
+  /** نصّ الواجهة بمفتاحه. مفتاح مجهول ⇒ العربية (المرجع) لا فراغ. */
+  function t(key) {
+    const row = I18N[LANG] || I18N.ar;
+    return (key in row) ? row[key] : I18N.ar[key];
+  }
+  /** {pct} · {s} — استبدال موضعي لنصّ **من الجدول**، بلا تركيب نصّ جديد. */
+  const fill = (s, vars) => s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+
   let procBtn = null;
   let watchBtn = null;
   let menuCloser = null;
@@ -71,7 +204,7 @@
       // through the background service worker.
       chrome.runtime.sendMessage({ type: 'native', message: msg }, (resp) => {
         if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-        else if (!resp || !resp.ok) reject(new Error((resp && resp.error) || 'فشل الاتصال'));
+        else if (!resp || !resp.ok) reject(new Error((resp && resp.error) || t('bridge.noResponse')));
         else resolve(resp.resp || {});
       });
     });
@@ -87,7 +220,7 @@
         `position:fixed;bottom:72px;right:16px;z-index:2147483002;max-width:min(360px,90vw);` +
         `background:rgba(21,19,17,.96);border:1px solid ${T.border};border-radius:10px;` +
         `padding:8px 12px;color:${T.text};font-family:Roboto,Arial,sans-serif;` +
-        `font-size:12px;direction:rtl;transition:opacity .4s;`;
+        `font-size:12px;direction:${RTL ? 'rtl' : 'ltr'};transition:opacity .4s;`;
       document.body.appendChild(el);
     }
     el.textContent = msg;
@@ -150,23 +283,23 @@
       procBtn.style.borderColor = T.accent;
       procBtn.style.color = '#fff';
       procBtn.textContent = `${Math.round((pct || 0) * 100)}%`;
-      procBtn.title = 'HaramLite — جارٍ العمل (نقرة للإلغاء)';
+      procBtn.title = t('btn.proc.workingTitle');
     } else if (state === 'done') {
       procBtn.disabled = true;
       procBtn.style.opacity = '0.55';
       procBtn.style.background = 'rgba(21,19,17,.94)';
       procBtn.style.borderColor = T.accent;
       procBtn.style.color = T.text;
-      procBtn.textContent = 'تم التجهيز ✓';
-      procBtn.title = 'HaramLite — جاهز للمشاهدة';
+      procBtn.textContent = t('btn.proc.done');
+      procBtn.title = t('btn.proc.doneTitle');
     } else {
       procBtn.disabled = false;
       procBtn.style.opacity = '';
       procBtn.style.background = 'rgba(21,19,17,.94)';
       procBtn.style.borderColor = T.accent;
       procBtn.style.color = T.text;
-      procBtn.textContent = 'عالج هذا الفيديو';
-      procBtn.title = 'HaramLite — معالجة هذا الفيديو على جهازك';
+      procBtn.textContent = t('btn.proc.idle');
+      procBtn.title = t('btn.proc.idleTitle');
     }
   }
   function setWatchBtn(state) {
@@ -177,31 +310,31 @@
       watchBtn.style.background = 'rgba(21,19,17,.94)';
       watchBtn.style.borderColor = T.accent;
       watchBtn.style.color = '#ffb59d';
-      watchBtn.textContent = 'شاهد بعد إزالة الموسيقى ▶';
-      watchBtn.title = 'HaramLite — مشاهدة مفلترة';
+      watchBtn.textContent = t('btn.watch.ready');
+      watchBtn.title = t('btn.watch.readyTitle');
     } else if (state === 'watching') {
       watchBtn.disabled = false;
       watchBtn.style.opacity = '';
       watchBtn.style.background = 'rgba(218,119,86,.6)';
       watchBtn.style.borderColor = T.accent;
       watchBtn.style.color = '#fff';
-      watchBtn.textContent = '⏸ إيقاف';
-      watchBtn.title = 'HaramLite — إيقاف المشاهدة المفلترة';
+      watchBtn.textContent = t('btn.watch.stop');
+      watchBtn.title = t('btn.watch.stopTitle');
     } else if (state === 'fetching') {
       watchBtn.disabled = true;
       watchBtn.style.opacity = '0.75';
       watchBtn.style.background = 'rgba(21,19,17,.94)';
       watchBtn.style.borderColor = T.accent;
-      watchBtn.textContent = 'جارٍ الجلب…';
-      watchBtn.title = 'HaramLite — جلب الصوت المفلتر';
+      watchBtn.textContent = t('btn.watch.fetching');
+      watchBtn.title = t('btn.watch.fetchingTitle');
     } else {
       watchBtn.disabled = true;
       watchBtn.style.opacity = '0.55';
       watchBtn.style.background = 'rgba(21,19,17,.94)';
       watchBtn.style.borderColor = '#5a544f';
       watchBtn.style.color = '#d8d2cc';
-      watchBtn.textContent = 'شاهد بعد إزالة الموسيقى ▶';
-      watchBtn.title = 'HaramLite — يفعَّل بعد التجهيز';
+      watchBtn.textContent = t('btn.watch.ready');
+      watchBtn.title = t('btn.watch.disabledTitle');
     }
   }
   function resetBar() {
@@ -228,13 +361,13 @@
       `position:fixed;bottom:${window.innerHeight - r.top + 8}px;right:${window.innerWidth - r.right}px;` +
       `min-width:210px;background:${T.panel};border:1px solid ${T.border};border-radius:10px;` +
       `box-shadow:0 10px 28px rgba(0,0,0,.55);padding:8px;z-index:2147483003;` +
-      `font-family:Roboto,Arial,sans-serif;font-size:12px;direction:rtl;color:${T.text};`;
+      `font-family:Roboto,Arial,sans-serif;font-size:12px;direction:${RTL ? 'rtl' : 'ltr'};color:${T.text};`;
     // لا خيار للمستخدم: قفز الفجوات إجباريّ (قرار المالك «اجباري لكل مستخدم لا خيار
     // لتعديلها») — حُذف الصندوق، والقائمة فيها «معالجة كاملة» وحدها.
     menu.innerHTML =
       `<button id="hl-ext-reprocess" style="width:100%;padding:8px 6px;background:transparent;border:none;` +
-      `color:${T.sub};font-size:12px;text-align:right;cursor:pointer;">` +
-      `↻ معالجة كاملة</button>`;
+      `color:${T.sub};font-size:12px;text-align:${RTL ? 'right' : 'left'};cursor:pointer;">` +
+      `${t('menu.reprocess')}</button>`;
     document.body.appendChild(menu);
     menu.querySelector('#hl-ext-reprocess').addEventListener('click', () => {
       closeWatchMenu();
@@ -268,16 +401,16 @@
     try {
       r = await native({ type: 'link', url: location.href, mode: 'watch' });
     } catch (e) {
-      toast('⚠ ' + (e && e.message ? e.message : 'فشل الإرسال'), 4000);
+      toast('⚠ ' + (e && e.message ? e.message : t('start.sendFailed')), 4000);
       return;
     }
     if (!r || !r.ok) {
-      toast('✗ ' + ((r && r.error) || 'فشل الإرسال'), 4000);
+      toast('✗ ' + ((r && r.error) || t('start.sendFailed')), 4000);
       return;
     }
     BUSY = true;
     setProc('working', 0);
-    toast('✓ استُلم الرابط — بدء التنزيل...');
+    toast(t('start.received'));
     poll();
   }
 
@@ -285,7 +418,7 @@
     native({ type: 'cancel' }).catch(() => {});
     stopPoll();
     resetBar();
-    toast('⏹ أُلغيت المعالجة — اضغط للبدء من جديد');
+    toast(t('cancel.done'));
   }
 
   function poll() {
@@ -313,10 +446,10 @@
             };
             setProc('done');
             setWatchBtn('ready');
-            toast('تم التجهيز ✓ — شاهد بعد إزالة الموسيقى ▶');
+            toast(t('poll.ok'));
           } else {
             resetBar();
-            toast('✗ ' + (st.last.error || 'فشلت المعالجة'), 4000);
+            toast('✗ ' + (st.last.error || t('poll.failed')), 4000);
           }
         }
       } catch {
@@ -326,7 +459,7 @@
         if (fails >= 8) {
           stopPoll();
           resetBar();
-          toast('⚠ انقطع الاتصال بتطبيق HaramLite — شغّل التطبيق وفعّل التكامل ثم أعد المحاولة', 4000);
+          toast(t('poll.bridgeLost'), 4000);
         }
       }
     }, 1500);
@@ -546,7 +679,7 @@ function keptStretchAround(kept, gapStart, gapEnd) {
     for (;;) {
       const r = await native({ type: 'result_file', offset, len: 262144 });
       const f = r && r.file;
-      if (!f || typeof f.data !== 'string') throw new Error('رد فارغ من التطبيق — أعد المحاولة');
+      if (!f || typeof f.data !== 'string') throw new Error(t('fetch.emptyReply'));
       total = f.total || 0;
       parts.push(f.data);
       offset = f.offset + f.data.length / 2;
@@ -555,34 +688,36 @@ function keptStretchAround(kept, gapStart, gapEnd) {
       if (total > 0 && offset >= total) break; // safety net
     }
     const flat = parts.join('');
-    if (total > 0 && flat.length / 2 !== total) throw new Error('ملف ناقص — أعد المحاولة');
+    if (total > 0 && flat.length / 2 !== total) throw new Error(t('fetch.partialFile'));
     return URL.createObjectURL(new Blob([hexToBytes(flat)], { type: 'audio/mpeg' }));
   }
 
   function watchLine() {
-    return `▶ مشاهدة مفلترة — الصوت من المعالجة المحلية${LAST && LAST.seconds ? ` (عولجت في ${LAST.seconds.toFixed(1)} ث)` : ''}`;
+    return LAST && LAST.seconds
+      ? fill(t('watch.lineAgo'), { s: LAST.seconds.toFixed(1) })
+      : t('watch.line');
   }
 
   async function startWatch() {
     if (WATCH) return;
     if (!LAST) {
-      toast('✗ ابنِ الخريطة أولاً — اضغط «عالج هذا الفيديو»', 4000);
+      toast(t('watch.needMap'), 4000);
       return;
     }
     const video = pageVideo();
     if (!video) {
-      toast('✗ لم يُعثر على فيديو الصفحة', 4000);
+      toast(t('watch.noVideo'), 4000);
       return;
     }
     setWatchBtn('fetching');
     let url = null;
     try {
       url = await fetchPageAudio((p) => {
-        if (watchBtn) watchBtn.textContent = `جارٍ الجلب… ${Math.round(p * 100)}%`;
+        if (watchBtn) watchBtn.textContent = fill(t('btn.watch.fetchingPct'), { pct: Math.round(p * 100) });
       });
     } catch (e) {
       setWatchBtn('ready');
-      toast('✗ ' + (e && e.message ? e.message : 'تعذر الجلب'), 4000);
+      toast('✗ ' + (e && e.message ? e.message : t('fetch.failed')), 4000);
       return;
     }
     const audio = new Audio();
@@ -590,9 +725,9 @@ function keptStretchAround(kept, gapStart, gapEnd) {
     audio.src = url;
     try {
       await new Promise((resolve, reject) => {
-        const to = setTimeout(() => reject(new Error('تعذر قراءة الصوت المفلتر')), 15000);
+        const to = setTimeout(() => reject(new Error(t('fetch.decodeFailed'))), 15000);
         audio.addEventListener('loadedmetadata', () => { clearTimeout(to); resolve(); }, { once: true });
-        audio.addEventListener('error', () => { clearTimeout(to); reject(new Error('صيغة غير مدعومة في المتصفح')); }, { once: true });
+        audio.addEventListener('error', () => { clearTimeout(to); reject(new Error(t('fetch.unsupported'))); }, { once: true });
       });
     } catch (e) {
       URL.revokeObjectURL(url);
@@ -607,7 +742,7 @@ function keptStretchAround(kept, gapStart, gapEnd) {
         Math.abs(video.duration - audio.duration) > 2) {
       URL.revokeObjectURL(url);
       setWatchBtn('ready');
-      toast('✗ إخراج مقصوص الصمت بلا خريطة — اطلب المعالجة من جديد', 4000);
+      toast(t('watch.mapMissing'), 4000);
       return;
     }
     const w = {
@@ -732,7 +867,7 @@ function keptStretchAround(kept, gapStart, gapEnd) {
       }).catch(() => {
         // No user activation (timer-started autoplay): the next press of
         // play IS a gesture and retries through the play-handler below.
-        if (WATCH) toast('▶ اضغط تشغيل لبدء الصوت المفلتر', 4000);
+        if (WATCH) toast(t('watch.playAudio'), 4000);
       });
     };
     /* ── وضع التسريع — الخطوة ٤ (docs/EXT-SMOOTH-PLAN.md §٤) ─────────────────────
@@ -1055,7 +1190,7 @@ function keptStretchAround(kept, gapStart, gapEnd) {
     setWatchBtn('watching');
     toast(watchLine());
     // The video was paused at request time — resume both together.
-    try { await video.play(); } catch { toast('▶ اضغط تشغيل الفيديو لبدء المشاهدة', 4000); }
+    try { await video.play(); } catch { toast(t('watch.playVideo'), 4000); }
     kickAudio();
   }
 
@@ -1084,7 +1219,7 @@ function keptStretchAround(kept, gapStart, gapEnd) {
     try { URL.revokeObjectURL(w.url); } catch { /* gone */ }
     if (LAST) setWatchBtn('ready');
     else setWatchBtn('disabled');
-    if (!quiet) toast('⏹ توقفت المشاهدة — عاد صوت الصفحة الأصلي');
+    if (!quiet) toast(t('watch.stopped'));
   }
 
   function pinPlayerRateRestore(rate) {
