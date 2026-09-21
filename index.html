@@ -41,6 +41,21 @@
         <div id="cuda-hint" class="hidden flex flex-col gap-unit bg-tertiary/10 border border-tertiary/30 rounded p-unit mt-1">
             <span id="cuda-hint-text" class="font-label-sm text-label-sm text-tertiary leading-relaxed"></span>
         </div>
+        <!-- سقف الفصول المتزامنة (م١) — في قسم الإعدادات، تحت «الأداء والمعالجة».
+             طلب المالك 2026-09-21 نقله إلى هنا: كان في «إعدادات متقدمة» المخفية
+             (ستّ نقرات على شارة الإصدار) ثم في الصفحة الرئيسية، والمكان الصحيح
+             قسم الإعدادات بجانب خيار CUDA — فهو خيار أداء مثله.
+             والقصّ في الخلف أيضاً (`slots::clamp_limit`) فهذه ليست الحارس الوحيد. -->
+        <div class="flex flex-col gap-unit mt-1">
+            <div class="flex items-center gap-stack-sm">
+                <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="max_jobs_label">أقصى فصول متزامنة:</span>
+                <select id="max-jobs" class="form-select bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent cursor-pointer">
+                    <option value="1" selected>1</option>
+                    <option value="2">2</option>
+                </select>
+            </div>
+            <span class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="max_jobs_hint">1 هو الافتراضيّ: فصلان معاً بلغا ذروة 7947 من 8192 م.ب (هامش 245 م.ب فقط) على بطاقة 8 جيجا · 2 أسرع لملفّين لكنه يُنفق هذا الهامش.</span>
+        </div>
     </div>
 
     <!-- 📁 المراقبة التلقائية -->
@@ -172,21 +187,6 @@
 <span class="font-label-md text-label-md text-on-surface-variant font-bold" data-i18n="mode_clip">مقطع عادي</span>
 <p class="font-label-sm text-xs mt-2 opacity-80 text-center leading-relaxed text-on-surface-variant" data-i18n="mode_clip_desc">للمقاطع التي تحتوي على متحدثين: لن يقطع الصمت، وسيزيل الموسيقى فقط.</p>
 </button>
-</div>
-<!-- م١: سقف الفصول المتزامنة — **مرئيّ للمستخدم العادي**. كان داخل «إعدادات
-     متقدمة» التي لا تُفتح إلا بستّ نقرات على شارة الإصدار، فطلب المالك إخراجه
-     (2026-09-21): خيارٌ يقرّر سرعة معالجة ملفّين يجب أن يُرى لا أن يُخفى.
-     والقصّ في الخلف أيضاً (`slots::clamp_limit`) فهذه ليست الحارس الوحيد. -->
-<div class="glass-effect border border-border-muted rounded-lg p-stack-md flex flex-col gap-unit fade-in-up">
-<div class="flex items-center gap-stack-sm">
-<span class="material-symbols-outlined text-lg text-clay-accent" data-icon="speed" aria-hidden="true">speed</span>
-<span class="font-label-md text-label-md text-cream-text" data-i18n="max_jobs_label">أقصى فصول متزامنة:</span>
-<select id="max-jobs" class="form-select bg-coal-surface border border-border-muted rounded px-stack-sm py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent cursor-pointer">
-<option value="1" selected>1</option>
-<option value="2">2</option>
-</select>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="max_jobs_hint">1 هو الافتراضيّ: فصلان معاً بلغا ذروة 7947 من 8192 م.ب (هامش 245 م.ب فقط) على بطاقة 8 جيجا · 2 أسرع لملفّين لكنه يُنفق هذا الهامش.</span>
 </div>
 <!-- Advanced Settings Panel -->
 <div class="spring-panel" id="advanced-panel-container">
