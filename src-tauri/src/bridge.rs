@@ -571,6 +571,20 @@ fn cut_page_audio_inner(
     })
 }
 
+/// مدخلات حِمل `last` في كائن واحد: النداء بثمانية وسائط يخترق خطّ أساس clippy
+/// (`too_many_arguments` ≤ 14 موضعاً **مُراجَعاً**، وهذا ليس منها).
+struct LastJob<'a> {
+    name: &'a str,
+    seconds: f32,
+    vocals: Option<&'a Path>,
+    video: Option<&'a Path>,
+    page_audio: Option<&'a Path>,
+    /// خريطة **الملف المُسلَّم للصفحة** (فارغة ⇔ الملف كامل الطول).
+    served_kept: &'a [(f64, f64)],
+    mode: Mode,
+    url: &'a str,
+}
+
 /// حِمل `last` لمهمّة ناجحة — **دالّة نقيّة** (تُختبر وحدها، بلا I/O).
 ///
 /// **عقد الإضافة (م٦-ب · `ARCHIVE/0.2.9PLAN.md` §٩-ب)**:
@@ -588,20 +602,6 @@ fn cut_page_audio_inner(
 /// فتعمل كما عملت؛ و«إضافة جديدة + تطبيق قديم» ⇒ `mode`/`page_kept` غائبان
 /// فترجع الإضافة إلى `kept`. **وتغيير معنى حقل قائم مستقبلاً يقتضي
 /// `state_version`** في هذه الحالة — لا مجرّد حقل جديد.
-/// مدخلات حِمل `last` في كائن واحد: النداء بثمانية وسائط يخترق خطّ أساس
-/// clippy (`too_many_arguments` ≤ 14 موضعاً **مُراجَعاً**، وهذا ليس منها).
-struct LastJob<'a> {
-    name: &'a str,
-    seconds: f32,
-    vocals: Option<&'a Path>,
-    video: Option<&'a Path>,
-    page_audio: Option<&'a Path>,
-    /// خريطة **الملف المُسلَّم للصفحة** (فارغة ⇔ الملف كامل الطول).
-    served_kept: &'a [(f64, f64)],
-    mode: Mode,
-    url: &'a str,
-}
-
 fn last_ok_payload(job: &LastJob<'_>) -> serde_json::Value {
     let LastJob {
         name,
