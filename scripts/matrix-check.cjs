@@ -233,7 +233,7 @@ function emitEnvironmentalNotices(gaps, claiming) {
     lines.push(
       `\n⚠ ثنائي غير موجود — ${gaps.unboundIds.length} من ${claiming} صفّاً أثرُه غير مربوط بالمُخرَج المُسلَّم:`
     );
-    if (gaps.unboundIds.length > 0) lines.push(`   ${gaps.unboundIds.join(' · ')}`);
+    lines.push(`   ${gaps.unboundIds.join(' · ')}`);
     lines.push('   جُرِّب:');
     for (const p of gaps.binarySearched) lines.push(`     ${p}`);
   }
@@ -1175,8 +1175,9 @@ function main(argv) {
   const envGaps = {
     missingIds,
     unboundIds,
-    // جذور البحث تُذكر فقط إن كان الثنائي هو العلّة، فلا نُغرق المخرَج بلا سبب.
-    binarySearched: binary.path ? null : binary.searched,
+    // كتلة «لا ثنائي» تُطبع **فقط** إن كان للغياب أثر فعليّ (أثرٌ موجود بلا ثنائي)،
+    // ولا تُطبع «0 من 10» بلا معنى — كتلة «غياب آثار» وحدها تحكي الحالة حينها.
+    binarySearched: unboundIds.length > 0 ? binary.searched : null,
   };
   const hasEnvGap = missingIds.length > 0 || unboundIds.length > 0;
 
