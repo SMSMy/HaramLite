@@ -381,6 +381,12 @@ const CASES2 = [
       (m) => m + '<span data-i18n="footer.privacy"></span>')), 'fall'],
   ['⑤ صفحة: `dir` الثابت نُزع من وسم <html>',
     withFile(K.H, (s) => sub(s, /<html lang="en" dir="ltr">/, '<html lang="en">')), 'fall'],
+  /* عطب وقع فعلاً في هذه الجولة: أُضيف `id` بعد `class="version-tag"` فتغيّر
+   * شكل الوسم ورفض `pack-extension.js` الحزم («no .version-tag found»). */
+  ['⑤ب صفحة: سمة أُضيفت بعد `class="version-tag"` ⇒ شكل الوسم انكسر والحازم يرفض',
+    withFile(K.H, (s) => sub(s, /class="version-tag">/, 'class="version-tag" id="version-tag">')), 'fall'],
+  ['⑤ج صفحة: وسم الإصدار الثابت خالف إصدار المانيفست',
+    withFile(K.H, (s) => sub(s, /class="version-tag">v([\d.]+)</, (m, v) => m.replace(v, '1.1.6'))), 'fall'],
   ['ض١ صفحة: تعليق HTML يحمل عربية — يجب ألّا يُسقط',
     withFile(K.H, (s) => sub(s, /<body>/, (m) => m + '\n<!-- ' + AR_SUB + ' -->')), 'pass'],
 

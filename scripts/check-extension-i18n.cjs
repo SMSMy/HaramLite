@@ -997,6 +997,24 @@ function auditHtml(text, label, opts) {
       ') — القيمة الثابتة هي ما يراه المستخدم إن لم يُنفَّذ السكربت.');
   }
 
+  /* ⑥ وسم الإصدار الثابت: `scripts/pack-extension.js` (سطر 136) يقرأ
+   * `class="version-tag">v?([^<\s]+)<` ويرفض حزم المتجر إن خالف إصدارَ
+   * المانيفست — فشكلُ الوسم **عقد** مع الحازم لا تفصيل تجميلي: أي سمة تُضاف بعد
+   * `class` تُفسد النمط فيسقط الحزم. (وقد كُسر فعلاً في هذه الجولة: أُضيف `id`
+   * بعد `class` فرفض `pack:ext` العمل — أُعلن وأُصلح، وهذا الفحص يمنع تكراره.)
+   * والوسم **ديناميكي أصلاً** (`popup.js` يكتبه من `getManifest().version`)،
+   * فالمقيس هنا هو القيمة الثابتة التي يقرؤها الحازم قبل التشغيل. */
+  res.checks++;
+  const vm = text.match(/class="version-tag">v?([^<\s]+)</);
+  const mfv = opts && opts.manifestVersion;
+  if (!vm) {
+    res.failures.push('✗ `popup.html` بلا وسم إصدار بالشكل `class="version-tag">v…<` — ' +
+      'و`pack-extension.js` يرفض الحزم بدونه (ولا تُضاف سمة بعد `class` وإلا تغيّر الشكل).');
+  } else if (typeof mfv === 'string' && vm[1] !== mfv) {
+    res.failures.push('✗ وسم الإصدار في popup.html = «' + vm[1] + '» وإصدار المانيفست «' + mfv +
+      '» — الحزمة المرفوعة كانت ستعرض رقماً غير المنشور.');
+  }
+
   return res;
 }
 
@@ -1248,6 +1266,11 @@ function auditAll(texts) {
   const htmlKeys = htmlBindings(stripHtmlComments(html));
   const externalKeys = htmlKeys.text.concat(htmlKeys.attr).map((x) => attrKeyOf(x.key));
 
+  /* إصدار المانيفست يُقرأ أولاً ليُقارَن به وسم الإصدار الثابت في الصفحة — وهو
+   * العقد نفسه الذي يفحصه `scripts/pack-extension.js` قبل الحزم. */
+  let mfVersion = null;
+  try { mfVersion = JSON.parse(texts['browser-extension/manifest.json']).version; } catch (e) { mfVersion = null; }
+
   const add = (rel, r) => { res.results.push({ rel, r }); };
   for (const t of TARGETS) {
     const text = texts[t.rel];
@@ -1260,6 +1283,7 @@ function auditAll(texts) {
       const src = res.results.find((x) => x.rel === t.tableFrom);
       add(t.rel, auditHtml(text, t.label, {
         declared: t.declared,
+        manifestVersion: typeof mfVersion === 'string' ? mfVersion : undefined,
         arKeys: (src && src.r.arKeys) || [],
         enKeys: (src && src.r.enKeys) || [],
       }));

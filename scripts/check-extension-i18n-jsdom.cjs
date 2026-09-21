@@ -143,7 +143,7 @@ async function measure(src, report) {
   report('لا مفتاح مربوط غائب عن المستند الإنجليزي المعروض', missingEn.length === 0, 'غائب: ' + missingEn.join(' · '));
 
   report('وسم الإصدار = إصدار المانيفست (' + src.version + ')',
-    textOf(ar, '#version-tag') === 'v' + src.version, 'وُجد ' + JSON.stringify(textOf(ar, '#version-tag')));
+    textOf(ar, '.version-tag') === 'v' + src.version, 'وُجد ' + JSON.stringify(textOf(ar, '.version-tag')));
 
   /* ثم تُترك آلة الحالة تكتب: مسار الاتصال، ثم مسار الانقطاع. */
   await sleep(30);

@@ -35,7 +35,10 @@ const el = {
   watch: $('btn-watch'),
   openFolder: $('btn-open-folder'),
   ytNotice: $('card-yt-notice'),
-  version: $('version-tag'),
+  // بالمُحدِّد الصنفي لا بمعرّف: `scripts/pack-extension.js` يقرأ الوسم بنمط
+  // `class="version-tag">v?([^<\s]+)<` ويرفض الحزم إن تغيّر شكله (سمةٌ بعد
+  // `class` تُفسده) — فالشكل **عقد** مع الحازم، ولا يُضاف إليه معرّف.
+  version: document.querySelector('.version-tag'),
 };
 
 /* ── i18n: كائن ثابت، لا بناء ديناميكي ──────────────────────────────────────
