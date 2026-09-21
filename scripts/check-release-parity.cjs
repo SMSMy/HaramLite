@@ -174,6 +174,43 @@ function readReleaseUploads(yaml) {
 }
 
 /**
+ * قاعدة **ضيّقة** لا محلّل YAML: سطر `name:` بقيمة غير مقتبسة تحوي `": "` عطلُ
+ * YAML مؤكَّد — وقع فعلاً أثناء كتابة هذا العمل نفسه: الخطوة
+ * `- name: Repair channel gate (assets-v1: not a draft, …)` جعلت `ci.yml` ملفاً
+ * لا يُقرأ (كشفه PyYAML)، وGitHub كان سيرفض التشغيل كله بلا أن يشتكي أي حارس في
+ * المستودع. فالحارس يقيس هذه العلّة بعينها في ملفّي السير الذين يملكهما هذا العمل.
+ *
+ * **وحدّها المعلَن**: ليست تحقّقاً من سلامة YAML (لا محلّل YAML في Node هنا)،
+ * بل حالةٌ مقيسة واحدة من أكثر الحالات وقوعاً. سلامة الملفات الأربعة كلها قيست
+ * بـPyYAML 6.0.3 خارج هذا الحارس.
+ * @returns {string[]} مشكلات مسمّاة بموضعها.
+ */
+function scalarColonProblems(root, rels) {
+  const problems = [];
+  for (const rel of rels) {
+    const p = path.join(root, rel);
+    if (!fs.existsSync(p)) {
+      problems.push(`بنية غير صالحة: ${rel} غير موجود عند ${p}`);
+      continue;
+    }
+    const lines = fs.readFileSync(p, 'utf8').split(/\r?\n/);
+    for (let i = 0; i < lines.length; i += 1) {
+      const m = /^\s*(?:-\s*)?name:\s+(\S.*)$/.exec(lines[i]);
+      if (!m) continue;
+      const value = m[1].trim();
+      if (value.startsWith("'") || value.startsWith('"')) continue;
+      if (value.includes(': ')) {
+        problems.push(
+          `${rel}:${i + 1}: اسم خطوة غير مقتبس يحوي «: » ⇒ YAML لا يُقرأ: «${value.slice(0, 70)}» ` +
+            '(احذف النقطتين أو اقتبس القيمة)'
+        );
+      }
+    }
+  }
+  return problems;
+}
+
+/**
  * يقابل ما يرفعه السير بالمطلوب.
  * @returns {{rows:Array<{role:string,label:string,published:boolean,how:string}>, problems:string[]}}
  */
@@ -194,7 +231,7 @@ function evaluate(root, roles = REQUIRED_ROLES) {
   const uploads = readReleaseUploads(yaml);
   const versioned = uploads.filter((u) => !u.skipped);
 
-  const problems = [];
+  const problems = scalarColonProblems(root, [WORKFLOW_REL, path.join('.github', 'workflows', 'ci.yml')]);
   const rows = [];
 
   /* ── المثبّتان: من خطوة tauri-action + أهداف الحزمة ── */
@@ -407,6 +444,12 @@ function writeFixture(root, yaml, conf) {
   fs.mkdirSync(path.join(root, '.github', 'workflows'), { recursive: true });
   fs.mkdirSync(path.join(root, 'src-tauri'), { recursive: true });
   fs.writeFileSync(path.join(root, WORKFLOW_REL), yaml);
+  // المستودع المصنوع يحاكي التخطيط الحقيقي: `ci.yml` موجود أيضاً (يقيسه الحارس
+  // في قاعدة أسماء الخطوات، وغيابه مشكلة بنيوية).
+  fs.writeFileSync(
+    path.join(root, '.github', 'workflows', 'ci.yml'),
+    'name: Quality gate\non:\n  push:\njobs:\n  gate:\n    runs-on: windows-latest\n    steps:\n      - name: Stub\n        run: echo hi\n'
+  );
   fs.writeFileSync(
     path.join(root, TAURI_CONF_REL),
     JSON.stringify(conf || { productName: 'HaramLite', version: '1.2.3', bundle: { targets: 'all' } }, null, 2)
@@ -530,12 +573,32 @@ function selfcheck(work) {
     add('Ⓖ″ ضابط: الصيغة السطرية (run: gh release upload) تُحتسب ⇒ 0', run(args(dir)), EXIT.PASS, ['5/5', 'لا نقص']);
   }
 
+  /* Ⓖ‴ مُفسَد: اسم خطوة غير مقتبس يحوي «: » ⇒ YAML لا يُقرأ. وهذه الحالة **من
+     عطل واقع**: أول صياغة لخطوة CI في هذا العمل حملت
+     `- name: Repair channel gate (assets-v1: not a draft, …)` فصار `ci.yml` ملفاً
+     لا يُقرأ (كشفه PyYAML) ولا حارس في المستودع كان يرى ذلك. */
+  {
+    const dir = mk('yaml-name-colon', {});
+    const yaml = fs.readFileSync(path.join(dir, WORKFLOW_REL), 'utf8');
+    fs.writeFileSync(
+      path.join(dir, WORKFLOW_REL),
+      `${yaml}      - name: Broken step (assets-v1: not a draft)\n        run: echo hi\n`
+    );
+    add(
+      'Ⓖ‴ مُفسَد: اسم خطوة يحوي «: » بلا اقتباس ⇒ يسقط',
+      run(args(dir)),
+      EXIT.FAIL,
+      ['✗ فشل تكافؤ', 'اسم خطوة غير مقتبس يحوي «: »']
+    );
+  }
+
   /* Ⓗ صفر مدخل: سير غائب · تهيئة غائبة · جدول أدوار مُفرَّغ في نسخة من الحارس. */
   {
     const dir = path.join(work, 'no-workflow');
     fs.mkdirSync(path.join(dir, 'src-tauri'), { recursive: true });
     fs.writeFileSync(path.join(dir, TAURI_CONF_REL), '{"productName":"X","version":"1.0.0"}');
     add('Ⓗ صفر مدخل: release.yml غائب ⇒ فشل بنيوي (2)', run(args(dir)), EXIT.MISUSE, ['✗', 'بنية غير صالحة']);
+
 
     const dir2 = path.join(work, 'no-conf');
     fs.mkdirSync(path.join(dir2, '.github', 'workflows'), { recursive: true });

@@ -59,6 +59,13 @@ jobs:
       - name: Download VC++ redist (bundled into installer)
         run: pnpm exec node ./scripts/fetch_redist.js
 
+      # خطوة التحقّق قبل البناء (ن-٢ في خطة 0.2.9 §١١): البصمة تُقاس من **القرص**
+      # بعد الجلب، ولا تنزيل ولا كتابة. فالعطل الأصلي كان أن الجالب يفحص الوجود
+      # **قبل** البصمة ⇒ ملف موجود (ذاكرة عدّاء، نسخ يدوي، تنزيل منقطع) يُشحن بلا
+      # قراءة بصمة، والتطبيق يرفض تلك البايتات فينكسر الإصلاح الذاتي بصمت.
+      - name: Verify bundle resources before the build (digests, no download)
+        run: pnpm exec node ./scripts/fetch_redist.js --verify
+
       - name: Build & publish Tauri release
         uses: tauri-apps/tauri-action@v0
         env:

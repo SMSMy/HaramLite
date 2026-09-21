@@ -219,6 +219,32 @@ jobs:
       - name: Site guards
         run: pnpm site:check
 
+      # ── بوّابات دَين 0.2.8 التشغيلي (ن-١ · ن-٢ · ن-٥ · ن-٦ — خطة 0.2.9 §١١) ──
+      # كلٌّ يقيس ما لا يقيسه غيره، وكلٌّ فيه مُفسَد يُسقطه وضابط يمرّ عليه:
+      #   · ن-١ قناة الإصلاح الحيّة: **مسودّة** أو **404** أو **بصمة مخالفة** تُسقط
+      #     البوّابة في الوضعين — وهو عطل 0.2.8 نفسه (قناة مسودّة بصفر أصول ⇒ روابط
+      #     404 ⇒ الإصلاح الذاتي معطّل عند كل مستخدم مثبَّت، ولا شيء كان يسقط).
+      #     وتحتاج الشبكة، فالغياب **البيئيّ** وحده (لا شبكة · مهلة · حدّ معدّل) سطر
+      #     صارخ ولا يُسقط؛ و`GH_TOKEN` يرفع حدّ المعدّل من 60 إلى 5000 في الساعة.
+      #   · ن-٢ بصمة الملف **الموجود** قبل البناء (كانت تُفحَص عند التنزيل فقط).
+      #   · ن-٥ تكافؤ أصول الإصدار: **٥** لا ٣ — بقراءة ما يرفعه `release.yml` فعلاً.
+      #   · ن-٦ الموقع لا يثق بـ`latest`: وسم غير دلالي لا يُعرض إصداراً.
+      - name: Repair channel gate (assets-v1 is public, not a draft, every asset answers 200)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm release:assets
+
+      - name: Redist digest guard (an existing file is hashed, never trusted)
+        run: pnpm redist:guard
+
+      - name: Release asset parity guard (five assets, not three)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm release:parity
+
+      - name: Site latest-trust guard (a non-semver tag is ignored, not shown)
+        run: pnpm site:latest-trust
+
       # البوّابة الخامسة عشرة: تحرس الحرّاس أنفسهم. ثمانية حرّاس كانوا يمرّون على
       # مدخل فارغ، أو ينهارون بدل تسمية الرمز المفقود، أو يُصنّفون انهيار الحارس
       # اصطياداً. هذه البوّابة تبني لكل حارس بيئةً مصنوعة تحت %TEMP% فيها **مُفسَد**
