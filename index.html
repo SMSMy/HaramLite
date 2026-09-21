@@ -102,6 +102,21 @@
             <span class="font-body-sm" data-i18n="tg_title">بوت تيليجرام</span>
             <span id="tg-badge" class="ms-auto font-label-sm text-label-sm"></span>
         </button>
+        <!-- م٤: وضوح رسائل المجموعة **خيار للمستخدم** لا قرار مبرمج (قرار المالك).
+             موضعه قسم الإعدادات — مثل سقف الفصول المتزامنة (م١) — لا الواجهة الرئيسية.
+             خياران لا ثالث: 'mentions' (الافتراضيّ) و'all'؛ وأي قيمة أخرى في
+             localStorage تُردّ إلى 'mentions' في `groupModeFrom` (src/settings.ts)،
+             فالخيار الثالث غير موجود لا في القائمة ولا في التخزين. -->
+        <div class="flex flex-col gap-unit mt-1">
+            <div class="flex items-center gap-stack-sm">
+                <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="settings_group_mode">وضوح رسائل المجموعة:</span>
+                <select id="tg-group-mode" class="form-select bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent cursor-pointer">
+                    <option value="mentions" data-i18n="settings_group_mode_mentions" selected>بالمنشن فقط</option>
+                    <option value="all" data-i18n="settings_group_mode_all">كل الرسائل</option>
+                </select>
+            </div>
+            <span class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="settings_group_mode_hint">«بالمنشن فقط»: لا يرى البوت إلا ما وُجِّه إليه؛ والرسالة التي لا تذكره لا تصله أصلاً في مجموعة privacy mode فيها مفعّل. «كل الرسائل»: يراه ما لم يُقصد به أيضاً، فيلزم إطفاء privacy mode من @BotFather، وإلا لم يصل شيء.</span>
+        </div>
     </div>
 
     <!-- 🖥️ النظام -->

@@ -108,6 +108,19 @@ const i18n = {
     tg_token: 'توكن البوت (من BotFather)',
     tg_owner: 'معرّف المستخدم المسموح (اختياري)',
     tg_audio_only: 'إرسال الصوت فقط (MP3) دائماً',
+    // م٤: وضوح رسائل المجموعة — نصّ **صادق ومحدود**، ولا يَعِد بميزة غير منفَّذة.
+    //   • لا ذكر لتحويل الرابط إلى المالك للموافقة ولا لـ«اسمح دائماً» — تلك
+    //     بنود تصميم م٤ (§٢) لا كود قائم؛ ذكرها هنا وعد كاذب.
+    //   • ولا يُطلَق وعد بأن «بالمنشن فقط» يحجب: نصف Rust (الحجب) لم يُدمج بعد،
+    //     فالنصّ يقول ما يفعله تلغرام نفسه (privacy mode) ولا يدّعي فعلاً للبوت.
+    // والقرار في `src/__tests__/tgGroupMode.test.ts` **يُقاس لحظة التشغيل** لا
+    // يُخزَّن هنا: الفحص يقرأ `src-tauri/src/settings.rs` فإن وُجد فيه
+    // `telegram_group_mode` سقط الاختبار مطالباً بتحرير هذا النصّ — فلا يبقى
+    // تعليقٌ يزعم غياب الميزة بعد وجودها.
+    settings_group_mode: 'وضوح رسائل المجموعة:',
+    settings_group_mode_mentions: 'بالمنشن فقط',
+    settings_group_mode_all: 'كل الرسائل',
+    settings_group_mode_hint: '«بالمنشن فقط»: لا يرى البوت إلا ما وُجِّه إليه؛ والرسالة التي لا تذكره لا تصله أصلاً في مجموعة privacy mode فيها مفعّل. «كل الرسائل»: يراه ما لم يُقصد به أيضاً، فيلزم إطفاء privacy mode من @BotFather، وإلا لم يصل شيء.',
     tg_paircode: 'رمز الاقتران',
     tg_pair_hint: 'أرسل هذا الرمز إلى بوتك في تيليجرام لربط حسابك (صالح 10 دقائق).',
     tg_advanced: 'إعدادات متقدمة: خادم Bot API محلي (حتى 2GB وبالجودة الأصلية)',
@@ -366,6 +379,12 @@ const i18n = {
     tg_token: 'Bot token (from BotFather)',
     tg_owner: 'Allowed user id (optional)',
     tg_audio_only: 'Always send audio only (MP3)',
+    // م٤: same limited, truthful text as `ar` — no promise of a behaviour that
+    // is not implemented yet (owner approval routing / "allow always").
+    settings_group_mode: 'Group message visibility:',
+    settings_group_mode_mentions: 'Mentions only',
+    settings_group_mode_all: 'All messages',
+    settings_group_mode_hint: 'Mentions only: the bot sees only what is addressed to it; with privacy mode on in a group, a message that does not mention it never reaches it at all. All messages: it also receives what was not addressed to it, so privacy mode must be turned off from @BotFather — otherwise nothing arrives.',
     tg_paircode: 'Pairing code',
     tg_pair_hint: 'Send this code to your bot on Telegram to link your account (valid 10 minutes).',
     tg_advanced: 'Advanced: local Bot API server (up to 2GB, original quality)',
