@@ -82,6 +82,57 @@ jobs:
           # is added; the in-app updater UI already degrades gracefully.
           includeUpdaterJson: false
 
+      # ── تكافؤ أصول الإصدار (ن-٥ في خطة 0.2.9 §١١) ──────────────────────────
+      # المقيس بـ`gh release view --json assets`: v0.2.7 نُشرت بـ**٥** أصول وv0.2.8
+      # بـ**٣** — `build-info.json` و`sbom.cdx.json` كانا يُرفعان **يدوياً** من جهاز
+      # المالك (docs/CONTRIBUTING.md · إصدار جديد) فسقطا بالنسيان، و`SHA256SUMS.txt`
+      # لم يكن هذا السير ينتجه أصلاً. والخطوتان التاليتان ترفعان الثلاثة من **نفس
+      # التشغيل**، وتفشلان بصوت عالٍ — لأن خطوة pwsh **لا تفشل وحدها إذا فشل أمرها**
+      # (عطل ن-١ نفسه: `$ErrorActionPreference` لا يكفي للأوامر الأصلية فيُفحَص
+      # `$LASTEXITCODE` صراحةً بعد كل أمر حسّاس).
+      # ويقيس ما يرفعه هذا الملف فعلاً: `scripts/check-release-parity.cjs` (المطلوب ٥).
+      - name: Release metadata (build-info · SBOM) for the published tag
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ver = (Get-Content 'src-tauri/tauri.conf.json' -Raw | ConvertFrom-Json).version
+          $tag = "v$ver"
+          # الوسم يُجلب قبل التوليد: `build-info.json` يقرأه بـ`git describe --tags
+          # --exact-match`، وبلا هذا الجلب يكتب git_tag = null (صادقاً لكنه غير مفيد).
+          git fetch --tags --force
+          if ($LASTEXITCODE -ne 0) { throw "git fetch --tags فشل ($LASTEXITCODE)" }
+          git describe --tags --exact-match HEAD
+          if ($LASTEXITCODE -ne 0) { Write-Host "::warning::لا وسم على HEAD — سيكتب build-info.json الوسم null مع سببه" }
+          pnpm build:info
+          if ($LASTEXITCODE -ne 0) { throw "pnpm build:info فشل ($LASTEXITCODE)" }
+          foreach ($f in @('dist/release-metadata/build-info.json', 'dist/release-metadata/sbom.cdx.json')) {
+            if (-not (Test-Path $f)) { throw "$f لم يُكتب — والإسناد الناقص هو عطل 0.2.8 نفسه" }
+          }
+          Write-Host "✓ إسناد الإصدار جاهز للوسم $tag"
+
+      - name: Publish release assets (SHA256SUMS.txt · build-info.json · sbom.cdx.json)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ver = (Get-Content 'src-tauri/tauri.conf.json' -Raw | ConvertFrom-Json).version
+          $tag = "v$ver"
+          # البصمات تُحسب من الأصول **المنزَّلة من النشرة** لا من مخرجات البناء المحلي:
+          # فخّ 0.2.5 المقيس — بصمات بناء محلي لأصول منشورة غيره تُبطل كل «تطابقت ثلاثاً».
+          $rel = Join-Path $env:RUNNER_TEMP 'release-assets'
+          New-Item -ItemType Directory -Force -Path $rel | Out-Null
+          gh release download $tag -R $env:GITHUB_REPOSITORY --pattern '*.exe' --pattern '*.msi' --dir $rel --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh release download فشل ($LASTEXITCODE) — فالبصمات لن تصف الأصول المنشورة" }
+          $lines = Get-ChildItem $rel -File | Sort-Object Name | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+          }
+          if (@($lines).Count -lt 2) { throw "أصول أقل من اثنين في $rel — لا بصمات لنشر ناقص" }
+          Set-Content (Join-Path $rel 'SHA256SUMS.txt') -Value $lines -Encoding utf8NoBOM
+          gh release upload $tag -R $env:GITHUB_REPOSITORY (Join-Path $rel 'SHA256SUMS.txt') 'dist/release-metadata/build-info.json' 'dist/release-metadata/sbom.cdx.json' --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh release upload فشل ($LASTEXITCODE) — النشرة ناقصة ولا يجوز أن يمرّ السير" }
+          Write-Host "✓ ثلاثة أصول إسناد مرفوعة إلى $tag (SHA256SUMS.txt · build-info.json · sbom.cdx.json)"
+
       - name: Publish self-repair assets (assets-v1, idempotent)
         shell: pwsh
         env:
