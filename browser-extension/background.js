@@ -7,21 +7,73 @@ const MENU_LINK = 'hl-send-link';
 const MENU_PAGE = 'hl-send-page';
 const MENU_VIDEO = 'hl-send-video';
 
+/* ── i18n: كائن ثابت، لا بناء ديناميكي ──────────────────────────────────────
+ * نفس نمط `content.js` (جولة م٦-أ) و`popup.js`: جدول ثابت بمفاتيح `ar`/`en`
+ * متكافئة، واختيار اللغة من `navigator.languages` — **لغة واجهة المتصفّح** لا
+ * لغة الصفحة. وهذه هي النصوص الوحيدة في هذا الملف: عناوين قائمة النقر الأيمن.
+ *
+ * ولا اتجاه هنا: القائمة عنصر **من المتصفّح** لا من الصفحة، فيرسمها المتصفّح
+ * باتجاه واجهته تبعاً للغة نفسها التي اخترناها — فلا `dir` نُسنده ولا `RTL`
+ * ميت نتركه.
+ *
+ * وحدّ مُعلَن: العناوين تُبنى في `onInstalled` وحده (كما كان قبل التعريب، بلا
+ * تغيير سلوك)، فمن غيّر لغة متصفّحه بعد التثبيت بقيت قائمته بلغتها القديمة حتى
+ * تحديث الإضافة أو إعادة تثبيتها.
+ */
+const I18N = {
+  ar: {
+    'menu.link': 'أرسل الرابط إلى HaramLite',
+    'menu.page': 'أرسل هذه الصفحة إلى HaramLite',
+    'menu.video': 'أرسل الفيديو إلى HaramLite',
+  },
+  en: {
+    'menu.link': 'Send the link to HaramLite',
+    'menu.page': 'Send this page to HaramLite',
+    'menu.video': 'Send the video to HaramLite',
+  },
+};
+
+/* اختيار اللغة: دالّة **نقية** (قائمة لغات ⇒ لغة مدعومة) ليستخرجها الحارس
+ * ويختبرها بمدخلات مصنوعة بلا متصفّح — كما في `content.js` و`popup.js`.
+ * والقائمة تُقرأ بترتيب المتصفّح، وأول لغة مدعومة فيها تفوز، وما ليس عربياً
+ * ولا إنجليزياً ينتهي إلى الإنجليزية. */
+function pickLang(list) {
+  const arr = Array.isArray(list) ? list : [list];
+  for (const raw of arr) {
+    if (typeof raw !== 'string') continue;
+    const tag = raw.toLowerCase();
+    if (tag === 'ar' || tag.indexOf('ar-') === 0) return 'ar';
+    if (tag === 'en' || tag.indexOf('en-') === 0) return 'en';
+  }
+  return 'en';
+}
+// في عامل الخدمة `navigator` هو `WorkerNavigator` و`languages` متاحة فيه.
+const LANG = pickLang(
+  (typeof navigator !== 'undefined' && navigator.languages && navigator.languages.length)
+    ? navigator.languages
+    : [(typeof navigator !== 'undefined' && navigator.language) || 'en']
+);
+/** نصّ الواجهة بمفتاحه. مفتاح مجهول ⇒ العربية (المرجع) لا فراغ. */
+function t(key) {
+  const row = I18N[LANG] || I18N.ar;
+  return (key in row) ? row[key] : I18N.ar[key];
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: MENU_LINK,
-      title: 'أرسل الرابط إلى HaramLite',
+      title: t('menu.link'),
       contexts: ['link'],
     });
     chrome.contextMenus.create({
       id: MENU_PAGE,
-      title: 'أرسل هذه الصفحة إلى HaramLite',
+      title: t('menu.page'),
       contexts: ['page'],
     });
     chrome.contextMenus.create({
       id: MENU_VIDEO,
-      title: 'أرسل الفيديو إلى HaramLite',
+      title: t('menu.video'),
       contexts: ['video'],
     });
   });
