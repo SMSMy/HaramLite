@@ -137,9 +137,38 @@ pub(crate) struct ProcessingClaim {
 
 impl Drop for ProcessingClaim {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        // **لا حذف بالاسم**: لو استُرجع قفلُنا (مالكٌ حُكم عليه بالموت خطأً) ثم
+        // أنشأ غيره قفلاً جديداً في المسار نفسه، فحذفٌ أعمى هنا **يهدم قفل مالك
+        // حيّ** — وهو النصف الثاني من سباق TOCTOU الذي أُغلق في
+        // `claim_processing_in`. فنحذف فقط الكائن الذي يحمل PIDنا.
+        let me = std::process::id();
+        let mine = move |text: &str, _age: Option<std::time::Duration>| {
+            lock_text_owner_pid(text) == Some(me)
+        };
+        for attempt in 0..LOCK_DROP_ATTEMPTS {
+            match delete_lock_where(&self.path, &mine) {
+                LockDelete::Deleted | LockDelete::Kept => return,
+                LockDelete::Failed => {
+                    if attempt + 1 < LOCK_DROP_ATTEMPTS {
+                        // نافذة الفتح الحصري في مسار الاسترجاع ميكروثانية،
+                        // وإعادة محاولة قصيرة تُبطل احتمال أن يكون فشلُنا
+                        // لحظةَ مرور مسترجع — وإلا بقي قفلٌ لمهمّة انتهت.
+                        std::thread::sleep(std::time::Duration::from_millis(2));
+                    }
+                }
+            }
+        }
+        tracing::warn!(
+            target: "pipe",
+            "تعذّر تحرير قفل {} بعد {LOCK_DROP_ATTEMPTS} محاولات",
+            self.path.display()
+        );
     }
 }
+
+/// القفل مشغول — الرسالة **الواحدة** لكل مسارات الرفض (فحصٌ حيّ، أو استنفاد
+/// محاولات الاسترجاع): نصّان يفترقان يجعلان القياس على أحدهما لا على السلوك.
+const LOCK_BUSY: &str = "الملف قيد المعالجة حالياً — تخطي";
 
 /// قفل عمره أطول من هذا لا يمكن أن يكون لمهمّة حيّة (لا مهمّة تمتدّ ١٢ ساعة)
 /// ⇒ **يُسترجع**. وهو الآن **احتياط** لا الأصل: الأصل فحص حياة المالك.
@@ -151,13 +180,48 @@ const STALE_LOCK_SECS: u64 = 12 * 3600;
 /// الحقيقي يبقى محميّاً لأن كل قفل نكتبه يحمل PID.
 const UNREADABLE_LOCK_STALE_SECS: u64 = 60;
 
-/// هل يبدو القفل قائماً من نسخة أقدم (بلا PID)؟ — نفس صيغة المهلتين أعلاه.
-fn lock_age_secs(lock: &Path) -> Option<u64> {
-    std::fs::metadata(lock)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| std::time::SystemTime::now().duration_since(t).ok())
-        .map(|age| age.as_secs())
+/// **نافذة القفل الفارغ**: `create_new` يُنشئ الملف فارغاً ثم يُكتب فيه PID —
+/// فبينهما قفلٌ موجود بلا مالك معلَن. مَن يراه في تلك النافذة ويحكم «ميت»
+/// **يستولي على قفل حيّ**. والنافذة الحقيقية ميكروثانية، والهامش خمس ثوانٍ عن
+/// قصد: **الاتجاه الآمن** (احتجاز لا استرجاع) هو الحكم خلالها. وهي مهلة
+/// **منفصلة** عن `UNREADABLE_LOCK_STALE_SECS` عن قصد: قفل بلا PID **ومعه نصّ**
+/// (نسخة أقدم كتبت طابعاً زمنياً) ليس قفلاً فارغاً، ولا يُستَرجع بسرعة الفارغ.
+const EMPTY_LOCK_GRACE_SECS: u64 = 5;
+
+/// أقصى عدد محاولات في حلقة الاسترجاع. والمحاولة الواحدة إمّا تُنشئ قفلاً وإمّا
+/// تحذف قفلاً ميتاً؛ فمحاولتان متتاليتان بلا نتيجة تعني **متسابقاً آخر يعمل
+/// الآن** ⇒ الرسالة الصادقة «قيد المعالجة» بدل دوران لا ينتهي.
+const RECLAIM_ATTEMPTS: usize = 3;
+
+/// محاولات تحرير القفل عند سقوط الحارس (`Drop`) — النافذة التي قد يفشل فيها
+/// الحذف ميكروثانية (مسترجع يمسك الملف)، وإعادة محاولة قصيرة تُبطلها.
+const LOCK_DROP_ATTEMPTS: usize = 5;
+
+/// عمر القفل (بدقّة تحت الثانية — اللازمة لقياس مهلة القفل الفارغ بلا نوم).
+fn lock_age(lock: &Path) -> Option<std::time::Duration> {
+    lock_file_age(std::fs::metadata(lock).ok()?.modified().ok()?)
+}
+
+/// العمر من طابع تعديل معلوم — الصيغة الواحدة للمسار (‏`metadata` على المسار)
+/// وللمقبض (‏`File::metadata`).
+fn lock_file_age(modified: std::time::SystemTime) -> Option<std::time::Duration> {
+    std::time::SystemTime::now().duration_since(modified).ok()
+}
+
+/// PID المالك المسجَّل في **نصّ** القفل، إن كان مقروءاً.
+fn lock_text_owner_pid(text: &str) -> Option<u32> {
+    text.split_whitespace().next()?.parse::<u32>().ok()
+}
+
+/// PID المالك من المسار (قراءة عاديّة — للحكم والتحقّق، لا للحذف).
+fn lock_owner_pid(lock: &Path) -> Option<u32> {
+    lock_text_owner_pid(&std::fs::read_to_string(lock).ok()?)
+}
+
+/// هل القفل **قفلُنا**؟ (المحتوى: PID المالك + طابعه الزمني، كما يكتبهما
+/// [`create_lock`].) يُسأل بعد الإنشاء — فلا ندّعي ملكية قفلٍ سبقنا إليه غيرنا.
+fn lock_is_ours(lock: &Path) -> bool {
+    lock_owner_pid(lock) == Some(std::process::id())
 }
 
 /// فحص **حياة العملية المالكة** لقفل قائم.
@@ -178,18 +242,48 @@ fn lock_age_secs(lock: &Path) -> Option<u64> {
 /// حيّ أبداً) لا عطل: احتمال إعادة استخدام PID داخل نافذة الأقدمية ضئيل،
 /// والخطأ في الاتجاه الآخر يهدم حصرية المعالجة كلها.
 fn lock_owner_is_dead(lock: &Path) -> bool {
+    lock_is_reclaimable(
+        lock,
+        std::time::Duration::from_secs(EMPTY_LOCK_GRACE_SECS),
+        std::time::Duration::from_secs(UNREADABLE_LOCK_STALE_SECS),
+    )
+}
+
+/// الفحص الواحد لثلاث حالات، بمهلة **محقونة** لكل حالة — والحقن للقياس بلا نوم:
+/// اختبار «قفل فارغ قديم يُسترجع» يمرّر مهلة صفرية بدل انتظار خمس ثوانٍ.
+///
+/// * **فارغ** (لا محرف غير فراغ): صاحبه في نافذة `create` ⟶ `write` ⇒ محتجَز
+///   خلال `empty_grace`، وقابل للاسترجاع بعدها (ملف فارغ مهجور لا يكتب نفسه).
+/// * **PID مقروء**: الحكم على حياة العملية وحدها — المهلة لا تشارك.
+/// * **نصّ بلا PID** (نسخة أقدم/عبث): `unreadable_grace` وحدها.
+///
+/// وفشل `metadata` (اختفى بين القراءة والفحص) ⇒ `true` = لا مالك.
+fn lock_is_reclaimable(
+    lock: &Path,
+    empty_grace: std::time::Duration,
+    unreadable_grace: std::time::Duration,
+) -> bool {
     let Ok(text) = std::fs::read_to_string(lock) else {
         return true; // اختفى بين الفحص والقراءة ⇒ لا مالك
     };
-    let pid = text
-        .split_whitespace()
-        .next()
-        .and_then(|t| t.parse::<u32>().ok());
-    match pid {
+    lock_text_is_reclaimable(&text, lock_age(lock), empty_grace, unreadable_grace)
+}
+
+/// الحكم نفسه على **نصّ** القفل وعمره — وهي الصيغة التي يستعملها الحذف الذرّي
+/// على محتوى المقبض (`delete_lock_where`) فلا حكمان يفترقان.
+fn lock_text_is_reclaimable(
+    text: &str,
+    age: Option<std::time::Duration>,
+    empty_grace: std::time::Duration,
+    unreadable_grace: std::time::Duration,
+) -> bool {
+    let older_than = |grace: std::time::Duration| age.map(|a| a > grace).unwrap_or(true);
+    if text.trim().is_empty() {
+        return older_than(empty_grace);
+    }
+    match lock_text_owner_pid(text) {
         Some(pid) => !process_is_alive(pid),
-        None => lock_age_secs(lock)
-            .map(|age| age > UNREADABLE_LOCK_STALE_SECS)
-            .unwrap_or(true),
+        None => older_than(unreadable_grace),
     }
 }
 
@@ -241,7 +335,34 @@ fn process_is_alive(pid: u32) -> bool {
 
 /// يسجّل القفل باسم المالك (PID + طابع زمني)، ويعيد حارساً يحذفه في `Drop`.
 fn claim_processing(input: &Path) -> Result<ProcessingClaim, PipelineError> {
-    claim_processing_in(&locks_dir(), input, lock_owner_is_dead)
+    claim_processing_in(
+        &locks_dir(),
+        input,
+        lock_owner_is_dead,
+        ClaimHooks::production(),
+    )
+}
+
+/// خطّافا قياس — **لا سلوك**: الإنتاج يمرّر [`ClaimHooks::production`] وهما
+/// نداءان إلى دالتين فارغتين. وموضعهما مقصود: `before_reclaim` **بعد** قرار
+/// «القفل ميت» و**قبل** الخطوة التدميرية، فاختبار السباق يُجبر الترتيب عنده
+/// بدل `sleep` تخميني؛ و`after_create` بعد إنشاء القفل وقبل التحقّق من ملكيّته،
+/// فيُقاس رفضُ قفلٍ ليس قفلنا.
+struct ClaimHooks<'a> {
+    /// يُنادى برقم المحاولة (من الصفر) **قبل** خطوة الاسترجاع التدميرية.
+    before_reclaim: &'a dyn Fn(usize),
+    /// يُنادى بعد إنشاء القفل وقبل التحقّق من أنّه قفلنا.
+    after_create: &'a dyn Fn(&Path),
+}
+
+impl ClaimHooks<'static> {
+    /// الخطّافان الفارغان — مسار الإنتاج.
+    fn production() -> Self {
+        Self {
+            before_reclaim: &|_| {},
+            after_create: &|_| {},
+        }
+    }
 }
 
 /// [`claim_processing`] بمجلد أقفال صريح وفحص مالك **محقون**.
@@ -250,31 +371,191 @@ fn claim_processing(input: &Path) -> Result<ProcessingClaim, PipelineError> {
 /// «مالك ميت» بلا حقن. ومجلد الأقفال صريح حتى لا يعتمد القياس على
 /// `HARAMLITE_DATA_DIR` (لمسُه في اختبار يُسابق كل اختبار يحلّ مساراً — عطل
 /// مقيس في `paths.rs:29-31`) ولا يكتب في بيانات المستخدم.
+///
+/// **الاسترجاع ذرّي (عطل م٢ المقيس)**: الكود السابق كان `remove_file(&lock)`
+/// ثم `create_lock` **بلا إعادة تحقّق** — فبين قراءةِ «القفل ميت» وحذفه يستطيع
+/// المسترجع الآخر أن يسبق فيحذف هذا **قفلَ الأول الحيّ** ⇒ **مالكان لملف واحد**
+/// (قِيس بالمدقّق بنافذة ٣٠٠ مللي: `A-holds=true · B-holds=true ·
+/// BOTH-HELD-AT-ONCE=true`).
+///
+/// **والعلاج على ثلاث طبقات، كلٌّ منها مقيسة بمُفسَد**:
+/// 1. **لا حذف بالاسم**: الحكم والفعل على **كائن ملف واحد** (`delete_lock_where`
+///    عبر [`open_lock_exclusive`] ثم الحذف بـ`FILE_DISPOSITION_INFO`). وهذا هو
+///    ما يُغلق السباق فعلاً: `rename` وحده **لم يكفِ** — قِيس أنه ينقل «ما في
+///    المسار» فينقل قفل الفائز الحيّ (‏`A يملك · B يملك` مع `rename` وحده).
+/// 2. **إعادة القرار من أوله** بعد فشل الاسترجاع، بحدّ `RECLAIM_ATTEMPTS` ثم
+///    الرسالة الصادقة `LOCK_BUSY` — فلا دوران ولا حذف غير مملوك.
+/// 3. **تحقّق الملكية بعد الإنشاء** (`lock_is_ours`) و**في `Drop`**: لا يُدَّعى
+///    قفلٌ ليس لنا، ولا يُحذف قفلُ غيرنا.
 fn claim_processing_in(
     dir: &Path,
     input: &Path,
     owner_is_dead: impl Fn(&Path) -> bool,
+    hooks: ClaimHooks,
 ) -> Result<ProcessingClaim, PipelineError> {
     std::fs::create_dir_all(dir).map_err(|e| PipelineError(format!("تعذر مجلد الأقفال: {e}")))?;
     let lock = lock_name_in(dir, input);
-    match create_lock(&lock) {
-        Ok(()) => Ok(ProcessingClaim { path: lock }),
-        Err(_) => {
-            let stale = owner_is_dead(&lock)
-                || lock_age_secs(&lock)
-                    .map(|age| age > STALE_LOCK_SECS)
-                    .unwrap_or(false);
-            if !stale {
-                return Err(PipelineError("الملف قيد المعالجة حالياً — تخطي".into()));
+    for attempt in 0..RECLAIM_ATTEMPTS {
+        match create_lock(&lock) {
+            Ok(()) => {
+                (hooks.after_create)(&lock);
+                // **تحقّق بعد الإنشاء**: `create_new` نجح، لكن قفلَنا قد يكون
+                // استُبدل في النافذة بين الإنشاء والقراءة. لا نعيد حارساً على
+                // قفلٍ ليس لنا (وإلا صار `Drop` يحذف قفل غيره).
+                if lock_is_ours(&lock) {
+                    return Ok(ProcessingClaim { path: lock });
+                }
+                tracing::warn!(
+                    target: "pipe",
+                    "القفل {} لم يبق قفلنا بعد إنشائه — إعادة القرار من أوله",
+                    lock.display()
+                );
             }
-            // One retry only: a second collision is a live owner.
-            let _ = std::fs::remove_file(&lock);
-            match create_lock(&lock) {
-                Ok(()) => Ok(ProcessingClaim { path: lock }),
-                Err(_) => Err(PipelineError("الملف قيد المعالجة حالياً — تخطي".into())),
+            Err(_) => {
+                let stale = owner_is_dead(&lock)
+                    || lock_age(&lock)
+                        .map(|age| age > std::time::Duration::from_secs(STALE_LOCK_SECS))
+                        .unwrap_or(false);
+                if !stale {
+                    return Err(PipelineError(LOCK_BUSY.into()));
+                }
+                (hooks.before_reclaim)(attempt);
+                if !reclaim_dead_lock(&lock) {
+                    // سبقنا مسترجع آخر إلى النقل (أو اختفى القفل) ⇒ أعد القرار
+                    // من أوله: القفل الجديد هناك قد يكون حيّاً.
+                    continue;
+                }
             }
         }
     }
+    Err(PipelineError(LOCK_BUSY.into()))
+}
+
+/// **الاسترجاع الذرّي — الحكم والفعل على كائن ملف واحد**.
+///
+/// `rename` وحده **لا يكفي، وهذا مقيس**: نقل «ما في المسار» لا يفرّق بين القفل
+/// الميّت الذي حكمنا عليه وبين قفلٍ **حيّ** أنشأه غيره في النافذة بين `rename`
+/// و`create` — فالسباق يبقى مفتوحاً (قِيس مع `rename` وحده:
+/// `A يملك=true · B يملك=true`، الاختبار
+/// `two_reclaimers_race_for_one_dead_lock_and_exactly_one_wins`). والنقل الناجح
+/// يعني «سبقتَ إلى نقل ملفٍ ما» لا «نقلتَ الملف الذي حكمت عليه».
+///
+/// فالعلاج الأقوى: **فتح حصري** (`share_mode(0)` ⇒ لا يستطيع أحد حذف الملف ولا
+/// نقله ولا إنشاء غيره في المسار ما دام مقبضنا مفتوحاً)، ثم **الحكم من محتوى
+/// المقبض نفسه**، ثم **الحذف بالكائن** (`FILE_DISPOSITION_INFO`) لا بالاسم.
+/// فبين الحكم والفعل لا يوجد «ما في المسار» أصلاً.
+///
+/// والمسار الاحتياطي على غير ويندوز يحذف بالاسم بعد القراءة (‏`std` لا يعطي
+/// «حذفاً بالكائن» هناك) — **وسباق TOCTOU يبقى نظرياً قائماً على تلك المنصّة**،
+/// وهي مصرَّح بها في [`delete_by_handle`]. والمنتج على ويندوز (CI و
+/// `pnpm e2e:release` على `windows-latest`)، والاختبار الحاكم للسباق يعمل على
+/// المنصّتين ويقيس ما تُتيحه كلٌّ منهما.
+fn reclaim_dead_lock(lock: &Path) -> bool {
+    let grace = std::time::Duration::from_secs(EMPTY_LOCK_GRACE_SECS);
+    let long = std::time::Duration::from_secs(UNREADABLE_LOCK_STALE_SECS);
+    delete_lock_where(lock, &|text, age| {
+        lock_text_is_reclaimable(text, age, grace, long)
+    }) == LockDelete::Deleted
+}
+
+/// نتيجة محاولة حذف قفل — ثلاثة أحوال لا رابع: حُذف · **تُرك عن قصد** (ليس
+/// ميّتاً/ليس قفلنا) · **فشل** (مقبض مفتوح عند غيره، أو خطأ نظام) — والفرق بين
+/// الأخيرين هو الفرق بين «لا تُعِد المحاولة» و«أعِدها».
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LockDelete {
+    Deleted,
+    Kept,
+    Failed,
+}
+
+/// يفتح القفل **حصرياً**، ويحكم عليه من محتواه وعمره **داخل المقبض**، ثم يحذفه
+/// بالكائن إن قال الحكم `should_delete`.
+///
+/// و`age` يُحسب من الملف المفتوح (`File::metadata`) لا من المسار — فلا فصل بين
+/// ما حُكم عليه وما سيُحذف.
+fn delete_lock_where(
+    lock: &Path,
+    should_delete: &dyn Fn(&str, Option<std::time::Duration>) -> bool,
+) -> LockDelete {
+    let Ok(f) = open_lock_exclusive(lock) else {
+        // تعذّر الفتح: إمّا سبقنا غيره فحذفه/نقله، وإمّا مسترجع آخر يمسكه الآن
+        // (لا مشاركة) — وفي الحالتين لم نحذف شيئاً.
+        return LockDelete::Failed;
+    };
+    let age = f
+        .metadata()
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| std::time::SystemTime::now().duration_since(t).ok());
+    let mut text = String::new();
+    if std::io::Read::read_to_string(&mut &f, &mut text).is_err() {
+        return LockDelete::Failed;
+    }
+    if !should_delete(&text, age) {
+        return LockDelete::Kept;
+    }
+    match delete_by_handle(f, lock) {
+        Ok(()) => LockDelete::Deleted,
+        Err(e) => {
+            tracing::warn!(target: "pipe", "تعذّر حذف القفل {} بالكائن: {e}", lock.display());
+            LockDelete::Failed
+        }
+    }
+}
+
+/// فتح حصري لملف القفل (ويندوز): `DELETE` للسماح بالحذف **عبر المقبض**،
+/// و`share_mode(0)` لتثبيت المسار ما دام المقبض مفتوحاً.
+#[cfg(windows)]
+fn open_lock_exclusive(lock: &Path) -> std::io::Result<std::fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    const GENERIC_READ: u32 = 0x8000_0000;
+    const DELETE: u32 = 0x0001_0000;
+    std::fs::OpenOptions::new()
+        .access_mode(GENERIC_READ | DELETE)
+        .share_mode(0)
+        .open(lock)
+}
+
+#[cfg(not(windows))]
+fn open_lock_exclusive(lock: &Path) -> std::io::Result<std::fs::File> {
+    std::fs::File::open(lock)
+}
+
+/// **الحذف بالكائن لا بالاسم** (ويندوز): نعلّم كائن الملف بالحذف عند الإغلاق،
+/// فيحذف النواة **الملف الذي أمسكناه** — لا «ما صار في المسار». وهو الفرق
+/// العملي الوحيد الذي يُغلق سباق TOCTOU بلا نافذة.
+#[cfg(windows)]
+fn delete_by_handle(f: std::fs::File, _lock: &Path) -> std::io::Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::HANDLE;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FileDispositionInfo, SetFileInformationByHandle, FILE_DISPOSITION_INFO,
+    };
+    let info = FILE_DISPOSITION_INFO { DeleteFile: 1 };
+    let ok = unsafe {
+        SetFileInformationByHandle(
+            f.as_raw_handle() as HANDLE,
+            FileDispositionInfo,
+            &info as *const _ as *const core::ffi::c_void,
+            std::mem::size_of::<FILE_DISPOSITION_INFO>() as u32,
+        )
+    };
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    drop(f); // الإغلاق ينفّذ الحذف على الكائن
+    Ok(())
+}
+
+/// **حدّ أمانة مصرَّح به**: على غير ويندوز لا واجهة «حذف بالكائن» في `std`،
+/// فالحذف بالاسم بعد القراءة — وسباق TOCTOU يبقى **نظرياً قائماً هناك**.
+/// والمنتج على ويندوز وحده (CI و`pnpm e2e:release` على `windows-latest`)،
+/// والاختبار الحاكم للسباق [`two_reclaimers_race_for_one_dead_lock_and_exactly_one_wins`]
+/// يعمل على المنصّتين ويقيس ما تُتيحه كلٌّ منهما.
+#[cfg(not(windows))]
+fn delete_by_handle(f: std::fs::File, lock: &Path) -> std::io::Result<()> {
+    drop(f);
+    std::fs::remove_file(lock)
 }
 
 /// ينشئ ملف القفل **حصراً** ويكتب فيه PID المالك وطابعه الزمني.
@@ -330,6 +611,25 @@ fn finish_run(
     }
     Err(err("تم إلغاء المعالجة من قبل المستخدم."))
 }
+
+/// **الرقم الواحد الصادق لسقف نداء المحرّك** — يقرؤه تلغرام (رسالة `/kill`)
+/// والواجهة (`src/jobs.ts: STOP_CEILING_SECS`، وحارس تكافؤ يمنع تباعدهما).
+///
+/// **من أين جاء**: أطول نداء محرّك (ONNX) سُجِّل فعلاً **565.451 ث** —
+/// `SEPARATE-AB-REPORT … inference_ms=565451` في سجلّ المالك
+/// `%LOCALAPPDATA%\com.harammute.haramlite\logs\haramlite.log.2026-09-21`، وهو
+/// أكبر **١١** عيّنة في ذلك السجلّ (التالي 250377 ث · ثم 179368 ث · والوسيط
+/// نحو 32.7 ث). والرقم المعلَن **566 ث (‏٩.٤ دقيقة)** بترفيع إلى الثانية الصحيحة.
+///
+/// **وهو أطول ما قيس، لا حدّ رياضي**: نداء أطول (ملفّ أطول، أو بناء تصحيح)
+/// يتجاوزه، فلا يُقرأ وعداً. ولذلك الصياغة المعلَنة **«أطول ما قيس … والغالب
+/// أقلّ بكثير»** ولا يُقال «فوراً» عن نداء المحرّك: هو نداء واحد داخل العملية
+/// لا نقطة إلغاء فيه، والهجر يقع عند أول حدّ بعده (انظر `process_file`).
+///
+/// **وسابقة مُصلَحة**: كان المعلَن رقمين مختلفين لنفس الحالة — `141` في الواجهة
+/// و`150` في تلغرام — وكلاهما من عيّنة **140.208 ث** قديمة، أي **أقلّ من الواقع
+/// ٣.٨×**. والرقم المشترك هنا هو ما يجب أن يُقرأ في المواضع الثلاثة.
+pub const ENGINE_CALL_CEILING_SECS: u64 = 566;
 
 /// Process one media file end-to-end.
 ///
@@ -700,18 +1000,30 @@ mod tests {
     /// العطل الميداني (قتل/إلغاء مهمّة) بلا محاكاة.
     const LOCK_HOLDER_MODE: &str = "HARAMLITE_LOCK_HOLDER";
 
+    /// **نفس الوضع لكن بالمسار الإنتاجي**: الطفل ينادي `claim_processing`
+    /// (التي تستعمل `locks_dir()` من `HARAMLITE_DATA_DIR`) لا
+    /// `claim_processing_in` المحقونة — فالاختبار يقيس المسار الذي يعمل في
+    /// المنتج لا نسخةً منه.
+    const PROD_LOCK_HOLDER_MODE: &str = "HARAMLITE_LOCK_HOLDER_PROD";
+
     #[test]
     fn lock_holder_process() {
-        if std::env::var(LOCK_HOLDER_MODE).is_err() {
+        let prod = std::env::var(PROD_LOCK_HOLDER_MODE).is_ok();
+        if std::env::var(LOCK_HOLDER_MODE).is_err() && !prod {
             return; // لسنا في وضع حامل القفل
         }
-        // البيئة تُضبط من الأب **قبل** إقلاع هذا الطفل، فالقفل يُكتب في مجلد
-        // القياس (لا في بيانات المستخدم).
-        let locks = PathBuf::from(std::env::var("HARAMLITE_LOCKS_DIR").expect("مجلد الأقفال"));
         let input = PathBuf::from(std::env::var("HARAMLITE_LOCK_INPUT").expect("مسار الإدخال"));
         let ready = PathBuf::from(std::env::var("HARAMLITE_LOCK_READY").expect("مجلد العلامة"));
-        let _claim =
-            claim_processing_in(&locks, &input, lock_owner_is_dead).expect("الطفل يأخذ القفل");
+        // البيئة تُضبط من الأب **قبل** إقلاع هذا الطفل، فالقفل يُكتب في مجلد
+        // القياس (لا في بيانات المستخدم). وفي وضع الإنتاج يكون المجلد هو مجلد
+        // بيانات `HARAMLITE_DATA_DIR` نفسه — وهو ما يجعله مسار الإنتاج بحرفه.
+        let _claim = if prod {
+            claim_processing(&input).expect("الطفل يأخذ القفل (مسار الإنتاج)")
+        } else {
+            let locks = PathBuf::from(std::env::var("HARAMLITE_LOCKS_DIR").expect("مجلد الأقفال"));
+            claim_processing_in(&locks, &input, lock_owner_is_dead, ClaimHooks::production())
+                .expect("الطفل يأخذ القفل")
+        };
         std::fs::write(ready.join("held.pid"), std::process::id().to_string())
             .expect("علامة الجاهزية");
         // يبقى حيّاً حتى يُقتل — والقتل لا يعمل المدوِّرات فيبقى القفل.
@@ -743,87 +1055,31 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("hl_deadlock_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let locks = dir.join("locks");
-        let ready = dir.join("ready");
-        std::fs::create_dir_all(&ready).unwrap();
         let input = dir.join("same_file.mp3");
         std::fs::write(&input, b"x").unwrap();
+        let locks = dir.join("locks");
 
-        // القفل يُحسب من (مجلد الأقفال، مسار الإدخال) — ونحسبه **بالصيغة نفسها**
-        // في مجلد القياس، فلا يتّسخ مجلد بيانات المستخدم ولا يُلمس متغيّر بيئة
-        // عام (لمسُه يُسابق كل اختبار يحلّ مساراً — عطل مقيس في `paths.rs:29-31`).
-        let lock = lock_name_in(&locks, &input);
-
-        let exe = std::env::current_exe().expect("مسار ثنائي الاختبار");
-        let mut child = std::process::Command::new(&exe)
-            .args([
-                "pipeline::tests::lock_holder_process",
-                "--exact",
-                "--nocapture",
-            ])
-            .env(LOCK_HOLDER_MODE, "1")
-            .env("HARAMLITE_LOCKS_DIR", &locks)
-            .env("HARAMLITE_LOCK_INPUT", &input)
-            .env("HARAMLITE_LOCK_READY", &ready)
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
-            .spawn()
-            .expect("إطلاق حامل القفل");
-        let pid_file = ready.join("held.pid");
-        let started = std::time::Instant::now();
-        while !pid_file.exists() && started.elapsed() < std::time::Duration::from_secs(15) {
-            std::thread::sleep(std::time::Duration::from_millis(25));
-        }
-        assert!(
-            pid_file.exists(),
-            "الطفل لم يعلن أخذه القفل خلال 15 ث — القياس باطل"
-        );
-        let holder_pid: u32 = std::fs::read_to_string(&pid_file)
-            .unwrap_or_default()
-            .trim()
-            .parse()
-            .expect("pid الطفل");
-
-        // ضابط موجب (١): القفل على القرص يحمل PID الطفل.
-        assert!(lock.is_file(), "ملف القفل موجود: {}", lock.display());
-        let recorded: u32 = std::fs::read_to_string(&lock)
-            .unwrap_or_default()
-            .split_whitespace()
-            .next()
-            .and_then(|t| t.parse().ok())
-            .expect("القفل يخزّن PID المالك");
-        assert_eq!(recorded, holder_pid, "القفل يخزّن PID المالك الحقيقي");
-
-        // القتل القاسر: لا `Drop` ⇒ القفل يبقى (وهذا هو العطل الأصلي).
-        assert!(
-            kill_process(holder_pid),
-            "قتل حامل القفل ({holder_pid}) — القياس بلا قتل باطل"
-        );
-        let _ = child.wait();
-        let died = started.elapsed();
-        assert!(
-            !process_is_alive(holder_pid),
-            "المالك مات فعلاً (وإلا لكان الاسترجاع خاطئاً)"
-        );
-        assert!(lock.is_file(), "القفل الميت باقٍ على القرص كما في الميدان");
+        // القفل يُحسب من (مجلد الأقفال، مسار الإدخال) — ويحسبه المساعد
+        // **بالصيغة نفسها** في مجلد القياس، فلا يتّسخ مجلد بيانات المستخدم ولا
+        // يُلمس متغيّر بيئة عام (لمسُه يُسابق كل اختبار يحلّ مساراً — عطل مقيس
+        // في `paths.rs:29-31`).
+        let (_lock, holder_pid, died) = kill_a_live_lock_holder(&dir, &input, false);
 
         // ضابط سالب: القفل **الطازج نفسه** (بلا فحص حياة) لا يُستَرجع — وهذا
         // يثبت أن المسار المقيس هو مسار «القفل القائم» لا مسار «لا قفل».
         std::thread::sleep(std::time::Duration::from_millis(1200));
-        let fresh = claim_processing_in(&locks, &input, |_| false);
+        let fresh = claim_processing_in(&locks, &input, |_| false, ClaimHooks::production());
         assert!(
             fresh.is_err(),
             "قفل عمره ثانية يجب أن يُرفض — وإلا فالقياس بلا قفل أصلاً"
         );
         let fresh_msg = fresh.err().map(|e| e.to_string()).unwrap_or_default();
-        assert_eq!(
-            fresh_msg, "الملف قيد المعالجة حالياً — تخطي",
-            "الرسالة المقيسة في العطل نفسه"
-        );
+        assert_eq!(fresh_msg, LOCK_BUSY, "الرسالة المقيسة في العطل نفسه");
 
         // **الادّعاء**: إعادة المحاولة فوراً على الملف نفسه تنجح.
         let t = std::time::Instant::now();
-        let again = claim_processing_in(&locks, &input, lock_owner_is_dead);
+        let again =
+            claim_processing_in(&locks, &input, lock_owner_is_dead, ClaimHooks::production());
         let reclaim = t.elapsed();
         assert!(
             again.is_ok(),
@@ -843,6 +1099,367 @@ mod tests {
              (المهلتان: احتياط الطابع الزمني {STALE_LOCK_SECS} ث · قفل بلا PID {UNREADABLE_LOCK_STALE_SECS} ث)"
         );
         drop(again);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **الوعاء الواحد** لكل اختبارات القفل الميت: يطلق حامل قفل حقيقياً، ينتظر
+    /// جاهزيته، **يقتله قاسراً** (`TerminateProcess` — لا `Drop`)، ويعيد
+    /// `(مسار القفل، pid المالك المقتول، الزمن المنقضي)`.
+    ///
+    /// `prod = true` ⇒ الطفل يأخذ القفل عبر `claim_processing` الإنتاجية
+    /// (‏`locks_dir()` من `HARAMLITE_DATA_DIR` الذي يضبطه المستدعي)، وإلا فبمجلد
+    /// أقفال صريح محقون.
+    fn kill_a_live_lock_holder(
+        dir: &Path,
+        input: &Path,
+        prod: bool,
+    ) -> (PathBuf, u32, std::time::Duration) {
+        let ready = dir.join("ready");
+        std::fs::create_dir_all(&ready).unwrap();
+        let locks = dir.join("locks");
+        let lock = if prod {
+            lock_name_in(&locks_dir(), input)
+        } else {
+            lock_name_in(&locks, input)
+        };
+
+        let exe = std::env::current_exe().expect("مسار ثنائي الاختبار");
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.args([
+            "pipeline::tests::lock_holder_process",
+            "--exact",
+            "--nocapture",
+        ])
+        .env("HARAMLITE_LOCK_INPUT", input)
+        .env("HARAMLITE_LOCK_READY", &ready)
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit());
+        if prod {
+            cmd.env(PROD_LOCK_HOLDER_MODE, "1");
+        } else {
+            cmd.env(LOCK_HOLDER_MODE, "1")
+                .env("HARAMLITE_LOCKS_DIR", &locks);
+        }
+        let mut child = cmd.spawn().expect("إطلاق حامل القفل");
+
+        let pid_file = ready.join("held.pid");
+        let started = std::time::Instant::now();
+        while !pid_file.exists() && started.elapsed() < std::time::Duration::from_secs(15) {
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        assert!(
+            pid_file.exists(),
+            "الطفل لم يعلن أخذه القفل خلال 15 ث — القياس باطل"
+        );
+        let pid: u32 = std::fs::read_to_string(&pid_file)
+            .unwrap_or_default()
+            .trim()
+            .parse()
+            .expect("pid الطفل");
+
+        // ضابط موجب: القفل على القرص يحمل PID الطفل (فالمسار المقيس هو الميداني).
+        assert!(lock.is_file(), "ملف القفل موجود: {}", lock.display());
+        assert_eq!(lock_owner_pid(&lock), Some(pid), "القفل يحمل PID المالك");
+
+        // القتل القاسر: لا `Drop` ⇒ القفل يبقى (وهذا هو العطل الأصلي).
+        assert!(
+            kill_process(pid),
+            "قتل حامل القفل ({pid}) — القياس بلا قتل باطل"
+        );
+        let _ = child.wait();
+        let died = started.elapsed();
+        assert!(
+            !process_is_alive(pid),
+            "المالك مات فعلاً (وإلا لكان الاسترجاع خاطئاً)"
+        );
+        assert!(lock.is_file(), "القفل الميت باقٍ على القرص كما في الميدان");
+        (lock, pid, died)
+    }
+
+    /// **سباق المسترجعَين — العطل الذي أُغلق في `claim_processing_in`**.
+    ///
+    /// الكود القديم: `remove_file(&lock)` ثم `create_lock` بلا إعادة تحقّق ⇒
+    /// إن سبق B إلى الحذف **بعد** أن أنشأ A قفله الجديد، حذف B **قفل A الحيّ**
+    /// ⇒ **مالكان لملف واحد** (قياس المدقّق بنافذة ٣٠٠ مللي:
+    /// `A-holds=true · B-holds=true · BOTH-HELD-AT-ONCE=true`).
+    ///
+    /// **والترتيب مُجبَر لا مُتوقَّع**: الخطّاف `before_reclaim` يقع بعد قرار
+    /// «القفل ميت» وقبل الخطوة التدميرية، فيُوقف الخيطين عند حاجز ⇒ كلاهما
+    /// **مرّ الفحص** ثم يُطلق A وحده (B ينتظر إشعار «أخذت») — فلا `sleep` ولا
+    /// رهان على جدولة.
+    #[test]
+    fn two_reclaimers_race_for_one_dead_lock_and_exactly_one_wins() {
+        let _guard = crate::paths::serial_guard();
+        let dir = std::env::temp_dir().join(format!("hl_race_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = dir.join("raced.mp3");
+        std::fs::write(&input, b"x").unwrap();
+        let locks = dir.join("locks");
+        let (_lock, holder_pid, _died) = kill_a_live_lock_holder(&dir, &input, false);
+
+        let gate = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let rx = std::sync::Arc::new(std::sync::Mutex::new(rx));
+        let hooks_of =
+            |winner: bool,
+             gate: std::sync::Arc<std::sync::Barrier>,
+             rx: std::sync::Arc<std::sync::Mutex<std::sync::mpsc::Receiver<()>>>| {
+                move |_attempt: usize| {
+                    gate.wait(); // كلانا بعد فحص «القفل ميت»
+                    if !winner {
+                        // الخاسر ينتظر حتى يصير القفل للفائز فعلاً — فيقع تدميره
+                        // **بعد** ملكية الأول لا قبلها. وهذا هو الترتيب الذي يكشف
+                        // الحذف بالاسم.
+                        let _ = rx
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner())
+                            .recv_timeout(std::time::Duration::from_secs(20));
+                    }
+                }
+            };
+        let a_dir = locks.clone();
+        let a_input = input.clone();
+        let a_gate = gate.clone();
+        let a_rx = rx.clone();
+        let a = std::thread::spawn(move || {
+            let hook = hooks_of(true, a_gate, a_rx);
+            let hooks = ClaimHooks {
+                before_reclaim: &hook,
+                after_create: &|_| {},
+            };
+            let r = claim_processing_in(&a_dir, &a_input, lock_owner_is_dead, hooks);
+            let _ = tx.send(());
+            r
+        });
+        let b_dir = locks.clone();
+        let b_input = input.clone();
+        let b_gate = gate.clone();
+        let b_rx = rx.clone();
+        let b = std::thread::spawn(move || {
+            let hook = hooks_of(false, b_gate, b_rx);
+            let hooks = ClaimHooks {
+                before_reclaim: &hook,
+                after_create: &|_| {},
+            };
+            claim_processing_in(&b_dir, &b_input, lock_owner_is_dead, hooks)
+        });
+
+        let a_res = a.join().expect("خيط A");
+        let b_res = b.join().expect("خيط B");
+        let wins = usize::from(a_res.is_ok()) + usize::from(b_res.is_ok());
+        let loser_msg = [&a_res, &b_res]
+            .iter()
+            .find_map(|r| r.as_ref().err().map(|e| e.to_string()))
+            .unwrap_or_default();
+        eprintln!(
+            "م٢/سباق القفل: مالك القفل الميت pid={holder_pid} · A={:?} · B={:?}",
+            a_res.as_ref().map(|_| "يملك"),
+            b_res.as_ref().map(|_| "يملك")
+        );
+        assert_eq!(
+            wins,
+            1,
+            "**مالكان لملف واحد**: A يملك={} · B يملك={} (والقفل يجب أن يعود لواحد)",
+            a_res.is_ok(),
+            b_res.is_ok()
+        );
+        assert_eq!(loser_msg, LOCK_BUSY, "الخاسر يفشل بالرسالة الصادقة الواحدة");
+        // ولا يدّعي الفائز قفلاً ليس له: قفل قائم حيّ لا يُسترجع.
+        assert!(
+            lock_owner_pid(&locks.join(lock_file_name(&input))).is_some(),
+            "قفل الفائز قائم على القرص بعد السباق"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// اسم ملف القفل (لا مساره) — للمقارنة داخل مجلد أقفال معلوم.
+    fn lock_file_name(input: &Path) -> String {
+        lock_name_in(Path::new("."), input)
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    }
+
+    /// **نافذة القفل الفارغ** (‏`create_new` ثم الكتابة): قفل موجود وفارغ
+    /// يُعتبر **محتجَزاً** خلال المهلة — الاتجاه الآمن — ولا يُستَرجع إلا بعدها.
+    /// والمهلتان **محقونتان** في الفحص نفسه، فالقياس بلا نوم.
+    #[test]
+    fn an_empty_lock_is_held_inside_the_grace_window_and_reclaimable_after_it() {
+        let dir = std::env::temp_dir().join(format!("hl_empty_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let lock = dir.join("empty.lock");
+        std::fs::write(&lock, b"").unwrap();
+
+        let grace = std::time::Duration::from_secs(EMPTY_LOCK_GRACE_SECS);
+        let long = std::time::Duration::from_secs(UNREADABLE_LOCK_STALE_SECS);
+        assert!(
+            !lock_is_reclaimable(&lock, grace, long),
+            "قفل فارغ طازج ⇒ محتجَز (مَن ينشئ ثم يكتب لا يُسرق)"
+        );
+        assert!(
+            lock_is_reclaimable(&lock, std::time::Duration::ZERO, long),
+            "وبعد المهلة يصير قابلاً للاسترجاع — فلا يتعلّق ملف أبداً"
+        );
+
+        // ومحتوى **بلا PID** (نسخة أقدم كتبت طابعاً) تحكمه المهلة الطويلة لا
+        // مهلة الفارغ: لا يُستَرجع بمهلة الصفر.
+        std::fs::write(&lock, b"not-a-pid").unwrap();
+        assert!(
+            !lock_is_reclaimable(&lock, std::time::Duration::ZERO, long),
+            "نصّ بلا PID ليس قفلاً فارغاً ⇒ المهلة الطويلة"
+        );
+        assert!(
+            lock_is_reclaimable(&lock, std::time::Duration::ZERO, std::time::Duration::ZERO),
+            "ومهلة الصفر للمجهول تعني «لا سبيل للفحص» ⇒ استرجاع"
+        );
+
+        // والقفل الحيّ (PID حيّ = عمليتنا) لا يُستَرجع بأي مهلة.
+        std::fs::write(&lock, format!("{} 1", std::process::id())).unwrap();
+        assert!(
+            !lock_is_reclaimable(&lock, std::time::Duration::ZERO, std::time::Duration::ZERO),
+            "مالك حيّ ⇒ لا استرجاع مهما كان العمر"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **تحقّق الملكية بعد الإنشاء + حدّ المحاولات**: كاتب آخر يستبدل القفل بعد
+    /// `create_new` (بالمحاكاة عبر `after_create`) ⇒ لا نعيد حارساً على قفل ليس
+    /// قفلنا، وندور **ثلاث محاولات فقط** ثم نقول الرسالة الصادقة.
+    ///
+    /// (والمُفسَد: إسقاط `lock_is_ours` ⇒ يعود `Ok` على قفلٍ PIDه لغيره.)
+    #[test]
+    fn a_lock_we_did_not_write_is_never_claimed_as_ours() {
+        let dir = std::env::temp_dir().join(format!("hl_notours_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = dir.join("stolen.mp3");
+        std::fs::write(&input, b"x").unwrap();
+
+        let created = std::sync::atomic::AtomicUsize::new(0);
+        let reclaimed = std::sync::atomic::AtomicUsize::new(0);
+        let hooks = ClaimHooks {
+            before_reclaim: &|_| {
+                reclaimed.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            },
+            after_create: &|p| {
+                created.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                // مستبدل: PID ليس PIDنا.
+                std::fs::write(p, b"4294967290 1").unwrap();
+            },
+        };
+        let r = claim_processing_in(&dir, &input, |_| true, hooks);
+        let msg = r.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
+        assert!(r.is_err(), "قفلٌ ليس قفلنا لا يُدَّعى (الملكية محتجَزة لغيره)");
+        assert_eq!(
+            msg, LOCK_BUSY,
+            "الرسالة الصادقة الواحدة بعد استنفاد المحاولات"
+        );
+        assert_eq!(
+            created.load(std::sync::atomic::Ordering::SeqCst),
+            RECLAIM_ATTEMPTS - 1,
+            "الإنشاء يقع في المحاولتين ٠ و٢ (والثالثة استرجاع) — فالحدّ محترم"
+        );
+        assert_eq!(
+            reclaimed.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "استرجاع واحد بينهما — لا دوران بلا حدّ"
+        );
+        // والقفل المستبدَل **باقٍ** (لم نحذفه: ليس لنا).
+        assert!(
+            dir.join(lock_file_name(&input)).is_file(),
+            "لا نحذف قفل غيرنا"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **المسار الإنتاجي** (لا المحقون): عملية تحمل القفل عبر `claim_processing`
+    /// الحقيقية ثم تُقتل ⇒ إعادة المعالجة على **الملف نفسه** تنجح فوراً.
+    ///
+    /// ولماذا اختبار ثانٍ بعد `a_dead_owner_lock_is_reclaimed_immediately`:
+    /// ذاك ينادي `claim_processing_in(…, lock_owner_is_dead)` **بنفسه**، فإسقاط
+    /// فحص الحياة من `claim_processing` (المسار الإنتاجي) لا يُسقطه — قياس
+    /// المدقّق. وهذا الاختبار يمرّ بـ`claim_processing` وحدها.
+    #[test]
+    fn the_production_claim_path_reclaims_a_dead_owners_lock() {
+        let _serial = crate::paths::serial_guard();
+        let _env = crate::paths::env_restore("HARAMLITE_DATA_DIR");
+        let base = std::env::temp_dir().join(format!("hl_prodclaim_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::env::set_var("HARAMLITE_DATA_DIR", &base);
+
+        let input = base.join("same_file.mp3");
+        std::fs::write(&input, b"x").unwrap();
+
+        // ضابط سالب أولاً: بلا قفل أصلاً ⇒ المسار ينجح (فالقياس على قفل قائم).
+        let first = claim_processing(&input).expect("أول أخذ للقفل");
+        drop(first);
+        drop(claim_processing(&input).expect("بعد التحرير"));
+
+        let (lock, holder_pid, died) = kill_a_live_lock_holder(&base, &input, true);
+        // ضابط سالب: القفل قائم وفيه PID ميت ⇒ لولا فحص الحياة لَرُفض الطلب.
+        assert_eq!(
+            lock_owner_pid(&lock),
+            Some(holder_pid),
+            "القفل للطفل المقتول"
+        );
+        assert!(!process_is_alive(holder_pid), "المالك ميت فعلاً");
+
+        let t = std::time::Instant::now();
+        let again = claim_processing(&input);
+        let reclaim = t.elapsed();
+        let msg = again
+            .as_ref()
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
+        eprintln!(
+            "م٢/الإنتاج: pid={holder_pid} مات بعد {died:?} · استرجاع المسار الإنتاجي {reclaim:?}"
+        );
+        assert!(
+            again.is_ok(),
+            "المسار الإنتاجي يجب أن يسترجع قفل مالك ميت فوراً: {msg}"
+        );
+        assert!(
+            reclaim < std::time::Duration::from_secs(5),
+            "الاسترجاع فوري لا بعد ١٢ ساعة، وقياسه {reclaim:?}"
+        );
+        assert!(
+            reclaim.as_secs() < STALE_LOCK_SECS,
+            "الاسترجاع لم ينتظر الطابع الزمني (١٢ ساعة)"
+        );
+        drop(again);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// **`Drop` لا يهدم قفل غيره**: لو استُرجع قفلنا (مالكٌ حُكم عليه بالموت
+    /// خطأً) وأنشأ غيره قفلاً في المسار نفسه، فحذفٌ أعمى عند انتهاء مهمّتنا
+    /// **يمنح مالكين**: الذي ما زال يعمل، والذي سيقفل بعدنا. فيُشترط أن القفل
+    /// **قفلنا** (PIDنا) قبل الحذف.
+    ///
+    /// (والمُفسَد: حذف بلا شرط ⇒ يسقط هذا الاختبار.)
+    #[test]
+    fn a_claim_never_deletes_a_lock_that_is_no_longer_its_own() {
+        let dir = std::env::temp_dir().join(format!("hl_dropguard_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = dir.join("taken.mp3");
+        std::fs::write(&input, b"x").unwrap();
+
+        let claim =
+            claim_processing_in(&dir, &input, |_| false, ClaimHooks::production()).expect("قفلنا");
+        let lock = lock_name_in(&dir, &input);
+        assert!(lock.is_file(), "القفل مكتوب باسمنا");
+        // مسترجع آخر سبقنا: القفل الآن يحمل PID غيره (لا وجود له ⇒ «ميّت» لكنه
+        // ليس قفلنا — وهذا هو الفرق الذي يقيسه الاختبار).
+        std::fs::write(&lock, b"4294967290 1").unwrap();
+        drop(claim);
+        assert!(
+            lock.is_file(),
+            "`Drop` حذف قفلاً ليس قفله — وهذا يفتح الباب لمالكين لملف واحد"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
