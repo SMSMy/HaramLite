@@ -61,6 +61,22 @@ export function clampConcurrentJobs(n: number): 1 | 2 {
 export function setAutostartAsked(next: boolean): void {
   autostartAsked = next;
 }
+
+/* ── م٤: وضوح رسائل المجموعة (mentions-only) ─────────────────────────────
+ * قرار المالك: الخيار للمستخدم في الإعدادات لا قرار مبرمج. ومفتاح التخزين
+ * `hl.tg_group_mode` بقيمتين **وحدهما** — `mentions` (افتراضيّ) و`all` — على
+ * نمط `hl.tg_audio` المجاور حرفياً. وهذه الدالة هي **مصدر الحقيقة الوحيد**
+ * للتطبيع: `collectSettings()` و`wireSettings()` و`seedSettings()` كلها تمرّ
+ * منها، فلا يمكن أن تعرض القائمة قيمة وتُرسل أخرى (وهو العطل الذي وقع في
+ * سقف الفصول المتزامنة قبل `clampConcurrentJobs`).
+ *
+ * والقيمة غير المعروفة (تخزين قديم أو تعديل يدوي أو `'every'`) تُردّ إلى
+ * `mentions`: **لا قيمة ثالثة** — لا في القائمة ولا في التخزين. وإرجاع
+ * `mentions` هو الطرف الآمن: لا يوسّع ما يراه البوت. */
+export function groupModeFrom(raw: string | null): 'mentions' | 'all' {
+  return raw === 'all' ? 'all' : 'mentions';
+}
+
 let settingsSyncTimer: number | undefined;
 /** Hook filled by wireWatchSettings so external settings changes can repaint. */
 let refreshWatchUi: (() => void) | null = null;
@@ -91,6 +107,9 @@ export function collectSettings(): RustSettings {
     telegram_token: tgToken,
     telegram_user_id: localStorage.getItem('hl.tg_owner') || '',
     telegram_audio_only: localStorage.getItem('hl.tg_audio') === '1',
+    // م٤: مفتاح التخزين `hl.tg_group_mode` — مطبَّع عبر `groupModeFrom`،
+    // فقيمة غير معروفة تُرسل `mentions` لا تمرّ كما هي إلى الخلف.
+    telegram_group_mode: groupModeFrom(localStorage.getItem('hl.tg_group_mode')),
     telegram_local_url: localStorage.getItem('hl.tg_local') || '',
     telegram_api_id: localStorage.getItem('hl.tg_api_id') || '',
     telegram_api_hash: tgApiHash,
@@ -149,6 +168,12 @@ export async function seedSettings(): Promise<void> {
       if (localStorage.getItem(ls) === null && typeof s[k] === 'string') {
         localStorage.setItem(ls, s[k] as string);
       }
+    }
+    // م٤: بذرة وضوح رسائل المجموعة — **مطبَّعة** لا منسوخة: قيمة الخلف
+    // (`telegram_group_mode`) تمرّ بـ`groupModeFrom` أيضاً، فقيمة غريبة في
+    // settings.json لا تُدخل قيمة ثالثة إلى localStorage.
+    if (localStorage.getItem('hl.tg_group_mode') === null && typeof s.telegram_group_mode === 'string') {
+      localStorage.setItem('hl.tg_group_mode', groupModeFrom(s.telegram_group_mode));
     }
     const nums: [keyof RustSettings, string][] = [
       ['preview_seconds', 'hl.preview_seconds'], ['watch_max_size_mb', 'hl.watch_max_mb'],

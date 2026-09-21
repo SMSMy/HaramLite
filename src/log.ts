@@ -11,6 +11,7 @@
  */
 import { invoke } from '@tauri-apps/api/core';
 import type { LogLine } from './types';
+import { t } from './i18n';
 
 const view = document.getElementById('log-view') as HTMLDivElement;
 const autoscroll = document.getElementById('autoscroll') as HTMLInputElement;
@@ -48,6 +49,11 @@ function scheduleLogPaint(): void {
     logFrameQueued = false;
     if (!logOpen) return;
     if (renderedUpTo > logTotal) { renderLogs(logBuffer); return; }
+    // جولة ثالثة (الجاسوس): سطر حالة («⚠ تعذّر قراءة السجلّ») يبقى أبداً لأن
+    // هذا المسار **يُضيف ولا يُزيل**، فكان يناقض سطراً حقيقياً تحته:
+    // `P3 afterLine {"noticeStillSaysUnavailable":true}`. فالوسم يُزاح هنا
+    // قبل إضافة أي سطر حقيقي — والوعد في تعليق `showNotice` صار منفَّذاً.
+    view.querySelector('[data-log-notice]')?.remove();
     const stick = nearBottom();
     const have = logTotal - renderedUpTo;
     const inBuf = Math.min(have, logBuffer.length);
@@ -79,9 +85,29 @@ export async function refresh(): Promise<void> {
     logBuffer.push(...fresh);
     logTotal += fresh.length;
     renderLogs(logBuffer);
+    // قراءة ناجحة بلا سطور ⇒ حالة انتظار صادقة، لا فراغ صامت ولا سطر مُختلق.
+    if (!logBuffer.length) showNotice('log_empty');
   } catch (e) {
     console.error('get_recent_logs failed', e);
+    // ع٣ (جولة الجاسوس المستقل): كان الفشل يُبتلع (`console.error` وحده) فتبقى
+    // سطور الترميز الثابتة معروضة — ومنها `[ERROR] Failed to locate model
+    // weights…`، أي **إنذار كاذب يدعو لإجراء**. والسطور الثابتة أُزيلت من
+    // `index.html`، وهذا يُعلن الفشل صراحةً بدل صمت يبدو سليماً.
+    showNotice('log_unavailable', true);
   }
+}
+
+/** سطر حالة **معلَن** في اللوحة (لا سطر سجلّ مُتخيَّل): يحمل صنفاً خاصاً
+ *  (`log-notice`) فلا يُخلط بسطر حقيقي، ويُمحى بأول سطر حقيقي. */
+function showNotice(key: 'log_empty' | 'log_unavailable', isError = false): void {
+  const div = document.createElement('div');
+  div.className = isError
+    ? 'log-notice text-error font-mono-code text-mono-code px-unit py-1'
+    : 'log-notice text-on-surface-variant opacity-80 font-mono-code text-mono-code px-unit py-1';
+  div.setAttribute('data-log-notice', key);
+  div.textContent = t(key);
+  view.replaceChildren(div);
+  renderedUpTo = logTotal;
 }
 
 export function pushLogLine(line: LogLine): void {

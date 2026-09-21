@@ -108,6 +108,19 @@ const i18n = {
     tg_token: 'توكن البوت (من BotFather)',
     tg_owner: 'معرّف المستخدم المسموح (اختياري)',
     tg_audio_only: 'إرسال الصوت فقط (MP3) دائماً',
+    // م٤: وضوح رسائل المجموعة — نصّ **صادق ومحدود**، ولا يَعِد بميزة غير منفَّذة.
+    //   • لا ذكر لتحويل الرابط إلى المالك للموافقة ولا لـ«اسمح دائماً» — تلك
+    //     بنود تصميم م٤ (§٢) لا كود قائم؛ ذكرها هنا وعد كاذب.
+    //   • ولا يُطلَق وعد بأن «بالمنشن فقط» يحجب: نصف Rust (الحجب) لم يُدمج بعد،
+    //     فالنصّ يقول ما يفعله تلغرام نفسه (privacy mode) ولا يدّعي فعلاً للبوت.
+    // والقرار في `src/__tests__/tgGroupMode.test.ts` **يُقاس لحظة التشغيل** لا
+    // يُخزَّن هنا: الفحص يقرأ `src-tauri/src/settings.rs` فإن وُجد فيه
+    // `telegram_group_mode` سقط الاختبار مطالباً بتحرير هذا النصّ — فلا يبقى
+    // تعليقٌ يزعم غياب الميزة بعد وجودها.
+    settings_group_mode: 'وضوح رسائل المجموعة:',
+    settings_group_mode_mentions: 'بالمنشن فقط',
+    settings_group_mode_all: 'كل الرسائل',
+    settings_group_mode_hint: '«بالمنشن فقط»: لا يرى البوت إلا ما وُجِّه إليه؛ والرسالة التي لا تذكره لا تصله أصلاً في مجموعة privacy mode فيها مفعّل. «كل الرسائل»: يراه ما لم يُقصد به أيضاً، فيلزم إطفاء privacy mode من @BotFather، وإلا لم يصل شيء.',
     tg_paircode: 'رمز الاقتران',
     tg_pair_hint: 'أرسل هذا الرمز إلى بوتك في تيليجرام لربط حسابك (صالح 10 دقائق).',
     tg_advanced: 'إعدادات متقدمة: خادم Bot API محلي (حتى 2GB وبالجودة الأصلية)',
@@ -182,12 +195,29 @@ const i18n = {
     ytdlp_local_missing: 'لا توجد نسخة محلية من yt-dlp على هذا الجهاز بعد.',
     queue_title: 'طابور المعالجة',
     open_out_folder: 'فتح مجلد الإخراج',
-    queue_processing_3: '1/3 جاري المعالجة...',
+    // 2026-09-21: حالتان صريحتان بدل ترميز تصميمي ثابت كان يُقرأ كعمل جارٍ.
+    queue_empty: 'لا ملفات في الطابور بعد',
+    queue_empty_add: 'أفلت ملفات في النافذة أو أضف رابطاً لتبدأ المعالجة.',
+    // ع٢ (جولة الجاسوس المستقل): طابور الواجهة فارغ **ومهمّة حيّة في الخلفية**
+    // (طلب تلغرام/الجسر، أو إعادة تحميل الواجهة أثناء عمل Rust) — فلا يُقال
+    // «لا شيء، ابدأ» وشريط الإيقاف فوقه يقول «المهامّ النشطة: 1». النصّ يسمّي
+    // الحقيقة بدل أن يناقضها.
+    queue_empty_running: 'لا ملفات في الطابور — ومهمّة جارية في الخلفية',
+    queue_empty_running_hint: 'المهمّة الجارية تتابع في الخلفية؛ وأفلت ملفات أو أضف رابطاً لإضافة عمل جديد.',
+    // الجولة الثالثة: فشل قراءة السِجلّ ⇒ **لا نعرف**. ولا «لا ملفات … لتبدأ
+    // المعالجة» (قد تكون ثمّة مهمّة) ولا «مهمّة جارية» (لم نُثبتها) — بل تصريح
+    // بالجهل. فالخمول **ادّعاء معرفة** كالعمل، ولا يُطلق بلا دليل.
+    queue_empty_unknown: '⚠ تعذّر قراءة حالة المهامّ — لا نعرف إن كان شيء يعمل',
+    queue_empty_unknown_hint: 'تعذّرت قراءة سِجلّ المهامّ من الخلفية؛ انتظر قليلاً أو أعد المحاولة قبل بدء عمل جديد.',
     queue_processing: 'جاري المعالجة...',
     queue_pending: 'في الانتظار',
     ext_title: 'وظائف خارجية',
     ext_empty: 'لا وظائف خارجية جارية',
     log_toggle: 'سجل الأحداث / Activity Log',
+    // ع٣ (جولة الجاسوس): حالتان تُكتبان في اللوحة عند غياب سطور حقيقية — بدل
+    // سطور ثابتة كانت تُقرأ كسجلّ، ومنها خطأ لم يقع.
+    log_empty: 'لا سطور في السجلّ بعد.',
+    log_unavailable: '⚠ تعذّر قراءة السجلّ من الخلفية — لا سطور معروضة.',
     log_demo_info: 'yt-dlp update check: already up to date.',
     log_demo_warn: 'Track 2 audio format might cause slight degradation.',
     log_demo_error: 'Failed to locate model weights in ./models directory.',
@@ -366,6 +396,12 @@ const i18n = {
     tg_token: 'Bot token (from BotFather)',
     tg_owner: 'Allowed user id (optional)',
     tg_audio_only: 'Always send audio only (MP3)',
+    // م٤: same limited, truthful text as `ar` — no promise of a behaviour that
+    // is not implemented yet (owner approval routing / "allow always").
+    settings_group_mode: 'Group message visibility:',
+    settings_group_mode_mentions: 'Mentions only',
+    settings_group_mode_all: 'All messages',
+    settings_group_mode_hint: 'Mentions only: the bot sees only what is addressed to it; with privacy mode on in a group, a message that does not mention it never reaches it at all. All messages: it also receives what was not addressed to it, so privacy mode must be turned off from @BotFather — otherwise nothing arrives.',
     tg_paircode: 'Pairing code',
     tg_pair_hint: 'Send this code to your bot on Telegram to link your account (valid 10 minutes).',
     tg_advanced: 'Advanced: local Bot API server (up to 2GB, original quality)',
@@ -434,12 +470,19 @@ const i18n = {
     ytdlp_local_missing: 'No local copy of yt-dlp on this machine yet.',
     queue_title: 'Processing queue',
     open_out_folder: 'Open the output folder',
-    queue_processing_3: '1/3 processing...',
+    queue_empty: 'No files in the queue yet',
+    queue_empty_add: 'Drop files on the window or add a link to start processing.',
+    queue_empty_running: 'No files in the queue — a job is running in the background',
+    queue_empty_running_hint: 'The running job continues in the background; drop files or add a link to queue more work.',
+    queue_empty_unknown: '⚠ Could not read the job state — we do not know whether anything is running',
+    queue_empty_unknown_hint: 'The backend job registry could not be read; wait a moment or retry before starting new work.',
     queue_processing: 'Processing...',
     queue_pending: 'Waiting',
     ext_title: 'External jobs',
     ext_empty: 'No external jobs running',
     log_toggle: 'Activity Log',
+    log_empty: 'No log lines yet.',
+    log_unavailable: '⚠ Could not read the log from the backend — no lines shown.',
     log_demo_info: 'yt-dlp update check: already up to date.',
     log_demo_warn: 'Track 2 audio format might cause slight degradation.',
     log_demo_error: 'Failed to locate model weights in ./models directory.',
