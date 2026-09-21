@@ -31,6 +31,7 @@
     "release:assets": "node scripts/check-release-assets.cjs",
     "redist:guard": "node scripts/check-fetch-redist.cjs",
     "release:parity": "node scripts/check-release-parity.cjs",
+    "site:latest-trust": "node scripts/check-site-latest-trust.cjs",
     "guards:selfcheck": "node scripts/check-guards-selfcheck.cjs",
     "release:verify": "node scripts/check-release-artifact.cjs"
   },
