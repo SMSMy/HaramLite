@@ -339,9 +339,12 @@ impl JobGuard {
 
 impl Drop for JobGuard {
     fn drop(&mut self) {
-        // خيوط قراءة المخرجات تُضمّ **قبل** إلغاء التسجيل: لا يبقى قارئ على
-        // أنبوب طفل قُتل (وإلا وُجد خيط يتيم بعد «انتهت المهمّة» في السجلّ).
-        proc::join_reader_threads(&self.ctx);
+        // **ملاحظة (م٢/إصلاح)**: كان هنا `proc::join_reader_threads(&self.ctx)`
+        // بتعليق «خيوط القراءة تُضمّ **قبل** إلغاء التسجيل». والوعد كان
+        // **معطّلاً**: `Phases.threads` لم يُكتب فيه قطّ. والضمّ يقع فعلاً في
+        // موضعه الصحيح — كل نداء أداة يضمّ قارئيه في `proc::collect` قبل
+        // `unregister_phase` (التعليل الكامل في `proc.rs`). فحُذف النداء
+        // والميتة معه بدل إبقاء ضمان غير منفَّذ.
         let removed = {
             let mut jobs = registry().lock().unwrap_or_else(|p| p.into_inner());
             let before = jobs.len();
@@ -427,7 +430,16 @@ pub fn active_jobs() -> Vec<JobInfo> {
 /// يعيد `false` إن لم تكن المهمّة نشطة (انتهت أو معرّف خاطئ) — فلا يُدَّعى
 /// إلغاء لم يقع. وعند `true` يكون الإلغاء **قد وقع**: الرمز مضبوط (فتسقط
 /// حدود المراحل عند أول فحص) وشجرة العمليات المنفصلة (ffmpeg/yt-dlp ومخدّم
-/// مُدمِجها) قُتلت بـ`taskkill /T /F` في هذا النداء نفسه.
+/// مُدمِجها) تُطلب إزالتها بـ`taskkill /T /F` في هذا النداء نفسه.
+///
+/// **دقّة صياغة (م٢/إصلاح): «يقتل أبناءها» هنا تحسين زمن لا الحارس.** قِيس
+/// أن حذف `proc::kill_children` من هذا النداء **لا يوقف الإلغاء**: حلقة
+/// استطلاع الأداة (`proc::wait_child`) تقرأ الرمز فتُنادي `kill_tree` بنفسها
+/// بعد دورة واحدة على الأكثر. فما يشتريه القتل المباشر **زمن**: أن يعود الطلب
+/// وقد صارت الشجرة ميتة (قِيس 169 مللي = زمن `taskkill`)، لا أن يعود فوراً
+/// والشجرة حيّة دوراً كاملاً. والحارس المُثبَت بالاختبار هو الاثنان معاً:
+/// `the_direct_kill_returns_only_after_the_tree_is_dead` (زمن + عدّاد) و
+/// `a_cancelled_tool_returns_far_before_its_sleep_ends` (الحلقة وحدها).
 ///
 /// **حدّ صريح باقٍ**: نداء ONNX داخل العملية غير قابل للقطع؛ مهمّة داخل
 /// `separator::separate` تُهجر عند أول حدّ بعده (دلالة على مرحلتين — قرار المالك).
@@ -482,29 +494,15 @@ pub fn cancel_all() -> usize {
     ids.into_iter().filter(|id| cancel_job(*id)).count()
 }
 
-/// ينتظر حتى يفرغ السِجلّ أو تنتهي المهلة. يعيد `true` إن فرغ.
-///
-/// **لماذا هو موجود**: من يقول «أُلغيت» يجب أن يكون صادقاً. `cancel_job`
-/// يعيد «سُجِّل الطلب» لا «توقّف العمل»، وهذا النداء هو الفرق بينهما — يستعمله
-/// `/kill` في تلغرام فينتظر قبل أن يجيب، **ويستعمله اختبار اليتيم** بعده ليقيس
-/// أن السِجلّ فرغ فعلاً (ت٤) لا أن الطلب «أُرسل». ولهذا يبقى عامّاً على كل
-/// المنصّات: `telegram` وحده `#[cfg(windows)]`، فلو وُسم به لقيست ت٤ على
-/// ويندوز وحدها.
-pub fn wait_until_idle(timeout: Duration) -> bool {
-    let started = std::time::Instant::now();
-    loop {
-        if active_jobs().is_empty() {
-            return true;
-        }
-        if started.elapsed() >= timeout {
-            return false;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-}
-
 /// ينتظر انتهاء **مهامّ بعينها** (بمعرّفاتها) أو انتهاء المهلة. يعيد `true`
 /// إن لم يبقَ منها شيء في السِجلّ.
+///
+/// **وهو البديل الصحيح عن `wait_until_idle` المحذوفة (م٢/إصلاح)**: تلك كانت
+/// تنتظر **فراغ السِجلّ كلّه**، فـ`/kill` لمهمّة واحدة كان ينتظر — لو استُعملت —
+/// انتهاء مهامّ **لم يُطلب إلغاؤها** (من واجهة أو جسر أو مراقبة). والنصّ الذي
+/// كان فوقها يقول إن `/kill` يستعملها وهو **غير صحيح** (`telegram.rs` يستعمل
+/// هذه)، ولم يكن لها مستدعٍ في الإنتاج أصلاً — فحُذفت بدل إبقاء تعليق كاذب
+/// (وكانت مصدر تحذير `never used` الوحيد الجديد في م٢).
 pub fn wait_until_gone(ids: &[u64], timeout: Duration) -> bool {
     let started = std::time::Instant::now();
     loop {
@@ -517,6 +515,15 @@ pub fn wait_until_gone(ids: &[u64], timeout: Duration) -> bool {
         }
         std::thread::sleep(Duration::from_millis(100));
     }
+}
+
+/// انتظار أن تفرغ المهامّ **النشطة الآن** — للاختبارات وحدها (لا مستدعي في
+/// الإنتاج، وقد قِيس ذلك قبل الحذف/الإبقاء). يُبنى على [`wait_until_gone`] نفسه
+/// فلا صيغتان تتباعدان.
+#[cfg(test)]
+fn wait_until_empty(timeout: Duration) -> bool {
+    let ids: Vec<u64> = active_jobs().iter().map(|j| j.id).collect();
+    wait_until_gone(&ids, timeout)
 }
 
 // ─────────────────────── الفتحة (mutex نواة/عملية) ───────────────────────
@@ -2219,26 +2226,49 @@ mod tests {
     /// في هذه الاختبارات، فلا يمرّ اختبارٌ لأن النوم انتهى من نفسه.
     const HELPER_SLEEP_SECS: u32 = 60;
 
+    /// **علامة الذرّية**: نصّ فريد لهذا الاختبار يُوضع في سطر أوامر كل عملية
+    /// يُنشئها، فيُجرَد به **شجرته هو** لا كل `pwsh` على الجهاز.
+    ///
+    /// ولماذا: العطل المقيس (م٢/إصلاح) أن الجرد كان `CommandLine -like
+    /// '*Start-Sleep*'` على كل `pwsh` ⇒ أسقط اختبارين لأن **سكربت وكيل آخر** كان
+    /// يشغّل `Start-Sleep` في اللحظة نفسها. فالحارس كان يقيس عمليات غيره.
+    #[cfg(windows)]
+    fn stray_token(tag: &str) -> String {
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        format!(
+            "hl-stray-{tag}-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::SeqCst)
+        )
+    }
+
     /// أمر «نائم» **بعملية حقيقية لها ابن حقيقي**: `pwsh` يشغّل بـ`Start-Process`
     /// عملية `pwsh` ثانية تنام ثم تكتب علامة، **ويكتب رقمها** في `pid_file` —
     /// وهذه بنية مُدمِج ffmpeg في الإنتاج حرفياً (عملية تنام بينما الأب يعمل)،
     /// فلا تُقاس «الشجرة» على عملية بلا أبناء فتبدو دائماً نظيفة.
+    ///
+    /// `token` يظهر في سطر أوامر الأب **والابن** (يمرّ إليه داخل `-Command`)
+    /// فيصير جرد هذه الشجرة ممكنًا بعينها.
     #[cfg(windows)]
     fn sleeper_command(
         marker: &Path,
         secs: u32,
         pid_file: &Path,
+        token: &str,
     ) -> (String, Vec<std::ffi::OsString>) {
         let child_script = format!(
-            "Start-Sleep -Seconds {secs}; New-Item -Path '{}' -ItemType File -Force | Out-Null",
+            "Start-Sleep -Seconds {secs}; New-Item -Path '{}' -ItemType File -Force | Out-Null; # {token}",
             marker.display()
         );
         // بلا `-Wait`: الأب يواصل فوراً، والابن يعيش مستقلاً — وهو ما يجعله
-        // «يتيماً» إن قُتل الأب وحده.
+        // «يتيماً» إن قُتل الأب وحده. والعلامة تُكتب في **تعليق في آخر السكربت**
+        // (لا أوّله: `#` في أوّل `-Command` يُلغي بقيّة السطر فينتهي الابن فوراً
+        // بلا نوم — عطل وقع فعلاً وكشفه ضابط `wait_for_live_child`)، وتُنقل إلى
+        // الابن في سطر أوامره فيصير جرده بعينه ممكنًا.
         let script = format!(
             "$c = Start-Process -FilePath 'pwsh' -ArgumentList '-NoProfile','-NonInteractive','-Command',\"{child_script}\" -PassThru -WindowStyle Hidden; \
              Set-Content -Path '{}' -Value $c.Id; \
-             Start-Sleep -Seconds {secs}",
+             Start-Sleep -Seconds {secs}; # {token}",
             pid_file.display()
         );
         (
@@ -2250,17 +2280,43 @@ mod tests {
         )
     }
 
-    /// ينتظر ظهور ملف (وعاء القياس: رقم الابن).
+    /// **ضابط موجب للأداة**: ينتظر رقم الابن **ويثبت أنه حيّ (نائم) فعلاً**.
+    ///
+    /// ولماذا هو لازم: الأب يكتب رقم الابن **قبل** أن ينام الابن، فملف الرقم
+    /// يظهر حتى لو مات الابن فوراً. وقد **وقع هذا فعلاً** في جولة الإصلاح:
+    /// علامة الذرّية كُتبت في أوّل `-Command` للابن (`# token; Start-Sleep …`)
+    /// فعلق `#` بقيّة السطر، فمات الابن في الحال — ومرّت كل الاختبارات التي
+    /// تقيس «الابن لم ينجُ» **لأن الابن لم يكن حيّاً أصلاً**. فهذا الفحص يجعل
+    /// بناء أمرٍ لا ينام **يفشل بصوت عالٍ** بدل أن يُثبت نجاحاً كاذباً.
+    ///
+    /// **ولا يكفي «الملف موجود»**: `Set-Content` يُنشئ الملف **ثم** يكتب فيه،
+    /// فنافذة «موجود وفارغ» قائمة — رُصدت فعلاً في تشغيل متوازٍ
+    /// (`ParseIntError { kind: Empty }`). فيُنتظر **رقم مقروء** لا ملفٌّ موجود.
     #[cfg(windows)]
-    fn wait_for_file(p: &Path, timeout: Duration) -> bool {
-        let started = std::time::Instant::now();
-        while started.elapsed() < timeout {
-            if p.exists() {
-                return true;
+    fn wait_for_live_child(pid_file: &Path) -> u32 {
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        let mut pid = 0u32;
+        while std::time::Instant::now() < deadline {
+            if let Ok(p) = std::fs::read_to_string(pid_file)
+                .unwrap_or_default()
+                .trim()
+                .parse::<u32>()
+            {
+                pid = p;
+                break;
             }
             std::thread::sleep(Duration::from_millis(25));
         }
-        p.exists()
+        assert!(pid != 0, "رقم الابن لم يُكتب خلال 20 ث — القياس بلا شجرة باطل");
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !pid_alive_native(pid) && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        assert!(
+            pid_alive_native(pid),
+            "الابن {pid} ليس حيّاً — السكربت لم ينم (خطأ في بناء الأمر)، فالقياس باطل"
+        );
+        pid
     }
 
     /// هل هذه العملية حيّة؟ (فحص مباشر من الاختبار، لا من كود الإنتاج.)
@@ -2280,6 +2336,54 @@ mod tests {
             .unwrap_or(false)
     }
 
+    /// **`/kill` لا يحجب خيط تحديثات البوت ٢٠ ث (م٢/إصلاح — بند ٦أ)**.
+    ///
+    /// العطل: `CANCEL_CONFIRM_WAIT` كان ٢٠ ث، و`cancel_chat_jobs` ينتظره على
+    /// **خيط التحديثات** نفسه ⇒ كل `/kill` يمنع قراءة أي أمر آخر في المحادثة
+    /// حتى ٢٠ ث (والانتظار لا يغيّر الحقيقة: نداء المحرّك غير قابل للقطع).
+    ///
+    /// والقياس **سلوكي على السِجلّ الحقيقي**: مهمّة مسجَّلة بوسم `telegram:<id>`
+    /// لا تنتهي حتى نُشير لها، فيُقاس **زمن حجب `cancel_chat_jobs` نفسه**.
+    /// والمُفسَد: إعادة ٢٠ ث ⇒ يسقط تأكيد الـ٣ ث (ويستغرق القياس ٢٠ ث).
+    #[test]
+    fn a_kill_command_does_not_block_the_bot_thread_for_long() {
+        let _lock = registry_lock();
+        let chat_id: i64 = 987_654;
+        let name = unique_name("kill-block");
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let (started_tx, started_rx) = std::sync::mpsc::channel::<()>();
+        let label = format!("telegram:{chat_id}");
+        let n = name.clone();
+        let job = std::thread::spawn(move || {
+            let _ = run_registered(&n, &label, None, move |_tok| {
+                let _ = started_tx.send(());
+                // مهمّة **لا تستجيب للإلغاء** — تماماً كنداء محرّك داخل العملية.
+                let _ = release_rx.recv_timeout(Duration::from_secs(30));
+                Ok::<(), String>(())
+            });
+        });
+        started_rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("المهمّة بدأت خلال المهلة");
+
+        let t = std::time::Instant::now();
+        let reply = crate::telegram::cancel_chat_jobs(chat_id);
+        let blocked = t.elapsed();
+        eprintln!("م٢/حجب البوت: cancel_chat_jobs عاد في {blocked:?} · الردّ «{reply}»");
+        let _ = release_tx.send(());
+        let _ = job.join();
+
+        assert!(
+            blocked < Duration::from_secs(3),
+            "‏/kill حجب خيط التحديثات {blocked:?} — السقف المقيس ٢ ث"
+        );
+        assert!(
+            reply.contains("أطول ما قيس"),
+            "والردّ صادق: لا «أُلغيت» ولم تنتهِ المهمّة: «{reply}»"
+        );
+        assert!(!reply.contains("أُلغيت"), "لا يُدَّعى إلغاء لم يقع: «{reply}»");
+    }
+
     /// يقتل عملية وابنها الشجرة — تنظيف اختبار فاشل، لا قياس.
     #[cfg(windows)]
     fn cleanup_pid(pid: u32) {
@@ -2288,8 +2392,8 @@ mod tests {
             .output();
     }
 
-    /// **الادّعاء (ت٢ · ت١)**: `cancel_job(id)` يقتل **شجرة** العمليات فوراً،
-    /// والسِجلّ يفرغ، ولا يبقى أثر.
+    /// **الادّعاء (ت٢ · ت١)**: `cancel_job(id)` يقتل **شجرة** العمليات، والسِجلّ
+    /// يفرغ، ولا يبقى أثر.
     ///
     /// القياس على **مسار الإنتاج نفسه**: مهمّة حقيقية في السِجلّ، وأداة طويلة
     /// **حقيقية** (`pwsh` نائم 60 ث) تُشغَّل بـ`proc::run_cancellable_cmd` على
@@ -2297,9 +2401,13 @@ mod tests {
     /// المهمّة `thread_local`، فلا يراه خيط آخر لم يدخل). والإلغاء يجري من خيط
     /// ثانٍ **كما في الإنتاج** (زر الإيقاف/`/kill` من خيط آخر أثناء الحجب).
     ///
-    /// والدليل **علامتان لا تُكتبان إلا عند النجاة**: علامة الابن
-    /// (`tree_done`) تُكتب بعد 60 ث، وعلامة الأداة (`tool_done`) في نهاية
-    /// سكربت pwsh — فغيابهما يعني أن الشجرة كلها ماتت قبل أوانها.
+    /// **وحدّ أمانة (م٢/إصلاح)**: العلامتان (`tree_done` بعد 60 ث و`tool_done`
+    /// في نهاية السكربت) تُقاسان **بعد** عودة النداء — أي بعد أن يكون القتل قد
+    /// وقع بأي مسار. فهما لا تفرّقان بين **القتل المباشر** و**حلقة الاستطلاع**:
+    /// إسقاط `kill_children` من `cancel_job` يُبقي هذا الاختبار **ناجحاً** لأن
+    /// الحلقة تقتل الشجرة بنفسها. ولذلك أُضيف لكل مسار اختبارٌ يقيسه هو:
+    /// `the_direct_kill_returns_only_after_the_tree_is_dead` (المباشر) و
+    /// `a_cancelled_tool_returns_far_before_its_sleep_ends` (الحلقة).
     #[cfg(windows)]
     #[test]
     fn cancel_kills_the_whole_process_tree_and_frees_the_registry() {
@@ -2307,6 +2415,7 @@ mod tests {
         let dir = tmp_dir("cancel_tree");
         let tree_done = dir.join("tree_done");
         let tool_done = dir.join("tool_done");
+        let token_mark = stray_token("tree");
         assert!(
             !tree_done.exists() && !tool_done.exists(),
             "ملفات علامة قديمة — القياس سيكون على أثر سابق"
@@ -2314,9 +2423,11 @@ mod tests {
 
         let name = unique_name("cancel-tree");
         let child_pid_file = dir.join("child.pid");
-        let (program, args) = sleeper_command(&tree_done, HELPER_SLEEP_SECS, &child_pid_file);
+        let (program, args) =
+            sleeper_command(&tree_done, HELPER_SLEEP_SECS, &child_pid_file, &token_mark);
         let mut stopped = Duration::MAX;
         let mut message = String::new();
+        let mut born_pid = 0u32;
         let outcome = run_registered(&name, "cancel-tree", None, |token| {
             let id = active_jobs().first().map(|j| j.id).expect("مسجَّلة");
             // خيط المُلغِي: ينتظر أن تستقر الأداة جارية **وقد وُلد ابنها**
@@ -2325,10 +2436,11 @@ mod tests {
             let pid_file = child_pid_file.clone();
             let killer = std::thread::spawn(move || {
                 let started = std::time::Instant::now();
-                let born = wait_for_file(&pid_file, Duration::from_secs(20));
+                // ضابط موجب: الابن **حيّ ونائم** لحظة الطلب (لا مولودٌ ميت).
+                let child = wait_for_live_child(&pid_file);
                 let t = std::time::Instant::now();
                 let ok = cancel_job(id);
-                (ok, t.elapsed(), born, started.elapsed())
+                (ok, t.elapsed(), child, started.elapsed())
             });
             // ضابط موجب: الأداة **جارية** لحظة الطلب (لا نوم انتهى من نفسه).
             let r = proc::run_cancellable_cmd(
@@ -2336,10 +2448,14 @@ mod tests {
                 &args,
                 proc::current_cancel().as_ref(),
             );
-            let (ok, elapsed, born, waited) = killer.join().expect("خيط الإلغاء");
+            let (ok, elapsed, child_pid, waited) = killer.join().expect("خيط الإلغاء");
             assert!(ok, "cancel_job على مهمّة نشطة");
-            assert!(born, "الابن لم يُولد خلال {waited:?} — القياس بلا شجرة باطل");
+            assert!(
+                child_pid != 0,
+                "الابن لم يُولد خلال {waited:?} — القياس بلا شجرة باطل"
+            );
             stopped = elapsed;
+            born_pid = child_pid;
             message = match r {
                 Ok(o) => format!("نجحت ({:?})", o.status),
                 Err(e) => e,
@@ -2349,11 +2465,11 @@ mod tests {
         });
         assert!(outcome.is_err(), "الإلغاء لا يُعيد نجاحاً");
         assert_eq!(message, proc::CANCELLED, "نداء الأداة عاد بالإلغاء");
-        let child_pid: u32 = std::fs::read_to_string(&child_pid_file)
-            .unwrap_or_default()
-            .trim()
-            .parse()
-            .expect("رقم الابن مكتوب (فالشجرة وُلدت فعلاً)");
+        // رقم الابن من **ضابط الحياة نفسه** (لا قراءة ثانية قد تسبق الكتابة:
+        // `Set-Content` يُنشئ الملف ثم يكتب، فقراءة سابقة تُعطي ملفاً فارغاً —
+        // رُصد `ParseIntError { kind: Empty }` في تشغيل متوازٍ).
+        let child_pid = born_pid;
+        assert!(child_pid != 0, "رقم الابن مقروء من الضابط");
         // مهلة قصيرة: `taskkill /T` غير متزامن، فلا يُقاس «يتيم» في لحظة القتل.
         let gone_deadline = std::time::Instant::now() + Duration::from_secs(3);
         let mut child_gone = !pid_alive(child_pid);
@@ -2376,14 +2492,15 @@ mod tests {
             "من الطلب إلى انتهاء النداء {stopped:?} — تجاوز السقف (النوم 60 ث)"
         );
         // والسِجلّ يفرغ (ت٤).
-        assert!(wait_until_idle(Duration::from_secs(5)), "السِجلّ يفرغ");
-        // **صفر يتيم**: لا `pwsh` نائمة على `Start-Sleep` في الجهاز.
-        let strays = stray_sleepers();
+        assert!(wait_until_empty(Duration::from_secs(5)), "السِجلّ يفرغ");
+        // **صفر يتيم من ذرّيتنا**: لا `pwsh` من هذه الشجرة باقية — والجرد
+        // بعلامة هذا الاختبار وحده (عطل مقيس: الجرد العام كان يقيس عمليات غيره).
+        let strays = stray_sleepers(&token_mark);
         assert!(strays.is_empty(), "عمليات يتيمة بعد الإلغاء: {strays:?}");
         eprintln!(
             "م٢/اليتيم: الرسالة «{message}» · من الطلب إلى العودة {stopped:?} · \
              الابن pid={child_pid} حيّ={} · علامات النجاة (0 متوقَّعة): tree={} tool={} · \
-             مجرَّدات pwsh النائمة: {}",
+             مجرَّدات ذرّيتنا النائمة: {} (العلامة {token_mark})",
             pid_alive(child_pid),
             tree_done.exists(),
             tool_done.exists(),
@@ -2394,14 +2511,47 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// جرد `pwsh` النائمة على `Start-Sleep` **بعينها** — لا جرد كل `pwsh` على
-    /// الجهاز (وإلا قاس الاختبار عمليات غيره).
+    /// جرد `pwsh` النائمة **التي أنشأها هذا الاختبار بعينه** — بعلامة الذرّية
+    /// التي وضعها [`sleeper_command`] في سطر أوامر الأب **والابن**.
     ///
-    /// **ولا يعدّ نفسه**: الأمر الذي يجرد يُشغَّل بـ`powershell` لكن سطر أوامره
-    /// يحمل النصّ `Start-Sleep` (فهو يبحث عنه) — فرُصد **قائسٌ يعدّ ذاته** في
-    /// أول تشغيل. فيُمرَّر معرّف القائس ويُستثنى.
+    /// **ولماذا العلامة لا جرد `Start-Sleep` العام** (عطل مقيس، م٢/إصلاح): الجرد
+    /// العام أسقط اختبارين لأن **سكربت وكيل آخر** كان يشغّل `Start-Sleep` في
+    /// اللحظة نفسها — أي أن الحارس كان يقيس عمليات غيره (إيجاب كاذب). والعلامة
+    /// تجعل الجرد محصوراً في ذرّية هذا الاختبار، والضابط السالب في
+    /// `a_foreign_sleeper_does_not_trip_our_orphan_guard` يقيس ذلك صراحةً.
+    ///
+    /// **ولا يعدّ نفسه**: القائس يُشغَّل بـ`powershell` وسطر أوامره يحمل العلامة
+    /// (فهو يبحث عنها) — فرُصد **قائسٌ يعدّ ذاته** أول تشغيل، فيُستثنى معرّفه.
     #[cfg(windows)]
-    fn stray_sleepers() -> Vec<u32> {
+    fn stray_sleepers(token: &str) -> Vec<u32> {
+        let me = std::process::id();
+        let out = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                &format!(
+                    "Get-CimInstance Win32_Process -Filter \"Name='pwsh.exe'\" | \
+                     Where-Object {{ $_.CommandLine -like '*{token}*' -and $_.ProcessId -ne {me} }} | \
+                     Select-Object -ExpandProperty ProcessId"
+                ),
+            ])
+            .output();
+        let text = out
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .unwrap_or_default();
+        text.split_whitespace()
+            .filter_map(|t| t.trim().parse::<u32>().ok())
+            .filter(|p| *p != me)
+            .collect()
+    }
+
+    /// الجرد **العام** القديم (`*Start-Sleep*` على كل `pwsh`) — **للضابط السالب
+    /// وحده**: يُثبت أن العلامة الغريبة التي نُصبت في الاختبار كان الجرد القديم
+    /// **يراها** (فالعطل كان حقيقياً) والجرد الجديد **لا يراها**. ولا يُستعمل
+    /// حكماً في أي اختبار آخر.
+    #[cfg(windows)]
+    fn stray_sleepers_global() -> Vec<u32> {
         let me = std::process::id();
         let out = Command::new("powershell")
             .args([
@@ -2424,9 +2574,96 @@ mod tests {
             .collect()
     }
 
+    /// **حارس اليتيم: ضابطان معاً — يرى ذرّيتنا ولا يرى غيرها (م٢/إصلاح)**.
+    ///
+    /// العطل المقيس: الجرد كان `CommandLine -like '*Start-Sleep*'` على **كل**
+    /// `pwsh` في الجهاز، فأسقط اختبارين لأن **سكربت وكيل آخر** كان يشغّل
+    /// `Start-Sleep` في اللحظة نفسها (إيجاب كاذب). وهذا الاختبار يقيس الوجهين:
+    ///
+    /// 1. **موجب**: نائم من ذرّيتنا (بعلامتنا) **يُرصد** — فالحارس ليس أعمى عن
+    ///    اليتيم الحقيقي (وهو ما يجعل «صفر يتيم» في اختبار الشجرة ذا معنى).
+    /// 2. **سالب**: نائم **غريب** (بعلامة وكيل آخر، وحيّ فعلاً) **لا يُرصد**.
+    /// 3. ويُقاس أن الجرد **العام القديم كان يرصد الغريب** — فالعطل الذي وقع
+    ///    حقيقي لا متوهَّم، وأن الجرد الجديد أغلقه.
+    ///
+    /// (والمُفسَد: إعادة الجرد العام ⇒ يسقط التأكيد ٢. وخطأ في العلامة ⇒ يسقط ١.)
+    #[cfg(windows)]
+    #[test]
+    fn the_orphan_guard_sees_our_own_sleeper_and_ignores_a_foreign_one() {
+        let dir = tmp_dir("orphan_scope");
+        // (١) نائم من ذرّيتنا — العلامة التي يجرُد بها اختبار الشجرة.
+        let ours_token = stray_token("ours");
+        let (program, args) = sleeper_command(
+            &dir.join("ours_done"),
+            HELPER_SLEEP_SECS,
+            &dir.join("ours.pid"),
+            &ours_token,
+        );
+        let mut ours = Command::new(&program)
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("إطلاق نائمنا");
+        let our_child = wait_for_live_child(&dir.join("ours.pid"));
+
+        // (٢) نائم «وكيل آخر»: ليس من ذرّيتنا وليس بعلامتنا.
+        let (program, args) = sleeper_command(
+            &dir.join("foreign_done"),
+            HELPER_SLEEP_SECS,
+            &dir.join("foreign.pid"),
+            "hl-stray-foreign-not-ours",
+        );
+        let mut foreign = Command::new(&program)
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("إطلاق النائم الغريب");
+        let foreign_child = wait_for_live_child(&dir.join("foreign.pid"));
+
+        let seen_by_old = stray_sleepers_global();
+        let seen_by_new = stray_sleepers(&ours_token);
+        eprintln!(
+            "م٢/الغريب: ذرّيتنا pid={our_child} · الغريب pid={foreign_child} · \
+             جردنا يرانا={} · جردنا يراه={} · الجرد العام يراه={}",
+            seen_by_new.contains(&our_child),
+            seen_by_new.contains(&foreign_child),
+            seen_by_old.contains(&foreign_child)
+        );
+        assert!(
+            seen_by_new.contains(&our_child),
+            "الحارس لم يرَ يتيمنا ({our_child}) — فهو أعمى عن العطل الحقيقي: {seen_by_new:?}"
+        );
+        assert!(
+            !seen_by_new.contains(&foreign_child),
+            "حارس اليتيم جرد عملية غريبة {foreign_child} — إيجاب كاذب يعيد العطل: {seen_by_new:?}"
+        );
+        assert!(
+            seen_by_old.contains(&foreign_child),
+            "الضابط باطل: الجرد العام القديم لم يرَ الغريب (النوم لم يبدأ؟) — {seen_by_old:?}"
+        );
+
+        for (c, f) in [(&mut ours, our_child), (&mut foreign, foreign_child)] {
+            let _ = c.kill();
+            let _ = c.wait();
+            cleanup_pid(f);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// **الادّعاء (ت٣ · ت٦)**: لا ناتج جزئي ولا مجلد عمل بعد الإلغاء، والخطأ
     /// يحمل «أُلغيت»، **والسِجلّ يفرغ** (ت٤) — بنداء `/kill` نفسه
-    /// (`wait_until_idle`) الذي ينتظره البوت قبل أن يجيب.
+    /// (`wait_until_gone`) الذي ينتظره البوت قبل أن يجيب.
+    ///
+    /// **وقياس الزمن هو الحارس هنا (م٢/إصلاح)**: الرمز يُضبط **قبل** ولادة
+    /// الطفل، فلا يجد القتل المباشر ما يقتله — فالحلقة وحدها هي التي توقف
+    /// الأداة. وكانت التأكيدات السابقة تقيس **علامة يكتبها الابن بعد ٦٠ ث**
+    /// (أي بعد خروج الأداة)، فهي **عمياء بنيوياً** عن إسقاط فحص الرمز من الحلقة:
+    /// الأداة تنتهي نومها كاملاً فتظهر العلامة. فالقياس الآن **زمن فعلي**:
+    /// الأداة تنام ٦٠ ث والإلغاء يقع ⇒ يجب أن يعود النداء في **≪ ٦٠ ث**.
     #[cfg(windows)]
     #[test]
     fn a_cancelled_tool_reports_cancellation_and_leaves_no_output() {
@@ -2435,19 +2672,25 @@ mod tests {
         let never = dir.join("never_written.mp3");
         let done = dir.join("tool_done");
         let child_pid_file = dir.join("child.pid");
+        let token_mark = stray_token("cancel-out");
         let name = unique_name("cancel-out");
         let mut message = String::new();
+        let mut tool_elapsed = Duration::MAX;
         let outcome = run_registered(&name, "cancel-out", None, |token| {
             let id = active_jobs().first().map(|j| j.id).expect("مسجَّلة");
             token.set();
             assert!(cancel_job(id), "الإلغاء يقع");
-            // الأداة تُشغَّل برمز مضبوط سلفاً: أول دورة استطلاع تقتلها.
-            let (program, args) = sleeper_command(&done, HELPER_SLEEP_SECS, &child_pid_file);
+            // الأداة تُشغَّل برمز مضبوط سلفاً: أول دورة استطلاع تقتلها. ولا
+            // مقبض مسجَّلاً لها بعد (وُلدت بعد الطلب) ⇒ القتل المباشر لا يشارك.
+            let (program, args) =
+                sleeper_command(&done, HELPER_SLEEP_SECS, &child_pid_file, &token_mark);
+            let started = std::time::Instant::now();
             let r = proc::run_cancellable_cmd(
                 Path::new(&program),
                 &args,
                 proc::current_cancel().as_ref(),
             );
+            tool_elapsed = started.elapsed();
             message = match r {
                 Ok(o) => format!("نجحت ({:?})", o.status),
                 Err(e) => e,
@@ -2455,13 +2698,137 @@ mod tests {
             Ok::<(), String>(())
         });
         assert!(outcome.is_ok(), "الجسم نفسه لم يفشل — الفشل من الأداة");
+        eprintln!(
+            "م٢/الحلقة: الرسالة «{message}» · نوم الأداة 60 ث وعادت في {tool_elapsed:?} · \
+             علامة الابن موجودة={}",
+            done.exists()
+        );
+        // **الزمن الفعلي أولاً**: إسقاط فحص الرمز من حلقة الاستطلاع يُبقي الأداة
+        // نائمة نومها كاملاً، فيسقط هذا التأكيد في ثوانٍ بدل انتظار دقيقة.
+        assert!(
+            tool_elapsed < Duration::from_secs(5),
+            "الأداة (نوم 60 ث) عادت في {tool_elapsed:?} — الحلقة لم تقرأ رمز الإلغاء"
+        );
         assert_eq!(message, proc::CANCELLED, "الرسالة هي رسالة الإلغاء الواحدة");
         assert!(!done.exists(), "الأداة لم تكمل: {}", done.display());
         assert!(!never.exists(), "لا ناتج جزئي: {}", never.display());
-        assert!(wait_until_idle(Duration::from_secs(5)), "السِجلّ يفرغ (ت٤)");
-        assert!(stray_sleepers().is_empty(), "لا يتيم بعد إلغاء الأداة");
-        eprintln!("م٢/لا ناتج: الرسالة «{message}» · ناتج={}", never.exists());
+        assert!(wait_until_empty(Duration::from_secs(5)), "السِجلّ يفرغ (ت٤)");
+        assert!(
+            stray_sleepers(&token_mark).is_empty(),
+            "لا يتيم بعد إلغاء الأداة"
+        );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **القتل المباشر في `cancel_job` — قياس «تحسين الزمن» بنفسه (م٢/إصلاح)**.
+    ///
+    /// قياس المدقّق: حذف `proc::kill_children` من `cancel_job` **لا يُسقط** أي
+    /// اختبار، لأن حلقة الاستطلاع تقتل الشجرة بنفسها — أي أن القتل المباشر
+    /// **تحسين زمن لا الحارس**. وهذا الاختبار يثبّت الفرق كما هو:
+    ///
+    /// * **زمن**: `cancel_job` يعود في < 250 مللي (المقيس 169 = زمن `taskkill`)،
+    /// * **وعدّاد**: عدد الأطفال الأحياء الذين قتلهم **المسار المباشر** ≥ 1،
+    /// * **وحال**: لحظة عودة الطلب تكون الشجرة **ميتة فعلاً** (فحص نواة سريع لا
+    ///   PowerShell — وإلا قاس الفحص نفسه زمن إطلاق عملية).
+    ///
+    /// والمُفسَد: إسقاط النداء ⇒ العدّاد صفر، والابن حيّ لحظة العودة (تقتله
+    /// الحلقة بعد دورة استطلاع) ⇒ يسقط الاختبار. ومُفسَد الزمن: استبدال القتل
+    /// المباشر بنوم دورة استطلاع ⇒ يسقط تأكيد الـ250 مللي.
+    #[cfg(windows)]
+    #[test]
+    fn the_direct_kill_returns_only_after_the_tree_is_dead() {
+        let _lock = registry_lock();
+        let dir = tmp_dir("direct_kill");
+        let tree_done = dir.join("tree_done");
+        let child_pid_file = dir.join("child.pid");
+        let token_mark = stray_token("direct-kill");
+        let name = unique_name("direct-kill");
+        let (program, args) =
+            sleeper_command(&tree_done, HELPER_SLEEP_SECS, &child_pid_file, &token_mark);
+        let mut waited = Duration::MAX;
+        let mut dead_at_return = false;
+        let mut direct_kills = 0usize;
+        let outcome = run_registered(&name, "direct-kill", None, |_token| {
+            let id = active_jobs().first().map(|j| j.id).expect("مسجَّلة");
+            let pid_file = child_pid_file.clone();
+            let before = proc::DIRECT_KILLS.load(Ordering::SeqCst);
+            let killer = std::thread::spawn(move || {
+                // ضابط موجب: الابن حيّ ونائم لحظة القياس (وإلا فالقتل يقيس لا شيء).
+                let child = wait_for_live_child(&pid_file);
+                let t = std::time::Instant::now();
+                let ok = cancel_job(id);
+                let elapsed = t.elapsed();
+                // **لحظة العودة نفسها**: هل الشجرة ميتة؟ (فحص نواة، لا PowerShell.)
+                let dead = !pid_alive_native(child);
+                (ok, elapsed, dead)
+            });
+            let r = proc::run_cancellable_cmd(
+                Path::new(&program),
+                &args,
+                proc::current_cancel().as_ref(),
+            );
+            let (ok, elapsed, dead) = killer.join().expect("خيط الإلغاء");
+            assert!(ok, "cancel_job على مهمّة نشطة");
+            waited = elapsed;
+            dead_at_return = dead;
+            direct_kills = proc::DIRECT_KILLS
+                .load(Ordering::SeqCst)
+                .saturating_sub(before);
+            assert!(
+                matches!(r, Err(ref e) if e == proc::CANCELLED),
+                "الأداة أُلغيت"
+            );
+            Err::<(), String>("انتهت المهمّة بعد الإلغاء (متوقَّع)".into())
+        });
+        assert!(outcome.is_err(), "الإلغاء لا يُعيد نجاحاً");
+        eprintln!(
+            "م٢/القتل المباشر: cancel_job عاد في {waited:?} · الشجرة ميتة لحظة العودة={dead_at_return} · \
+             عدّاد القتل المباشر={direct_kills}"
+        );
+        assert!(
+            waited < Duration::from_millis(250),
+            "الإلغاء عاد في {waited:?} — تجاوز السقف المقيس (169 مللي) بدورة استطلاع"
+        );
+        assert!(
+            direct_kills >= 1,
+            "القتل المباشر لم يقتل شيئاً ({direct_kills}) — تحسين الزمن معطَّل"
+        );
+        assert!(
+            dead_at_return,
+            "الابن كان حيّاً لحظة عودة cancel_job — القتل المباشر لم يقع"
+        );
+        // تنظيف: العلامة قد تبقى إن نجا الابن (اختبار فاشل) — يُقتل بأي حال.
+        if let Ok(pid) = std::fs::read_to_string(&child_pid_file)
+            .unwrap_or_default()
+            .trim()
+            .parse::<u32>()
+        {
+            cleanup_pid(pid);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// حياة عملية **بفحص نواة** (`WaitForSingleObject` على مقبض) لا بإطلاق
+    /// `powershell` — الفرق ~100 مللي، وهو كل الفرق في اختبار يقيس مللي ثوانٍ.
+    #[cfg(windows)]
+    fn pid_alive_native(pid: u32) -> bool {
+        use windows_sys::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0, WAIT_TIMEOUT};
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
+        };
+        unsafe {
+            let h = OpenProcess(PROCESS_SYNCHRONIZE, 0, pid);
+            if h.is_null() {
+                return false; // لا مقبض ⇒ لا عملية بهذا المعرّف
+            }
+            let w = WaitForSingleObject(h, 0);
+            CloseHandle(h);
+            match w {
+                WAIT_TIMEOUT => true,
+                WAIT_OBJECT_0 => false,
+                _ => false,
+            }
+        }
     }
 
     /// **الادّعاء (ت٦)**: مسار الفشل يحفظ `stderr` — إسقاط القراءة يُسقط هذا.
