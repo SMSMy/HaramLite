@@ -107,6 +107,11 @@ export function collectSettings(): RustSettings {
     telegram_token: tgToken,
     telegram_user_id: localStorage.getItem('hl.tg_owner') || '',
     telegram_audio_only: localStorage.getItem('hl.tg_audio') === '1',
+    // م٥: هوية البوت (اسم HaramLite وصورته) — بنمط `telegram_audio_only` أعلاه.
+    // والحقل يُزامَن تلقائياً في الخلف عند كل `set_settings`، لكن **النتيجة
+    // الصريحة** (نجح/فشل بسببه) لا تأتي إلا من `telegram_set_bot_identity`؛
+    // فهذا الحقل يحفظ **اختيار المستخدم**، و`identity.applied` يقول **الواقع**.
+    telegram_bot_identity: localStorage.getItem('hl.tg_identity') === '1',
     // م٤: مفتاح التخزين `hl.tg_group_mode` — مطبَّع عبر `groupModeFrom`،
     // فقيمة غير معروفة تُرسل `mentions` لا تمرّ كما هي إلى الخلف.
     telegram_group_mode: groupModeFrom(localStorage.getItem('hl.tg_group_mode')),
