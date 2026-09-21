@@ -439,7 +439,7 @@ pub fn active_jobs() -> Vec<JobInfo> {
 /// وقد صارت الشجرة ميتة (قِيس 169 مللي = زمن `taskkill`)، لا أن يعود فوراً
 /// والشجرة حيّة دوراً كاملاً. والحارس المُثبَت بالاختبار هو الاثنان معاً:
 /// `the_direct_kill_returns_only_after_the_tree_is_dead` (زمن + عدّاد) و
-/// `a_cancelled_tool_returns_far_before_its_sleep_ends` (الحلقة وحدها).
+/// `a_cancelled_tool_reports_cancellation_and_leaves_no_output` (الحلقة وحدها).
 ///
 /// **حدّ صريح باقٍ**: نداء ONNX داخل العملية غير قابل للقطع؛ مهمّة داخل
 /// `separator::separate` تُهجر عند أول حدّ بعده (دلالة على مرحلتين — قرار المالك).
@@ -2407,7 +2407,7 @@ mod tests {
     /// إسقاط `kill_children` من `cancel_job` يُبقي هذا الاختبار **ناجحاً** لأن
     /// الحلقة تقتل الشجرة بنفسها. ولذلك أُضيف لكل مسار اختبارٌ يقيسه هو:
     /// `the_direct_kill_returns_only_after_the_tree_is_dead` (المباشر) و
-    /// `a_cancelled_tool_returns_far_before_its_sleep_ends` (الحلقة).
+    /// `a_cancelled_tool_reports_cancellation_and_leaves_no_output` (الحلقة).
     #[cfg(windows)]
     #[test]
     fn cancel_kills_the_whole_process_tree_and_frees_the_registry() {
