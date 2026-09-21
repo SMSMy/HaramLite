@@ -47,6 +47,23 @@ const PROBE = `(() => {
     group_mode_in_settings: !!(gm && gm.closest('#settings-menu')),
     max_jobs_in_settings: !!document.getElementById('max-jobs')?.closest('#settings-menu'),
     fake_rows_in_text: /track_01_vocals|podcast_ep44/.test(document.body.innerText || ''),
+    /* م٥: هوية البوت والإحصاءات — تُقاس أسطحها في الحالة الخاملة أيضاً */
+    identity_box: (() => {
+      const b = document.getElementById('tg-bot-identity');
+      if (!b) return { exists: false };
+      return {
+        exists: true,
+        in_settings: !!b.closest('#settings-menu'),
+        checked: !!b.checked,
+        disabled: !!b.disabled,
+        note: (document.getElementById('tg-identity-note')?.textContent ?? '').replace(/\\s+/g, ' ').trim(),
+      };
+    })(),
+    stats_body: {
+      exists: !!document.getElementById('tg-stats-body'),
+      text: (document.getElementById('tg-stats-body')?.textContent ?? '').replace(/\\s+/g, ' ').trim(),
+    },
+    commands_button: !!document.getElementById('tg-set-commands'),
   };
 })()`;
 
@@ -80,6 +97,13 @@ check('لا إنذار كاذب في لوحة السجلّ', !/\[ERROR\]/.test(u
 if (wantVersion) check(`شارة الإصدار = ${wantVersion} أو فارغة`, ui.badge === 'v' + wantVersion || ui.badge === '', 'المقيس ' + ui.badge);
 check('وضع المجموعات موجود داخل الإعدادات وقيمته مشروعة', ui.group_mode_in_settings && ['mentions', 'all'].includes(ui.group_mode), ui.group_mode);
 check('سقف المهامّ داخل الإعدادات', ui.max_jobs_in_settings);
+/* م٥: الحقول الجديدة — وجودها في الإعدادات، **ولا ادّعاء تطبيقٍ ابتداءً**، ولا أصفار مُختلقة */
+check('مربّع هوية البوت داخل الإعدادات', ui.identity_box.exists && ui.identity_box.in_settings);
+check('المربّع لا يُعلن تطبيقاً قبل قراءة الحالة',
+  !ui.identity_box.checked, ui.identity_box.checked ? 'مُعلَّم ابتداءً' : 'غير مُعلَّم');
+check('لوحة الإحصاءات لا تعرض أصفاراً مُختلقة',
+  !/0\\s*(ملف|بايت)/.test(ui.stats_body.text), ui.stats_body.text.slice(0, 60) || '(فارغة)');
+check('زرّ ضبط الأوامر موجود', ui.commands_button);
 
 console.log(`\nالحصيلة: ${total - fails.length}/${total} دعوى مرّت` + (fails.length ? ' ⇒ سقطت: ' + fails.join(' · ') : ''));
 process.exit(fails.length ? 1 : 0);

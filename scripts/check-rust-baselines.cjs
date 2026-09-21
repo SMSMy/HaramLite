@@ -49,6 +49,26 @@ function cargoRun(args, opts = {}) {
   return spawnSync(line, [], { encoding: 'utf8', windowsHide: true, shell: true, ...opts });
 }
 
+/** **الركود شرط قياس لا إعلام** (درس تكرّر خمس مرّات في يوم واحد): قياس خطّ أساس على شجرة
+ *  **تُحرَّر** يعطي رقماً عن جسم متحرّك — ورقمٌ كهذا يبدو دليلاً وهو ليس كذلك. فإن كانت الشجرة
+ *  مستودعَ git وفيه تعديلات غير ملتزَمة ⇒ **تُرفض البوّابة** (رمز 2) إلا بـ`--allow-dirty`.
+ *  ومجلد ليس مستودعاً (بيئة مصنوعة في حارس الحرّاس) يمرّ بلا فحص. */
+function assertQuiescent() {
+  if (argv.includes('--allow-dirty')) return { dirty: false, skipped: true };
+  const probe = spawnSync('git', ['-C', ROOT, 'rev-parse', '--is-inside-work-tree'],
+    { encoding: 'utf8', windowsHide: true });
+  if (probe.status !== 0 || !/true/.test(probe.stdout || '')) return { dirty: false, skipped: true };
+  const st = spawnSync('git', ['-C', ROOT, 'status', '--porcelain'], { encoding: 'utf8', windowsHide: true });
+  const lines = (st.stdout || '').split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length) {
+    console.error('✗ صفر مدخل: الشجرة غير نظيفة (' + lines.length + ' ملفاً) — قياس خطّ الأساس يتطلب شجرة ساكنة وملتزَمة،');
+    console.error('  وإلا فالرقم عن جسم متحرّك. انتظر انتهاء من يُحرّرها، أو مرّر `--allow-dirty` إن كنت تفحص عمداً.');
+    for (const l of lines.slice(0, 8)) console.error('   ' + l.trim());
+    process.exit(2);
+  }
+  return { dirty: false, skipped: false };
+}
+const quiescence = assertQuiescent();
 /** نسخة الأداة: أساسٌ قِيس على clippy آخر لا يعني الشيء نفسه (لينت جديد يُضاف بين إصدارين). */
 const toolchain = (() => {
   const c = cargoRun(['--version']);
