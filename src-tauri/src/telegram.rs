@@ -3030,10 +3030,14 @@ pub fn apply_bot_commands(cfg: &TgConfig) -> Result<usize, BotSetupError> {
     }
 
     // النطاق «محادثة بعينها»: بلا معرّف مالك **موجب** لا نطاق — والإفراغ وحده
-    // هو الصواب، ولا يُدَّعى تسجيلٌ لم يقع.
+    // هو الصواب، ولا يُدَّعى تسجيلٌ لم يقع. **ويُعلَن ذلك خطأً لا نجاحاً**:
+    // «نجح، صفر أوامر» في الواجهة يوهم بأن شيئاً سُجّل، والصحيح أنّ لا نطاق
+    // محادثة أصلاً — فيُقال السبب (وهو نفس ما كان يُسجَّل تحذيراً في مسار الإقلاع).
     let Some(owner) = cfg.owner_id.filter(|id| *id > 0) else {
         cleared?;
-        return Ok(0);
+        return Err(BotSetupError::NotConfigured(
+            "لا معرّف مالك — لا نطاق محادثة تُسجَّل فيه الأوامر (اقترن أولاً)".to_string(),
+        ));
     };
     let cmds: Vec<Value> = COMMANDS
         .iter()
@@ -10603,11 +10607,17 @@ mod tests {
             "النطاق ليس محادثة المالك"
         );
 
-        // وبلا مالك: الإفراغ يقع والقائمة **لا** تُسجَّل (ولا نجاح يُدَّعى).
+        // وبلا مالك: الإفراغ يقع والقائمة **لا** تُسجَّل، والنتيجة **خطأ مُسمّى**
+        // لا «نجح، صفر أوامر» (فالصفر هنا ليس إنجازاً بل غياب نطاق).
         bot.clear();
         let mut anon = bot.cfg(7);
         anon.owner_id = None;
-        assert_eq!(apply_bot_commands(&anon).unwrap(), 0);
+        match apply_bot_commands(&anon) {
+            Err(BotSetupError::NotConfigured(e)) => {
+                assert!(e.contains("مالك"), "السبب لا يسمّي العلّة: {e}")
+            }
+            other => panic!("بلا مالك يجب أن يُعلَن السبب، جاء: {other:?}"),
+        }
         assert_eq!(bot.count("setMyCommands"), 0, "سُجّلت قائمة بلا نطاق");
         assert_eq!(bot.count("deleteMyCommands"), 1);
 
