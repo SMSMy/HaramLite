@@ -585,7 +585,37 @@ pub struct PipelineOutput {
     /// Kept (content) ranges on the ORIGINAL timeline (song silence cuts;
     /// empty for clips) — the extension page player maps its clock through
     /// these so filtered audio stays in sync with the page video.
+    ///
+    /// **معناها لا يتغيّر**: «ما قُصّ فعلاً من الملف المُسلَّم». ومسار `clip`
+    /// لا يقصّ شيئاً ⇒ تبقى فارغة **بالبناء** هناك، وخريطته في [`Self::page_kept`].
     pub kept_ranges: Vec<(f64, f64)>,
+    /// **خريطة صوت الصفحة في مسار `clip`** — حقل **مستقلّ تماماً** عن
+    /// [`Self::kept_ranges`]، ولا يُمرَّر أحدهما مكان الآخر أبداً.
+    ///
+    /// **ولماذا حقل ثانٍ** (م٦-ب · `ARCHIVE/0.2.9PLAN.md` §٩-ب ·
+    /// `ARCHIVE/review-0.2.9-cline.md` §٤-٣): مسار الأغنية **يقصّ** الملف
+    /// المُسلَّم، فخريطة [`Self::kept_ranges`] تصف **ما قُصّ**؛ ومسار `clip`
+    /// يبني mute/duck **ويُبقي الطول** (وهو وعد الواجهة للمستخدم، `src/i18n.ts:22`:
+    /// «لن يقطع الصمت»). فتمرير خريطة الكتم في مكان «ما قُصّ» يجعل الثابت
+    /// المؤسِّس للمشغّل («الخريطة مسطّحة داخل الفجوة»،
+    /// `scripts/check-extension-sync.cjs` §٢) **كاذباً**: المشغّل يظنّ الفجوة
+    /// محذوفة وهي موجودة مكتومة، فيهبط بالموضع أمام الصورة بمقدار الفجوة.
+    /// ولذلك **لا يُمرَّر شيء إلى [`Self::kept_ranges`] في مسار clip إطلاقاً**
+    /// (اختبار بنيوي في هذا الملف يحرس ذلك).
+    ///
+    /// **وما تصفه هذه الخريطة**: صوت الصفحة **بعد قصّه** — أي ملفاً آخر غير
+    /// ملف المستخدم. والقصّ يقع في `bridge.rs` على **نسخة** تُسلَّم للمشغّل
+    /// (`silence::cut_silence_with_ranges`)، وملف المستخدم يبقى كامل الطول.
+    /// والعتبات هي **نفس عتبات القصّ** (800ms ±150ms) بقرار المالك §١٧/٣،
+    /// فالفجوة هنا = ما يراه كاشف الصمت صمتاً في الصوت المعالَج (والمكتوم هو
+    /// ما يراه كذلك — والمُخفَّض −12dB لا يُرى عادةً؛ وهذا **فرق معنى معلَن**:
+    /// قد تقلّ الفجوات عن مواضع الخفض).
+    ///
+    /// **التقادم (تراكمي)**: `page_kept` و`mode` حقلان **جديدان**، و
+    /// [`Self::kept_ranges`] **يحفظ معناه** ⇒ «إضافة قديمة + تطبيق جديد»
+    /// و«إضافة جديدة + تطبيق قديم» آمنتان. **وإن تغيّر معنى حقل قائم مستقبلاً
+    /// فيلزم `state_version` في حالة الجسر** — لا يكفي إضافة حقل جديد.
+    pub page_kept: Vec<(f64, f64)>,
     pub seconds: f32,
 }
 
@@ -825,6 +855,38 @@ pub fn process_file(
         stage("effects", 1.0);
     }
 
+    // Stage 3ب — مسار `clip`: **خريطة صوت الصفحة**، وهي ليست خريطة الملف
+    // المُسلَّم (انظر [`PipelineOutput::page_kept`]).
+    //
+    // تُحسب على **الصوت المعالَج** نفسه (لا على قرار الكتم): فما يراه كاشف
+    // الصمت صمتاً هو ما سيقصّه `bridge.rs` من نسخة صوت الصفحة، فتكون الخريطة
+    // وصفاً للملف المُسلَّم لا رجماً. والعتبات هي عتبات القصّ نفسها (قرار
+    // المالك §١٧/٣) — فلا عتبة مشاهدة مُبتكرة هنا، وأي ضبط لاحق يقتضي قياس
+    // مشاهدة يُدوَّن.
+    //
+    // والكلفة: قراءة واحدة إضافية لملف الغناء + مسحة RMS واحدة
+    // (`compute_kept_ranges` — نوافذ 50ms)، **ولا نداء محرّك ثانياً**.
+    // (زمنها **لم يُقَس**: قياسه يقتضي تشغيل هذا المسار كاملاً بمحرّك ونموذج.)
+    let page_kept: Vec<(f64, f64)> = if matches!(mode, Mode::Clip) {
+        let (clip_l, clip_r, clip_sr) = separator::read_wav_stereo(&vocals_path).map_err(err)?;
+        let map = silence::kept_ranges_sec(
+            &clip_l,
+            &clip_r,
+            clip_sr,
+            &silence::SilenceConfig::default(),
+        );
+        tracing::info!(
+            target: "pipe",
+            "clip: page map has {} kept ranges ({}s of a {:.1}s page audio)",
+            map.len(),
+            map.iter().map(|(a, b)| b - a).sum::<f64>(),
+            if clip_sr > 0 { clip_l.len() as f64 / clip_sr as f64 } else { 0.0 }
+        );
+        map
+    } else {
+        Vec::new()
+    };
+
     // Probe the ORIGINAL input once for video routing decisions.
     let input_info = media::probe(input).ok();
     let has_video = input_info.as_ref().map(|i| i.has_video).unwrap_or(false);
@@ -957,9 +1019,10 @@ pub fn process_file(
         instrumental: instrumental_path,
         video: video_out,
         kept_ranges,
+        page_kept,
         seconds,
     };
-    tracing::info!(target: "pipe", "pipeline done in {seconds:.1}s (kept_ranges={})", out.kept_ranges.len());
+    tracing::info!(target: "pipe", "pipeline done in {seconds:.1}s (kept_ranges={} · page_kept={})", out.kept_ranges.len(), out.page_kept.len());
 
     Ok(out)
 }
@@ -1610,5 +1673,58 @@ mod tests {
         let r = finish_run(&|_| false, [Some(gone.as_path()), None, None]);
         assert!(r.is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **ب٥ — الفخّ الدلالي، بنيوياً**: خريطة صوت الصفحة لا تصل إلى
+    /// `kept_ranges` أبداً.
+    ///
+    /// **الثابت المحروس**: `kept_ranges` تعني «ما قُصّ فعلاً من الملف
+    /// المُسلَّم للمستخدم»، ومسار `clip` **لا يقصّ** ملف المستخدم (وعد الواجهة
+    /// `src/i18n.ts:22`). فخريطة الكتم لو مرّت هناك لصار المشغّل يظنّ الفجوة
+    /// محذوفة وهي موجودة مكتومة ⇒ «الخريطة مسطّحة داخل الفجوة» يصير **كاذباً**
+    /// (`scripts/check-extension-sync.cjs` §٢) ويهبط الموضع أمام الصورة.
+    ///
+    /// **حدّ الحارس (معلَن)**: حارس نصّي لا برهان — يقرأ النصف الإنتاجي من هذا
+    /// الملف نفسه (`include_str!`) ويمنع كل كتابة مباشرة في الحقل داخل مسار
+    /// clip. تحويلٌ ملتوٍ عبر اسم مستعار لا يراه، وهو موكول إلى المراجعة.
+    ///
+    /// **مُفسَده**: إضافة `kept_ranges = page_kept.clone();` داخل فرع clip ⇒
+    /// يسقط الادّعاءان (قائمة الكتابات، واسم الثابت في الرسالة).
+    #[test]
+    fn the_page_map_never_reaches_kept_ranges() {
+        let src = include_str!("pipeline.rs");
+        // النصف الإنتاجي وحده: كتلة الاختبارات تتكلّم عن الحقلين معاً بالضرورة.
+        // (وليس أول `#[cfg(test)]` في الملف — ذاك على `lock_name_for` أعلى الملف.)
+        let cut = src.rfind("\nmod tests {").unwrap_or(src.len());
+        let production = &src[..cut];
+
+        let writes: Vec<&str> = production
+            .lines()
+            .map(str::trim)
+            .filter(|t| {
+                t.starts_with("kept_ranges =")
+                    || t.starts_with("kept_ranges.")
+                    || t.starts_with("kept_ranges[")
+                    || t.starts_with("kept_ranges:")
+            })
+            .collect();
+        assert_eq!(
+            writes,
+            vec!["kept_ranges = crate::effects::enhance_song_file("],
+            "الكتابة الوحيدة في kept_ranges يجب أن تكون سلسلة الأغنية. \
+             الثابت المنقوض: «kept_ranges تصف ما قُصّ من الملف المُسلَّم، ومسار clip لا يقصّه»"
+        );
+
+        // ومقصّ الفيديو يبقى مربوطاً بالخريطة نفسها، لا بخريطة الصفحة.
+        assert!(
+            production
+                .contains("let ranges_for_video: &[(f64, f64)] = if matches!(mode, Mode::Song)"),
+            "مقصّ الفيديو لا يجوز أن يُغذّى من خريطة مسار clip"
+        );
+        // والخريطتان مفصولتان بنيوياً: كل واحدة تُبنى في فرعها.
+        assert!(
+            production.contains("let page_kept: Vec<(f64, f64)> = if matches!(mode, Mode::Clip)"),
+            "خريطة الصفحة تُبنى في فرع clip وحده"
+        );
     }
 }

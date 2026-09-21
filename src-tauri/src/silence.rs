@@ -1,4 +1,8 @@
 //! Silence cutting for song mode — removes dead-air runs with musical padding.
+//!
+//! م٦-ب: نفس الكاشف يُستعمل على **صوت الصفحة** في مسار `clip` (عتبات القصّ
+//! نفسها — قرار المالك §١٧/٣)، والقصّ هناك يقع على **نسخة** تُسلَّم للمشغّل
+//! ولا يمسّ ملف المستخدم.
 
 /// Cut configuration.
 pub struct SilenceConfig {
@@ -140,6 +144,40 @@ pub fn compute_kept_ranges(
     }
     kept.retain(|r| r.end - r.start > sr as usize / 10); // drop slivers <100ms
     kept.into_iter().map(|rg| (rg.start, rg.end)).collect()
+}
+
+/// نفس المقاطع على **الخط الزمني بالثواني** — وهو الخط الذي يخاطبه مشغّل
+/// الصفحة (`mapFullToCut` في الإضافة ثوانٍ لا عيّنات، `content.js:488`).
+///
+/// مفصولة عن [`compute_kept_ranges`] لأن التحويل قسمة واحدة، ولأن الاختبارات
+/// تحكم على الوحدتين (ثوانٍ مقابل عيّنات) لا على رقم واحد.
+pub fn kept_ranges_sec(l: &[f32], r: &[f32], sr: u32, cfg: &SilenceConfig) -> Vec<(f64, f64)> {
+    if sr == 0 {
+        return Vec::new();
+    }
+    let s = sr as f64;
+    compute_kept_ranges(l, r, sr, cfg)
+        .into_iter()
+        .map(|(a, b)| (a as f64 / s, b as f64 / s))
+        .collect()
+}
+
+/// عكس [`kept_ranges_sec`]: مقاطع بالثواني ⟶ مقاطع بالعيّنات، لتُطبَّق على ملف
+/// **آخر** على الخط الزمني نفسه (نسخة صوت الصفحة في `bridge.rs`).
+///
+/// التقريب إلى أقرب عيّنة خطؤه عيّنة واحدة (≈23µs) ولا يتراكم: كل مقطع يُقرَّب
+/// مستقلاً عن موضعه المطلق. والمقاطع الشاذّة (غير منتهية/مقلوبة/سالبة) تُسقَط
+/// بدل أن تُنتج فهرساً مُشوَّهاً — و[`cut_silence_with_ranges`] يقصّ على حدود
+/// المخزن أصلاً.
+pub fn ranges_from_secs(kept: &[(f64, f64)], sr: u32) -> Vec<(usize, usize)> {
+    if sr == 0 {
+        return Vec::new();
+    }
+    let s = sr as f64;
+    kept.iter()
+        .filter(|(a, b)| a.is_finite() && b.is_finite() && *a >= 0.0 && b > a)
+        .map(|(a, b)| ((a * s).round() as usize, (b * s).round() as usize))
+        .collect()
 }
 
 /// In-place silence removal on stereo buffers. Returns removed fraction 0..1.
@@ -454,5 +492,75 @@ mod tests {
         apply_mute_duck(&mut l, &mut r, sr, &[(0.5, 1.5)], &[(0.0, 2.0)], 50);
         let mid = &l[(sr as usize * 9 / 10)..(sr as usize * 11 / 10)];
         assert!(mid.iter().all(|v| v.abs() < 1e-6), "overlap must be silent");
+    }
+
+    /// **ب١ (وجه القصّ) — تكافؤ الهوية**: تمرير «الملف كله» كمقطع محفوظ واحد
+    /// يترك العيّنات **متطابقة بايتاً بايتاً** مع عدم تمرير خريطة أصلاً.
+    ///
+    /// مُفسَده: أي تغيير يجعل المسار «بخريطة كاملة» يمرّ بتدرّج أو يكتب شيئاً
+    /// ⇒ يسقط هذا الاختبار (ولذلك يفحص العيّنات لا الطول وحده).
+    #[test]
+    fn a_full_cover_range_is_identical_to_no_range_at_all() {
+        let sr = 44100u32;
+        let n = sr as usize * 3;
+        // محتوى غير دوري (لا يُخفي فرقاً في التدرّج بصدفة طورية).
+        let base: Vec<f32> = (0..n)
+            .map(|i| ((i * 7919) % 104729) as f32 / 104729.0 - 0.5)
+            .collect();
+        let cfg = SilenceConfig::default();
+
+        let (mut l0, mut r0) = (base.clone(), base.clone());
+        let removed0 = cut_silence_with_ranges(&mut l0, &mut r0, sr, &cfg, &[]);
+        let (mut l1, mut r1) = (base.clone(), base.clone());
+        let removed1 = cut_silence_with_ranges(&mut l1, &mut r1, sr, &cfg, &[(0, n)]);
+
+        assert_eq!(removed0, 0.0);
+        assert_eq!(removed1, 0.0, "«الملف كله» ليس حذفاً");
+        assert_eq!(l0, l1, "الهوية يجب ألا تلمس العيّنات");
+        assert_eq!(r0, r1, "الهوية يجب ألا تلمس العيّنات");
+        assert_eq!(l1.len(), n);
+    }
+
+    /// المقطع بالثواني يساوي المقطع بالعيّنات مقسوماً على معدّل العيّنة —
+    /// والتحويل عكس نفسه بلا انزياح يتراكم.
+    #[test]
+    fn seconds_and_samples_agree_and_round_trip() {
+        let sr = 44100u32;
+        let mut l = vec![0.5f32; sr as usize * 2];
+        l.extend(std::iter::repeat_n(0.0f32, sr as usize * 2)); // فجوة 2s
+        l.extend(std::iter::repeat_n(0.5f32, sr as usize * 2));
+        let r = l.clone();
+
+        let secs = kept_ranges_sec(&l, &r, sr, &SilenceConfig::default());
+        let samples = compute_kept_ranges(&l, &r, sr, &SilenceConfig::default());
+        assert_eq!(secs.len(), samples.len());
+        assert_eq!(secs.len(), 2, "فجوة وسطى ⇒ مقطعان: {secs:?}");
+        for (s, m) in secs.iter().zip(samples.iter()) {
+            assert!((s.0 * sr as f64 - m.0 as f64).abs() < 1e-6);
+            assert!((s.1 * sr as f64 - m.1 as f64).abs() < 1e-6);
+        }
+        // عكس التحويل: ±عيّنة واحدة لكل حدّ، بلا تراكم.
+        let back = ranges_from_secs(&secs, sr);
+        for (m, b) in samples.iter().zip(back.iter()) {
+            assert!(
+                m.0.abs_diff(b.0) <= 1 && m.1.abs_diff(b.1) <= 1,
+                "{m:?} ⟷ {b:?}"
+            );
+        }
+        assert_eq!(back.len(), samples.len(), "لا يُسقط مقطعاً صالحاً");
+    }
+
+    /// المقاطع الشاذّة تُسقَط في التحويل ولا تُنتج فهرساً مُشوَّهاً.
+    #[test]
+    fn ranges_from_secs_drops_malformed_input() {
+        let sr = 44100u32;
+        assert!(ranges_from_secs(&[], sr).is_empty());
+        assert!(ranges_from_secs(&[(2.0, 2.0)], sr).is_empty());
+        assert!(ranges_from_secs(&[(3.0, 1.0)], sr).is_empty());
+        assert!(ranges_from_secs(&[(-1.0, 3.0)], sr).is_empty());
+        assert!(ranges_from_secs(&[(0.0, f64::NAN)], sr).is_empty());
+        assert!(ranges_from_secs(&[(0.0, f64::INFINITY)], sr).is_empty());
+        assert!(ranges_from_secs(&[(0.0, 1.0)], 0).is_empty(), "معدّل صفري");
+        assert_eq!(ranges_from_secs(&[(0.0, 1.0)], sr), vec![(0, sr as usize)]);
     }
 }
