@@ -22,6 +22,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
 const DEFAULT_FILE = path.join('qa', 'TEST-MATRIX.md');
 const MANDATORY_RE = /\[إلزامي\]/;
@@ -128,7 +129,7 @@ function gitHeadSha(repo) {
  *
  * @returns {{state:'ok'|'missing'|'rejected', why:string|null}}
  */
-function inspectRowArtifact(row, areas, repo, evalOut) {
+function inspectRowArtifact(row, areas, repo, evalOut, binary) {
   const file = path.join(evalOut, `${row}.json`);
   const rel = path.relative(repo, file) || file;
   // مسار خارج المستودع يُعرض مطلقاً: `..\..\..\windows\TEMP\…` اسمٌ لا يدلّ أحداً.
@@ -167,6 +168,24 @@ function inspectRowArtifact(row, areas, repo, evalOut) {
       `منطقة الصفّ تغيّرت بين ${commit.slice(0, 8)} وHEAD — الأثر بائت، أعد تشغيل «pwsh qa/eval/${row}.ps1»`
     );
   }
+
+  // ── ارتباط الدليل بالمُخرَج المُسلَّم ─────────────────────────────────────
+  // الفحص الأخير والأخطر: أثرٌ يشهد على ثنائي **غيره** أسوأ من لا أثر — لأنه يبدو
+  // دليلاً. وترتيبه **بعد** فحوص الإسناد مقصود: أثر بائت أو مخالف يُبلَّغ بعلّته
+  // الحقيقية حتى في بيئة بلا ثنائي، فلا تُبتلع العلّة الدلالية بحجّة بيئية.
+  const recorded = art.exe_sha256.trim().toUpperCase();
+  if (!binary.sha256) {
+    return {
+      state: 'unbound',
+      why: `الثنائي غير موجود فلا يُربط الأثر بالمُخرَج المُسلَّم — جُرِّب: ${binary.searched.join(' · ')}`,
+    };
+  }
+  if (recorded !== binary.sha256.toUpperCase()) {
+    return rejected(
+      `exe_sha256 في الأثر (${recorded.slice(0, 12)}…) لا يطابق الثنائي المُسلَّم ` +
+        `(${binary.sha256.slice(0, 12)}… في ${binary.path}) — أُعيد بناء الثنائي بعد القياس، أعد تشغيل «pwsh qa/eval/${row}.ps1»`
+    );
+  }
   return { state: 'ok', why: null };
 }
 
@@ -182,37 +201,113 @@ const MISSING_NOTICE_CALL = 'emitMissingNotice(missingIds, gatedClaiming);';
 const MISSING_NOTICE_CALL_REMOVED = '/* حذفه الفحص الذاتي (الحالة Ⓠ) */';
 
 /**
- * **السطر الصارخ** — يُطبع في الوضع المتسامح وحده، حين تغيب آثار.
+ * **السطر الصارخ** — يُطبع في الوضع المتسامح وحده، حين يوجد **غياب بيئيّ**:
+ * آثار غائبة، أو ثنائي غير موجود فلا يُربط الأثر بالمُخرَج المُسلَّم.
  *
  * لماذا هو **شرط** لا تجميل: الوضع الافتراضي هو وضع CI، وCI **لا يستطيع** تشغيل
  * المُقيِّمات أصلاً — مهمّة `windows-latest` تُنشئ `bin/` و`models/` كـstubs فارغة
- * (`.github/workflows/ci.yml:61-68` و`:256-257`)، فلا ffmpeg ولا نموذج. فغياب
- * الأثر هناك **خاصية بيئة لا عطل**. ولو أسقطنا الحارس عليه لصار CI أحمر دائماً
- * بلا سبب قابل للإصلاح. ولو سكتنا عنه لَقُرئ `exit 0` **شهادةَ قبول** وهو ليس
- * كذلك. فالتسامح يخصّ **الغياب وحده**، ويُعلَن بصوت عالٍ في كل مرة.
+ * (`.github/workflows/ci.yml:61-68` و`:256-257`)، ولا ثنائي في `src-tauri/target/`
+ * (مُتجاهَل). فغياب الأثر والثنائي هناك **خاصية بيئة لا عطل**. ولو أسقطنا الحارس
+ * عليه لصار CI أحمر دائماً بلا سبب قابل للإصلاح. ولو سكتنا عنه لَقُرئ `exit 0`
+ * **شهادةَ قبول** وهو ليس كذلك. فالتسامح يخصّ **الغياب البيئيّ وحده**، ويُعلَن
+ * بصوت عالٍ في كل مرة. أما الرفض (بائت · مخالف · بصمة ثنائي لا تطابق) فيسقط في
+ * الوضعين.
  *
  * ووجوده محروس لا تجميلي: `--selfcheck` يشغّل نسخةً من هذا الملف حُذف منها نداء
  * هذه الدالة، **ويثبت أن حالة الفحص تسقط** حينها (الحالة Ⓠ).
  */
-function emitMissingNotice(missingIds, claiming) {
-  const list = missingIds.join(' · ');
-  process.stdout.write(
-    `\n⚠ غياب آثار — ${missingIds.length} من ${claiming} صفّاً قابلاً للتقييم بلا أثر في هذا التشغيل:\n` +
-      `   ${list}\n` +
-      '   هذه ليست شهادة قبول: القبول النهائي يشترط `--require-artifacts`\n' +
-      '   (‏node scripts/matrix-check.cjs --require-artifacts) بعد «pwsh qa/eval/run-all.ps1».\n' +
-      '   سبب التسامح مقيس: مهمّة CI على windows-latest تُنشئ bin/ و models/ كـstubs فارغة\n' +
-      '   (‏ci.yml:61-68 و:256-257)، فالعدّاء لا يملك ffmpeg ولا النموذج ولا يستطيع تشغيل المُقيِّمات.\n'
-  );
+const ENV_NOTICE_CALL = 'emitEnvironmentalNotices(envGaps, gatedClaiming);';
+
+/** ما يُوضع مكان النداء في نسخة الحالة Ⓠ — تعليق لا يُنفَّذ، فيبقى الحارس سليماً إلا من السطر. */
+const ENV_NOTICE_CALL_REMOVED = '/* حذفه الفحص الذاتي (الحالة Ⓠ) */';
+
+function emitEnvironmentalNotices(gaps, claiming) {
+  const lines = [];
+  if (gaps.missingIds.length > 0) {
+    lines.push(
+      `\n⚠ غياب آثار — ${gaps.missingIds.length} من ${claiming} صفّاً قابلاً للتقييم بلا أثر في هذا التشغيل:`
+    );
+    lines.push(`   ${gaps.missingIds.join(' · ')}`);
+  }
+  if (gaps.binarySearched) {
+    lines.push(
+      `\n⚠ ثنائي غير موجود — ${gaps.unboundIds.length} من ${claiming} صفّاً أثرُه غير مربوط بالمُخرَج المُسلَّم:`
+    );
+    if (gaps.unboundIds.length > 0) lines.push(`   ${gaps.unboundIds.join(' · ')}`);
+    lines.push('   جُرِّب:');
+    for (const p of gaps.binarySearched) lines.push(`     ${p}`);
+  }
+  lines.push('   هذه ليست شهادة قبول: القبول النهائي يشترط `--require-artifacts`');
+  lines.push('   (‏node scripts/matrix-check.cjs --require-artifacts) بعد «pwsh qa/eval/run-all.ps1».');
+  lines.push('   سبب التسامح مقيس: مهمّة CI على windows-latest تُنشئ bin/ و models/ كـstubs فارغة');
+  lines.push('   (‏ci.yml:61-68 و:256-257)، فالعدّاء لا يملك ffmpeg ولا النموذج ولا يستطيع تشغيل المُقيِّمات.');
+  process.stdout.write(`${lines.join('\n')}\n`);
   // صدى على stderr أيضاً: من يقرأ مخرَج الأخطاء وحده لا يجوز أن يفوته التحذير.
-  process.stderr.write(
-    `⚠ ${missingIds.length} من ${claiming} صفّاً بلا أثر (${list}) — القبول النهائي يشترط --require-artifacts\n`
-  );
+  const brief = [];
+  if (gaps.missingIds.length > 0) brief.push(`${gaps.missingIds.length} بلا أثر (${gaps.missingIds.join(' · ')})`);
+  if (gaps.binarySearched) brief.push(`لا ثنائي ⇒ ${gaps.unboundIds.length} أثراً غير مربوط`);
+  process.stderr.write(`⚠ ${brief.join(' · ')} — القبول النهائي يشترط --require-artifacts\n`);
 }
 
 /** هل خانة النتيجة **تدّعي** نجاحاً (`✅` أو `⚠️`)؟ الصفوف `—`/`❌` لا تدّعي شيئاً. */
 function claimsSuccess(verdict) {
   return /^(✅|⚠️?)$/.test(verdict && verdict.result ? verdict.result : '');
+}
+
+/** مسار الثنائي المُسلَّم داخل الشجرة: `src-tauri/target/release/HaramLite.exe`. */
+function defaultBinaryPath(repo) {
+  return path.join(repo, 'src-tauri', 'target', 'release', 'HaramLite.exe');
+}
+
+/**
+ * يحلّ **الثنائي المُسلَّم** ويقيس بصمته — الطرف الثاني في سلسلة الدليل.
+ *
+ * لماذا هذا الفحص أصلاً: الأثر يوثّق `exe_sha256` للثنائي **الذي قاسه**، وبلا
+ * مقارنةٍ بالثنائي الحالي يبقى أثرٌ قديم «مقبولاً» بعد إعادة بناء ⇒ تشهد الأدلّة
+ * على نسخة غير التي تُسلَّم، وهو نقض «لا ائتمان بلا أثر **مُعاد إنتاجه**» في أهمّ
+ * نقطة: ارتباط الدليل بالمُخرَج. (الثقب كشفه الدمج: القياس كان يمرّ بعد إعادة
+ * البناء لأن الحقل كان يُفحَص **غير فارغ** لا **مطابقاً**.)
+ *
+ * الترتيب: `--exe` ← `<المستودع>/src-tauri/target/release/HaramLite.exe` ←
+ * الشجرة الشقيقة `../haramlite-rs/...` (‏تخطيط شجرات العمل في هذا المستودع، وهو
+ * نفس ما تحلّه المُقيِّمات في `qa/eval/_common.ps1`، فلا يشهد الحارس على ثنائي
+ * غير الذي قاسته المُقيِّمات). والمسار المستعمل **يُطبع دائماً** فلا إبهام.
+ *
+ * وغياب الثنائي **غياب بيئيّ** لا عطل: استنساخ نظيف وعدّاء CI لا ثنائي فيهما
+ * (‏`src-tauri/target/` مُتجاهَل). فيُتسامح معه في الوضع الافتراضي ويُسقط في
+ * `--require-artifacts` — كغياب الأثر سواء.
+ *
+ * @returns {{path:string|null, sha256:string|null, searched:string[]}}
+ */
+function resolveBinary(repo, explicit) {
+  const candidates = [];
+  const searched = [];
+  if (explicit) {
+    // مسار صريح **لا يسقط إلى غيره**: من سمّى ثنائياً بعينه فقد قال على أيّ
+    // مُخرَج يشهد، والسقوط الصامت إلى ثنائي آخر يجعل الشهادة على غير المطلوب.
+    const full = path.resolve(explicit);
+    searched.push(full);
+    if (fs.existsSync(full) && fs.statSync(full).isFile()) {
+      return { path: full, sha256: sha256Of(full), searched };
+    }
+    return { path: null, sha256: null, searched };
+  }
+  candidates.push(defaultBinaryPath(repo));
+  candidates.push(path.join(repo, '..', 'haramlite-rs', 'src-tauri', 'target', 'release', 'HaramLite.exe'));
+  for (const c of candidates) {
+    const full = path.resolve(c);
+    if (searched.includes(full)) continue;
+    searched.push(full);
+    if (fs.existsSync(full) && fs.statSync(full).isFile()) {
+      return { path: full, sha256: sha256Of(full), searched };
+    }
+  }
+  return { path: null, sha256: null, searched };
+}
+
+/** بصمة ملف بلا تحميله كاملاً في الذاكرة (الثنائي 39MB). */
+function sha256Of(file) {
+  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
 
@@ -424,6 +519,7 @@ function parseArgs(argv) {
     repo: null,
     evalOut: null,
     rowAreas: null,
+    exe: null,
     requireArtifacts: false,
   };
   for (const arg of argv.slice(2)) {
@@ -434,6 +530,7 @@ function parseArgs(argv) {
     else if (arg.startsWith('--repo=')) opts.repo = arg.slice('--repo='.length);
     else if (arg.startsWith('--eval-out=')) opts.evalOut = arg.slice('--eval-out='.length);
     else if (arg.startsWith('--row-areas=')) opts.rowAreas = arg.slice('--row-areas='.length);
+    else if (arg.startsWith('--exe=')) opts.exe = arg.slice('--exe='.length);
     else if (!arg.startsWith('-')) opts.file = arg;
     else {
       process.stderr.write(`وسيط غير معروف: ${arg}\n`);
@@ -443,13 +540,15 @@ function parseArgs(argv) {
   return opts;
 }
 
-const USAGE = `الاستعمال: node scripts/matrix-check.cjs [--file=<path>] [--quiet] [--require-artifacts]
+const USAGE = `الاستعمال: node scripts/matrix-check.cjs [--file=<path>] [--quiet] [--require-artifacts] [--exe=<path>]
 
   --file=<path>       مسار المصفوفة (افتراضاً qa/TEST-MATRIX.md)
   --eval-out=<dir>    مجلد آثار المُقيِّمين (افتراضاً <المستودع>/qa/eval/out)
   --repo=<dir>        جذر المستودع لالتزام HEAD (افتراضاً: جذر المصفوفة ثم cwd)
+  --exe=<path>        الثنائي المُسلَّم الذي تُربط به الآثار
+                      (افتراضاً <المستودع>/src-tauri/target/release/HaramLite.exe)
   --row-areas=<file>  جدول ربط بديل (JSON: صفّ ← [مسارات]) — للفحص الذاتي أساساً
-  --require-artifacts وضع التسليم: غياب أثر **فشل**
+  --require-artifacts وضع التسليم: غياب أثر أو غياب ثنائي **فشل**
   --quiet             لا تطبع إلا الملخّص وسطور النقص
   --selfcheck         يفحص الحارس نفسه على مصفوفات وآثار مصنوعة
   --help              هذه الرسالة
@@ -459,19 +558,21 @@ const USAGE = `الاستعمال: node scripts/matrix-check.cjs [--file=<path>]
 
 **لا ائتمان بلا أثر مُعاد إنتاجه** (خطة 0.2.9 §١٠): صفٌّ «قابل للتقييم» (‏طبقة أ:
 1.1 · 1.4 · 2.1 · 2.4 · 3.1 · 3.2 · 3.3 · 3.7 · 3.8 · 3.9) نتيجته ✅ أو ⚠️ لا
-يُقبل إلا بأثر في \`qa/eval/out/<رقم>.json\` يحقّق: row مطابق · verdict=pass ·
-outputs غير فارغة · exe_sha256 غير فارغ · commit سلفٌ لـHEAD · ومنطقة الصفّ لم
-تتغيّر بين ذلك الالتزام وHEAD. وفي الصفوف السلبية (3.1 · 3.3) يكون \`outputs\`
-هو **ملف السجلّ** — منتجُ العملية الحقيقي عند الرفض — و\`product_outputs\` فارغة
-صريحةً، فلا يُدَّعى ناتج لم يُنتج. التفصيل في \`qa/eval/README.md\`.
+يُقبل إلا بأثر في \`qa/eval/out/<رقم>.json\` يحقّق **ثمانية** شروط: row مطابق ·
+verdict=pass · outputs غير فارغة · exe_sha256 غير فارغ · commit سلفٌ لـHEAD ·
+منطقة الصفّ لم تتغيّر بين ذلك الالتزام وHEAD · و**exe_sha256 يطابق بصمة الثنائي
+المُسلَّم** (فأثرٌ يشهد على ثنائي غيره ليس دليلاً). وفي الصفوف السلبية (3.1 · 3.3)
+يكون \`outputs\` هو **ملف السجلّ** — منتجُ العملية الحقيقي عند الرفض — و
+\`product_outputs\` فارغة صريحةً، فلا يُدَّعى ناتج لم يُنتج. التفصيل في \`qa/eval/README.md\`.
 
 **ووضعان صريحان، ولا تُسكَت البوّابة في أيّهما**:
-  · **الافتراضيّ (وضع CI)**: أثر **غائب** ⇒ يُذكر بسطر صارخ ويبقى 0؛ وأثر موجود
-    لكنه **بائت أو مخالف** ⇒ **فشل دائماً**. والتسامح يخصّ الغياب وحده لأنه بيئي:
-    مهمّة CI تُنشئ bin/ و models/ كـstubs فارغة (‏ci.yml:61-68 · :256-257) فلا
-    تستطيع تشغيل المُقيِّمات. و\`exit 0\` هنا **ليس** شهادة قبول.
-  · **\`--require-artifacts\` (وضع التسليم)**: غياب أي أثر **فشل** يسمّي الصفوف
-    ومسار الأثر المفقود. وهو شرط التسليم قبل كل نسخة تُسلَّم.`;
+  · **الافتراضيّ (وضع CI)**: **غياب بيئيّ** (أثر غائب · ثنائي غير موجود) ⇒ يُذكر
+    بسطر صارخ ويبقى 0؛ وأثر موجود لكنه **بائت أو مخالف أو بصمته لا تطابق الثنائي**
+    ⇒ **فشل دائماً**. والتسامح بيئيّ لا دلاليّ: مهمّة CI لا ثنائي فيها ولا tools
+    (‏bin/ و models/ كـstubs فارغة — ci.yml:61-68 · :256-257). و\`exit 0\` هنا
+    **ليس** شهادة قبول.
+  · **\`--require-artifacts\` (وضع التسليم)**: غياب أي أثر أو غياب الثنائي **فشل**
+    يسمّي الصفوف والمسارات المفقودة. وهو شرط التسليم قبل كل نسخة تُسلَّم.`;
 
 /* ---------------------------------------------------------------------------
 // الفحص الذاتي: الحارس يُسقط على نصّ مُخرَّب، ويمرّ على نصّ سليم رآه فعلاً
@@ -518,7 +619,13 @@ outputs غير فارغة · exe_sha256 غير فارغ · commit سلفٌ لـH
 //   Ⓟ  الوضع الصارم ومجلد آثار فارغ ⇒ 1 يسمّي العشر ومسار كل أثر مفقود
 //   Ⓠ  **مُفسَد على الحارس نفسه**: نسخة من هذا الملف حُذف منها نداء السطر
 //      الصارخ ⇒ متوقَّعات Ⓞ **تسقط كلها** عليها، وتمرّ على الحارس السليم.
-//      فهو الدليل أن السطر محروس لا تجميلي، وأن حذفه يُسقط فحصاً. */
+//      فهو الدليل أن السطر محروس لا تجميلي، وأن حذفه يُسقط فحصاً.
+//   Ⓗ′ ضابط الربط: الآثار تحمل بصمة الثنائي المصنوع ⇒ 0 في الوضعين
+//   Ⓘ′ أثر ببصمة **ثنائي آخر** (٦٤ تسعة) والثنائي موجود ⇒ يسقط **في الوضعين**
+//      (‏وهذا هو الثقب الذي كشفه الدمج: الحقل كان يُفحَص غير فارغ لا مطابقاً)
+//   Ⓙ′ الثنائي غير موجود (غياب بيئيّ) + الافتراضيّ ⇒ 0 مع سطر صارخ يسمّي
+//      الصفوف غير المربوطة وجذور البحث
+//   Ⓙ″ نفسه + `--require-artifacts` ⇒ 1 يسمّي الصفوف */
 function selfcheckArtifacts(workDir) {
   const fsMod = require('node:fs');
   const { spawnSync } = require('node:child_process');
@@ -542,6 +649,8 @@ function selfcheckArtifacts(workDir) {
     for (const id of LAYER_A_ROWS) {
       for (const rel of ROW_AREAS[id]) mkIn(dir, rel, '// منطقة الصفّ المصنوعة\n');
     }
+    // ثنائي مصنوع في موضعه المُسلَّم: الأثر يشهد على بصمته، وغيابه غياب بيئيّ.
+    mkIn(dir, path.join('src-tauri', 'target', 'release', 'HaramLite.exe'), 'MZ-stub-HaramLite\n');
     git(dir, ['init', '-q']);
     git(dir, ['config', 'user.email', 'selfcheck@local']);
     git(dir, ['config', 'user.name', 'selfcheck']);
@@ -550,13 +659,20 @@ function selfcheckArtifacts(workDir) {
     return headOf(dir);
   }
 
+  const FIXTURE_BIN_REL = path.join('src-tauri', 'target', 'release', 'HaramLite.exe');
+  /** بصمة الثنائي المصنوع — هي ما يجب أن تحمله `exe_sha256` في أثر سليم. */
+  function fixtureBinarySha(dir) {
+    const p = path.join(dir, FIXTURE_BIN_REL);
+    return crypto.createHash('sha256').update(fsMod.readFileSync(p)).digest('hex');
+  }
+
   function putArtifact(dir, row, over) {
     const art = {
       row,
       commit: headOf(dir),
       dirty: false,
       app_version: '0.0.0-مصنوع',
-      exe_sha256: 'F'.repeat(64),
+      exe_sha256: fixtureBinarySha(dir),
       command: 'مصنوع',
       exit: 0,
       wall_ms: 1,
@@ -755,10 +871,10 @@ function selfcheckArtifacts(workDir) {
     let mutantSrc = null;
     try {
       const src = fsMod.readFileSync(__filename, 'utf8');
-      if (!src.includes(MISSING_NOTICE_CALL)) {
+      if (!src.includes(ENV_NOTICE_CALL)) {
         throw new Error('مُفسَد لم يغيّر الحارس — نصّ نداء السطر الصارخ لا يطابق');
       }
-      mutantSrc = src.split(MISSING_NOTICE_CALL).join(MISSING_NOTICE_CALL_REMOVED);
+      mutantSrc = src.split(ENV_NOTICE_CALL).join(ENV_NOTICE_CALL_REMOVED);
       if (mutantSrc === src) throw new Error('مُفسَد لم يغيّر الحارس');
     } catch (err) {
       problems.push(err.message);
@@ -782,6 +898,60 @@ function selfcheckArtifacts(workDir) {
     }
     cases.push({ label, ok: problems.length === 0, detail: problems.join(' · '), out: '' });
   }
+
+  /* ── ارتباط الدليل بالمُخرَج المُسلَّم (‏exe_sha256 ← بصمة الثنائي) ─────────── */
+
+  // Ⓗ′ ضابط: الثنائي المصنوع موجود وآثاره تحمل بصمته ⇒ 0 في الوضعين
+  caseRun('Ⓗ′ ضابط الربط: بصمة الأثر = بصمة الثنائي ⇒ 0 في الوضعين', (d) => {
+    freshFixture(d);
+  }, ['--require-artifacts'], {
+    status: EXIT.PASS,
+    text: ['آثار: 10 من 10 مقبولة', 'الثنائي المُسلَّم:', 'الوضع: التسليم'],
+    notText: ['ثنائي غير موجود'],
+  });
+
+  // Ⓘ′ مُفسَد: أثر ببصمة ثنائي آخر (٦٤ تسعة) والثنائي موجود ⇒ فشل في الوضعين
+  for (const [tag, args] of [['الافتراضيّ', null], ['التسليم', ['--require-artifacts']]]) {
+    caseRun(
+      `Ⓘ′ مُفسَد (${tag}): exe_sha256 من ٦٤ تسعة والثنائي موجود ⇒ يسقط`,
+      (d) => {
+        freshFixture(d);
+        putArtifact(d, '2.1', { exe_sha256: '9'.repeat(64) });
+      },
+      args,
+      {
+        status: EXIT.INCOMPLETE,
+        text: ['2.1', 'لا يطابق الثنائي المُسلَّم', 'آثار: 9 من 10 مقبولة'],
+        notText: ['غياب آثار —'],
+      }
+    );
+  }
+
+  // Ⓙ′ غياب بيئيّ: الثنائي غير موجود ⇒ الافتراضيّ 0 + السطر الصارخ، والتسليم 1
+  caseRun('Ⓙ′ الثنائي غير موجود + الافتراضيّ ⇒ 0 مع السطر الصارخ للثنائي', (d) => {
+    freshFixture(d);
+    fsMod.rmSync(path.join(d, FIXTURE_BIN_REL), { force: true });
+  }, ['--quiet'], {
+    status: EXIT.PASS,
+    text: [
+      'ثنائي غير موجود',
+      'غير مربوط بالمُخرَج المُسلَّم',
+      '1.1',
+      '3.9',
+      'ليست شهادة قبول',
+      'القبول النهائي يشترط `--require-artifacts`',
+      `غير مربوط بالثنائي: ${TEN_ROWS_LIST}`,
+      'الثنائي المُسلَّم: غير موجود',
+    ],
+  });
+  caseRun('Ⓙ″ الثنائي غير موجود + --require-artifacts ⇒ 1 يسمّيه', (d) => {
+    freshFixture(d);
+    fsMod.rmSync(path.join(d, FIXTURE_BIN_REL), { force: true });
+  }, ['--require-artifacts'], {
+    status: EXIT.INCOMPLETE,
+    text: ['وضع التسليم', 'لا ثنائي يُربط به', '2.4', '3.9', 'غير موجود فلا يُربط'],
+    notText: ['⚠ ثنائي غير موجود'],
+  });
 
   return cases;
 }
@@ -960,6 +1130,8 @@ function main(argv) {
 
   const repo = path.resolve(opts.repo || gitToplevel(path.dirname(file)) || process.cwd());
   const evalOut = path.resolve(opts.evalOut || path.join(repo, 'qa', 'eval', 'out'));
+  // الطرف الثاني في سلسلة الدليل: الثنائي المُسلَّم الذي تُربط به الآثار.
+  const binary = resolveBinary(repo, opts.exe);
 
   // صفٌّ في الجدول وغائب عن المصفوفة = شرط أُسقط بحذف الصفّ لا بتحقيقه.
   const goneFromMatrix = LAYER_A_ROWS.filter((id) => !rows.some((r) => r.id === id));
@@ -977,24 +1149,36 @@ function main(argv) {
   // ── الأثر: لا يُقبل ✅/⚠️ في صفّ قابل للتقييم إلا بمسار مخرَج المُقيِّم ─────
   const artifactRows = [];
   const artifactProblems = []; // موجود ولم يجتز ⇒ فشل في الوضعين
-  const artifactMissing = []; // لا ملف أصلاً ⇒ فشل في وضع التسليم وحده
+  const artifactMissing = []; // لا ملف أصلاً ⇒ غياب بيئيّ: فشل في وضع التسليم وحده
+  const artifactUnbound = []; // موجود، لكن لا ثنائي يُربط به ⇒ غياب بيئيّ مثله
   for (const r of gated) {
     if (!claimsSuccess(r.verdict)) {
       artifactRows.push({ id: r.id, state: 'بلا ادّعاء', detail: 'الخانة لا تدّعي نجاحاً (— أو ❌)' });
       continue;
     }
-    const { state, why } = inspectRowArtifact(r.id, areas[r.id], repo, evalOut);
+    const { state, why } = inspectRowArtifact(r.id, areas[r.id], repo, evalOut, binary);
     if (state === 'ok') {
       artifactRows.push({ id: r.id, state: 'مقبول', detail: `منطقة: ${areas[r.id].join(' · ')}` });
     } else if (state === 'missing') {
       artifactRows.push({ id: r.id, state: 'غائب', detail: why });
       artifactMissing.push({ id: r.id, why });
+    } else if (state === 'unbound') {
+      artifactRows.push({ id: r.id, state: 'غير مربوط', detail: why });
+      artifactUnbound.push({ id: r.id, why });
     } else {
       artifactRows.push({ id: r.id, state: 'مرفوض', detail: why });
       artifactProblems.push({ id: r.id, why });
     }
   }
   const missingIds = artifactMissing.map((a) => a.id);
+  const unboundIds = artifactUnbound.map((a) => a.id);
+  const envGaps = {
+    missingIds,
+    unboundIds,
+    // جذور البحث تُذكر فقط إن كان الثنائي هو العلّة، فلا نُغرق المخرَج بلا سبب.
+    binarySearched: binary.path ? null : binary.searched,
+  };
+  const hasEnvGap = missingIds.length > 0 || unboundIds.length > 0;
 
   const out = [];
   if (!opts.quiet) {
@@ -1020,12 +1204,13 @@ function main(argv) {
     out.push(`آثار المُقيِّمين: ${evalOut}`);
     out.push(`جدول الربط: ${areasSource}`);
     for (const a of artifactRows) {
-      out.push(`  ${a.id.padEnd(6)} ${a.state.padEnd(8)} ${a.detail}`);
+      out.push(`  ${a.id.padEnd(6)} ${a.state.padEnd(9)} ${a.detail}`);
     }
     out.push('');
-  } else if (artifactProblems.length > 0 || missingIds.length > 0) {
-    for (const a of artifactProblems) out.push(`  ${a.id.padEnd(6)} مرفوض   ${a.why}`);
-    for (const a of artifactMissing) out.push(`  ${a.id.padEnd(6)} غائب    ${a.why}`);
+  } else if (artifactProblems.length > 0 || hasEnvGap) {
+    for (const a of artifactProblems) out.push(`  ${a.id.padEnd(6)} مرفوض     ${a.why}`);
+    for (const a of artifactMissing) out.push(`  ${a.id.padEnd(6)} غائب      ${a.why}`);
+    for (const a of artifactUnbound) out.push(`  ${a.id.padEnd(6)} غير مربوط ${a.why}`);
     out.push('');
   }
 
@@ -1035,9 +1220,17 @@ function main(argv) {
     out.push(`الناقص: ${incomplete.map((r) => r.id).join(' · ')}`);
   }
   out.push(
-    `آثار: ${gatedClaiming - artifactProblems.length - missingIds.length} من ${gatedClaiming} مقبولة` +
+    `آثار: ${gatedClaiming - artifactProblems.length - missingIds.length - unboundIds.length} من ${gatedClaiming} مقبولة` +
       (artifactProblems.length > 0 ? ` — المرفوض: ${artifactProblems.map((a) => a.id).join(' · ')}` : '') +
-      (missingIds.length > 0 ? ` — الغائب: ${missingIds.join(' · ')}` : '')
+      (missingIds.length > 0 ? ` — الغائب: ${missingIds.join(' · ')}` : '') +
+      (unboundIds.length > 0 ? ` — غير مربوط بالثنائي: ${unboundIds.join(' · ')}` : '')
+  );
+  // سطر الثنائي يُطبع دائماً — في الوضعين وفي `--quiet`: كل تشغيل يقول على أيّ
+  // مُخرَج يشهد. ولا يُطبع في السطور المختصرة وحدها لئلا يغيب عن العين.
+  out.push(
+    binary.path
+      ? `الثنائي المُسلَّم: ${binary.path} · sha256 ${binary.sha256.slice(0, 16)}…`
+      : `الثنائي المُسلَّم: غير موجود — جُرِّب: ${binary.searched.join(' · ')}`
   );
   out.push(`الوضع: ${opts.requireArtifacts ? 'التسليم (--require-artifacts: الغياب فشل)' : 'الافتراضيّ/CI (الغياب يُعلَن ولا يُسقط)'}`);
   process.stdout.write(`${out.join('\n')}\n`);
@@ -1049,20 +1242,31 @@ function main(argv) {
     for (const a of artifactProblems) process.stderr.write(`   - ${a.id}: ${a.why}\n`);
   }
 
-  if (missingIds.length > 0) {
+  if (hasEnvGap) {
     if (opts.requireArtifacts) {
-      // وضع التسليم: الغياب فشل — ويُسمّى بمسار الأثر المفقود لا بالرقم وحده.
-      process.stderr.write(
-        `\n✗ وضع التسليم (--require-artifacts): ${missingIds.length} صفّاً قابلاً للتقييم بلا أثر:\n`
-      );
-      for (const a of artifactMissing) process.stderr.write(`   - ${a.id}: ${a.why}\n`);
+      // وضع التسليم: الغياب البيئيّ فشل — ويُسمّى بمساره لا بالرقم وحده.
+      if (missingIds.length > 0) {
+        process.stderr.write(
+          `\n✗ وضع التسليم (--require-artifacts): ${missingIds.length} صفّاً قابلاً للتقييم بلا أثر:\n`
+        );
+        for (const a of artifactMissing) process.stderr.write(`   - ${a.id}: ${a.why}\n`);
+      }
+      if (unboundIds.length > 0) {
+        process.stderr.write(
+          `\n✗ وضع التسليم (--require-artifacts): لا ثنائي يُربط به ${unboundIds.length} أثراً — ` +
+            'الدليل يجب أن يشهد على المُخرَج المُسلَّم:\n'
+        );
+        for (const a of artifactUnbound) process.stderr.write(`   - ${a.id}: ${a.why}\n`);
+      }
     } else {
-      emitMissingNotice(missingIds, gatedClaiming);
+      emitEnvironmentalNotices(envGaps, gatedClaiming);
     }
   }
 
-  const fails = incomplete.length > 0 || artifactProblems.length > 0 ||
-    (opts.requireArtifacts && missingIds.length > 0);
+  const fails =
+    incomplete.length > 0 ||
+    artifactProblems.length > 0 ||
+    (opts.requireArtifacts && hasEnvGap);
   return fails ? EXIT.INCOMPLETE : EXIT.PASS;
 }
 
@@ -1084,9 +1288,11 @@ module.exports = {
   validateRowAreas,
   inspectRowArtifact,
   claimsSuccess,
-  emitMissingNotice,
-  MISSING_NOTICE_CALL,
-  MISSING_NOTICE_CALL_REMOVED,
+  resolveBinary,
+  defaultBinaryPath,
+  emitEnvironmentalNotices,
+  ENV_NOTICE_CALL,
+  ENV_NOTICE_CALL_REMOVED,
   ROW_AREAS,
   LAYER_A_ROWS,
 };
