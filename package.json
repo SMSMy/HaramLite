@@ -29,6 +29,7 @@
     "separation:entry": "node scripts/check-separation-entry.cjs",
     "cuda:guard": "node scripts/check-cuda-assets.cjs",
     "release:assets": "node scripts/check-release-assets.cjs",
+    "redist:guard": "node scripts/check-fetch-redist.cjs",
     "guards:selfcheck": "node scripts/check-guards-selfcheck.cjs",
     "release:verify": "node scripts/check-release-artifact.cjs"
   },
