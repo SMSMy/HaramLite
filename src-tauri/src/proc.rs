@@ -44,6 +44,13 @@ pub const POLL: Duration = Duration::from_millis(200);
 /// أن يعلّق الإلغاء نفسه.
 const KILL_WAIT: Duration = Duration::from_secs(5);
 
+/// **مهلة تأكيد الموت بعد أمر القتل** — مقياس مستقلّ عن [`KILL_WAIT`]:
+/// `taskkill` **يعود قبل أن يموت الهدف**، فالمطلوب انتظار **مقبض العملية**
+/// (إشارة النواة) حتى يموت فعلاً. والمهلة سخيّة عمداً (٢ ث): القتل على ويندوز
+/// يستغرق عشرات المللي، وما يهمّ أن **العودة تعني الموت** لا مجرّد الأمر به.
+/// وإن انقضت المهلة يُسجَّل تحذير صريح ولا يُدّعى النجاح.
+const KILL_CONFIRM_WAIT: Duration = Duration::from_secs(2);
+
 /// أكثر ما يُحتفظ به من مخرجات الأداة (stdout/stderr معاً) لتقرير الفشل.
 /// السلوك السابق كان `.output()` فيحتفظ بالكل؛ والفارق هنا **مقصود ومحدود**:
 /// آخر 256KB تحمل سبب الفشل دائماً، وقراءة بلا سقف تفتح ذكرى غير محدودة.
@@ -171,6 +178,35 @@ impl ChildHandle {
                 .status()
                 .map(|s| s.success())
                 .unwrap_or(false)
+        }
+    }
+
+    /// **ينتظر موت العملية فعلاً** — بحدّ زمني — ويعيد هل ماتت.
+    ///
+    /// **لماذا لزم (عطل مقيس 2026-09-21)**: `cancel_job` كان يُصدر `taskkill`
+    /// ويعود، و`taskkill` **يعود قبل أن يموت الهدف**. فقِيس أن `cancel_job`
+    /// يعود والابن **حيّ** في **٧ من ٢٠ تشغيلاً** (~190 مللي)، وهذا يخالف
+    /// الوعد المنشور «تُقتل مع شجرتها كاملة»، ويفتح نافذة تُحسب فيها المهمّة
+    /// منتهية وعمليتها ما زالت تكتب. والانتظار على **مقبض العملية** (إشارة
+    /// النواة) هو المقياس الصحيح: لا استطلاع اسم ولا تخمين.
+    pub fn wait_gone(&self, timeout: Duration) -> bool {
+        #[cfg(target_os = "windows")]
+        {
+            use windows_sys::Win32::Foundation::{HANDLE, WAIT_OBJECT_0};
+            use windows_sys::Win32::System::Threading::WaitForSingleObject;
+            let ms = timeout.as_millis().min(u32::MAX as u128) as u32;
+            unsafe { WaitForSingleObject(self.handle as HANDLE, ms) == WAIT_OBJECT_0 }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let deadline = std::time::Instant::now() + timeout;
+            while std::time::Instant::now() < deadline {
+                if !self.is_alive() {
+                    return true;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            !self.is_alive()
         }
     }
 }
@@ -548,6 +584,20 @@ pub fn kill_children(ctx: &JobCtx) -> usize {
         if h.is_alive() {
             kill_tree(h.pid);
             killed += 1;
+            // **ولا يكفي إصدار الأمر**: ‏`taskkill` يعود قبل أن يموت الهدف،
+            // وقِيس (٢٠ تشغيلاً) أن `cancel_job` كان يعود **والابن حيّ** في
+            // **٧ منها** (~190 مللي) — وهذا يخالف الوعد المنشور «تُقتل مع شجرتها
+            // كاملة»، ويفتح نافذة تُحسب فيها المهمّة منتهية وعمليتها ما زالت
+            // تكتب. فالانتظار على مقبض العملية هو ما يجعل العودة تعني «ماتت»
+            // لا «أُمرت بالموت».
+            if !h.wait_gone(KILL_CONFIRM_WAIT) {
+                tracing::warn!(
+                    target: "proc",
+                    "الابن (pid={}) لم يمت خلال {:?} من أمر القتل — قد يبقى يعمل",
+                    h.pid,
+                    KILL_CONFIRM_WAIT
+                );
+            }
         }
         // المقبض يسقط هنا (يُغلق) — والحلقة في خيط الأداة ترى الإلغاء فتُكمل
         // الحصاد وإلغاء التسجيل.
