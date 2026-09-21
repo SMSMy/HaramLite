@@ -1134,6 +1134,9 @@ mod tests {
             true,  // keep vocals
             false, // CPU/DirectML — the GPU paths have their own live tests
             None,
+            // رمز إلغاء طازج لا يُضبط أبداً: هذا الاختبار يقيس خطّ الأنابيب
+            // نفسه (ونظيره الذي يقيس الإلغاء في `pipeline.rs` و`slots.rs`).
+            &crate::proc::CancelToken::new(),
             &|_| true,
             &|_, _| {},
         )
