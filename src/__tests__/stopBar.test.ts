@@ -35,7 +35,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 import { cancelQueueItem, restoreBatchState, startJobsPolling, stopBatch, wireSeparate, wireStopBar } from '../queue';
 import { t } from '../i18n';
 import * as session from '../session';
-import type { JobInfo } from '../jobs';
+import { STOP_CEILING_SECS, type JobInfo } from '../jobs';
 
 const A = 'C:\\Music\\Album\\track 01.mp3';
 const B = 'D:\\Podcasts\\ep 44.wav';
@@ -219,7 +219,7 @@ describe('م٢ · زرّ إلغاء الصفّ يستهدف مهمّته وحد�
     expect(argsOf('cancel_job')).toEqual([{ id: 7 }]);
     expect(cmds()).not.toContain('cancel_process');
     expect(rowOf(A)?.querySelector('.status-text')?.textContent).toContain(t('stop_requested'));
-    expect(el('stop-note')?.textContent).toContain(String(141)); // السقف المعلن
+    expect(el('stop-note')?.textContent).toContain(String(STOP_CEILING_SECS)); // السقف المعلن (رقم واحد — لا نسخة في الاختبار)
   });
 
   it('when the job is gone by the time of the click it cancels nothing globally and says so', async () => {
@@ -274,7 +274,7 @@ describe('م٢ · زرّ الإيقاف الثابت وزرّ إلغاء الك�
 
     expect(argsOf('cancel_job')).toEqual([{ id: 5 }]);
     expect(cmds()).not.toContain('cancel_process');
-    expect(el('stop-note')?.textContent).toContain(String(141));
+    expect(el('stop-note')?.textContent).toContain(String(STOP_CEILING_SECS));
     expect(el('stop-note')?.textContent).toContain(t('stop_requested'));
   });
 
