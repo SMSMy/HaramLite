@@ -29,6 +29,194 @@ const MANDATORY_RE = /\[إلزامي\]/;
 const EXIT = { PASS: 0, INCOMPLETE: 1, MISUSE: 2 };
 
 // ---------------------------------------------------------------------------
+// جدول الربط: صفّ «قابل للتقييم» ← منطقة كوده
+// ---------------------------------------------------------------------------
+//
+// **الخطوة الحاسمة** في خطة 0.2.9 §١٠: «لا ائتمان بلا أثر مُعاد إنتاجه». سجلٌّ
+// مكتوب في المصفوفة (`✅ · <تاريخ> · <جهاز>`) كان يمرّ بمجرّد **وجوده**؛ وبعد هذا
+// الجدول لا يمرّ صفٌّ ادّعى النجاح إلا وأثرُ مُقيِّمه موجود في `qa/eval/out/<رقم>.json`
+// ويحقّق ستّة شروط (انظر `inspectRowArtifact`).
+//
+// **مصدر المسارات**: عمود «النتيجة المتوقَّعة (بسندها من الكود)» في `qa/TEST-MATRIX.md`
+// — كل مسار هنا مأخوذ من سند الصفّ نفسه، لا مُخترَع:
+//   1.1 → `main.rs:2` (النظام الفرعي) · `media.rs` (الأدوات بلا نافذة) ·
+//         `pipeline.rs` (المراحل) · `slots.rs` (المهمّة)
+//   1.4 → `pipeline.rs:850` (اسم الناتج) · `media.rs:428` · `yt_dlp.rs:671-673` (الترميز)
+//   2.1 → `cuda_runtime.rs:81-83` (16 ملفاً) · `separator.rs:378-458` (السلسلة والمزوّد)
+//   2.4 → `cuda_runtime.rs:166-169` (`bin_dir`) · `:325-336` (وصف النقص) · `separator.rs`
+//   3.1 → `media.rs:63-71` · `:302-314` (الإصلاح `33638a4`) · `cli.rs:135-158` (`--probe`)
+//   3.2 → `media.rs:328-340` (التصنيف بالمحتوى لا بالامتداد)
+//   3.3 → `media.rs:302-341` · `cli.rs:272-279` (الفشل يُحتسب)
+//   3.7 → `yt_dlp.rs:648-651` · `:805-808` · `pipeline.rs:850`
+//   3.8 → `media.rs:130-165` (وسيط لكل عنصر لا سلسلة تُقسَّم)
+//   3.9 → `pipeline.rs:850` · `media.rs:428`
+//
+// **صفوف الطبقة (أ) العشرة** من خطة 0.2.9 §١٠ حرفياً. والقائمة صريحة لا مشتقّة:
+// حذف صفٍّ منها لتخفيض الشرط **فشل بنيوي** (رمز 2) لا نجاح.
+const LAYER_A_ROWS = ['1.1', '1.4', '2.1', '2.4', '3.1', '3.2', '3.3', '3.7', '3.8', '3.9'];
+
+const ROW_AREAS = {
+  '1.1': ['src-tauri/src/main.rs', 'src-tauri/src/media.rs', 'src-tauri/src/pipeline.rs', 'src-tauri/src/slots.rs'],
+  '1.4': ['src-tauri/src/media.rs', 'src-tauri/src/pipeline.rs', 'src-tauri/src/yt_dlp.rs'],
+  '2.1': ['src-tauri/src/cuda_runtime.rs', 'src-tauri/src/separator.rs'],
+  '2.4': ['src-tauri/src/cuda_runtime.rs', 'src-tauri/src/separator.rs'],
+  '3.1': ['src-tauri/src/cli.rs', 'src-tauri/src/media.rs'],
+  '3.2': ['src-tauri/src/media.rs'],
+  '3.3': ['src-tauri/src/cli.rs', 'src-tauri/src/media.rs'],
+  '3.7': ['src-tauri/src/pipeline.rs', 'src-tauri/src/yt_dlp.rs'],
+  '3.8': ['src-tauri/src/media.rs'],
+  '3.9': ['src-tauri/src/media.rs', 'src-tauri/src/pipeline.rs'],
+};
+
+/**
+ * يفحص جدول الربط بنيوياً. حارسٌ لا يرى ليس حارساً: جدول غائب أو صفرُ صفّ أو صفٌّ
+ * من الطبقة (أ) بلا منطقة ⇒ **فشل بصوت عالٍ**، لا مرورٌ لأن الجدول فارغ.
+ * @param {unknown} areas
+ * @returns {string|null} سبب الفشل، أو null إن كان الجدول صالحاً.
+ */
+function validateRowAreas(areas) {
+  if (!areas || typeof areas !== 'object' || Array.isArray(areas)) {
+    return 'جدول الربط ليس كائناً (object)';
+  }
+  if (Object.keys(areas).length === 0) return 'جدول الربط صفر صفّ';
+  const missing = LAYER_A_ROWS.filter((r) => !Object.prototype.hasOwnProperty.call(areas, r));
+  if (missing.length > 0) return `صفوف الطبقة (أ) بلا منطقة: ${missing.join(' · ')}`;
+  for (const r of LAYER_A_ROWS) {
+    const a = areas[r];
+    if (!Array.isArray(a) || a.length === 0) return `صفّ ${r}: منطقة فارغة أو ليست قائمة`;
+    for (const p of a) {
+      if (typeof p !== 'string' || p.trim() === '') return `صفّ ${r}: مسار منطقة غير صالح`;
+    }
+  }
+  return null;
+}
+
+/** جذر المستودع للالتزام HEAD: من مجلد المصفوفة، ثم cwd. */
+function gitToplevel(fromDir) {
+  const r = spawnGit(['rev-parse', '--show-toplevel'], fromDir);
+  if (r.status === 0 && r.stdout.trim()) {
+    // git يطبع مساراً بشرطات مائلة أمامية على ويندوز أيضاً.
+    return r.stdout.trim().replace(/\//g, path.sep);
+  }
+  return null;
+}
+
+function spawnGit(args, cwd) {
+  const { spawnSync } = require('node:child_process');
+  return spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true });
+}
+
+function gitHeadSha(repo) {
+  const r = spawnGit(['rev-parse', 'HEAD'], repo);
+  return r.status === 0 ? r.stdout.trim() : null;
+}
+
+/**
+ * هل أثر الصفّ صالح؟ الشروط الستّة (خطة 0.2.9 §١٠):
+ *   ① `row` مطابق   ② `verdict = pass`   ③ `outputs` غير فارغة
+ *   ④ `exe_sha256` غير فارغ   ⑤ `commit` سلفٌ لـHEAD
+ *   ⑥ لم تتغيّر منطقة الصفّ بين ذلك الالتزام وHEAD (`git diff --quiet`)
+ *
+ * وشرط سابع من عندنا يمنع منطقة **فارغة الحكم**: كل مسار في منطقة الصفّ يجب أن
+ * يوجد فعلاً — وإلا فـ`git diff` على مسار غير موجود ينجح دائماً، فيصير الفحص
+ * السادس تجاوزاً صامتاً (ثقب مُغلَق هنا لا مُهمَل).
+ *
+ * **والحكم ثلاثة لا اثنان**: `ok` · `missing` (لا ملف أصلاً) · `rejected` (ملف
+ * موجود ولم يجتز). والتمييز مقصود: الغياب حالة **بيئية** (عدّاء CI بلا ffmpeg ولا
+ * نموذج — انظر `emitMissingNotice`)، والرفض حالة **دلالية** (بائت أو مخالف).
+ * فالغياب يُتسامح معه في الوضع الافتراضي، والرفض **يسقط في الوضعين**.
+ *
+ * @returns {{state:'ok'|'missing'|'rejected', why:string|null}}
+ */
+function inspectRowArtifact(row, areas, repo, evalOut) {
+  const file = path.join(evalOut, `${row}.json`);
+  const rel = path.relative(repo, file) || file;
+  // مسار خارج المستودع يُعرض مطلقاً: `..\..\..\windows\TEMP\…` اسمٌ لا يدلّ أحداً.
+  const shown = rel.startsWith('..') ? file : rel;
+  if (!fs.existsSync(file)) {
+    return { state: 'missing', why: `بلا أثر: ${shown} مفقود — شغّل «pwsh qa/eval/${row}.ps1»` };
+  }
+  const rejected = (why) => ({ state: 'rejected', why });
+  let art;
+  try {
+    art = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (err) {
+    return rejected(`الأثر ${shown} ليس JSON صالحاً — ${err.message}`);
+  }
+  if (String(art.row) !== row) return rejected(`row في الأثر «${art.row}» لا يطابق الصفّ ${row}`);
+  if (art.verdict !== 'pass') return rejected(`verdict في الأثر «${art.verdict}» وليس pass`);
+  if (!Array.isArray(art.outputs) || art.outputs.length === 0) return rejected('outputs فارغة في الأثر');
+  if (typeof art.exe_sha256 !== 'string' || art.exe_sha256.trim() === '') {
+    return rejected('exe_sha256 فارغ في الأثر');
+  }
+  const commit = typeof art.commit === 'string' ? art.commit.trim() : '';
+  if (!commit) return rejected('commit فارغ في الأثر');
+
+  const head = gitHeadSha(repo);
+  if (!head) return rejected(`تعذّر قراءة HEAD في «${repo}» — لا سند للأثر`);
+  const anc = spawnGit(['merge-base', '--is-ancestor', commit, 'HEAD'], repo);
+  if (anc.status !== 0) {
+    return rejected(`commit ${commit.slice(0, 8)} ليس سلفاً لـHEAD (${head.slice(0, 8)})`);
+  }
+  for (const p of areas) {
+    if (!fs.existsSync(path.join(repo, p))) return rejected(`منطقة الصفّ لا وجود لها: ${p}`);
+  }
+  const diff = spawnGit(['diff', '--quiet', commit, 'HEAD', '--', ...areas], repo);
+  if (diff.status !== 0) {
+    return rejected(
+      `منطقة الصفّ تغيّرت بين ${commit.slice(0, 8)} وHEAD — الأثر بائت، أعد تشغيل «pwsh qa/eval/${row}.ps1»`
+    );
+  }
+  return { state: 'ok', why: null };
+}
+
+/**
+ * نصّ نداء السطر الصارخ — **عقدٌ مع الفحص الذاتي** لا سطر ميت: الحالة Ⓠ تحذف هذا
+ * السطر بعينه من **نسخة** من هذا الملف، وتثبت أن حالة Ⓞ تسقط حينها. فإن تغيّر
+ * نصّ النداء في `main` ولم يتغيّر هذا الثابت، **يفشل الفحص الذاتي بصوت عالٍ**
+ * («مُفسَد لم يغيّر الحارس») بدل أن يمرّ المُفسَد صامتاً.
+ */
+const MISSING_NOTICE_CALL = 'emitMissingNotice(missingIds, gatedClaiming);';
+
+/** ما يُوضع مكان النداء في نسخة الحالة Ⓠ — تعليق لا يُنفَّذ، فيبقى الحارس سليماً إلا من السطر. */
+const MISSING_NOTICE_CALL_REMOVED = '/* حذفه الفحص الذاتي (الحالة Ⓠ) */';
+
+/**
+ * **السطر الصارخ** — يُطبع في الوضع المتسامح وحده، حين تغيب آثار.
+ *
+ * لماذا هو **شرط** لا تجميل: الوضع الافتراضي هو وضع CI، وCI **لا يستطيع** تشغيل
+ * المُقيِّمات أصلاً — مهمّة `windows-latest` تُنشئ `bin/` و`models/` كـstubs فارغة
+ * (`.github/workflows/ci.yml:61-68` و`:256-257`)، فلا ffmpeg ولا نموذج. فغياب
+ * الأثر هناك **خاصية بيئة لا عطل**. ولو أسقطنا الحارس عليه لصار CI أحمر دائماً
+ * بلا سبب قابل للإصلاح. ولو سكتنا عنه لَقُرئ `exit 0` **شهادةَ قبول** وهو ليس
+ * كذلك. فالتسامح يخصّ **الغياب وحده**، ويُعلَن بصوت عالٍ في كل مرة.
+ *
+ * ووجوده محروس لا تجميلي: `--selfcheck` يشغّل نسخةً من هذا الملف حُذف منها نداء
+ * هذه الدالة، **ويثبت أن حالة الفحص تسقط** حينها (الحالة Ⓠ).
+ */
+function emitMissingNotice(missingIds, claiming) {
+  const list = missingIds.join(' · ');
+  process.stdout.write(
+    `\n⚠ غياب آثار — ${missingIds.length} من ${claiming} صفّاً قابلاً للتقييم بلا أثر في هذا التشغيل:\n` +
+      `   ${list}\n` +
+      '   هذه ليست شهادة قبول: القبول النهائي يشترط `--require-artifacts`\n' +
+      '   (‏node scripts/matrix-check.cjs --require-artifacts) بعد «pwsh qa/eval/run-all.ps1».\n' +
+      '   سبب التسامح مقيس: مهمّة CI على windows-latest تُنشئ bin/ و models/ كـstubs فارغة\n' +
+      '   (‏ci.yml:61-68 و:256-257)، فالعدّاء لا يملك ffmpeg ولا النموذج ولا يستطيع تشغيل المُقيِّمات.\n'
+  );
+  // صدى على stderr أيضاً: من يقرأ مخرَج الأخطاء وحده لا يجوز أن يفوته التحذير.
+  process.stderr.write(
+    `⚠ ${missingIds.length} من ${claiming} صفّاً بلا أثر (${list}) — القبول النهائي يشترط --require-artifacts\n`
+  );
+}
+
+/** هل خانة النتيجة **تدّعي** نجاحاً (`✅` أو `⚠️`)؟ الصفوف `—`/`❌` لا تدّعي شيئاً. */
+function claimsSuccess(verdict) {
+  return /^(✅|⚠️?)$/.test(verdict && verdict.result ? verdict.result : '');
+}
+
+
+// ---------------------------------------------------------------------------
 // تحليل صفوف Markdown
 // ---------------------------------------------------------------------------
 
@@ -229,11 +417,23 @@ function assessCell(cell) {
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const opts = { file: DEFAULT_FILE, quiet: false, help: false };
+  const opts = {
+    file: DEFAULT_FILE,
+    quiet: false,
+    help: false,
+    repo: null,
+    evalOut: null,
+    rowAreas: null,
+    requireArtifacts: false,
+  };
   for (const arg of argv.slice(2)) {
     if (arg === '--help' || arg === '-h') opts.help = true;
     else if (arg === '--quiet') opts.quiet = true;
+    else if (arg === '--require-artifacts') opts.requireArtifacts = true;
     else if (arg.startsWith('--file=')) opts.file = arg.slice('--file='.length);
+    else if (arg.startsWith('--repo=')) opts.repo = arg.slice('--repo='.length);
+    else if (arg.startsWith('--eval-out=')) opts.evalOut = arg.slice('--eval-out='.length);
+    else if (arg.startsWith('--row-areas=')) opts.rowAreas = arg.slice('--row-areas='.length);
     else if (!arg.startsWith('-')) opts.file = arg;
     else {
       process.stderr.write(`وسيط غير معروف: ${arg}\n`);
@@ -243,14 +443,35 @@ function parseArgs(argv) {
   return opts;
 }
 
-const USAGE = `الاستعمال: node scripts/matrix-check.cjs [--file=<path>] [--quiet]
+const USAGE = `الاستعمال: node scripts/matrix-check.cjs [--file=<path>] [--quiet] [--require-artifacts]
 
-  --file=<path>  مسار المصفوفة (افتراضاً qa/TEST-MATRIX.md)
-  --quiet        لا تطبع إلا الملخّص وسطور النقص
-  --selfcheck    يفحص الحارس نفسه على مصفوفات مصنوعة (مُفسَد · ضابط · صفر مدخل)
-  --help         هذه الرسالة
+  --file=<path>       مسار المصفوفة (افتراضاً qa/TEST-MATRIX.md)
+  --eval-out=<dir>    مجلد آثار المُقيِّمين (افتراضاً <المستودع>/qa/eval/out)
+  --repo=<dir>        جذر المستودع لالتزام HEAD (افتراضاً: جذر المصفوفة ثم cwd)
+  --row-areas=<file>  جدول ربط بديل (JSON: صفّ ← [مسارات]) — للفحص الذاتي أساساً
+  --require-artifacts وضع التسليم: غياب أثر **فشل**
+  --quiet             لا تطبع إلا الملخّص وسطور النقص
+  --selfcheck         يفحص الحارس نفسه على مصفوفات وآثار مصنوعة
+  --help              هذه الرسالة
 
-يرجع 0 إن اكتملت كل الصفوف الإلزامية · 1 إن بقي صفّ ناقص · 2 عند خطأ بنية/استعمال.`;
+يرجع 0 إن اكتملت كل الصفوف الإلزامية ومرّ أثر كل صفّ قابل للتقييم ·
+1 إن بقي صفّ ناقص أو أثر مرفوض · 2 عند خطأ بنية/استعمال.
+
+**لا ائتمان بلا أثر مُعاد إنتاجه** (خطة 0.2.9 §١٠): صفٌّ «قابل للتقييم» (‏طبقة أ:
+1.1 · 1.4 · 2.1 · 2.4 · 3.1 · 3.2 · 3.3 · 3.7 · 3.8 · 3.9) نتيجته ✅ أو ⚠️ لا
+يُقبل إلا بأثر في \`qa/eval/out/<رقم>.json\` يحقّق: row مطابق · verdict=pass ·
+outputs غير فارغة · exe_sha256 غير فارغ · commit سلفٌ لـHEAD · ومنطقة الصفّ لم
+تتغيّر بين ذلك الالتزام وHEAD. وفي الصفوف السلبية (3.1 · 3.3) يكون \`outputs\`
+هو **ملف السجلّ** — منتجُ العملية الحقيقي عند الرفض — و\`product_outputs\` فارغة
+صريحةً، فلا يُدَّعى ناتج لم يُنتج. التفصيل في \`qa/eval/README.md\`.
+
+**ووضعان صريحان، ولا تُسكَت البوّابة في أيّهما**:
+  · **الافتراضيّ (وضع CI)**: أثر **غائب** ⇒ يُذكر بسطر صارخ ويبقى 0؛ وأثر موجود
+    لكنه **بائت أو مخالف** ⇒ **فشل دائماً**. والتسامح يخصّ الغياب وحده لأنه بيئي:
+    مهمّة CI تُنشئ bin/ و models/ كـstubs فارغة (‏ci.yml:61-68 · :256-257) فلا
+    تستطيع تشغيل المُقيِّمات. و\`exit 0\` هنا **ليس** شهادة قبول.
+  · **\`--require-artifacts\` (وضع التسليم)**: غياب أي أثر **فشل** يسمّي الصفوف
+    ومسار الأثر المفقود. وهو شرط التسليم قبل كل نسخة تُسلَّم.`;
 
 /* ---------------------------------------------------------------------------
 // الفحص الذاتي: الحارس يُسقط على نصّ مُخرَّب، ويمرّ على نصّ سليم رآه فعلاً
@@ -268,6 +489,302 @@ const USAGE = `الاستعمال: node scripts/matrix-check.cjs [--file=<path>]
 //
 // كل عمليات الخادم/الطفل تُطلق بلا نافذة (`windowsHide`)، والمجلد المصنوع
 // تحت `os.tmpdir()` ويُحذف في النهاية. */
+
+/* ---------------------------------------------------------------------------
+// الفحص الذاتي الثاني: بوّابة الأثر تُسقط كل مُفسَد، وتمرّ على الضابط
+// ---------------------------------------------------------------------------
+// البوّابة الجديدة تقول «لا ائتمان بلا أثر مُعاد إنتاجه»؛ والدليل أنها **ترى**
+// أن تُبنى لها بيئة مصنوعة فيها مستودع git حقيقي، وأثر حقيقي، ثم تُخرَّب واحدةً
+// واحدة. ولكل حالة **خرج فشل حرفي** متوقَّع، و**ضابط** يمرّ. وثلاثة منها تخصّ
+// البنية (رمز 2) لا الأثر: جدول ربط مفقود · صفر صفّ · صفّ غائب عن المصفوفة.
+//
+//   Ⓐ  ضابط: عشرة آثار سليمة عند HEAD ⇒ 0
+//   Ⓐ′ ضابط الوضع الصارم: الآثار العشرة + `--require-artifacts` ⇒ 0
+//   Ⓑ  أثر غائب في الوضع الافتراضي ⇒ 0 **مع السطر الصارخ** يسمّي الصفّ
+//   Ⓑ′ الأثر نفسه في وضع التسليم ⇒ 1
+//   Ⓒ  أثر بائت: تغيّر `media.rs` بعد الأثر ⇒ تسقط صفوف منطقة `media.rs` وحدها،
+//      و**لا** يسقط صفّ منطقته `cuda_runtime.rs` (‏الفحص لكل صفّ لا شامل)
+//   Ⓓ  أثر بـ`verdict=fail` والصفّ ✅ ⇒ يسقط (في الوضعين)
+//   Ⓔ  أثر بـ`outputs` فارغة ⇒ يسقط
+//   Ⓕ  أثر بـ`exe_sha256` فارغ ⇒ يسقط
+//   Ⓖ  أثر بـ`row` مخالف ⇒ يسقط
+//   Ⓗ  `commit` ليس سلفاً لـHEAD ⇒ يسقط
+//   Ⓘ  منطقة الصفّ غير موجودة على القرص (تغيير غير مُلتزم) ⇒ يسقط — وهو ما
+//      يمنع «منطقة يتيمة» تجعل `git diff` ينجح دائماً فيصير الشرط تجاوزاً
+//   Ⓙ  جدول ربط صفر صفّ ⇒ 2   Ⓚ صفّ من الطبقة (أ) بلا منطقة ⇒ 2
+//   Ⓛ  جدول ربط غير موجود ⇒ 2  Ⓜ صفّ من الطبقة (أ) غائب عن المصفوفة ⇒ 2
+//   Ⓞ  الوضع الافتراضي ومجلد آثار فارغ ⇒ 0 **مع السطر الصارخ** (عدد · صفوف ·
+//      «القبول النهائي يشترط --require-artifacts»)
+//   Ⓟ  الوضع الصارم ومجلد آثار فارغ ⇒ 1 يسمّي العشر ومسار كل أثر مفقود
+//   Ⓠ  **مُفسَد على الحارس نفسه**: نسخة من هذا الملف حُذف منها نداء السطر
+//      الصارخ ⇒ متوقَّعات Ⓞ **تسقط كلها** عليها، وتمرّ على الحارس السليم.
+//      فهو الدليل أن السطر محروس لا تجميلي، وأن حذفه يُسقط فحصاً. */
+function selfcheckArtifacts(workDir) {
+  const fsMod = require('node:fs');
+  const { spawnSync } = require('node:child_process');
+  const cases = [];
+
+  const git = (dir, args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8', windowsHide: true });
+  const mkIn = (dir, rel, text) => {
+    const p = path.join(dir, rel);
+    fsMod.mkdirSync(path.dirname(p), { recursive: true });
+    fsMod.writeFileSync(p, text);
+  };
+  const headOf = (dir) => git(dir, ['rev-parse', 'HEAD']).stdout.trim();
+  const branchOf = (dir) => git(dir, ['symbolic-ref', '--short', 'HEAD']).stdout.trim();
+
+  function initFixture(dir) {
+    const header = ['| # | البيئة | الخطوات | النتيجة المتوقَّعة | النتيجة |', '| --- | --- | --- | --- | --- |'];
+    const rows = LAYER_A_ROWS.map(
+      (id) => `| ${id} **[إلزامي]** | بيئة مصنوعة | خطوات مصنوعة | نتيجة متوقَّعة | ✅ · 2026-09-17 · جهاز-مصنوع · نصّ |`
+    );
+    mkIn(dir, path.join('qa', 'TEST-MATRIX.md'), `${header.join('\n')}\n${rows.join('\n')}\n`);
+    for (const id of LAYER_A_ROWS) {
+      for (const rel of ROW_AREAS[id]) mkIn(dir, rel, '// منطقة الصفّ المصنوعة\n');
+    }
+    git(dir, ['init', '-q']);
+    git(dir, ['config', 'user.email', 'selfcheck@local']);
+    git(dir, ['config', 'user.name', 'selfcheck']);
+    git(dir, ['add', '-A']);
+    git(dir, ['commit', '-qm', 'init']);
+    return headOf(dir);
+  }
+
+  function putArtifact(dir, row, over) {
+    const art = {
+      row,
+      commit: headOf(dir),
+      dirty: false,
+      app_version: '0.0.0-مصنوع',
+      exe_sha256: 'F'.repeat(64),
+      command: 'مصنوع',
+      exit: 0,
+      wall_ms: 1,
+      outputs: [{ path: 'x', bytes: 1, sha256: 'A'.repeat(64) }],
+      verdict: 'pass',
+      notes: 'مصنوع للفحص الذاتي',
+      ...over,
+    };
+    mkIn(dir, path.join('qa', 'eval', 'out', `${row}.json`), JSON.stringify(art, null, 2));
+  }
+
+  function allArtifacts(dir, over) {
+    for (const id of LAYER_A_ROWS) putArtifact(dir, id, over || {});
+  }
+
+  function run(dir, extraArgs, scriptPath) {
+    const args = [
+      scriptPath || __filename,
+      `--file=${path.join(dir, 'qa', 'TEST-MATRIX.md')}`,
+      `--repo=${dir}`,
+      `--eval-out=${path.join(dir, 'qa', 'eval', 'out')}`,
+      ...(extraArgs || []),
+    ];
+    const r = spawnSync(process.execPath, args, { encoding: 'utf8', windowsHide: true, cwd: dir });
+    return { status: r.status, out: `${r.stdout || ''}${r.stderr || ''}`, stdout: r.stdout || '' };
+  }
+
+  /**
+   * متوقَّعات **السطر الصارخ وحده** — كل نصّ هنا لا يُطبعه غيره، فسقوط واحد منها
+   * يعني أن السطر غاب. (ولهذا لا تُستعمل فيه ألفاظ تظهر في الملخّص أيضاً مثل
+   * «1.1» أو «9 من 10»: توكيل الحكم إليها يجعل المُفسَد Ⓠ يمرّ.)
+   * وتُقاس بها الحالة Ⓞ، ويُقاس بها المُفسَد Ⓠ على نسخةٍ من الحارس.
+   */
+  const NOTICE_EXPECT = [
+    'غياب آثار',
+    '10 من 10 صفّاً قابلاً للتقييم بلا أثر',
+    'ليست شهادة قبول',
+    'القبول النهائي يشترط `--require-artifacts`',
+    'سبب التسامح مقيس',
+    'stubs فارغة',
+  ];
+  /** الصفوف العشرة مسماةً في الملخّص — يفحصها Ⓞ منفصلةً عن ألفاظ السطر الصارخ. */
+  const TEN_ROWS_LIST = '1.1 · 1.4 · 2.1 · 2.4 · 3.1 · 3.2 · 3.3 · 3.7 · 3.8 · 3.9';
+  function noticeMissingFrom(out) {
+    return NOTICE_EXPECT.filter((t) => !out.includes(t));
+  }
+
+  function caseRun(label, build, extraArgs, expect) {
+    const dir = fsMod.mkdtempSync(path.join(workDir, 'art-'));
+    const info = build(dir) || {};
+    const res = run(dir, typeof extraArgs === 'function' ? extraArgs(dir, info) : extraArgs);
+    const problems = [];
+    if (res.status !== expect.status) problems.push(`رمز الخروج ${res.status} بدل ${expect.status}`);
+    for (const t of expect.text || []) if (!res.out.includes(t)) problems.push(`المخرَج لا يحوي «${t}»`);
+    for (const t of expect.notText || []) if (res.out.includes(t)) problems.push(`المخرَج يحوي «${t}» وهو ممنوع`);
+    cases.push({ label, ok: problems.length === 0, detail: problems.join(' · '), out: res.out });
+  }
+
+  const freshFixture = (dir) => { initFixture(dir); allArtifacts(dir); };
+
+  // Ⓐ الضابط
+  caseRun('Ⓐ ضابط: عشرة آثار سليمة عند HEAD ⇒ 0', (d) => freshFixture(d), null, {
+    status: EXIT.PASS,
+    text: ['آثار: 10 من 10 مقبولة'],
+  });
+  // Ⓑ أثر غائب في الوضع الافتراضي: يُعلَن بالسطر الصارخ ولا يُسقط
+  caseRun('Ⓑ الوضع الافتراضي: أثر صفّ واحد غائب ⇒ 0 مع السطر الصارخ يسمّيه', (d) => {
+    freshFixture(d);
+    fsMod.rmSync(path.join(d, 'qa', 'eval', 'out', '3.2.json'), { force: true });
+  }, ['--quiet'], {
+    status: EXIT.PASS,
+    text: ['3.2', 'غياب آثار', '1 من 10', 'آثار: 9 من 10 مقبولة', 'الغائب: 3.2', '--require-artifacts'],
+  });
+  // Ⓑ′ الأثر نفسه في وضع التسليم ⇒ يسقط
+  caseRun('Ⓑ′ وضع التسليم: أثر صفّ واحد غائب ⇒ 1 يسمّيه', (d) => {
+    freshFixture(d);
+    fsMod.rmSync(path.join(d, 'qa', 'eval', 'out', '3.2.json'), { force: true });
+  }, ['--require-artifacts'], {
+    status: EXIT.INCOMPLETE,
+    text: ['وضع التسليم', '3.2', path.join('qa', 'eval', 'out', '3.2.json'), 'مفقود'],
+    notText: ['غياب آثار —'],
+  });
+  // Ⓒ بائت — ويميّز بالمنطقة
+  caseRun('Ⓒ أثر بائت: تغيّر media.rs ⇒ يسقط صفوف media.rs وحدها', (d) => {
+    freshFixture(d);
+    mkIn(d, path.join('src-tauri', 'src', 'media.rs'), '// تغيير بعد الأثر\n');
+    git(d, ['add', '-A']);
+    git(d, ['commit', '-qm', 'change media.rs']);
+  }, null, {
+    status: EXIT.INCOMPLETE,
+    text: ['3.2', 'بائت', '2.1'],
+    // 2.1 منطقتها cuda_runtime.rs · separator.rs — لم تتغيّر، فيجب ألّا تُرفض.
+    notText: ['2.1: منطقة الصفّ تغيّرت'],
+  });
+  // Ⓓ verdict=fail
+  caseRun('Ⓓ أثر verdict=fail والصفّ ✅ ⇒ يسقط', (d) => {
+    freshFixture(d);
+    putArtifact(d, '1.4', { verdict: 'fail' });
+  }, null, { status: EXIT.INCOMPLETE, text: ['1.4', 'verdict في الأثر «fail»'] });
+  // Ⓔ outputs فارغة
+  caseRun('Ⓔ أثر outputs فارغة ⇒ يسقط', (d) => {
+    freshFixture(d);
+    putArtifact(d, '2.4', { outputs: [] });
+  }, null, { status: EXIT.INCOMPLETE, text: ['2.4', 'outputs فارغة'] });
+  // Ⓕ exe_sha256 فارغ
+  caseRun('Ⓕ أثر exe_sha256 فارغ ⇒ يسقط', (d) => {
+    freshFixture(d);
+    putArtifact(d, '3.8', { exe_sha256: '   ' });
+  }, null, { status: EXIT.INCOMPLETE, text: ['3.8', 'exe_sha256 فارغ'] });
+  // Ⓖ row مخالف
+  caseRun('Ⓖ أثر row مخالف ⇒ يسقط', (d) => {
+    freshFixture(d);
+    putArtifact(d, '3.9', { row: '9.9' });
+  }, null, { status: EXIT.INCOMPLETE, text: ['3.9', 'لا يطابق الصفّ'] });
+  // Ⓗ commit ليس سلفاً لـHEAD
+  caseRun('Ⓗ commit ليس سلفاً لـHEAD ⇒ يسقط', (d) => {
+    freshFixture(d);
+    const base = branchOf(d);
+    git(d, ['checkout', '-qb', 'other']);
+    mkIn(d, path.join('other.txt'), 'x\n');
+    git(d, ['add', '-A']);
+    git(d, ['commit', '-qm', 'other']);
+    const other = headOf(d);
+    git(d, ['checkout', '-q', base]);
+    putArtifact(d, '1.1', { commit: other });
+  }, null, { status: EXIT.INCOMPLETE, text: ['1.1', 'ليس سلفاً لـHEAD'] });
+  // Ⓘ منطقة الصفّ غير موجودة (تغيير غير مُلتزم) — يسدّ ثقب «منطقة يتيمة»
+  caseRun('Ⓘ منطقة الصفّ غير موجودة على القرص ⇒ يسقط', (d) => {
+    freshFixture(d);
+    fsMod.rmSync(path.join(d, 'src-tauri', 'src', 'media.rs'), { force: true });
+  }, null, { status: EXIT.INCOMPLETE, text: ['3.2', 'منطقة الصفّ لا وجود لها'] });
+  // Ⓙ Ⓚ Ⓛ جدول الربط: بنية ⇒ 2
+  caseRun('Ⓙ جدول ربط صفر صفّ ⇒ فشل بصوت عالٍ (2)', (d) => freshFixture(d), (d) => {
+    mkIn(d, 'empty-areas.json', '{}');
+    return [`--row-areas=${path.join(d, 'empty-areas.json')}`];
+  }, { status: EXIT.MISUSE, text: ['جدول الربط صفر صفّ'] });
+  caseRun('Ⓚ صفّ من الطبقة (أ) بلا منطقة ⇒ فشل بصوت عالٍ (2)', (d) => freshFixture(d), (d) => {
+    mkIn(d, 'partial-areas.json', JSON.stringify({ '1.1': ['src-tauri/src/main.rs'] }));
+    return [`--row-areas=${path.join(d, 'partial-areas.json')}`];
+  }, { status: EXIT.MISUSE, text: ['صفوف الطبقة (أ) بلا منطقة', '3.9'] });
+  caseRun('Ⓛ جدول ربط غير موجود ⇒ فشل بصوت عالٍ (2)', (d) => freshFixture(d), (d) => [
+    `--row-areas=${path.join(d, 'no-such-areas.json')}`,
+  ], { status: EXIT.MISUSE, text: ['تعذّرت قراءة جدول الربط'] });
+  caseRun('Ⓜ صفّ من الطبقة (أ) غائب عن المصفوفة ⇒ فشل بصوت عالٍ (2)', (d) => {
+    initFixture(d);
+    allArtifacts(d);
+    const p = path.join(d, 'qa', 'TEST-MATRIX.md');
+    const kept = fsMod
+      .readFileSync(p, 'utf8')
+      .split(/\r?\n/)
+      .filter((l) => !/^\|\s*3\.7\s/.test(l))
+      .join('\n');
+    fsMod.writeFileSync(p, kept);
+  }, null, { status: EXIT.MISUSE, text: ['غائبة عن المصفوفة', '3.7'] });
+
+  /* ── الوضعان: التسليم (صارم) والافتراضيّ (متسامح مع الغياب وحده) ─────────── */
+
+  // Ⓐ′ ضابط الوضع الصارم: الآثار العشرة موجودة ⇒ 0 في الوضعين أيضاً
+  caseRun('Ⓐ′ ضابط الوضع الصارم: عشرة آثار سليمة + --require-artifacts ⇒ 0', (d) => {
+    freshFixture(d);
+  }, ['--require-artifacts'], {
+    status: EXIT.PASS,
+    text: ['آثار: 10 من 10 مقبولة', 'الوضع: التسليم'],
+    notText: ['غياب آثار'],
+  });
+
+  // Ⓞ الافتراضيّ + مجلد آثار فارغ ⇒ 0 **مع السطر الصارخ** (وبـ`--quiet` كما في CI)
+  caseRun('Ⓞ الافتراضيّ + لا آثار (‏--quiet كما في CI) ⇒ 0 مع السطر الصارخ المسمّى', (d) => {
+    initFixture(d);
+  }, ['--quiet'], {
+    status: EXIT.PASS,
+    text: [
+      ...NOTICE_EXPECT,
+      'آثار: 0 من 10 مقبولة',
+      `الغائب: ${TEN_ROWS_LIST}`,
+      'الوضع: الافتراضيّ/CI',
+    ],
+  });
+
+  // Ⓟ الوضع الصارم + مجلد آثار فارغ ⇒ 1 يسمّي العشر ومسار الأثر
+  caseRun('Ⓟ --require-artifacts + لا آثار ⇒ 1 يسمّي العشر', (d) => {
+    initFixture(d);
+  }, ['--require-artifacts'], {
+    status: EXIT.INCOMPLETE,
+    text: ['وضع التسليم', '1.1', '2.4', '3.9', path.join('qa', 'eval', 'out', '3.9.json'), 'مفقود'],
+    notText: ['غياب آثار —'],
+  });
+
+  // Ⓠ مُفسَد على الحارس نفسه: نسخة بلا نداء السطر الصارخ ⇒ متوقَّعات Ⓞ تسقط.
+  //    وهذا هو الدليل أن السطر **محروس** لا تجميلي: لو حُذف من الحارس لسقط فحص.
+  {
+    const label = 'Ⓠ مُفسَد: نسخة بلا السطر الصارخ ⇒ متوقَّعات Ⓞ تسقط (فالسطر محروس)';
+    const dir = fsMod.mkdtempSync(path.join(workDir, 'art-notice-'));
+    initFixture(dir);
+    const problems = [];
+    let mutantSrc = null;
+    try {
+      const src = fsMod.readFileSync(__filename, 'utf8');
+      if (!src.includes(MISSING_NOTICE_CALL)) {
+        throw new Error('مُفسَد لم يغيّر الحارس — نصّ نداء السطر الصارخ لا يطابق');
+      }
+      mutantSrc = src.split(MISSING_NOTICE_CALL).join(MISSING_NOTICE_CALL_REMOVED);
+      if (mutantSrc === src) throw new Error('مُفسَد لم يغيّر الحارس');
+    } catch (err) {
+      problems.push(err.message);
+    }
+    if (mutantSrc !== null) {
+      const mutant = path.join(dir, 'matrix-check-no-notice.cjs');
+      fsMod.writeFileSync(mutant, mutantSrc);
+      const res = run(dir, null, mutant);
+      if (res.status !== EXIT.PASS) {
+        problems.push(`رمز الخروج ${res.status} بدل ${EXIT.PASS} — النسخة المطموسة يجب أن تبقى متسامحة`);
+      }
+      if (res.out.includes('غياب آثار')) problems.push('النسخة المطموسة ما زالت تطبع السطر الصارخ');
+      const missed = noticeMissingFrom(res.out);
+      if (missed.length !== NOTICE_EXPECT.length) {
+        problems.push(`متوقَّعات Ⓞ لم تسقط كلها على النسخة المطموسة (سقط ${missed.length} من ${NOTICE_EXPECT.length})`);
+      }
+      // والضابط المقابل: نفس المتوقَّعات **تمرّ** على الحارس السليم (حالة Ⓞ أعلاه).
+      const ok = run(dir, null, __filename);
+      const missedOk = noticeMissingFrom(ok.out);
+      if (missedOk.length > 0) problems.push(`متوقَّعات Ⓞ لا تمرّ على الحارس السليم: ${missedOk.join(' · ')}`);
+    }
+    cases.push({ label, ok: problems.length === 0, detail: problems.join(' · '), out: '' });
+  }
+
+  return cases;
+}
 
 const FIXTURE_HEADER = [
   '| # | البيئة | الخطوات | النتيجة المتوقَّعة | النتيجة |',
@@ -320,10 +837,18 @@ function selfcheck() {
 
   for (const c of cases) {
     const file = path.join(dir, `case-${cases.indexOf(c)}.md`);
-    fsMod.writeFileSync(file, `${FIXTURE_HEADER}\n${c.rows.join('\n')}\n`, 'utf8');
+    /* المصنوعة تحمل صفوف الطبقة (أ) العشرة **غير إلزامية**: بوّابة الأثر تشترط
+       أن يكون كل صفّ في جدول الربط حاضراً في المصفوفة (وإلا صار حذف الصفّ إسقاطاً
+       للشرط)، والمصنوعة هنا تحكي مصفوفةً واقعية الشكل. وهي غير إلزامية كي تبقى
+       توقّعات الحالات القائمة كما هي («1 من 1 مملوء»). */
+    const present = LAYER_A_ROWS.map(
+      (id) => `| ${id} | بيئة مصنوعة | خطوات مصنوعة | نتيجة متوقَّعة | — · 2026-09-17 · جهاز-مصنوع |`
+    );
+    fsMod.writeFileSync(file, `${FIXTURE_HEADER}\n${[...c.rows, ...present].join('\n')}\n`, 'utf8');
     const r = spawnSync(process.execPath, [__filename, `--file=${file}`], {
       encoding: 'utf8',
       windowsHide: true,
+      cwd: dir,
     });
     const out = `${r.stdout || ''}${r.stderr || ''}`;
     const problems = [];
@@ -344,17 +869,29 @@ function selfcheck() {
     }
   }
 
+  // الفحص الذاتي الثاني: بوّابة الأثر (لا ائتمان بلا أثر مُعاد إنتاجه).
+  const artCases = selfcheckArtifacts(dir);
+  for (const c of artCases) {
+    if (c.ok) {
+      process.stdout.write(`✅ ${c.label}\n`);
+    } else {
+      failures.push(`${c.label} — ${c.detail}\n${c.out.trim()}`);
+      process.stdout.write(`✗ ${c.label} — ${c.detail}\n`);
+    }
+  }
+
   try {
     fsMod.rmSync(dir, { recursive: true, force: true });
   } catch {
     /* مجلد مؤقت: فشل حذفه لا يُسقط الفحص */
   }
 
+  const total = cases.length + artCases.length;
   if (failures.length > 0) {
     process.stderr.write(`\n✗ الفحص الذاتي: ${failures.length} حالة فشلت\n`);
     return EXIT.MISUSE;
   }
-  process.stdout.write(`\n✓ الفحص الذاتي: ${cases.length} من ${cases.length} حالة سليمة\n`);
+  process.stdout.write(`\n✓ الفحص الذاتي: ${total} من ${total} حالة سليمة\n`);
   return EXIT.PASS;
 }
 
@@ -393,6 +930,72 @@ function main(argv) {
   const filled = assessed.filter((r) => r.verdict.ok);
   const incomplete = assessed.filter((r) => !r.verdict.ok);
 
+  // ── جدول الربط: صفوف «قابلة للتقييم» ← منطقة كودها ───────────────────────
+  let areas = ROW_AREAS;
+  let areasSource = 'مدمج في الحارس (ROW_AREAS)';
+  if (opts.rowAreas) {
+    const p = path.resolve(opts.rowAreas);
+    try {
+      areas = JSON.parse(fs.readFileSync(p, 'utf8'));
+      areasSource = p;
+    } catch (err) {
+      process.stderr.write(
+        `خطأ بنية: تعذّرت قراءة جدول الربط «${p}» — ${err.message}\n` +
+          'توقّف الحارس: جدول ربط لا يُقرأ ليس جدولاً، ولا ائتمان بلا جدول.\n'
+      );
+      return EXIT.MISUSE;
+    }
+  }
+  const areasProblem = validateRowAreas(areas);
+  if (areasProblem) {
+    process.stderr.write(
+      `خطأ بنية: جدول الربط غير صالح — ${areasProblem}\n` +
+        `المصدر: ${areasSource}\n` +
+        'توقّف الحارس: صفٌّ «قابل للتقييم» بلا منطقة كود لا يمكن التحقّق من أثره،\n' +
+        'وحارس بلا جدول يمرّ لأنه لا ينظر. (خطة 0.2.9 §١٠ — الطبقة أ: ' +
+        `${LAYER_A_ROWS.join(' · ')})\n`
+    );
+    return EXIT.MISUSE;
+  }
+
+  const repo = path.resolve(opts.repo || gitToplevel(path.dirname(file)) || process.cwd());
+  const evalOut = path.resolve(opts.evalOut || path.join(repo, 'qa', 'eval', 'out'));
+
+  // صفٌّ في الجدول وغائب عن المصفوفة = شرط أُسقط بحذف الصفّ لا بتحقيقه.
+  const goneFromMatrix = LAYER_A_ROWS.filter((id) => !rows.some((r) => r.id === id));
+  if (goneFromMatrix.length > 0) {
+    process.stderr.write(
+      `خطأ بنية: صفوف «قابلة للتقييم» غائبة عن المصفوفة: ${goneFromMatrix.join(' · ')}\n` +
+        `الملف: ${file}\n` +
+        'توقّف الحارس: غياب الصفّ ليس إسقاطاً للشرط — أعِد الصفّ أو أعِد النظر في جدول الربط.\n'
+    );
+    return EXIT.MISUSE;
+  }
+
+  const gated = assessed.filter((r) => Object.prototype.hasOwnProperty.call(areas, r.id));
+
+  // ── الأثر: لا يُقبل ✅/⚠️ في صفّ قابل للتقييم إلا بمسار مخرَج المُقيِّم ─────
+  const artifactRows = [];
+  const artifactProblems = []; // موجود ولم يجتز ⇒ فشل في الوضعين
+  const artifactMissing = []; // لا ملف أصلاً ⇒ فشل في وضع التسليم وحده
+  for (const r of gated) {
+    if (!claimsSuccess(r.verdict)) {
+      artifactRows.push({ id: r.id, state: 'بلا ادّعاء', detail: 'الخانة لا تدّعي نجاحاً (— أو ❌)' });
+      continue;
+    }
+    const { state, why } = inspectRowArtifact(r.id, areas[r.id], repo, evalOut);
+    if (state === 'ok') {
+      artifactRows.push({ id: r.id, state: 'مقبول', detail: `منطقة: ${areas[r.id].join(' · ')}` });
+    } else if (state === 'missing') {
+      artifactRows.push({ id: r.id, state: 'غائب', detail: why });
+      artifactMissing.push({ id: r.id, why });
+    } else {
+      artifactRows.push({ id: r.id, state: 'مرفوض', detail: why });
+      artifactProblems.push({ id: r.id, why });
+    }
+  }
+  const missingIds = artifactMissing.map((a) => a.id);
+
   const out = [];
   if (!opts.quiet) {
     out.push(`المصفوفة: ${file}`);
@@ -413,13 +1016,54 @@ function main(argv) {
     out.push('');
   }
 
+  if (!opts.quiet) {
+    out.push(`آثار المُقيِّمين: ${evalOut}`);
+    out.push(`جدول الربط: ${areasSource}`);
+    for (const a of artifactRows) {
+      out.push(`  ${a.id.padEnd(6)} ${a.state.padEnd(8)} ${a.detail}`);
+    }
+    out.push('');
+  } else if (artifactProblems.length > 0 || missingIds.length > 0) {
+    for (const a of artifactProblems) out.push(`  ${a.id.padEnd(6)} مرفوض   ${a.why}`);
+    for (const a of artifactMissing) out.push(`  ${a.id.padEnd(6)} غائب    ${a.why}`);
+    out.push('');
+  }
+
+  const gatedClaiming = gated.filter((r) => claimsSuccess(r.verdict)).length;
   out.push(`الملخّص: ${filled.length} من ${mandatory.length} مملوء`);
   if (incomplete.length > 0) {
     out.push(`الناقص: ${incomplete.map((r) => r.id).join(' · ')}`);
   }
+  out.push(
+    `آثار: ${gatedClaiming - artifactProblems.length - missingIds.length} من ${gatedClaiming} مقبولة` +
+      (artifactProblems.length > 0 ? ` — المرفوض: ${artifactProblems.map((a) => a.id).join(' · ')}` : '') +
+      (missingIds.length > 0 ? ` — الغائب: ${missingIds.join(' · ')}` : '')
+  );
+  out.push(`الوضع: ${opts.requireArtifacts ? 'التسليم (--require-artifacts: الغياب فشل)' : 'الافتراضيّ/CI (الغياب يُعلَن ولا يُسقط)'}`);
   process.stdout.write(`${out.join('\n')}\n`);
 
-  return incomplete.length > 0 ? EXIT.INCOMPLETE : EXIT.PASS;
+  if (artifactProblems.length > 0) {
+    process.stderr.write(
+      `\n✗ لا ائتمان بلا أثر مُعاد إنتاجه — ${artifactProblems.length} صفّاً ادّعى النجاح وأثره **موجود ومرفوض**:\n`
+    );
+    for (const a of artifactProblems) process.stderr.write(`   - ${a.id}: ${a.why}\n`);
+  }
+
+  if (missingIds.length > 0) {
+    if (opts.requireArtifacts) {
+      // وضع التسليم: الغياب فشل — ويُسمّى بمسار الأثر المفقود لا بالرقم وحده.
+      process.stderr.write(
+        `\n✗ وضع التسليم (--require-artifacts): ${missingIds.length} صفّاً قابلاً للتقييم بلا أثر:\n`
+      );
+      for (const a of artifactMissing) process.stderr.write(`   - ${a.id}: ${a.why}\n`);
+    } else {
+      emitMissingNotice(missingIds, gatedClaiming);
+    }
+  }
+
+  const fails = incomplete.length > 0 || artifactProblems.length > 0 ||
+    (opts.requireArtifacts && missingIds.length > 0);
+  return fails ? EXIT.INCOMPLETE : EXIT.PASS;
 }
 
 if (require.main === module) {
@@ -429,4 +1073,20 @@ if (require.main === module) {
     : main(process.argv);
 }
 
-module.exports = { parseRows, assessCell, findDate, splitRow, main, selfcheck };
+module.exports = {
+  parseRows,
+  assessCell,
+  findDate,
+  splitRow,
+  main,
+  selfcheck,
+  selfcheckArtifacts,
+  validateRowAreas,
+  inspectRowArtifact,
+  claimsSuccess,
+  emitMissingNotice,
+  MISSING_NOTICE_CALL,
+  MISSING_NOTICE_CALL_REMOVED,
+  ROW_AREAS,
+  LAYER_A_ROWS,
+};
