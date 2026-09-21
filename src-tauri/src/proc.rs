@@ -312,35 +312,75 @@ pub struct ChildHandle {
 }
 
 impl ChildHandle {
+    /// **مقبض نواة مملوك مستنسخ** (`DuplicateHandle`) من طفل حيّ — الجزء المشترك
+    /// بين [`ChildHandle::new`] و[`ChildHandle::without_job`]، فلا تتكرّر معرفةُ
+    /// الاستنساخ في موضعين (`None` = تعذّر؛ لا قتل عندها ولا ضرر).
+    #[cfg(target_os = "windows")]
+    fn duplicated(child: &Child) -> Option<isize> {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Foundation::{DuplicateHandle, DUPLICATE_SAME_ACCESS, HANDLE};
+        use windows_sys::Win32::System::Threading::GetCurrentProcess;
+        unsafe {
+            let src = child.as_raw_handle() as HANDLE;
+            let mut dup: HANDLE = std::ptr::null_mut();
+            let ok = DuplicateHandle(
+                GetCurrentProcess(),
+                src,
+                GetCurrentProcess(),
+                &mut dup,
+                0,
+                0,
+                DUPLICATE_SAME_ACCESS,
+            );
+            if ok == 0 || dup.is_null() {
+                return None;
+            }
+            Some(dup as isize)
+        }
+    }
+
     /// مقبض من طفل حيّ **ومهمّة تحيط بشجرته**. `None` إن فشل الاستنساخ
     /// (لا قتل عندها — ولا ضرر؛ وتعذّر المهمّة وحده لا يمنع المقبض).
     pub fn new(child: &Child) -> Option<Self> {
         #[cfg(target_os = "windows")]
         {
-            use std::os::windows::io::AsRawHandle;
-            use windows_sys::Win32::Foundation::{DuplicateHandle, DUPLICATE_SAME_ACCESS, HANDLE};
-            use windows_sys::Win32::System::Threading::GetCurrentProcess;
-            unsafe {
-                let src = child.as_raw_handle() as HANDLE;
-                let mut dup: HANDLE = std::ptr::null_mut();
-                let ok = DuplicateHandle(
-                    GetCurrentProcess(),
-                    src,
-                    GetCurrentProcess(),
-                    &mut dup,
-                    0,
-                    0,
-                    DUPLICATE_SAME_ACCESS,
-                );
-                if ok == 0 || dup.is_null() {
-                    return None;
-                }
-                Some(Self {
-                    pid: child.id(),
-                    handle: dup as isize,
-                    job: JobGuard::attach(child),
-                })
-            }
+            Some(Self {
+                pid: child.id(),
+                handle: Self::duplicated(child)?,
+                job: JobGuard::attach(child),
+            })
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            Some(Self {
+                pid: child.id(),
+                handle: 0,
+            })
+        }
+    }
+
+    /// **مقبض مملوك بلا مهمّة نواة** — يمثّل بالحرف ما ينتج عن
+    /// [`JobGuard::attach`] حين يعود `None` (فشل إنشاء المهمّة أو الإسناد)،
+    /// وهو المسار الذي وعد به التوثيق أعلاه («التراجع بأمان»): [`ChildHandle::kill`]
+    /// يسلك عنده `taskkill /T /F`.
+    ///
+    /// **ولماذا يوجد (و٢/دَين الحرّاس)**: هذا الفرع **لا يبلغه اختبار قائم** —
+    /// كل حرّاس الشجرة في المستودع تمرّ بمهمّة مُسندة، فلو انقطع الإسناد في
+    /// الإنتاج لكان القتل الاحتياطي **غير مقيس قطّ**. وبوجوده يصير مقيساً
+    /// **بمحاولة قتل واحدة**:
+    /// `tests::the_fallback_kills_a_two_process_tree_in_one_attempt`.
+    ///
+    /// **وللاختبار وحده**: لا مسار إنتاج يناديه (الإنتاج يمرّ بـ
+    /// [`ChildHandle::new`] فيُسند أو يتراجع).
+    #[cfg(test)]
+    pub fn without_job(child: &Child) -> Option<Self> {
+        #[cfg(target_os = "windows")]
+        {
+            Some(Self {
+                pid: child.id(),
+                handle: Self::duplicated(child)?,
+                job: None,
+            })
         }
         #[cfg(not(target_os = "windows"))]
         {
@@ -358,6 +398,14 @@ impl ChildHandle {
     /// **ولا يُنادي الاثنين**: الـJob تشمل كل الأعضاء، و`taskkill` بعدها
     /// إطلاق عملية زائدة في كل دورة استطلاع. وإن تعذّر الإسناد فالسجلّ يقول
     /// ذلك ([`JobGuard::attach`]) والبديل يعمل.
+    ///
+    /// **والفرعان مقيسان (و٢/دَين الحرّاس)**: كان كل حارس شجرة في المستودع
+    /// يمرّ بمهمّة **مُسندة**، فلم يكن في `proc` ما يقيس **الاحتياط** أصلاً.
+    /// [`ChildHandle::without_job`] يمنح الاختبار مقبضاً بلا مهمّة (مسار
+    /// `attach → None`) فيقيس أن **محاولة واحدة** تقتل شجرةً من عمليتين
+    /// (`tests::the_fallback_kills_a_two_process_tree_in_one_attempt`)، ويقيس
+    /// الثاني المسار الإنتاجي أن المحاولة الواحدة تُدرك عاملاً حيّاً مات
+    /// مُشغّله (`tests::one_kill_attempt_reaches_the_worker_after_its_launcher_died`).
     pub fn kill(&self) {
         #[cfg(target_os = "windows")]
         if let Some(job) = self.job.as_ref() {
@@ -931,5 +979,307 @@ mod tests {
         assert!(polled_in_media.is_cancelled(), "ونسخة نداء الأداة تراه");
         assert!(cancelled(Some(&handed_to_body)));
         assert!(!CancelToken::new().is_cancelled(), "رمز مهمّة أخرى لا يتأثّر");
+    }
+
+    // ── و٢: قتل الشجرة بمحاولة **واحدة** — بالـJob وبالاحتياط ──────────────
+    //
+    // **الفراغ المقيس الذي وُلد منه هذا القسم**: كل حرّاس الشجرة القائمة تمرّ
+    // بمهمّة نواة **مُسندة**، فأي مُفسَد يعطّل الإسناد (فشل `CreateJobObject` أو
+    // `AssignProcessToJobObject`) يبقى **غير مُسقَط**: القتل الاحتياطي
+    // (`taskkill /T /F`) يقتل شجرةً سليمة الجذر فتمرّ الاختبارات كلها. فحارسان
+    // هنا: أحدهما يقيس **الاحتياط** بلا مهمّة، والآخر يقيس الـ**Job** في البنية
+    // التي لا يبلغها الاحتياط أصلاً (عامل حيّ مات مُشغّله).
+
+    /// مهلة تأكيد الموت في حرّاس و٢ (سخيّة عمداً: موت النواة في مللي ثوانٍ،
+    /// والمهلة ليست القياس — القياس أن الانتظار **على مقبض العملية** لا نوم).
+    #[cfg(windows)]
+    const DEATH_WAIT: Duration = Duration::from_secs(5);
+
+    /// مهلة انتظار خروج **المُشغّل بنفسه** (تشغيل `pwsh` + إطلاق العامل + خروجه).
+    #[cfg(windows)]
+    const LAUNCHER_EXIT_WAIT: Duration = Duration::from_secs(30);
+
+    /// مجلد عمل فريد لكل تشغيل، **يرفض أن يكون غير فارغ** (لا قياس على أثر
+    /// سابق — الدرس نفسه في `slots::tests::tmp_dir`).
+    #[cfg(windows)]
+    fn tree_dir(tag: &str) -> std::path::PathBuf {
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = SEQ.fetch_add(1, Ordering::SeqCst);
+        let dir =
+            std::env::temp_dir().join(format!("hl_proc_{}_{}_{}", std::process::id(), tag, n));
+        if dir.exists() {
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+        std::fs::create_dir_all(&dir).expect("مجلد عمل الاختبار");
+        assert!(
+            std::fs::read_dir(&dir)
+                .map(|mut i| i.next().is_none())
+                .unwrap_or(false),
+            "مجلد العمل يجب أن يكون فارغاً: {}",
+            dir.display()
+        );
+        dir
+    }
+
+    /// علامة ذرّية لهذا الاختبار وحده (في سطر أوامر كل عملية من شجرته) فيُميَّز
+    /// أثرُه عن أي عملية أخرى عند الجرد اليدوي أو التنظيف.
+    #[cfg(windows)]
+    fn tree_token(tag: &str) -> String {
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        format!(
+            "hl-w2-{tag}-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::SeqCst)
+        )
+    }
+
+    /// **شجرة من عمليتين حقيقيتين** بلا شبكة ولا تنزيل: مُشغّل `pwsh` يُنشئ
+    /// عاملاً `pwsh` نائماً ويكتب رقمه في `pid_file`.
+    ///
+    /// * `trigger`: المُشغّل **لا يُنشئ عامله** حتى يوجد هذا الملف — فالاختبار
+    ///   يُنشئه **بعد** أن يمسك المقبض المسجَّل، فيُولد العامل **داخل** المهمّة
+    ///   (عضوية موروثة) بلا سباق زمني. وهذا ما يجعل القياس حتميّاً: بلا الإشارة
+    ///   قد يُولد العامل قبل الإسناد فلا يكون في المهمّة أصلاً.
+    /// * `launcher_secs = 0` ⇒ المُشغّل **يخرج بنفسه** فور ولادة عامله، فيبقى
+    ///   العامل وحده حيّاً — بنية العطل الميداني المقيس في هذا الملف.
+    #[cfg(windows)]
+    fn tree_command(
+        trigger: &Path,
+        pid_file: &Path,
+        launcher_secs: u32,
+        worker_secs: u32,
+        token: &str,
+    ) -> (String, Vec<std::ffi::OsString>) {
+        let worker = format!("Start-Sleep -Seconds {worker_secs}; # {token}");
+        let tail = if launcher_secs == 0 {
+            "exit 0".to_string()
+        } else {
+            format!("Start-Sleep -Seconds {launcher_secs}; # {token}")
+        };
+        let launcher = format!(
+            "while (-not (Test-Path '{}')) {{ Start-Sleep -Milliseconds 20 }}; \
+             $c = Start-Process -FilePath 'pwsh' -ArgumentList '-NoProfile','-NonInteractive','-Command',\"{worker}\" -PassThru -WindowStyle Hidden; \
+             Set-Content -Path '{}' -Value $c.Id; {tail}",
+            trigger.display(),
+            pid_file.display(),
+        );
+        (
+            "pwsh".to_string(),
+            ["-NoProfile", "-NonInteractive", "-Command", &launcher]
+                .iter()
+                .map(std::ffi::OsString::from)
+                .collect(),
+        )
+    }
+
+    /// **ضابط موجب**: رقم العامل من ملفه — **رقم مقروء لا ملفٌّ موجود**.
+    ///
+    /// (درس هذا المستودع: `Set-Content` يُنشئ الملف **ثم** يكتب فيه، فقراءة
+    /// سابقة تُعطي نصّاً فارغاً ورُصد `ParseIntError { kind: Empty }`.)
+    #[cfg(windows)]
+    fn wait_for_worker_pid(pid_file: &Path) -> u32 {
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        while std::time::Instant::now() < deadline {
+            if let Ok(pid) = std::fs::read_to_string(pid_file)
+                .unwrap_or_default()
+                .trim()
+                .parse::<u32>()
+            {
+                return pid;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!(
+            "رقم العامل لم يُكتب خلال 30 ث ({}) — القياس بلا شجرة باطل",
+            pid_file.display()
+        );
+    }
+
+    /// مقبض انتظار نواة على عملية (`SYNCHRONIZE`). `None` = لا عملية بهذا المعرّف.
+    #[cfg(windows)]
+    fn wait_handle(pid: u32) -> Option<isize> {
+        use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE};
+        let h = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
+        (!h.is_null()).then_some(h as isize)
+    }
+
+    /// هل العملية حيّة الآن؟ — **سؤال النواة** على مقبضها لا استطلاع اسم.
+    #[cfg(windows)]
+    fn handle_alive(handle: isize) -> bool {
+        use windows_sys::Win32::Foundation::{HANDLE, WAIT_TIMEOUT};
+        use windows_sys::Win32::System::Threading::WaitForSingleObject;
+        unsafe { WaitForSingleObject(handle as HANDLE, 0) == WAIT_TIMEOUT }
+    }
+
+    /// **ينتظر موت العملية فعلاً** على مقبضها بحدّ زمني — لا نوم يخمّن نجاحاً.
+    #[cfg(windows)]
+    fn handle_wait_death(handle: isize, timeout: Duration) -> bool {
+        use windows_sys::Win32::Foundation::{HANDLE, WAIT_OBJECT_0};
+        use windows_sys::Win32::System::Threading::WaitForSingleObject;
+        let ms = timeout.as_millis().min(u32::MAX as u128) as u32;
+        unsafe { WaitForSingleObject(handle as HANDLE, ms) == WAIT_OBJECT_0 }
+    }
+
+    #[cfg(windows)]
+    fn close_wait_handle(handle: isize) {
+        use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+        unsafe {
+            CloseHandle(handle as HANDLE);
+        }
+    }
+
+    /// تنظيف اختبار (لا قياس): يقتل شجرة معرّف حتى لا يبقى يتيم نائم بعد فشل
+    /// تأكيد — ويُنادى **قبل** الحكم لا بعده.
+    #[cfg(windows)]
+    fn cleanup_pid(pid: u32) {
+        let _ = Command::new("taskkill")
+            .args(["/T", "/F", "/PID", &pid.to_string()])
+            .output();
+    }
+
+    /// **و٢/حارس أ — المسار الاحتياطي: بلا مهمّة نواة، القتل يقع بمحاولة واحدة.**
+    ///
+    /// الفراغ المقيس: كل حرّاس الشجرة القائمة تمرّ بمهمّة **مُسندة**، فلو لم
+    /// تُسجَّل العملية في Job (فشل الإنشاء أو الإسناد ⇒ `attach → None`) لم يكن
+    /// في المستودع ما يقيس أن القتل الاحتياطي (`taskkill /T /F`) يقتل شجرةً من
+    /// عمليتين بمحاولة **واحدة**. هنا المقبض بلا مهمّة
+    /// ([`ChildHandle::without_job`] = مسار `attach → None` بعينه)، والشجرة
+    /// **عمليتان حيّتان**: مُشغّل `pwsh` وعامله النائم.
+    ///
+    /// **بلا ادّعاء زائف**: ضابطان موجبان قبل القتل (المُشغّل حيّ بمقبضه ·
+    /// والعامل حيّ بمقبضه)، ثم نداء **واحد** لـ[`ChildHandle::kill`]، ثم
+    /// **انتظار نواة** على المقبضين حتى الموت مع قياس زمنه — لا نوم يخمّن نجاحاً.
+    ///
+    /// **والمُفسَد الذي يُسقطه**: إسقاط `kill_tree(self.pid)` من
+    /// [`ChildHandle::kill`] ⇒ لا يموت شيء ويسقط التأكيد (قِيس).
+    #[cfg(windows)]
+    #[test]
+    fn the_fallback_kills_a_two_process_tree_in_one_attempt() {
+        let dir = tree_dir("fallback");
+        let trigger = dir.join("trigger");
+        let pid_file = dir.join("worker.pid");
+        let token = tree_token("fallback");
+        let (program, args) = tree_command(&trigger, &pid_file, 120, 120, &token);
+        let mut launcher = Command::new(&program)
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("إطلاق المُشغّل");
+        // المقبض المملوك **بلا مهمّة نواة**: مسار `attach → None` بعينه.
+        let killer = ChildHandle::without_job(&launcher).expect("مقبض مملوك للشجرة");
+        // الإذن: العامل يُولد **بعد** أن أمسكنا المقبض ⇒ داخل الشجرة المقيسة.
+        std::fs::write(&trigger, b"go").expect("إشارة الإطلاق");
+        let worker_pid = wait_for_worker_pid(&pid_file);
+        let worker = wait_handle(worker_pid).expect("مقبض انتظار على العامل");
+        // ضابطان موجبان: **الاثنان حيّان** لحظة القياس (وإلا فُسر «مات» على لا شيء).
+        assert!(killer.is_alive(), "المُشغّل ميت قبل القتل — القياس باطل");
+        assert!(
+            handle_alive(worker),
+            "العامل {worker_pid} ميت قبل القتل — القياس باطل"
+        );
+        // **محاولة واحدة** — لا حلقة استطلاع ولا نداء ثانٍ.
+        let started = std::time::Instant::now();
+        killer.kill();
+        let launcher_gone = killer.wait_gone(DEATH_WAIT);
+        let worker_gone = handle_wait_death(worker, DEATH_WAIT);
+        let elapsed = started.elapsed();
+        // تنظيف **قبل الحكم**: فشل التأكيد لا يترك عاملاً نائماً 120 ث.
+        if !worker_gone {
+            cleanup_pid(worker_pid);
+        }
+        let _ = launcher.kill();
+        let _ = launcher.wait();
+        close_wait_handle(worker);
+        eprintln!(
+            "و٢/الاحتياط (بلا Job): المُشغّل pid={} · العامل pid={worker_pid} · محاولة واحدة ⇒ \
+             المُشغّل مات={launcher_gone} · العامل مات={worker_gone} · الزمن {elapsed:?} · العلامة {token}",
+            killer.pid
+        );
+        assert!(
+            launcher_gone,
+            "المُشغّل (pid={}) لم يمت بـtaskkill /T /F — القتل الاحتياطي معطَّل",
+            killer.pid
+        );
+        assert!(
+            worker_gone,
+            "العامل (pid={worker_pid}) نجا بعد محاولة قتل واحدة — إسقاط القتل الاحتياطي لا يُسقط شيئاً"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **و٢/حارس ب — المحاولة الواحدة تُدرك عاملاً حيّاً مات مُشغّله.**
+    ///
+    /// هذه بنية العطل الميداني المقيس في هذا الملف (م٣/إصلاح٢): العمليتان
+    /// (`yt-dlp.exe` مُشغّل + عامل)، والمُشغّل يموت والعامل يبقى — و`taskkill /T`
+    /// **لا يبلغه** (لم يبق لمعرّف أبيه أثر في الشجرة). فالوعاء الوحيد الذي
+    /// يبلغه هو مهمّة النواة.
+    ///
+    /// القياس على **المسار الإنتاجي** ([`prepare_child`] ⇒ [`ChildHandle::kill`]):
+    /// المُشغّل **يخرج بنفسه** بعد ولادة عامله (لا بأمر منّا)، ويُقاس أن العامل
+    /// ما زال حيّاً بعد موت مُشغّله، ثم **محاولة واحدة** للقتل يجب أن تُنهيه —
+    /// والانتظار على **مقبض العملية** بحدّ زمني، لا نوم.
+    ///
+    /// **والمُفسَد الذي يُسقطه**: تعطيل الإسناد (`attach → None`، أي كأن
+    /// `CreateJobObject`/`AssignProcessToJobObject` فشل) ⇒ `kill()` يسلك
+    /// `taskkill` على معرّف مُشغّل **ميت** فلا يقتل شيئاً ⇒ العامل ينجو ويسقط
+    /// التأكيد (قِيس).
+    #[cfg(windows)]
+    #[test]
+    fn one_kill_attempt_reaches_the_worker_after_its_launcher_died() {
+        let dir = tree_dir("job_orphan");
+        let trigger = dir.join("trigger");
+        let pid_file = dir.join("worker.pid");
+        let token = tree_token("job-orphan");
+        // `launcher_secs = 0`: المُشغّل يخرج بنفسه فور ولادة عامله.
+        let (program, args) = tree_command(&trigger, &pid_file, 0, 120, &token);
+        let mut launcher = Command::new(&program)
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("إطلاق المُشغّل");
+        // **المسار الإنتاجي**: نفس الدالة التي يناديها `wait_child_cap`.
+        let killer = prepare_child(&launcher).expect("قاتل الطفل (مقبض مملوك + مهمّة)");
+        std::fs::write(&trigger, b"go").expect("إشارة الإطلاق");
+        let worker_pid = wait_for_worker_pid(&pid_file);
+        let worker = wait_handle(worker_pid).expect("مقبض انتظار على العامل");
+        assert!(
+            handle_alive(worker),
+            "العامل {worker_pid} ميت قبل القياس — القياس باطل"
+        );
+        // ضابط موجب للبنية: **المُشغّل يموت بنفسه والعامل يبقى**.
+        assert!(
+            killer.wait_gone(LAUNCHER_EXIT_WAIT),
+            "المُشغّل (pid={}) لم يخرج بنفسه خلال {LAUNCHER_EXIT_WAIT:?} — البنية غير قائمة",
+            killer.pid
+        );
+        assert!(
+            handle_alive(worker),
+            "العامل {worker_pid} مات مع مُشغّله — لا يتيم يُقاس (بناء الشجرة خطأ)"
+        );
+        // **محاولة واحدة** — `kill()` هي نداء الإنتاج (مهمّة النواة إن أُسندت).
+        let started = std::time::Instant::now();
+        killer.kill();
+        let worker_gone = handle_wait_death(worker, DEATH_WAIT);
+        let elapsed = started.elapsed();
+        if !worker_gone {
+            cleanup_pid(worker_pid);
+        }
+        let _ = launcher.kill();
+        let _ = launcher.wait();
+        close_wait_handle(worker);
+        eprintln!(
+            "و٢/الـJob (مُشغّل ميت + عامل حيّ): المُشغّل pid={} خرج بنفسه · العامل pid={worker_pid} · \
+             محاولة واحدة ⇒ العامل مات={worker_gone} · الزمن {elapsed:?} · العلامة {token}",
+            killer.pid
+        );
+        assert!(
+            worker_gone,
+            "العامل (pid={worker_pid}) نجا بعد محاولة قتل واحدة ومُشغّله ميت — الـJob لم تحمله"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
