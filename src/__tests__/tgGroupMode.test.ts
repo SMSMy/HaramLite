@@ -31,9 +31,15 @@ import settingsRs from '../../src-tauri/src/settings.rs?raw';
 
 const h = vi.hoisted(() => ({
   invoke: vi.fn<(cmd: string, args?: unknown) => Promise<unknown>>(async () => ({})),
+  listeners: new Map<string, (ev: { payload: unknown }) => void>(),
 }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: h.invoke }));
-vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(async (name: string, cb: (ev: { payload: unknown }) => void) => {
+    h.listeners.set(name, cb);
+    return () => {};
+  }),
+}));
 
 /** DOM التطبيق الحقيقي (بلا سكربتات: innerHTML لا يُنفّذ وسم script). */
 function mountApp(): void {
@@ -238,6 +244,41 @@ describe('م٤ · seedSettings ينقل قيمة الخلف مطبَّعة', () 
     const { seedSettings } = await import('../settings');
     await seedSettings();
     expect(localStorage.getItem(LS_KEY)).toBe('mentions');
+  });
+});
+
+/* ── ٤ب) مرآة `settings-changed`: القائمة تتبع حقيقة الخلف ─────────────────────
+ * أُضيفت هذه الكتلة بعد **مُفسَد ناجٍ**: تعطيل كتلة المرآة كاملة لم يُسقط شيئاً
+ * (19/19 مرّت)، أي أن سلوكاً مشحوناً بلا حارس. فالفحص الآن يشغّل المستمع
+ * المسجَّل بحِمل بنفس شكل عقد Tauri ويقيس الخزين والعرض معاً. */
+describe('م٤ · settings-changed يُحدِّث القائمة والخزين (مُفسَد M6 سابقاً)', () => {
+  it("حِمل telegram_group_mode='all' ⇒ الصندوق all والخزين 'all'", async () => {
+    await mountWith(null);
+    expect(select().value, 'قبل: الافتراضيّ').toBe('mentions');
+
+    const cb = h.listeners.get('settings-changed');
+    expect(cb, 'المستمع settings-changed مسجَّل').toBeTruthy();
+    cb!({ payload: { telegram_group_mode: 'all' } });
+
+    expect(select().value).toBe('all');
+    expect(localStorage.getItem(LS_KEY)).toBe('all');
+  });
+
+  it("حِمل غريب 'mixed' ⇒ mentions في العرض والخزين (لا قيمة ثالثة تدخل)", async () => {
+    await mountWith('all');
+    expect(select().value, 'قبل: all من الخزين').toBe('all');
+
+    h.listeners.get('settings-changed')!({ payload: { telegram_group_mode: 'mixed' } });
+
+    expect(select().value).toBe('mentions');
+    expect(localStorage.getItem(LS_KEY)).toBe('mentions');
+  });
+
+  it('حِمل بلا الحقل لا يمسّ الخيار', async () => {
+    await mountWith('all');
+    h.listeners.get('settings-changed')!({ payload: { notify: true } });
+    expect(select().value).toBe('all');
+    expect(localStorage.getItem(LS_KEY)).toBe('all');
   });
 });
 
