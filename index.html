@@ -173,6 +173,21 @@
 <p class="font-label-sm text-xs mt-2 opacity-80 text-center leading-relaxed text-on-surface-variant" data-i18n="mode_clip_desc">للمقاطع التي تحتوي على متحدثين: لن يقطع الصمت، وسيزيل الموسيقى فقط.</p>
 </button>
 </div>
+<!-- م١: سقف الفصول المتزامنة — **مرئيّ للمستخدم العادي**. كان داخل «إعدادات
+     متقدمة» التي لا تُفتح إلا بستّ نقرات على شارة الإصدار، فطلب المالك إخراجه
+     (2026-09-21): خيارٌ يقرّر سرعة معالجة ملفّين يجب أن يُرى لا أن يُخفى.
+     والقصّ في الخلف أيضاً (`slots::clamp_limit`) فهذه ليست الحارس الوحيد. -->
+<div class="glass-effect border border-border-muted rounded-lg p-stack-md flex flex-col gap-unit fade-in-up">
+<div class="flex items-center gap-stack-sm">
+<span class="material-symbols-outlined text-lg text-clay-accent" data-icon="speed" aria-hidden="true">speed</span>
+<span class="font-label-md text-label-md text-cream-text" data-i18n="max_jobs_label">أقصى فصول متزامنة:</span>
+<select id="max-jobs" class="form-select bg-coal-surface border border-border-muted rounded px-stack-sm py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent cursor-pointer">
+<option value="1" selected>1</option>
+<option value="2">2</option>
+</select>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="max_jobs_hint">1 هو الافتراضيّ: فصلان معاً بلغا ذروة 7947 من 8192 م.ب (هامش 245 م.ب فقط) على بطاقة 8 جيجا · 2 أسرع لملفّين لكنه يُنفق هذا الهامش.</span>
+</div>
 <!-- Advanced Settings Panel -->
 <div class="spring-panel" id="advanced-panel-container">
 <div class="spring-panel-content">
@@ -201,20 +216,6 @@
 <div class="flex items-center gap-stack-sm">
 <span class="font-label-md text-on-surface-variant" data-i18n="watch_rescan_label">فاصل المسح الدوري (ثانية):</span>
 <input id="watch-rescan" type="number" min="10" step="10" value="60" class="form-input w-20 bg-coal-surface border border-border-muted rounded px-stack-sm py-unit text-cream-text focus:outline-none focus:border-clay-accent font-body-md"/>
-</div>
-<!-- م١: سقف الفصول المتزامنة. القيمتان 1 و2 وحدهما — القياس المستقلّ: فصلان
-     متزامنان بلغا ذروة 7947 من 8192 MiB (هامش 245 MiB فقط)، فالافتراضيّ 1
-     والسقف المسموح 2 اختياراً. والقصّ في الخلف أيضاً (`slots::clamp_limit`)،
-     فهذه ليست الحارس الوحيد. -->
-<div class="flex flex-col gap-unit">
-<div class="flex items-center gap-stack-sm">
-<span class="font-label-md text-on-surface-variant" data-i18n="max_jobs_label">أقصى فصول متزامنة:</span>
-<select id="max-jobs" class="form-select bg-coal-surface border border-border-muted rounded px-stack-sm py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent cursor-pointer">
-<option value="1" selected>1</option>
-<option value="2">2</option>
-</select>
-</div>
-<span class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="max_jobs_hint">1 هو الافتراضيّ: فصلان معاً بلغا ذروة 7947 من 8192 م.ب (هامش 245 م.ب فقط) على بطاقة 8 جيجا · 2 أسرع لملفّين لكنه يُنفق هذا الهامش.</span>
 </div>
 </div>
 </div>
