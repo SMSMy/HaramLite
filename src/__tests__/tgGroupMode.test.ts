@@ -271,7 +271,10 @@ describe('م٤ · النصّ لا يَعِد بميزة غير منفَّذة', 
 
   it('النصّ مربوط بالكود: يسقط إن دُمج نصف Rust (settings.rs فيه telegram_group_mode)', () => {
     // يقرأ الملف المشحون لحظة التشغيل — لا ثابت مكتوب هنا.
-    const merged = /pub\s+telegram_group_mode\s*:/.test(settingsRs as unknown as string);
+    // `(?:^|\n)[ \t]*` يشترط أن يكون `pub` **أول ما في السطر** بعد فراغ: فسطر
+    // مُعلَّق (`// pub telegram_group_mode`) لا يُحتسب. قِيس الفرق فعلاً: النمط
+    // بلا الشرط كان يطابق المعلَّق ⇒ إنزالٌ كاذب للنصّ بدل تنبيه حقيقي.
+    const merged = /(?:^|\n)[ \t]*pub\s+telegram_group_mode\s*:/.test(settingsRs as unknown as string);
     expect(
       merged,
       'نصف Rust دُمج (telegram_group_mode في Settings) ⇒ نصّ التلميح أعلاه صار ' +
@@ -279,6 +282,20 @@ describe('م٤ · النصّ لا يَعِد بميزة غير منفَّذة', 
         'ليذكر ما يفعله المفتاح فعلاً (والحجب في «بالمنشن فقط») بدل أن يترك ' +
         'المستخدم يظنّ أن الخيار لا يفعل شيئاً، ثم أزِل هذا الفحص.',
     ).toBe(false);
+  });
+
+  it('وشرط الفحص نفسه مقيس على الصورتين (لا نمط أعمى)', () => {
+    // يُقاس النمط على محتوى حقيقي: الملف المشحون (لا شيء) وصورة مضافاً فيها
+    // الحقل (يُطابق) وصورة الحقل معلَّقاً فيها (لا يُطابق). وهذا يقيس **النمط**
+    // لا الملف، فوسم نصف Rust بنفسه لا يُقاس هنا (خارج نطاق هذا العامل).
+    const rs = settingsRs as unknown as string;
+    const withField = rs.replace('    pub telegram_audio_only: bool,',
+      '    pub telegram_audio_only: bool,\n    pub telegram_group_mode: String,');
+    const commented = rs.replace('    pub telegram_audio_only: bool,',
+      '    pub telegram_audio_only: bool,\n    // pub telegram_group_mode: String,');
+    const re = /(?:^|\n)[ \t]*pub\s+telegram_group_mode\s*:/;
+    expect(re.test(withField), 'الحقل مضافاً ⇒ يُطابق').toBe(true);
+    expect(re.test(commented), 'الحقل معلَّقاً ⇒ لا يُطابق').toBe(false);
   });
 
   it('والبوّابة ليست باطلة: العنصر والتلميح مرئيان فعلاً في DOM المُركَّب', async () => {
