@@ -231,7 +231,11 @@
 
   /* ── bar buttons ───────────────────────────────────────────────── */
   function barBtnBase() {
-    return 'display:inline-flex;align-items:center;justify-content:center;' +
+    // والاتجاه **يُضبط صريحاً** كالتوست والقائمة: بدونه يرث الزرّ اتجاه **الصفحة**،
+    // فعلى يوتيوب عربي (`dir="rtl"`) بواجهة إنجليزية يأخذ الزرّ RTL ⇒ خلل bidi في
+    // «Watch without music ▶». (عيب أثبته جاسوس مستقلّ بغياب `btn.style.direction`.)
+    return `direction:${RTL ? 'rtl' : 'ltr'};` +
+      'display:inline-flex;align-items:center;justify-content:center;' +
       'font-family:Roboto,Arial,sans-serif;font-size:13px;font-weight:600;white-space:nowrap;' +
       'border:1px solid transparent;border-radius:16px;padding:0 14px;margin:0 4px;cursor:pointer;' +
       'width:auto;height:32px;vertical-align:middle;box-sizing:border-box;transition:all 0.2s;' +

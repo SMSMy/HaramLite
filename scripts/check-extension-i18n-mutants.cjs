@@ -35,6 +35,21 @@ const { audit } = require('./check-extension-i18n.cjs');
 
 const sha256 = (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex').toUpperCase();
 
+/** كتلة بموازنة أقواس مع تجاوز النصوص والتعليقات — تُعيد {end} مطلقاً. */
+function blockAt(text, openIdx) {
+  let depth = 0, i = openIdx;
+  while (i < text.length) {
+    const c = text[i], d = text[i + 1];
+    if (c === '/' && d === '/') { while (i < text.length && text[i] !== '\n') i++; continue; }
+    if (c === '/' && d === '*') { i += 2; while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i++; i += 2; continue; }
+    if (c === "'" || c === '"' || c === '`') { const q = c; i++; while (i < text.length && text[i] !== q) { if (text[i] === '\\') i++; i++; } i++; continue; }
+    if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) return { end: i + 1 }; }
+    i++;
+  }
+  return null;
+}
+
 const argv = process.argv.slice(2);
 let beforeArg = null;
 for (let i = 0; i < argv.length; i++) {
@@ -103,20 +118,77 @@ const CASES = [
   ['⑩ قيمة ar بلا أيّ محرف عربي (نقل خاطئ)',
     (s) => s.replace("      'fetch.failed': 'تعذر الجلب',", "      'fetch.failed': 'Fetch failed',"), 'fall'],
 
+  /* ── الجولة الثانية: ثقوب أثبتها جاسوس مستقلّ بمُفسَدات مرّت ────────────── */
+  ['⑪ قيمة إنجليزية تحمل عربية (ترجمة ناقصة)',
+    (s) => s.replace("      'fetch.failed': 'Fetch failed',", "      'fetch.failed': 'تعذر الجلب',"), 'fall'],
+
+  ['⑫ نداء t() بمفتاح غير موجود في الجدول (توست فارغ صامت)',
+    (s) => s.replace("    toast(t('cancel.done'));", "    toast(t('cancel.done.typo'));"), 'fall'],
+
+  ['⑬ عنصر نائب في en وحده ({pct} أُزيل من ar)',
+    (s) => s.replace("      'btn.watch.fetchingPct': 'جارٍ الجلب… {pct}%',", "      'btn.watch.fetchingPct': 'جارٍ الجلب…',"), 'fall'],
+
+  ['⑭ عنصر نائب في en وحده ({pct} زِيد في en)',
+    (s) => s.replace("      'btn.watch.fetchingPct': 'Fetching… {pct}%',", "      'btn.watch.fetchingPct': 'Fetching… {pct}{pct}%',"), 'fall'],
+  ['⑭ب عنصر نائب مختلف الرسم بين اللغتين ({s} مقابل {sec})',
+    (s) => s.replace("      'watch.lineAgo': '▶ Filtered watching — audio from local processing (processed in {s}s)',",
+      "      'watch.lineAgo': '▶ Filtered watching — audio from local processing (processed in {sec}s)',"), 'fall'],
+
+  /* بناء نصّ ديناميكي — كل طريقة من العشر التي أفلتت من النسخة السابقة */
+  ['⑮ atob (base64) — موضع جديد خارج القائمة',
+    (s) => s.replace("    toast(t('cancel.done'));", "    toast(atob('2YbYtQ=='));"), 'fall'],
+  ['⑯ decodeURIComponent — موضع جديد خارج القائمة',
+    (s) => s.replace("    toast(t('cancel.done'));", "    toast(decodeURIComponent('%D9%86'));"), 'fall'],
+  ['⑰ unescape — موضع جديد خارج القائمة',
+    (s) => s.replace("    toast(t('cancel.done'));", "    toast(unescape('%u0646'));"), 'fall'],
+  ['⑱ JSON.parse — موضع جديد خارج القائمة',
+    (s) => s.replace("    toast(t('cancel.done'));", "    toast(JSON.parse('\"\\\\u0646\"'));"), 'fall'],
+  ['⑲ Buffer.from(hex) — موضع جديد خارج القائمة',
+    (s) => s.replace("    toast(t('cancel.done'));", "    toast(Buffer.from('d986','hex').toString('utf8'));"), 'fall'],
+  ['⑳ String.fromCharCode عبر مصفوفة متغيّر (لا أرقام في النداء)',
+    (s) => s.replace("    toast(t('cancel.done'));",
+      "    const cp = [0x639, 0x634];\n    toast(String.fromCharCode(...cp));"), 'fall'],
+  ['㉑ String.fromCodePoint — موضع جديد خارج القائمة',
+    (s) => s.replace("    toast(t('cancel.done'));", "    toast(String.fromCodePoint(0x639));"), 'fall'],
+  ['㉒ eval — موضع جديد خارج القائمة (و§٢٦ يمنعه)',
+    (s) => s.replace("    toast(t('cancel.done'));", "    eval('void 0');\n    toast(t('cancel.done'));"), 'fall'],
+  ['㉓ عربية داخل تعبير نمطي (شرط على نصّ معروض ينكسر بالإنجليزية)',
+    (s) => s.replace("      if (BUSY) doCancel();",
+      "      if (/جاهز|تم التجهيز/.test(procBtn.textContent)) return;\n      if (BUSY) doCancel();"), 'fall'],
+
   /* ── ضوابط: يجب أن تمرّ ─────────────────────────────────────────────────── */
   ['ض١ تعليق يحمل عربية (لا يُعدّ نصّ واجهة) — يجب ألّا يُسقط',
     (s) => s.replace("  /* ── fading toast ─",
       "  // تعليق جديد فيه نصّ عربي خام: عالج هذا الفيديو\n  /* ── fading toast ─"), 'pass'],
 
+  /* ض٢: يبقى النداء بالمفتاح **قائماً** (فلا يُتّهم مفتاحٌ بالموت) ويُضاف نصّ
+   * إنجليزي خام لا يراه المرشّح الواسع — وهذا هو المقصود بالضبط. */
   ['ض٢ نصّ إنجليزي خام خارج الجدول (المرشّح الواسع لا يراه) — يجب ألّا يُسقط',
     (s) => s.replace("    toast(t('cancel.done'));",
-      "    toast('raw english ui text');"), 'pass'],
+      "    toast(t('cancel.done'));\n    toast('raw english ui text');"), 'pass'],
 
+  /* ض٣: المفتاح الجديد يُضاف في اللغتين **ويُستعمل**، وإلا اتُّهم بالموت —
+   * وهو حكم صحيح لكنه ليس ما يقيسه هذا الضابط. */
   ['ض٣ إضافة مفتاح في اللغتين معاً — يجب ألّا يُسقط',
     (s) => s.replace("      'cancel.done': '⏹ أُلغيت المعالجة — اضغط للبدء من جديد',",
       "      'cancel.done': '⏹ أُلغيت المعالجة — اضغط للبدء من جديد',\n      'extra.new': 'نصّ جديد',")
       .replace("      'cancel.done': '⏹ Processing cancelled — press to start again',",
-        "      'cancel.done': '⏹ Processing cancelled — press to start again',\n      'extra.new': 'New text',"), 'pass'],
+        "      'cancel.done': '⏹ Processing cancelled — press to start again',\n      'extra.new': 'New text',")
+      .replace("    toast(t('cancel.done'));",
+        "    toast(t('cancel.done'));\n    toast(t('extra.new'));"), 'pass'],
+
+  /* **ضابطان لعطب مقيس**: النسخة السابقة كانت تعدّ القيم مفاتيح، فقيمة مشتركة بين
+   * مفتاحين تُرفض برسالة «مفتاح مكرَّر» — اصطياد كاذب. وهذان يُثبّتان الإصلاح:
+   * قيمة **مكرّرة** لمفتاحين مختلفين يجب أن تمرّ.
+   * (والقيمة المستعملة هنا **ليست** موجودة قبلاً في القسم، وإلا كان التغيير
+   * **مفتاحاً مكرّراً حقيقياً** — وهو ما وقع في أول كتابة لهذين الضابطين فأُصلح.) */
+  ['ض٤ قيمة إنجليزية مكرّرة لمفتاحين مختلفين — يجب ألّا يُسقط (اصطياد كاذب أُصلح)',
+    (s) => s.replace("      'btn.watch.disabledTitle': 'HaramLite — enabled after processing',",
+      "      'btn.watch.disabledTitle': 'Fetch failed',"), 'pass'],
+
+  ['ض٥ قيمة عربية مكرّرة لمفتاحين مختلفين — يجب ألّا يُسقط',
+    (s) => s.replace("      'watch.line': '▶ مشاهدة مفلترة — الصوت من المعالجة المحلية',",
+      "      'watch.line': '▶ اضغط تشغيل لبدء الصوت المفلتر',"), 'pass'],
 ];
 
 let caught = 0, survived = 0, passed = 0, badPass = 0, skipped = 0;
@@ -159,7 +231,45 @@ for (const [label, fn, want] of CASES) {
   }
 }
 
-/* ── حالة «الشيفرة قبل التعريب»: تُقاس من نسخة محفوظة خارج الشجرة ──────────── */
+/* ── حالة «الشيفرة قبل التعريب» ────────────────────────────────────────────────
+ * تُبنى **داخل هذا الملف** بلا اعتماد على ملف خارجي: تُنزع كتلة `const I18N = {…}`
+ * من نصّ الملف نفسه ⇒ يبقى كل نصّ واجهة عربياً خارج الجدول، وهو **عطب ما قبل
+ * التعريب** بعينه. والتحقق من أن البناء غير عبثي شرطٌ قبل الحكم (نصّ تغيّر،
+ * والكتلة غابت فعلاً) — وإلا كان «السقوط» عن عدم تغيير لا عن كشف.
+ * و`--before <ملف>` يبقى للتشغيل على نسخة محفوظة (تحقّق خارجي مستقلّ). */
+function synthPreI18n(src) {
+  const m = /const\s+I18N\s*=\s*\{/.exec(src);
+  if (!m) return null;
+  const open = src.indexOf('{', m.index);
+  const b = blockAt(src, open);
+  if (!b) return null;
+  return src.slice(0, m.index) + 'const I18N = null;' + src.slice(b.end);
+}
+
+/* ── (١) البناء الداخلي: يُقاس دائماً، بلا ملف خارجي وبلا علم ──────────────── */
+{
+  console.log('\n── حالة «الشيفرة قبل التعريب» (مبنية داخلياً) ──');
+  const syn = synthPreI18n(base);
+  const okSynth = syn !== null && syn !== base && !/const\s+I18N\s*=\s*\{/.test(syn);
+  console.log('  البناء غير عبثي (النصّ تغيّر والكتلة غابت): ' + (okSynth ? '✓ نعم' : '✗ لا'));
+  console.log('  بصمة البناء: ' + (syn ? sha256(syn).slice(0, 16) + '… (≠ الأصل ✓)' : '—'));
+  if (!okSynth) {
+    survived++; holes.push('بناء «قبل التعريب» عبثي — لم تُقَس الحالة');
+    console.log('  ❌ البناء لم يغيّر شيئاً — لا قياس');
+  } else {
+    const rs = audit(syn, 'content.js');
+    if (rs.failures.length) {
+      caught++;
+      console.log('  ✅ سقط    الشيفرة قبل التعريب (مبنية)                     | سقوط   | ' + rs.failures.length + ' ملاحظة');
+      rs.failures.forEach((f) => console.log('       ↳ ' + f.replace(/\s+/g, ' ').slice(0, 240)));
+    } else {
+      survived++; holes.push('الشيفرة قبل التعريب (مبنية داخلياً)');
+      console.log('  ❌ مرّ     الشيفرة قبل التعريب — الحارس لا يرى العطب الأصلي');
+    }
+  }
+}
+
+/* ── (٢) نسخة محفوظة خارج الشجرة، إن مُرِّر `--before` ────────────────────── */
 if (beforeArg) {
   const p = path.resolve(beforeArg);
   if (!fs.existsSync(p)) {
@@ -168,7 +278,7 @@ if (beforeArg) {
   }
   const before = fs.readFileSync(p, 'utf8');
   const bSha = sha256(before);
-  console.log('\n── حالة «الشيفرة قبل التعريب» ──');
+  console.log('\n── نسخة محفوظة خارج الشجرة (`--before`) ──');
   console.log('  الملف: ' + p);
   console.log('  SHA256: ' + bSha + (bSha === baseSha ? '  ⚠ مطابق للأصل — ليست نسخة قبل التعريب!' : '  (≠ الأصل ✓)'));
   const rb = audit(before, path.basename(p));
@@ -182,7 +292,7 @@ if (beforeArg) {
     console.log('  ❌ مرّ     الشيفرة قبل التعريب — الحارس لا يرى العطب الأصلي');
   }
 } else {
-  console.log('\n  ⚠ --before غير مُمرَّر: حالة «الشيفرة قبل التعريب» **لم تُقَس**.');
+  console.log('\n  · --before غير مُمرَّر: النسخة الخارجية لم تُقَس (والحالة المبنية داخلياً أعلاه قِيست).');
 }
 
 /* ── إثبات أن القرص لم يُمَسّ ─────────────────────────────────────────────── */

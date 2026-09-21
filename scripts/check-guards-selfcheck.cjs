@@ -318,12 +318,11 @@ CASES.push({
 
 /* ═══ ٥ب) حارس تعريب الإضافة (م٦-أ) ═════════════════════════════════════════
  * البيئة المصنوعة تحمل `browser-extension/content.js` مصنوعاً و`scripts/` فيه
- * الحارسان (حارس التعريب وحاكم مُفسَداته). والضابط يشترط أن **يرى** الحارس
- * مدخلاً غير صفري: عدد النصوص العربية داخل الجدول ⇒ يوازي `sawExpected`.
- * والمُفسَدات تُشغَّل عبر حاكم مُفسَدات التعريب نفسه (لا عبر
- * `check-extension-mutants.cjs`، فذاك مربوط بـcontent.js وحارس المزامنة).
- * و«صفر مدخل» = ملف فارغ تماماً ⇒ الحارس يسقط بـ«صفر مدخل» لا بنجاح فارغ. */
-const I18N_OK = "const I18N = {\n  ar: { 'a.one': 'نصّ عربي' },\n  en: { 'a.one': 'English' },\n};\n" +
+ * حارس التعريب. والضابط يشترط أن **يرى** الحارس مدخلاً غير صفري: عدد النصوص
+ * العربية داخل الجدول ⇒ يوازي `sawExpected`.
+ * والمُفسَدات مكتوبة **هنا** كبقية الحرّاس (لا تُشغَّل عبر حاكم مُفسَدات التعريب؛
+ * فذاك له بوّابته `pnpm ext:mutants`). و«صفر مدخل» = ملف فارغ ⇒ سقوط مسمّى. */
+const I18N_OK = "const I18N = {\n  ar: { 'a.one': 'نصّ عربي {n}' },\n  en: { 'a.one': 'English {n}' },\n};\n" +
   "function pickLang(list) {\n" +
   "  const arr = Array.isArray(list) ? list : [list];\n" +
   "  for (const raw of arr) {\n" +
@@ -344,11 +343,16 @@ CASES.push({
   build(dir) {
     mk(dir, 'browser-extension/content.js', I18N_OK);
     copyInto(dir, 'scripts/check-extension-i18n.cjs', S('check-extension-i18n.cjs'));
-    copyInto(dir, 'scripts/check-extension-i18n-mutants.cjs', S('check-extension-i18n-mutants.cjs'));
   },
   controlArgs: (dir) => ['--root', dir],
-  // «المدخل المقيس» يليه `): N` في السطر، فالمطابقة تحتاج تجاوزاً غير رقمي.
-  saw: (dir, res) => { const m = res.out.match(/المدخل المقيس\D+(\d+)/); return m ? Number(m[1]) : 0; },
+  /* مثبَّتة على **السطر** لا على أول ظهور للعبارة: المطابقة السابقة
+   * (`/المدخل المقيس\D+(\d+)/`) كانت تُطابق عنوان القسم ثم تعبر بـ`\D+` الجشع
+   * إلى أول أرقام بعده — هشّة وإن كانت لا تُستغلّ. هنا السطر بعينه يُلتقط ويُقاس
+   * ما بعده مباشرة. */
+  saw: (dir, res) => {
+    const m = res.out.match(/^\s*نصّ عربي \*\*داخل الجدول\*\*[^\n]*?:\s*(\d+)\s*$/m);
+    return m ? Number(m[1]) : 0;
+  },
   sawExpected: 1,
   mutants: [
     { label: 'نصّ عربي خام خارج جدول الترجمة (toast)',
@@ -359,19 +363,45 @@ CASES.push({
     // آخر («صفر مدخل» / وجود القسمين) فلا يُقاس تكافؤ المفاتيح — وهو المقصود هنا.
     { label: 'مفتاح في ar غائب من en (والقسم قائم وغير فارغ)',
       apply: (dir) => mk(dir, 'browser-extension/content.js',
-        I18N_OK.replace("  en: { 'a.one': 'English' },", "  en: { 'b.keep': 'Kept' },")),
+        I18N_OK.replace("  en: { 'a.one': 'English {n}' },", "  en: { 'b.keep': 'Kept' },")),
       mustMatch: /بلا مقابل في `en`/ },
     { label: 'قيمة إنجليزية فارغة',
       apply: (dir) => mk(dir, 'browser-extension/content.js',
-        I18N_OK.replace("'English'", "''")),
+        I18N_OK.replace("'English {n}'", "''")),
       mustMatch: /قيمة فارغة/ },
+    // الجولة الثانية: الثقوب التي أثبتها جاسوس مستقلّ بمُفسَدات مرّت
+    { label: 'قيمة إنجليزية تحمل عربية (ثقب مقيس أُغلق)',
+      apply: (dir) => mk(dir, 'browser-extension/content.js',
+        I18N_OK.replace("'English {n}'", "'نصّ عربي {n}'")),
+      mustMatch: /قيمة إنجليزية تحمل عربية/ },
+    { label: 'نداء بمفتاح غير موجود في الجدول (توست فارغ صامت)',
+      apply: (dir) => mk(dir, 'browser-extension/content.js',
+        I18N_OK.replace("toast(t('a.one'));", "toast(t('a.one.typo'));")),
+      mustMatch: /مفتاح غير موجود/ },
+    { label: 'عنصر نائب {n} في ar وحده',
+      apply: (dir) => mk(dir, 'browser-extension/content.js',
+        I18N_OK.replace("'English {n}'", "'English'")),
+      mustMatch: /عناصر نائبة غير متطابقة/ },
+    { label: 'بناء نصّ ديناميكي: decodeURIComponent (ثقب مقيس أُغلق)',
+      apply: (dir) => mk(dir, 'browser-extension/content.js',
+        I18N_OK.replace("toast(t('a.one'));", "toast(decodeURIComponent('%D9%86'));")),
+      mustMatch: /بناء نصّ ديناميكي/ },
     { label: 'عربية بلا نصّ حرفيّ: String.fromCharCode (ثقب مقيس أُغلق)',
       apply: (dir) => mk(dir, 'browser-extension/content.js',
-        I18N_OK.replace("  toast(t('a.one'));", '  toast(String.fromCharCode(0x639));')),
-      mustMatch: /بلا نصّ حرفيّ/ },
+        I18N_OK.replace("toast(t('a.one'));", 'toast(String.fromCharCode(0x639));')),
+      mustMatch: /بناء نصّ ديناميكي/ },
+    { label: 'عربية داخل تعبير نمطي (شرط على نصّ معروض)',
+      apply: (dir) => mk(dir, 'browser-extension/content.js',
+        I18N_OK.replace("toast(t('a.one'));", "if (/نصّ/.test(String(1))) toast(t('a.one'));")),
+      mustMatch: /عربية داخل تعبير نمطي/ },
+    { label: 'مفتاح مكرَّر داخل قسم (يُسقط المتقدّم صامتاً)',
+      apply: (dir) => mk(dir, 'browser-extension/content.js',
+        I18N_OK.replace("  ar: { 'a.one': 'نصّ عربي {n}' },",
+          "  ar: { 'a.one': 'أول {n}', 'a.one': 'نصّ عربي {n}' },")),
+      mustMatch: /مفتاح مكرَّر/ },
     { label: 'عربية مفكوكة بالمفاتيح \\u0600 (ثقب مقيس أُغلق)',
       apply: (dir) => mk(dir, 'browser-extension/content.js',
-        I18N_OK.replace("  toast(t('a.one'));", "  toast('\\u0646\\u0635');")),
+        I18N_OK.replace("toast(t('a.one'));", "toast('\\u0646\\u0635');")),
       mustMatch: /خارج جدول الترجمة/ },
     { label: 'جدول الترجمة محذوف كاملاً',
       apply: (dir) => mk(dir, 'browser-extension/content.js',

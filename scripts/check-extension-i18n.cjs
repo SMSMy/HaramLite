@@ -414,7 +414,51 @@ function audit(text, label) {
     res.failures.push('✗ قيمة فارغة أو غير نصّية في ' + label + ': ' + blank.join(' · '));
   }
 
-  /* ── ⑤ لا مفتاح مكرَّر (المكرَّر يُسقط الذي قبله صامتاً) ────────────────── */
+  /* ── ④ب لا محرف عربي في قيمة **إنجليزية** ──────────────────────────────────
+   * ثقب أثبته جاسوس مستقلّ بمُفسَد مرّ: تكافؤ **المفاتيح** كان يُقاس، وتكافؤ
+   * **القيم** لا — فقيمة `en` عربية (ترجمة ناقصة) تمرّ صامتة، فيرى مستخدم
+   * إنجليزي عربية في منتصف واجهته. */
+  const arInEn = enKeys.filter((k) => typeof en[k] === 'string' && AR.test(en[k]));
+  res.checks++;
+  if (arInEn.length) {
+    res.failures.push('✗ ' + arInEn.length + ' قيمة إنجليزية تحمل عربية في ' + label + ' (ترجمة ناقصة): ' +
+      arInEn.map((k) => 'en.' + k + ' = «' + en[k].slice(0, 40) + '»').join(' · '));
+  }
+
+  /* ── ④ج **مجموعة مواضع العناصر النائبة** متطابقة بين ar وen ───────────────
+   * `{pct}` و`{s}` تُستبدل بـ`fill`. لو غاب العنصر من إحدى اللغتين لظهرت
+   * النتيجة ناقصة («جارٍ الجلب… %» بلا رقم) — أو ظهر `{pct}` حرفياً. والمقارنة
+   * **مجموعةً** لا ترتيباً، فترتيب العناصر حرّ بين اللغات. */
+  const holders = (s) => {
+    const m = new Map();
+    for (const x of String(s).matchAll(/\{(\w+)\}/g)) m.set(x[1], (m.get(x[1]) || 0) + 1);
+    return m;
+  };
+  const phMismatch = [];
+  for (const k of arKeys) {
+    if (!(k in en)) continue;
+    const a = holders(ar[k]), b = holders(en[k]);
+    const names = new Set([...a.keys(), ...b.keys()]);
+    const bad = [...names].filter((x) => (a.get(x) || 0) !== (b.get(x) || 0))
+      .map((x) => x + ' (ar×' + (a.get(x) || 0) + ' · en×' + (b.get(x) || 0) + ')');
+    if (bad.length) phMismatch.push(k + ': ' + bad.join(' · '));
+  }
+  res.checks++;
+  if (phMismatch.length) {
+    res.failures.push('✗ عناصر نائبة غير متطابقة بين ar وen في ' + label + ': ' +
+      phMismatch.join(' · ') + ' — كل عنصر في إحدى اللغتين يجب أن يقابله مثله في الأخرى.');
+  }
+  res.counts.placeholderKeys = arKeys.filter((k) => holders(ar[k]).size > 0).length;
+  if (res.counts.placeholderKeys === 0) {
+    res.failures.push('✗ صفر مدخل: لا مفتاح واحد بعنصر نائب في ' + label +
+      ' — فحص التطابق لم يقس شيئاً (والملف يستعمل {pct} و{s}).');
+  }
+
+  /* ── ⑤ لا مفتاح مكرَّر (المكرَّر يُسقط الذي قبله صامتاً) ──────────────────
+   * **عطب مقيس أصلحه جاسوس مستقلّ**: النسخة السابقة كانت تعدّ **كل** نصّ حرفيّ
+   * في القسم مفتاحاً — والمفاتيح والقيم معاً — فقيمة واحدة لمفتاحين تُرفض برسالة
+   * «مفتاح مكرَّر» تسمّي عطلاً غير الذي وقع (اصطياد كاذب). والصواب: يُقرأ المفتاح
+   * من **موضعه** (نصّ حرفيّ يليه `:`) لا من النصّ الخام. */
   const dup = [];
   const raw = table.literal;
   for (const L of ['ar', 'en']) {
@@ -423,8 +467,14 @@ function audit(text, label) {
     const b = balancedBlock(raw, raw.indexOf('{', lm.index));
     if (!b) continue;
     const seen = new Set();
-    for (const l of scanLiterals(b.body, false)) {
+    for (const l of scanLiterals(b.body, true)) {
       if (l.kind !== 'str') continue;
+      // المفتاح يليه `:` والقيمة تليها `,` أو `}`. والمقارنة على **النصّ الخام**
+      // لا على شريحة الجسم: شريحة الجسم تبدأ بعد `{` بمحرف، فكان الفرق محرفاً
+      // واحداً يُفسد التصنيف في الاتجاهين (قيمة تُقرأ مفتاحاً ومفتاحٌ يُفلت) —
+      // عطب قيس بمُفسَدين: ضابط قيمة مكرّرة سقط كذباً، ومُفسَد مفتاح مكرّر مرّ.
+      const after = raw.slice(b.start + 1 + l.end);
+      if (!/^\s*:/.test(after)) continue;
       const key = l.text.slice(1, -1);
       if (seen.has(key)) dup.push(L + '.' + key);
       seen.add(key);
@@ -480,6 +530,22 @@ function audit(text, label) {
   const tableAr = scanLiterals(text.slice(table.start, tableEnd), false).filter((l) => AR.test(l.text));
   res.arabic = tableAr.length;
   res.counts.tableAr = tableAr.length;
+
+  /* جرد بنيوي: «الوحدة النصّية» = سلسلة كاملة، أو **شظية قالب** بين `${…}`.
+   * وهذا هو المقياس الذي يفسّر الأرقام المنشورة: السلسلة/القالب الكامل يعطي
+   * عدداً آخر لأن قالباً واحداً قد يحمل شظيتين عربيتين. */
+  const unitList = (src) => unitsOf(src);
+  const outUnits = unitList(outside).filter((u) => AR.test(u.t));
+  const tblUnits = unitList(text.slice(table.start, tableEnd)).filter((u) => AR.test(u.t));
+  const arVals = arKeys.map((k) => String(ar[k]));
+  const uniqAr = new Set(arVals).size;
+  res.counts.outsideUnits = outUnits.length;
+  res.counts.tableUnits = tblUnits.length;
+  res.counts.uniqueAr = uniqAr;
+  const m = new Map();
+  for (const u of outUnits) m.set(u.t, (m.get(u.t) || 0) + 1);
+  res.counts.dupPairs = [...m.entries()].filter(([, n]) => n > 1)
+    .map(([t, n]) => '«' + t.slice(0, 34) + '»×' + n);
 
   /* ── ⑧ صفر مدخل: لا نصّ عربي في الجدول ⇒ فشل بصوت عالٍ ───────────────── */
   res.checks++;
@@ -560,47 +626,111 @@ function audit(text, label) {
   res.counts.commentArabic = commentArabic;
   res.counts.commentLines = commentLines;
 
-  /* ── ⑪ عربية **بلا نصّ حرفيّ**: `String.fromCharCode(0x…)` / `codePointAt` ──
-   * ثقب قيس فعلاً: `toast(String.fromCharCode(0x639, 0x634))` لا يحمل نصّاً
-   * حرفياً فيه عربية، فيمرّ من كل فحص نصّي أعلاه — وهو **بناء ديناميكي للنصّ**،
-   * أي مخالفة §٢٦ بعينها لا مجرّد التفاف على المرشّح. */
+  /* ── ⑪ بناء نصّ ديناميكي: **قائمة سماح بعدد لكل موضع** ────────────────────
+   * **لماذا قائمة سماح ولا ملاحقة فكّ الترميز**: جاسوس مستقلّ أثبت **عشر طرق**
+   * تُنتج عربية بلا نصّ عربي، وكلّ ملاحقةٍ لفكّ ترميز تُخترق بالحادية عشرة
+   * (`decodeURIComponent` · `unescape` · `JSON.parse` بمفتاح مزدوج الهروب ·
+   * `Buffer.from(…,'hex')` · `atob` مجزّأ بحشو · `Array.from` + متغيّر ·
+   * `parseInt('639',16)` …). والصواب **نمط `check-separation-entry.cjs` نفسه**:
+   * كل موضع **يستطيع** بناء نصّ ديناميكي مُسجَّل صراحةً بعدد متوقَّع وتعليل، فموضع
+   * جديد أو عدد متغيّر **يُسقط الحارس مسمّياً الملف والسطر والعدد المتوقَّع**.
+   * فالعدّ هو المحروس لا نتيجة الفكّ — فلا يُخترق بطريقة لم تُفكّر بها. */
   res.checks++;
-  const dynArab = [];
-  const fcRe = /\bfromCharCode\s*\(([^)]*)\)|\bfromCodePoint\s*\(([^)]*)\)/g;
-  let fm;
-  while ((fm = fcRe.exec(noCom)) !== null) {
-    const args = (fm[1] !== undefined ? fm[1] : fm[2]) || '';
-    const nums = args.match(/0[xX][0-9a-fA-F]+|\b\d+\b/g) || [];
-    const hit = nums.map((x) => parseInt(x, /^0[xX]/.test(x) ? 16 : 10))
-      .filter((cp) => cp >= 0x0600 && cp <= 0x06FF);
-    if (hit.length) {
-      dynArab.push(lineOf(text, fm.index) + ' (' + hit.map((c) => 'U+' + c.toString(16).toUpperCase()).join(' ') + ')');
+  const DYN_SITES = [
+    { name: 'atob(', re: /\batob\s*\(/g, sites: 0, why: 'لا موضع: لا فكّ base64 في هذا الملف' },
+    { name: 'btoa(', re: /\bbtoa\s*\(/g, sites: 0, why: 'لا موضع: لا ترميز base64' },
+    { name: 'decodeURIComponent(', re: /\bdecodeURIComponent\s*\(/g, sites: 0, why: 'لا موضع: لا فكّ ترميز URI (وهو أشيع طرق الإخفاء)' },
+    { name: 'decodeURI(', re: /\bdecodeURI\s*\(/g, sites: 0, why: 'لا موضع' },
+    { name: 'encodeURIComponent(', re: /\bencodeURIComponent\s*\(/g, sites: 0, why: 'لا موضع: الإضافة لا تبني معاملات URL (كل شيء عبر Native Messaging)' },
+    { name: 'unescape(', re: /\bunescape\s*\(/g, sites: 0, why: 'لا موضع (ودالّة مهجورة)' },
+    { name: 'escape(', re: /\bescape\s*\(/g, sites: 0, why: 'لا موضع (ودالّة مهجورة)' },
+    { name: 'String.fromCharCode(', re: /\bString\s*\.\s*fromCharCode\s*\(/g, sites: 0, why: 'لا موضع: لا يُبنى نصّ من رموز' },
+    { name: 'String.fromCodePoint(', re: /\bString\s*\.\s*fromCodePoint\s*\(/g, sites: 0, why: 'لا موضع' },
+    { name: 'String.raw', re: /\bString\s*\.\s*raw\b/g, sites: 0, why: 'لا موضع: القوالب هنا عادية (والهروب يفكّه المُحلِّل)' },
+    { name: 'JSON.parse(', re: /\bJSON\s*\.\s*parse\s*\(/g, sites: 0, why: 'لا موضع: لا يُحلَّل JSON في الصفحة — الردود كائنات جاهزة من الجسر' },
+    { name: 'Buffer.from(', re: /\bBuffer\s*\.\s*from\s*\(/g, sites: 0, why: 'لا موضع: لا Buffer في سياق صفحة (وهو أصلاً غير متاح في المتصفّح)' },
+    { name: 'eval(', re: /\beval\s*\(/g, sites: 0, why: 'لا موضع (و§٢٦ يمنعه أصلاً)' },
+  ];
+  const dynViolations = [];
+  for (const p of DYN_SITES) {
+    const n = (noCom.match(p.re) || []).length;
+    if (n !== p.sites) {
+      const first = noCom.search(p.re);
+      dynViolations.push(p.name + ': المتوقَّع ' + p.sites + ' ووُجد ' + n +
+        (first >= 0 ? ' (أول موضع: سطر ' + lineOf(text, first) + ')' : '') + ' — تعليل المسموح: ' + p.why);
     }
   }
-  if (dynArab.length) {
-    res.failures.push('✗ ' + dynArab.length + ' موضعاً يبني عربية بلا نصّ حرفيّ (' + label + '): ' +
-      dynArab.join(' · ') + ' — النصّ لا يُبنى ديناميكياً (§٢٦)، ويُخفى عن هذا الحارس.');
+  if (dynViolations.length) {
+    res.failures.push('✗ بناء نصّ ديناميكي خارج القائمة المسموحة — ' + label + ': ' +
+      dynViolations.join(' · ') +
+      ' — سجّل الموضع بعدده وتعليله إن كان مشروعاً، وإلا فلا يُبنى النصّ (§٢٦).');
+  }
+  res.counts.dynPatterns = DYN_SITES.length;
+
+  /* ── ⑫ عربية داخل **تعبير نمطي** ───────────────────────────────────────────
+   * جاسوس مستقلّ أظهر أن `if (/جاهز|تم التجهيز/.test(procBtn.textContent))` يمرّ
+   * من الحارس: المُحلِّل يتخطّى التعبير النمطي (فلا يراه نصّاً)، وهو **نصّ واجهة
+   * مقارَن به** فينكسر بالإنجليزية. وقائمة سماح بعدد كالموضع ⑪. */
+  res.checks++;
+  const AR_IN_REGEX = 0;   // لا موضع: لا تعبير نمطي فيه عربية في هذا الملف
+  const regexArabic = [];
+  {
+    const re = /\/(?![/*])(?:\\.|\[(?:\\.|[^\]\\])*\]|[^/\\\n])+\/[gimsuy]*/g;
+    let m;
+    while ((m = re.exec(noCom)) !== null) {
+      if (AR.test(m[0])) regexArabic.push(lineOf(text, m.index) + ':' + m[0].slice(0, 40));
+    }
+  }
+  if (regexArabic.length !== AR_IN_REGEX) {
+    res.failures.push('✗ عربية داخل تعبير نمطي — ' + label + ': المتوقَّع ' + AR_IN_REGEX +
+      ' ووُجد ' + regexArabic.length + ' (' + regexArabic.join(' · ') +
+      ') — المقارنة بنصّ معروض تنكسر بالإنجليزية؛ سجّلها في القائمة أو أخرجها من الشيفرة.');
   }
 
-  /* ── ⑫ عربية **مُرمَّزة** (base64 ⇒ atob / Buffer.from) ────────────────────
-   * ثقب قيس بمحاولة إخفاء: `toast(atob('2YbYtSDYudix2KjZig=='))` — لا محرف عربي
-   * في الشيفرة إطلاقاً، فيمرّ من كل فحص أعلاه. والعلاج: يُفكّ كل نصّ حرفيّ يُمرَّر
-   * إلى `atob(` أو `Buffer.from(…,'base64')`، ويُقاس الناتج. */
+  /* ── ⑬ **وجود المفتاح**: كل `t('…')` في الملف له مدخل في الجدول ──────────
+   * عطل مقيس أثبته جاسوس مستقلّ في jsdom: `t('cancel.done.typo')` يمرّ من الحارس،
+   * و`t()` تُرجع `undefined` ⇒ **توست فارغ بلا أيّ خطأ**، و`fill(undefined, …)`
+   * ترمي `TypeError` فيُسقط مسار جلب الصوت. والحارس كان يقيس **المفاتيح الميتة**
+   * (المعرفة وغير المستعملة) ولا يقيس **المستعملة وغير المعرفة** — وهو الاتجاه
+   * الذي يظهر على الشاشة.
+   * والمفاتيح تُستخرج من نداءات `t(` بمفتاح نصّ حرفيّ (المحسوب يُسقطه الفحص ⑩). */
   res.checks++;
-  const decoded = [];
-  {
-    const decRe = /\b(?:atob|btoa)\s*\(\s*(['"])([A-Za-z0-9+/=\s]{8,})\1|\bBuffer\s*\.\s*from\s*\(\s*(['"])([A-Za-z0-9+/=\s]{8,})\3\s*,\s*(['"])base64\5/gs;
-    let dm;
-    while ((dm = decRe.exec(noCom)) !== null) {
-      const b64 = (dm[2] !== undefined ? dm[2] : dm[4]) || '';
-      let txt = '';
-      try { txt = Buffer.from(b64.replace(/\s+/g, ''), 'base64').toString('utf8'); } catch { txt = ''; }
-      if (AR.test(txt)) decoded.push(lineOf(text, dm.index) + ' ⇒ «' + txt.slice(0, 40) + '»');
-    }
+  const tKeys = [];
+  for (let i = 0; i < noCom.length; i++) {
+    if (noCom[i] !== 't') continue;
+    const prev = i > 0 ? noCom[i - 1] : '';
+    if (/[A-Za-z0-9_$.]/.test(prev)) continue;
+    const head = noCom.slice(Math.max(0, i - 24), i);
+    if (/\bfunction\s+$/.test(head) || /\b(?:const|let|var)\s+$/.test(head)) continue;
+    let j = i + 1;
+    while (noCom[j] === ' ' || noCom[j] === '\t' || noCom[j] === '\n') j++;
+    if (noCom[j] !== '(') continue;
+    j++;
+    while (noCom[j] === ' ' || noCom[j] === '\t' || noCom[j] === '\n') j++;
+    const q = noCom[j];
+    if (q !== "'" && q !== '"') continue;
+    let k = j + 1, s = '';
+    while (k < noCom.length && noCom[k] !== q) { if (noCom[k] === '\\') { k++; } s += noCom[k]; k++; }
+    tKeys.push({ key: s, line: lineOf(text, i) });
   }
-  if (decoded.length) {
-    res.failures.push('✗ ' + decoded.length + ' نصّاً عربياً **مُرمَّزاً** (base64) في ' + label + ': ' +
-      decoded.join(' · ') + ' — الإخفاء بالترميز لا يُعفي النصّ من الجدول.');
+  const unknown = tKeys.filter((x) => !(x.key in ar) || !(x.key in en));
+  if (unknown.length) {
+    res.failures.push('✗ ' + unknown.length + ' نداءً بمفتاح غير موجود في الجدول — ' + label + ': ' +
+      unknown.map((x) => 'سطر ' + x.line + ': t(\'' + x.key + '\')').join(' · ') +
+      ' — `t()` تُرجع undefined فيظهر توست فارغ أو يرمي fill.');
+  }
+  res.counts.tCalls = tKeys.length;
+  res.counts.tKeysUnique = new Set(tKeys.map((x) => x.key)).size;
+  res.checks++;
+  if (tKeys.length === 0) {
+    res.failures.push('✗ صفر مدخل: لا نداء `t(` واحد في ' + label + ' — فحص وجود المفاتيح لم يقس شيئاً.');
+  }
+  const dead = arKeys.filter((k) => !tKeys.some((x) => x.key === k));
+  res.counts.deadKeys = dead.length;
+  res.checks++;
+  if (dead.length) {
+    res.failures.push('✗ ' + dead.length + ' مفتاحاً معرَّفاً ولا يُستعمل في ' + label + ': ' +
+      dead.join(' · ') + ' — مفتاح ميت يُوهم بتغطية غير قائمة.');
   }
 
   return res;
@@ -610,6 +740,48 @@ function lineOf(text, idx) {
   let n = 1;
   for (let i = 0; i < idx && i < text.length; i++) if (text[i] === '\n') n++;
   return n;
+}
+
+/** شظايا جسم قالب بين `${…}` المتوازنة (والهروب يُحترم). */
+function templateChunks(body) {
+  const chunks = [];
+  let cur = '', i = 0;
+  while (i < body.length) {
+    const c = body[i];
+    if (c === '\\') { cur += body.substr(i, 2); i += 2; continue; }
+    if (c === '$' && body[i + 1] === '{') {
+      chunks.push(cur); cur = '';
+      let d = 1, str = null;
+      i += 2;
+      while (i < body.length && d > 0) {
+        const e = body[i];
+        if (str) { if (e === '\\') { i += 2; continue; } if (e === str) str = null; i++; continue; }
+        if (e === "'" || e === '"' || e === '`') { str = e; i++; continue; }
+        if (e === '{') d++;
+        if (e === '}') d--;
+        i++;
+      }
+      continue;
+    }
+    cur += c; i++;
+  }
+  chunks.push(cur);
+  return chunks;
+}
+
+/** وحدات النصّ في مقطع مصدر: سلسلة كاملة = وحدة · قالب = وحدة لكل شظيّة. */
+function unitsOf(src) {
+  const out = [];
+  for (const l of scanLiterals(src, false)) {
+    if (l.kind === 'str') { out.push({ t: l.text.slice(1, -1), line: l.line, kind: 'str' }); continue; }
+    if (l.kind === 'inner' || l.kind === 'tpl') {
+      if (l.kind === 'inner') continue;
+      for (const ch of templateChunks(src.slice(l.start + 1, l.end - 1))) {
+        if (ch) out.push({ t: ch, line: l.line, kind: 'tpl-chunk' });
+      }
+    }
+  }
+  return out;
 }
 
 /* ══ التشغيل ═══════════════════════════════════════════════════════════════ */
@@ -635,6 +807,24 @@ function main() {
   console.log('  نصّ عربي **داخل الجدول** (المدخل المقيس): ' + (r.counts.tableAr === undefined ? 0 : r.counts.tableAr));
   console.log('  محارف عربية **داخل تعليق** (لا تُعدّ نصّ واجهة): ' + (r.counts.commentArabic === undefined ? 0 : r.counts.commentArabic) +
     ' على ' + (r.counts.commentLines === undefined ? 0 : r.counts.commentLines) + ' سطراً');
+  /* الجرد **بنيوي ومحسوب من هذا الملف** — لا من سكربت خارجي مثبَّت على شجرة أخرى.
+   * والسطر صريح بالمقياس المستعمل ومقارنته بالمقياس الآخر، لأن «١٨/٣٥» المنشور
+   * يخلط مقياسين: السلسلة/القالب **كاملة** (ما يعدّه ARCHIVE/count-arabic.cjs)
+   * مقابل **الوحدة النصّية** (شظية القالب بين `${…}` معدودةً وحدها) — والفرق
+   * بينهما مطابقة عابرة في تعبير ARCHIVE لا نصوص حقيقية. */
+  console.log('  جرد بنيوي: مواضع عربية خارج الجدول = ' + (r.counts.outsideUnits === undefined ? '—' : r.counts.outsideUnits) +
+    ' (المطلوب 0) · مواضع عربية داخل الجدول = ' + (r.counts.tableUnits === undefined ? '—' : r.counts.tableUnits) +
+    ' · قيم فريدة = ' + (r.counts.uniqueAr === undefined ? '—' : r.counts.uniqueAr) +
+    ' · مفاتيح = ' + (r.counts.ar === undefined ? '—' : r.counts.ar));
+  if (r.counts.dupPairs && r.counts.dupPairs.length) {
+    console.log('  أزواج عربية متطابقة (تفسّر فرق المواضع/الفريد): ' + r.counts.dupPairs.join(' · '));
+  }
+  console.log('  نداءات t() = ' + (r.counts.tCalls === undefined ? '—' : r.counts.tCalls) +
+    ' · مفاتيح فريدة مستعملة = ' + (r.counts.tKeysUnique === undefined ? '—' : r.counts.tKeysUnique) +
+    ' · مفاتيح ميتة = ' + (r.counts.deadKeys === undefined ? '—' : r.counts.deadKeys) +
+    ' · مفاتيح بعناصر نائبة = ' + (r.counts.placeholderKeys === undefined ? '—' : r.counts.placeholderKeys));
+  console.log('  قائمة السماح لبناء النصّ الديناميكي: ' + (r.counts.dynPatterns === undefined ? '—' : r.counts.dynPatterns) +
+    ' نمطاً، كلّها بعدد 0 موضعاً');
   console.log('\n=== ٣) الأحكام ===');
 
   const shown = Math.max(r.checks, 1);
