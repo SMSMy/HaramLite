@@ -2,11 +2,20 @@
 //!
 //! All functions are pure path-in/path-out so they are unit-testable without
 //! a running Tauri app; thin `#[tauri::command]` wrappers live in lib.rs.
+//!
+//! **م٢ — لا نداء يحجب بلا مقبض**: كانت هنا **ستّة** نداءات `.output()`
+//! (`:173` · `:447` · `:965` · `:989` · `:1249` · `:1443` في الترقيم القديم)
+//! تُشغّل ffmpeg/ffprobe بلا مقبض قابل للقتل ⇒ لا سبيل لإيقاف مهمّة جارية.
+//! والآن كلّها تمرّ بـ`proc::run_cancellable`: `spawn()` + تسجيل المقبض في
+//! سِجلّ المهمّة + استطلاع كل 200 مللي مع فحص رمز الإلغاء ⇒ عند الإلغاء
+//! `kill_tree` **فوراً** ثم خطأ «أُلغيت المعالجة». وسلوك الخطأ محفوظ: عند
+//! الخروج ≠0 تُقرأ `stderr` وتُعاد آخر أسطرها.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::Serialize;
+
+use crate::proc;
 
 /// Pixel format pinned on every encoder: `h264_mf` accepts only
 /// `nv12/yuv420p/d3d11`, and while ffmpeg does insert the conversion on its own,
@@ -58,6 +67,10 @@ pub enum MediaError {
     ToolMissing(String),
     SpawnFailed(String),
     InvalidOutput(String),
+    /// **الإلغاء** (م٢): صار مساراً صريحاً لا «مخرجات غير صالحة» — لأن الرسالة
+    /// التي يراها المستخدم بعد ضغط زر الإيقاف يجب أن تقول «أُلغيت» لا «ffmpeg
+    /// فشل»، ولأن المستدعي يحتاج تمييز الإلغاء عن العطل.
+    Cancelled(String),
 }
 
 impl std::fmt::Display for MediaError {
@@ -66,6 +79,7 @@ impl std::fmt::Display for MediaError {
             Self::ToolMissing(t) => write!(f, "أداة مفقودة: {t} — ضعها في مجلد bin بجانب التطبيق"),
             Self::SpawnFailed(e) => write!(f, "فشل تشغيل العملية: {e}"),
             Self::InvalidOutput(e) => write!(f, "مخرجات غير صالحة: {e}"),
+            Self::Cancelled(e) => write!(f, "{e}"),
         }
     }
 }
@@ -150,14 +164,51 @@ pub(crate) fn resolve_tool_in(
     Err(MediaError::ToolMissing(tool.to_string()))
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(test, target_os = "windows"))]
 use std::os::windows::process::CommandExt;
 
-fn make_cmd<S: AsRef<std::ffi::OsStr>>(program: S) -> Command {
-    let mut cmd = Command::new(program);
+/// بناء أمر بعلم «بلا نافذة» — **للاختبارات وحدها** بعد م٢: مسار المنتج لم
+/// يبقَ فيه `Command` مباشر أصلاً (كلّه يمرّ بـ`proc::run_cancellable` الذي
+/// يضع العلم بنفسه)، وبقاؤه هنا لأن اختبارات العيّنات تُشغّل ffmpeg بنفسها.
+#[cfg(test)]
+fn make_cmd<S: AsRef<std::ffi::OsStr>>(program: S) -> std::process::Command {
+    let mut cmd = std::process::Command::new(program);
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
     cmd
+}
+
+/// يشغّل أداة **قابلة للقتل**: `spawn()` بمقبض مسجَّل في سِجلّ المهمّة،
+/// واستطلاع كل 200 مللي مع فحص رمز الإلغاء ⇒ عند الإلغاء تُقتل **الشجرة
+/// كلها** ويُعاد خطأ «أُلغيت المعالجة». وبلا مهمّة جارية (نداء تشخيص) يسلك
+/// المسار نفسه بلا إلغاء — فلا يبقى نداء يحجب بلا مقبض.
+///
+/// `stderr_tail` يختار سلوك الخطأ: `false` = لا حكم على رمز الخروج (سلوك
+/// `run_tool` القديم الذي لا يفحصه عمداً)، و`true` = فشل ⇒ آخر أسطر `stderr`
+/// (سلوك `run_ffmpeg` القديم حرفاً).
+fn run_tool_cancellable(
+    program: &Path,
+    args: &[&str],
+    stderr_tail: bool,
+) -> Result<proc::ToolOutput, MediaError> {
+    let out = proc::run_cancellable(program, args, proc::current_cancel().as_ref())
+        .map_err(MediaError::SpawnFailed)?;
+    if stderr_tail && !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        tracing::error!(target: "media", "ffmpeg failed: {err}");
+        return Err(MediaError::InvalidOutput(
+            err.lines().last().unwrap_or_default().to_string(),
+        ));
+    }
+    Ok(out)
+}
+
+/// هل هذا الخطأ إلغاء؟ (يُستعمل في التحويل إلى `MediaError::Cancelled`.)
+fn cancelled_error(e: MediaError) -> MediaError {
+    match e {
+        MediaError::SpawnFailed(m) if m == proc::CANCELLED => MediaError::Cancelled(m),
+        other => other,
+    }
 }
 
 /// يشغّل أداة مرفقة ويُرجع stdout (ويسقط إلى stderr إذا كان stdout فارغاً).
@@ -167,11 +218,11 @@ fn make_cmd<S: AsRef<std::ffi::OsStr>>(program: S) -> Command {
 /// وعلى من يحتاج **حكماً** أن يتحقق هو مما حلّله؛ انظر `probe`، حيث كان `{}`
 /// الفارغ من ffprobe على ملف تالف يُقرأ فحصاً ناجحاً لوسائط فارغة
 /// (عطل ميداني: مصفوفة 0.2.7 صفّ 3.1 — أُصلح في `probe` وأُثبِّت باختبار).
+///
+/// **م٢**: صار قابلاً للقتل (كان `.output()` يحجب بلا مقبض) — والاستدعاء خارج
+/// مهمّة (تشخيص الإقلاع) يسلك المسار نفسه بلا إلغاء.
 fn run_tool(tool_path: &Path, args: &[&str]) -> Result<String, MediaError> {
-    let out = make_cmd(tool_path)
-        .args(args)
-        .output()
-        .map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
+    let out = run_tool_cancellable(tool_path, args, false).map_err(cancelled_error)?;
     let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
     if text.trim().is_empty() {
         text = String::from_utf8_lossy(&out.stderr).into_owned();
@@ -441,18 +492,10 @@ pub fn remux_video_with_audio(
     Ok(out_path.to_path_buf())
 }
 
+/// تشغيل ffmpeg **قابل للقتل**، وسلوك الخطأ محفوظ حرفاً: عند الخروج ≠0 تُقرأ
+/// `stderr` وتُعاد **آخر أسطرها** (`media.rs` القديم:449-454) — لم يُفقد شيء.
 fn run_ffmpeg(ffmpeg: &Path, args: &[&str]) -> Result<(), MediaError> {
-    let out = make_cmd(ffmpeg)
-        .args(args)
-        .output()
-        .map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
-    if !out.status.success() {
-        let err = String::from_utf8_lossy(&out.stderr);
-        tracing::error!(target: "media", "ffmpeg failed: {err}");
-        return Err(MediaError::InvalidOutput(
-            err.lines().last().unwrap_or_default().to_string(),
-        ));
-    }
+    run_tool_cancellable(ffmpeg, args, true).map_err(cancelled_error)?;
     Ok(())
 }
 
@@ -960,9 +1003,8 @@ pub fn has_nvenc() -> bool {
         let Ok(ffmpeg) = resolve_tool("ffmpeg") else {
             return false;
         };
-        let out = make_cmd(&ffmpeg)
-            .args(["-hide_banner", "-encoders"])
-            .output();
+        // م٢: كان `.output()` بلا مقبض — صار قابلاً للقتل مثل كل نداء أداة.
+        let out = run_tool_cancellable(&ffmpeg, &["-hide_banner", "-encoders"], false);
         match out {
             Ok(o) => {
                 let text = String::from_utf8_lossy(&o.stdout);
@@ -984,9 +1026,8 @@ pub fn has_h264_mf() -> bool {
         let Ok(ffmpeg) = resolve_tool("ffmpeg") else {
             return false;
         };
-        let out = make_cmd(&ffmpeg)
-            .args(["-hide_banner", "-encoders"])
-            .output();
+        // م٢: كان `.output()` بلا مقبض — صار قابلاً للقتل مثل كل نداء أداة.
+        let out = run_tool_cancellable(&ffmpeg, &["-hide_banner", "-encoders"], false);
         match out {
             Ok(o) => {
                 let text = String::from_utf8_lossy(&o.stdout);
@@ -1244,10 +1285,9 @@ pub fn export_video_with_cuts(
         );
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
         let t0 = std::time::Instant::now();
-        let status = make_cmd(&ffmpeg)
-            .args(&arg_refs)
-            .output()
-            .map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
+        // م٢: الترميز كان `.output()` يحجب بلا مقبض ⇒ لا إلغاء حتى ينتهي
+        // الملف. والآن قتل فوري لشجرة ffmpeg عند الإلغاء.
+        let status = run_tool_cancellable(&ffmpeg, &arg_refs, false).map_err(cancelled_error)?;
 
         if status.status.success() {
             let fell_back = *enc != first;
@@ -1438,10 +1478,8 @@ pub fn transcode_to_bitrate(
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
 
     let t0 = std::time::Instant::now();
-    let out = make_cmd(&ffmpeg)
-        .args(&arg_refs)
-        .output()
-        .map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
+    // م٢: كان `.output()` بلا مقبض — صار قابلاً للقتل مثل كل نداء أداة.
+    let out = run_tool_cancellable(&ffmpeg, &arg_refs, false).map_err(cancelled_error)?;
     if !out.status.success() {
         let last = String::from_utf8_lossy(&out.stderr)
             .lines()
