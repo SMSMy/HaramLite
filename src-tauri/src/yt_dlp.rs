@@ -1878,7 +1878,9 @@ fn main() {
         std::fs::create_dir_all(&out_dir).expect("مجلد الخرج");
 
         // المنفذ الوحيد: **مسار الثنائي** — وكل ما بعده كود المنتج.
-        *ytdlp_test_override().lock().unwrap_or_else(|p| p.into_inner()) = Some(fake.to_path_buf());
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(fake.to_path_buf());
 
         let (tx_id, rx_id) = std::sync::mpsc::channel::<u64>();
         let (tx_done, rx_done) = std::sync::mpsc::channel::<()>();
@@ -1890,7 +1892,8 @@ fn main() {
         let worker = std::thread::spawn(move || {
             // التسجيل **على خيط المهمّة** (كما يفعل تلغرام/الجسر) حين نطلب
             // ذلك؛ ومسار الواجهة لا يسجّل شيئاً (لا سياق على خيطه).
-            let early = with_ctx.then(|| crate::slots::register_early("telegram:cancel-probe", None));
+            let early =
+                with_ctx.then(|| crate::slots::register_early("telegram:cancel-probe", None));
             let _ = tx_id.send(early.as_ref().map(|e| e.id()).unwrap_or(0));
             let cancel = match early.as_ref() {
                 Some(e) => e.cancel_flag(),
@@ -1941,16 +1944,19 @@ fn main() {
         let before = crate::proc::DIRECT_KILLS.load(Ordering::SeqCst);
         let t_cancel = Instant::now();
         if with_ctx {
-            assert!(crate::slots::cancel_job(job_id), "cancel_job على مهمّة جارية");
+            assert!(
+                crate::slots::cancel_job(job_id),
+                "cancel_job على مهمّة جارية"
+            );
         } else {
             flag.store(true, Ordering::SeqCst);
         }
         let direct = crate::proc::DIRECT_KILLS.load(Ordering::SeqCst) - before;
 
         // المهمّة تنتهي (وهذا **قلب العطل**: بلا قتل تبقى معلّقة على الأنبوب).
-        rx_done.recv_timeout(Duration::from_secs(60)).expect(
-            "المهمّة لم تنتهِ بعد الإلغاء (العطل الأصلي: تنتظر خروج yt-dlp إلى الأبد)",
-        );
+        rx_done
+            .recv_timeout(Duration::from_secs(60))
+            .expect("المهمّة لم تنتهِ بعد الإلغاء (العطل الأصلي: تنتظر خروج yt-dlp إلى الأبد)");
         let ended = t_cancel.elapsed();
         let failed = worker.join().expect("خيط المهمّة");
 
@@ -1975,7 +1981,9 @@ fn main() {
             probe.ended,
             probe.progress_calls
         );
-        *ytdlp_test_override().lock().unwrap_or_else(|p| p.into_inner()) = None;
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = None;
         let _ = std::fs::remove_dir_all(&tmp);
         probe
     }
@@ -1984,9 +1992,8 @@ fn main() {
     /// وصورة العمليتين (اسم المجلد هو الذي يختار الصورة).
     #[cfg(windows)]
     fn build_fake_ytdlp(root: &Path) -> (PathBuf, PathBuf) {
-        let rustc = find_rustc().expect(
-            "rustc غير موجود — لا يُبنى الثنائي المزيّف. الحارس يفشل بصوت عالٍ ولا يتخطّى صامتاً",
-        );
+        let rustc = find_rustc()
+            .expect("rustc غير موجود — لا يُبنى الثنائي المزيّف. الحارس يفشل بصوت عالٍ ولا يتخطّى صامتاً");
         std::fs::create_dir_all(root).expect("مجلد البناء");
         let src = root.join("fake_ytdlp.rs");
         std::fs::write(&src, FAKE_YTDLP_SRC).expect("كتابة مصدر المزيّف");
@@ -2020,11 +2027,15 @@ fn main() {
     /// القديم شغّل `ping` (‏المسار المسجَّل) بينما yt-dlp كان يسلك مساراً آخر.
     ///
     /// **ولا يأخذ `registry_test_lock`**: مستدعيه يملكه (‏Mutex غير تراكبي).
+    ///
+    /// **ويقيس على صورة العمليتين** (‏مُشغّل + عامل — صورة yt-dlp الحقيقية
+    /// المقيسة): فبها يسقط القياس إن عاد المسار إلى `spawn` مباشر أو فُقدت مهمّة
+    /// النواة، بخلاف صورة العملية الواحدة التي يقتلها `taskkill` وحده.
     #[cfg(windows)]
     pub(crate) fn measure_download_cancel_secs() -> f64 {
         let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
-        let (single, _two) = build_fake_ytdlp(&root);
-        let probe = cancel_probe(&single, "measure", true);
+        let (_single, two) = build_fake_ytdlp(&root);
+        let probe = cancel_probe(&two, "measure", true);
         assert!(
             !pid_is_alive(probe.watched),
             "القياس باطل: العملية المزيّفة لم تمت (pid={})",
@@ -2267,7 +2278,10 @@ fn main() {
         );
 
         let t0 = Instant::now();
-        assert!(crate::slots::cancel_job(job_id), "cancel_job على مهمّة جارية");
+        assert!(
+            crate::slots::cancel_job(job_id),
+            "cancel_job على مهمّة جارية"
+        );
         let killed_at_cancel = ytdlp_pids();
         let outcome = rx_done
             .recv_timeout(Duration::from_secs(120))
