@@ -12,8 +12,19 @@
 //!
 //! **والتحديث في مكانه** بكتابة ذرّية عبر [`crate::atomic::write_atomic_str`]
 //! (مؤقت ← `sync_all` ← `rename`): لا يُقرأ ملفٌ نصفه مكتوب، ولا يبقى مؤقت
-//! يتيم. والقراءة-ثم-الزيادة-ثم-الكتابة تمرّ بـ[`lock`] واحد، فمعالَجتان
-//! لمستخدمٍ واحد لا تُسقط إحداهما زيادة الأخرى.
+//! يتيم.
+//!
+//! **والقفل ذو طبقتين، والثانية ليست ترفاً** (جولة التفنيد، عطل ٢): قفلٌ داخل
+//! العملية (`Mutex`) يُسلسل خيوط التطبيق، لكنه **لا يرى عملية أخرى** — ومسار
+//! CLI عمليةٌ ثانية تعمل فعلاً (المُقيِّمات و`release:verify` تشغّله، والمالك قد
+//! يشغّله والتطبيق مفتوح). قِيس الفقد: ٤ عمليات × ٥٠ تسليماً ⇒ سُجّل ٥٢ من ٢٠٠.
+//! فالقفل الحاكم صار **فتحاً حصرياً لملف قفل** (`share_mode(0)`): مقبضٌ يمنع
+//! غيره من فتح المسار، **وتُطلقه النواة بموت صاحبه** — فلا قفل يتيم بعد انهيار،
+//! ولا انتظار أبدي (مهلة [`LOCK_WAIT`] ثم خطأ مُعلَن).
+//!
+//! **وحدّه المعلَن**: على غير ويندوز لا يُنفَّذ الحصر (`std` لا يعطي `share_mode`
+//! هناك) — فالقفل يعود داخل العملية وحدها، والضياع بين العمليات يبقى قائماً على
+//! تلك المنصّة. والمنتج على ويندوز (`slots.rs` و`pipeline.rs` يصرّحان بالمثل).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -22,6 +33,13 @@ use serde::{Deserialize, Serialize};
 
 /// المجلد تحت مجلد بيانات التطبيق (`paths::data_dir`).
 pub const STATS_DIR: &str = "stats";
+/// **قفل عبور العمليات**: ملفٌ بجانب مجلد الإحصاءات لا داخله، فلا يظهر في
+/// تعداد سجلات المستخدمين (ت٧ يفحص التعداد).
+const LOCK_FILE: &str = "stats.lock";
+/// كم يُنتظر القفل قبل أن يُعلَن الفشل — وحدٌّ صريح لا انتظار أبدي.
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+/// الفاصل بين محاولات أخذ القفل.
+const LOCK_POLL: std::time::Duration = std::time::Duration::from_millis(2);
 /// وسم المؤقت — الشكل نفسه الذي تستعمله بقية كتابات التطبيق.
 const TAG: &str = "json";
 /// أقصى طول لاسمٍ محفوظ. **سقفنا نحن** لا سقف تلغرام: الغرض أن يبقى الملف
@@ -37,13 +55,77 @@ pub struct UserStats {
     pub bytes: u64,
 }
 
-/// قفل القراءة-التعديل-الكتابة. مستخدمٌ واحد قد تكون له مهمّتان معاً (السقف
-/// العام يسمح بذلك)، والقراءة والكتابة على الملف نفسه بلا قفل تُسقط زيادة.
+/// قفل **خيوط هذه العملية** — الطبقة الأولى: بلا نداء نظام في الحالة العادية
+/// (خيطان في التطبيق نفسه يكتبان لمستخدمٍ واحد).
 fn lock() -> MutexGuard<'static, ()> {
     static L: OnceLock<Mutex<()>> = OnceLock::new();
     L.get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap_or_else(|p| p.into_inner())
+}
+
+/// مسار ملف القفل: `<data_dir>/telegram/stats.lock` — **جارُ المجلد لا داخله**.
+fn lock_path(app_data: &Path) -> PathBuf {
+    app_data.join("telegram").join(LOCK_FILE)
+}
+
+/// فتح ملف القفل **حصرياً** (ويندوز): `share_mode(0)` يمنع أي فتحٍ آخر للمسار
+/// ما دام المقبض مفتوحاً — وهي الحصرية الوحيدة التي **تُطلقها النواة بموت
+/// صاحبها**، فلا قفل يتيم.
+#[cfg(windows)]
+fn open_lock_exclusive(lock: &Path) -> std::io::Result<std::fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        // **بلا اقتطاع**: القفل مقبضٌ لا محتوى، واقتطاعُ ملفٍ يملكه غيرنا ممنوع
+        // (و`clippy` يطلب تعريف السلوك صراحةً).
+        .truncate(false)
+        .share_mode(0)
+        .open(lock)
+}
+
+/// خارج ويندوز: لا حصر بين العمليات (`std` لا يعطي `share_mode`) — الحدّ معلَن
+/// في رأس الملف، والقفل يبقى داخل العملية.
+#[cfg(not(windows))]
+fn open_lock_exclusive(lock: &Path) -> std::io::Result<std::fs::File> {
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(lock)
+}
+
+/// يأخذ القفل العابر للعمليات، أو يُعلن الفشل بعد [`LOCK_WAIT`].
+///
+/// و**الفشل يُعلَن** (`Err`) ولا يُتابَع بلا قفل: كتابةٌ بلا قفل تُسقط زيادات
+/// غيرها بصمت — وهو العطل المقيس نفسه بعينه.
+fn acquire_file_lock(app_data: &Path) -> Result<std::fs::File, String> {
+    let path = lock_path(app_data);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("تعذّر إنشاء {}: {e}", parent.display()))?;
+    }
+    let deadline = std::time::Instant::now() + LOCK_WAIT;
+    loop {
+        match open_lock_exclusive(&path) {
+            Ok(f) => return Ok(f),
+            Err(e) => {
+                // `ERROR_SHARING_VIOLATION` (32) ⇒ غيره يمسكه الآن: انتظار.
+                let held = e.raw_os_error() == Some(32);
+                if !held || std::time::Instant::now() >= deadline {
+                    return Err(format!(
+                        "تعذّر أخذ قفل الإحصاءات {} بعد {:?}: {e}",
+                        path.display(),
+                        LOCK_WAIT
+                    ));
+                }
+                std::thread::sleep(LOCK_POLL);
+            }
+        }
+    }
 }
 
 /// مجلد الإحصاءات: `<data_dir>/telegram/stats`.
@@ -78,7 +160,11 @@ pub fn note_delivery(
     name: &str,
     bytes: u64,
 ) -> Result<UserStats, String> {
-    let _g = lock();
+    let _thread = lock();
+    // **والقفل العابر للعمليات يُؤخذ قبل القراءة لا بعدها** (جولة التفنيد،
+    // عطل ٢): القراءة-ثم-الزيادة-ثم-الكتابة بلا حصرٍ بين العمليات تُسقط زيادة
+    // العملية الأخرى — قِيس ٥٢ من ٢٠٠ بين أربع عمليات.
+    let _file = acquire_file_lock(app_data)?;
     let mut rec = load(app_data, id).unwrap_or_default();
     rec.id = id;
     let clean = clean_name(name);
@@ -125,8 +211,15 @@ pub fn human_size(bytes: u64) -> String {
 }
 
 /// نصّ `/stats` — **من الملف وحده**: الاسم والـID والعدد والحجم كلها من السجلّ،
-/// ولا يُحصى هنا شيء آخر (لا مهامّ جارية ولا طابور ولا معلَّقات). وبلا سجلّ
-/// تُقال الحقيقة بدل أصفارٍ مُختلقة.
+/// ولا يُحصى هنا شيء آخر (لا مهامّ جارية ولا طابور ولا معلَّقات).
+///
+/// **وبلا سجلّ لا تُعرَض أصفار** (جولة التفنيد، عطل ١): «الملفات: 0 · 0 بايت»
+/// في موضع قياسٍ تُقرأ **قياساً** — وهي ليست قياساً بل غياب سجلّ. ونصف الواجهة
+/// يرفضها صراحةً (`known:false` ⇒ لا أرقام). فالفرق بين الحالتين في النصّ:
+///
+/// * **لا سجلّ** ⇒ معرّفٌ يُعرَف من الرسالة، ولا رقمَ قياسٍ واحد؛
+/// * **سجلّ حقيقي** ⇒ أرقامه ولو كانت صفراً: ملفٌّ بحجم صفر يعطي «الملفات: 1»
+///   و«0 بايت» — وذاك **قياس** لا اختراع.
 pub fn text_for(id: i64, rec: Option<&UserStats>) -> String {
     match rec {
         Some(r) => format!(
@@ -141,7 +234,9 @@ pub fn text_for(id: i64, rec: Option<&UserStats>) -> String {
             human_size(r.bytes)
         ),
         None => format!(
-            "📊 لا سجلّ إحصاءات بعد لهذا المستخدم.\n🆔 المعرّف: {id}\n📎 الملفات: 0\n💾 الحجم: 0 بايت"
+            "📊 لا سجلّ إحصاءات بعد لهذا المستخدم.\n\
+             🆔 المعرّف: {id}\n\
+             (لا ملفات مسلَّمة بعد — فلا أرقام لأعرضها)"
         ),
     }
 }
@@ -271,7 +366,12 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// بلا سجلّ: `/stats` تقول «لا سجلّ» ولا تخترع أرقاماً، ولا تُنشئ ملفاً.
+    /// بلا سجلّ: `/stats` تقول «لا سجلّ» **ولا تعرض أرقام قياس** — والصفر
+    /// الحقيقي (ملفٌّ بحجم صفر) يبقى معروضاً لأنه قياس.
+    ///
+    /// **جولة التفنيد، عطل ١**: كان النصّ بلا سجلّ يقول «الملفات: 0 · 0 بايت»
+    /// في موضع قياسٍ — وهي أصفار مُختلقة يرفضها نصف الواجهة (`known:false`).
+    /// والمُفسَد: إعادة الأصفار إلى نصّ «لا سجلّ» ⇒ يسقط هذا الاختبار.
     #[test]
     fn a_missing_record_is_reported_as_missing_and_creates_no_file() {
         let root = tmp("missing");
@@ -280,6 +380,13 @@ mod tests {
         let text = text_for(7, None);
         assert!(text.contains("لا سجلّ"), "{text}");
         assert!(text.contains("المعرّف: 7"), "{text}");
+        for invented in ["الملفات: 0", "0 بايت", "الحجم: 0"] {
+            assert!(
+                !text.contains(invented),
+                "صفرٌ مُختلق في موضع قياس («{invented}») — لا سجلّ يعني لا رقم: {text}"
+            );
+        }
+
         // وبسجلّ: القيم الأربع من السجلّ نفسه.
         note_delivery(&root, 7, "Ali", 3 * 1024 * 1024).unwrap();
         let rec = load(&root, 7).unwrap();
@@ -287,6 +394,14 @@ mod tests {
         for want in ["Ali", "المعرّف: 7", "الملفات: 1", "3.0 م.ب"] {
             assert!(text.contains(want), "ناقص «{want}» في: {text}");
         }
+
+        // **والصفر المقيس يُعرَض**: ملفٌّ واحد بحجم صفر ⇒ «الملفات: 1» و«0 بايت»,
+        // وهذا ليس اختراعاً بل قياس (وإلا لكان الفرق بين الحالتين ضائعاً).
+        note_delivery(&root, 9, "Zero", 0).unwrap();
+        let zero = load(&root, 9).unwrap();
+        let ztext = text_for(9, Some(&zero));
+        assert!(ztext.contains("الملفات: 1"), "{ztext}");
+        assert!(ztext.contains("0 بايت"), "{ztext}");
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -316,5 +431,69 @@ mod tests {
         assert_eq!(human_size(1024), "1.0 ك.ب");
         assert_eq!(human_size(1024 * 1024), "1.0 م.ب");
         assert_eq!(human_size(3 * 1024 * 1024 * 1024), "3.00 ج.ب");
+    }
+
+    /// **جولة التفنيد، عطل ٢ — لا زيادة تُفقد بين العمليات.**
+    ///
+    /// أربع عمليات × ٤٠ تسليماً ⇒ المجموع **بالضبط** ١٦٠. والمُفسَد: قفلٌ داخل
+    /// العملية وحده (بلا حصرٍ بين العمليات) ⇒ القراءة-ثم-الزيادة-ثم-الكتابة
+    /// تتسابق فتُسقط زيادات (قِيس في الجولة السابقة: ٥٢ من ٢٠٠ بين أربع عمليات).
+    ///
+    /// والعملية الفرعية هي **ثنائي الاختبار نفسه** يُعاد تشغيله بمرشّح هذه
+    /// الدالة ووسمٍ بيئي يحمل مجلد العمل — فلا ثنائي مساعد ولا اعتمادية جديدة.
+    #[test]
+    fn no_delivery_is_lost_between_processes() {
+        const CHILD_ENV: &str = "HL_TGSTATS_CHILD_DIR";
+        const CHILD_TEST: &str = "tg_stats::tests::no_delivery_is_lost_between_processes";
+        const ROUNDS: u64 = 40;
+        const PROCS: usize = 4;
+
+        // —— فرع العملية الفرعية: يكتب ثم يخرج (يُعاد تشغيله من الأب).
+        if let Ok(shared) = std::env::var(CHILD_ENV) {
+            for _ in 0..ROUNDS {
+                note_delivery(Path::new(&shared), 7, "ابن", 1).expect("كتابة الابن");
+            }
+            return;
+        }
+
+        let root = tmp("xproc");
+        let exe = std::env::current_exe().expect("مسار ثنائي الاختبار");
+        let mut kids = Vec::new();
+        for _ in 0..PROCS {
+            kids.push(
+                std::process::Command::new(&exe)
+                    .args(["--exact", CHILD_TEST, "--test-threads=1"])
+                    // بلا أنابيب: لا نقرأ مخرجهما فلا نحتاجها (ولا نُعلّق).
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .env(CHILD_ENV, root.as_os_str())
+                    .spawn()
+                    .expect("تشغيل عملية فرعية"),
+            );
+        }
+        for mut k in kids {
+            let st = k.wait().expect("انتظار العملية الفرعية");
+            assert!(st.success(), "عملية فرعية فشلت: {st:?}");
+        }
+
+        let rec = load(&root, 7).expect("سجلّ بعد العمليات");
+        assert_eq!(
+            rec.files,
+            ROUNDS * PROCS as u64,
+            "ضاعت زيادات بين العمليات: سُجّل {} من {} — القفل لا يعبر العمليات",
+            rec.files,
+            ROUNDS * PROCS as u64
+        );
+        assert_eq!(
+            rec.bytes,
+            ROUNDS * PROCS as u64,
+            "الحجم لم يجمع كل الزيادات"
+        );
+        eprintln!(
+            "م٥/عبر العمليات: {PROCS} عمليات × {ROUNDS} تسليماً ⇒ سُجّل {} من {}",
+            rec.files,
+            ROUNDS * PROCS as u64
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
