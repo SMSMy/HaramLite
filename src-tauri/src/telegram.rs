@@ -18,9 +18,9 @@
 //! or the audio is sent instead, with the reason said out loud.
 
 use std::collections::{HashMap, HashSet};
-use std::io::{Cursor, Read};
+use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -39,6 +39,13 @@ pub const CLOUD_DOWNLOAD_MAX_BYTES: u64 = 20 * 1024 * 1024;
 /// We aim well under `CLOUD_SEND_MAX_BYTES`: the container adds overhead and a
 /// rejected upload is worse than a slightly smaller file.
 pub const CLOUD_TARGET_MB: f64 = 40.0;
+/// حدّ أعلى **صريح** لعدد الملفات المعلَّقة في المحادثة الواحدة (بانتظار اختيار
+/// الوضع). بدونه ينمو السِجلّ بلا سقف، ومع بلوغه يُقال للمستخدم صراحةً
+/// «أكمل الملفات الحالية أولاً» — لا إسقاط صامت ولا نموّ أبدي.
+pub const MAX_PENDING_PER_CHAT: usize = 10;
+/// صلاحية سؤال تجاوز السقف: بعده لا يُنفَّذ ضغطٌ قديم (ضغطة على سؤال منسيّ
+/// تُجاب بصراحة)، **والناتج يبقى في مجلد النتائج** — لا حذف (شرط قبول م٣).
+pub const OVERSIZE_TTL: Duration = Duration::from_secs(30 * 60);
 /// Video-bitrate floor under which the picture is not worth sending.
 pub use crate::media::MIN_WATCHABLE_VIDEO_KBPS;
 const AUDIO_KBPS: u32 = 96;
@@ -379,22 +386,23 @@ fn active_job_ids(chat_id: i64) -> Vec<u64> {
 }
 
 /// زر الإلغاء على رسالة التقدّم: `cancel:<chat_id>` — نفس معنى `/kill` حرفاً.
-/// **لوحة فارغة صريحة** — إزالة أزرار رسالة.
-///
-/// ولا يكفي أن «لا نُمرّر» لوحةً لإزالتها: `editMessageText` بلا `reply_markup`
-/// **يحذف** اللوحة، وهذا هو العطل المقيس الذي رآه المالك (زر الإلغاء يظهر ثانية
-/// ثم يختفي عند أول تعديل تقدّم). فصار التمرير في كل تعديل **صريحاً**: إمّا
-/// اللوحة المرادة، وإمّا هذه الفارغة للإزالة المتعمَّدة.
-fn empty_keyboard() -> Value {
-    json!({ "inline_keyboard": [] })
-}
-
 fn cancel_button(chat_id: i64) -> Value {
     json!({
         "inline_keyboard": [[
             { "text": "🛑 إلغاء", "callback_data": format!("cancel:{chat_id}") }
         ]]
     })
+}
+
+/// **لوحة فارغة صراحةً** — إزالة الأزرار تُطلَب ولا تُترك لسلوك ضمني.
+///
+/// **عطل ميداني (بلاغ المالك)**: كان زرّ الإلغاء يظهر «لثانية واحدة أو أقل ثم
+/// يختفي»؛ والسبب أن تعديل رسالة الحالة لم يكن يمرّر `reply_markup` — وتلغرام
+/// يحذف لوحة الأزرار عند تعديلٍ لا لوحة فيه. والعلاج من الطرفين: كل تعديل
+/// **يمرّر لوحته صراحةً** (زرّ الإلغاء وهو جارية، وفارغةً عند الانتهاء)، فلا
+/// يبقى السلوك معلَّقاً على تفصيلٍ في الـAPI.
+fn no_keyboard() -> Value {
+    json!({ "inline_keyboard": [] })
 }
 
 /// ينفّذ الإلغاء ويعيد **نصّاً صادقاً**: لا يقول «أُلغيت» إلا إذا فرغت المهمّة
@@ -520,26 +528,36 @@ fn get_updates(cfg: &TgConfig, offset: i64) -> Result<Vec<Value>, String> {
     Ok(v.as_array().cloned().unwrap_or_default())
 }
 
+/// `reply_to` يجعل الرسالة **ردّاً على رسالة المستخدم الأصلية** (م٣): بلا هذا
+/// الربط يقع الناتج في مكان آخر من المحادثة، وهو أصل شكوى «المحادثة مشتّتة».
+/// والحمولة `reply_parameters: {message_id}` هي الصيغة الحالية في Bot API
+/// (`reply_to_message_id` القديمة ما زالت تُقبل لكنها مهجورة).
 fn send_message(
     cfg: &TgConfig,
     chat_id: i64,
     text: &str,
     keyboard: Option<Value>,
+    reply_to: Option<i64>,
 ) -> Result<i64, String> {
     let mut body = json!({ "chat_id": chat_id, "text": text, "disable_web_page_preview": true });
     if let Some(k) = keyboard {
         body["reply_markup"] = k;
     }
+    if let Some(id) = reply_to.filter(|id| *id != 0) {
+        body["reply_parameters"] = json!({ "message_id": id });
+    }
     let v = call(cfg, "sendMessage", &body, Duration::from_secs(20))?;
     Ok(v.get("message_id").and_then(Value::as_i64).unwrap_or(0))
 }
 
-/// تعديل رسالة قائمة.
-///
-/// **`keyboard` صريح لا اختياريّ**: تمرير `Some(…)` يُبقي/يُبدّل اللوحة، وتمرير
-/// `None` **يحذفها** (سلوك تليجرام في `editMessageText`) — ولذلك كل نداء هنا
-/// يُصرّح بما يريده، ولا يُترك الحذف يقع بالسهو كما وقع في عطل زر الإلغاء.
-fn edit_message(
+fn edit_message(cfg: &TgConfig, chat_id: i64, message_id: i64, text: &str) -> Result<(), String> {
+    edit_message_kb(cfg, chat_id, message_id, text, None)
+}
+
+/// تحرير **مع لوحة أزرار**: يلزم حين تصير رسالة السؤال (وفيها أزرار الوضع)
+/// رسالةَ حالةٍ تحمل زرّ الإلغاء — وإلا بقيت أزرار الوضع على رسالةٍ تقول
+/// «بدأت المعالجة».
+fn edit_message_kb(
     cfg: &TgConfig,
     chat_id: i64,
     message_id: i64,
@@ -575,11 +593,15 @@ fn get_file(cfg: &TgConfig, file_id: &str) -> Result<(String, u64), String> {
 }
 
 /// Cloud transport: files come over HTTPS and the bot is capped at 20 MB.
+///
+/// `cancel` (م٣): يُفحص بين الكتل، فزرّ الإلغاء يعمل **أثناء الاستلام** لا بعده
+/// فقط — وكان قبل التسجيل المبكر لا يعمل إطلاقاً في هذه المرحلة.
 fn download_cloud_file(
     cfg: &TgConfig,
     remote_path: &str,
     dest: &Path,
     cap: u64,
+    cancel: &std::sync::Arc<AtomicBool>,
 ) -> Result<u64, String> {
     let url = format!(
         "{}/file/bot{}/{}",
@@ -599,8 +621,28 @@ fn download_cloud_file(
     let mut out = std::fs::File::create(dest).map_err(|e| e.to_string())?;
     // Read one byte past the cap so an over-limit file is detected, not stored.
     let mut limited = resp.into_reader().take(cap + 1);
-    let written = std::io::copy(&mut limited, &mut out).map_err(|e| e.to_string())?;
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut written: u64 = 0;
+    loop {
+        if cancel.load(Ordering::SeqCst) {
+            drop(out);
+            let _ = std::fs::remove_file(dest);
+            return Err("أُلغي استلام الملف".to_string());
+        }
+        let n = match limited.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(e) => {
+                drop(out);
+                let _ = std::fs::remove_file(dest);
+                return Err(format!("انقطع استلام الملف: {e}"));
+            }
+        };
+        out.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+        written += n as u64;
+    }
     if written > cap {
+        drop(out);
         let _ = std::fs::remove_file(dest);
         return Err(format!(
             "الملف أكبر من حد تيليجرام السحابي ({}) — أرسله كرابط، أو فعّل الخادم المحلي من الإعدادات",
@@ -719,7 +761,16 @@ fn content_type_for(path: &Path) -> (&'static str, &'static str) {
 }
 
 /// Send one media file, choosing the Bot API method by extension.
-fn send_media(cfg: &TgConfig, chat_id: i64, path: &Path, caption: &str) -> Result<(), String> {
+///
+/// `reply_to` (م٣): الناتج **ردٌّ على رسالة المستخدم** التي جاء منها الطلب،
+/// فيقع تحت الوسائط المعالجة في المحادثة لا في ذيلها.
+fn send_media(
+    cfg: &TgConfig,
+    chat_id: i64,
+    path: &Path,
+    caption: &str,
+    reply_to: Option<i64>,
+) -> Result<(), String> {
     let (field, ctype) = content_type_for(path);
     let method = match field {
         "video" => "sendVideo",
@@ -730,11 +781,15 @@ fn send_media(cfg: &TgConfig, chat_id: i64, path: &Path, caption: &str) -> Resul
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "haramlite.bin".into());
-    let fields: Vec<(&str, String)> = vec![
+    let mut fields: Vec<(&str, String)> = vec![
         ("chat_id", chat_id.to_string()),
         ("caption", caption.to_string()),
         ("supports_streaming", "true".to_string()),
     ];
+    // Bot API يقبل الكائنات المتشعّبة في multipart كـJSON مُسلسَل في حقل نصّي.
+    if let Some(id) = reply_to.filter(|id| *id != 0) {
+        fields.push(("reply_parameters", json!({ "message_id": id }).to_string()));
+    }
     let body = MultipartBody::build(&fields, field, &name, ctype);
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let len = file.metadata().map_err(|e| e.to_string())?.len();
@@ -816,11 +871,419 @@ struct Job {
     chat_id: i64,
     source: Source,
     mode: Mode,
+    /// رسالة المستخدم الأصلية — كل ردٍّ لهذه المهمّة يقع تحتها (م٣).
+    src_msg_id: i64,
+    /// رسالة السؤال التي ضُغط زرُّها: تصير **رسالة الحالة** فتُحرَّر في مكانها
+    /// (لا رسالة لكل تحديث). صفر = لا معرّف ⇒ تُنشأ رسالة ردّاً على المستخدم.
+    status_msg_id: i64,
+    /// الاسم المعروض للناتج (بلا مسار).
+    file: String,
+    /// صفّ `telegram-jobs` — يسافر مع المهمّة إلى نهايتها.
+    row_id: u64,
 }
 
+/// اسم المرسل كما يعرضه تلغرام: `first_name` ثم `username` ثم المعرّف الرقمي.
+fn display_user(from: &Value) -> String {
+    let field = |k: &str| {
+        from.get(k)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+    };
+    field("first_name")
+        .or_else(|| field("username"))
+        .map(|v| v.chars().take(48).collect())
+        .unwrap_or_else(|| {
+            from.get("id")
+                .and_then(Value::as_i64)
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "غير معروف".to_string())
+        })
+}
+
+/// اسم الملف **المعروض**: بلا مسار (خصوصية) وبلا طول مفرط. يقبل اسماً قادماً من
+/// الشبكة فلا يفترض شيئاً عن شكله — ويقع على الجزء الأخير من أي فاصل مسار.
+fn display_name(name: &str) -> String {
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name).trim();
+    if base.is_empty() {
+        return "ملف".to_string();
+    }
+    base.chars().take(64).collect()
+}
+
+// ── المعلَّق: **مدخل لكل ملف** لا لكل محادثة (م٣/١) ─────────────────────────
+
+/// ملفٌ وصل وينتظر اختيار وضعه.
+///
+/// **ولماذا لكل ملف**: كان السِجلّ `HashMap<chat_id, Pending>` — مدخل واحد لكل
+/// محادثة — فوصولُ ملفٍ ثانٍ قبل اختيار وضع الأول **يسحق الأول ويضيع بلا
+/// رسالة** (عطل بيانات، أخطر ما في هذه الجولة). والمفتاح الآن **(المحادثة،
+/// الرمز)**، والرمز يسري في أزرار الملف وحده.
 struct Pending {
+    chat_id: i64,
+    /// رمز هذا الملف: زرُّه لا يصلح لملفٍ آخر.
     token: String,
     source: Source,
+    /// رسالة المستخدم التي جاء منها الملف.
+    src_msg_id: i64,
+    /// الاسم المعروض (بلا مسار).
+    file: String,
+    /// صفّ `telegram-jobs` (يُسجَّل عند الوصول).
+    row_id: u64,
+}
+
+/// سِجلّ المعلَّقات، مفتاحه `(chat_id, token)`.
+#[derive(Default)]
+struct PendingStore {
+    by_token: HashMap<(i64, String), Pending>,
+}
+
+impl PendingStore {
+    fn count_for(&self, chat_id: i64) -> usize {
+        self.by_token.keys().filter(|(c, _)| *c == chat_id).count()
+    }
+
+    /// هل تقبل هذه المحادثة ملفاً آخر؟ **حدّ أعلى صريح** لا نموّ بلا سقف.
+    fn can_accept(&self, chat_id: i64) -> bool {
+        self.count_for(chat_id) < MAX_PENDING_PER_CHAT
+    }
+
+    /// يُدرج **بلا إسقاط شيء**: لا يُزيل مدخلاً قائماً أبداً. يعيد `false` عند
+    /// بلوغ السقف (والمستدعي يفحص `can_accept` قبله فيقول للمستخدم صراحةً).
+    fn insert(&mut self, p: Pending) -> bool {
+        if !self.can_accept(p.chat_id) {
+            return false;
+        }
+        self.by_token.insert((p.chat_id, p.token.clone()), p);
+        true
+    }
+
+    /// يأخذ معلَّقاً **بعينه** بالرمز — فلا يُلغي اختيارُ ملفٍ ملفاً آخر.
+    fn take(&mut self, chat_id: i64, token: &str) -> Option<Pending> {
+        self.by_token.remove(&(chat_id, token.to_string()))
+    }
+
+    /// معلَّقات محادثةٍ بترتيب الوصول.
+    fn for_chat(&self, chat_id: i64) -> Vec<&Pending> {
+        let mut v: Vec<&Pending> = self
+            .by_token
+            .values()
+            .filter(|p| p.chat_id == chat_id)
+            .collect();
+        v.sort_by_key(|p| p.row_id);
+        v
+    }
+
+    /// عدد المعلَّقات كلها — للاختبار (لا يقرؤه مسار المنتج).
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.by_token.len()
+    }
+}
+
+// ── سؤال التجاوز (م٣/٤): ناتجٌ فوق السقف ينتظر قرار صاحبه ───────────────────
+
+/// ناتج تجاوز سقف الإرسال. **يُسأل كل مرّة** ولا يُحفظ جواب (قرار المالك)،
+/// و`asked` وحدها تحدّد الصلاحية — فلا ذاكرة لاختيار سابق في أي حقل.
+#[derive(Debug, Clone)]
+struct Oversize {
+    chat_id: i64,
+    /// رسالة السؤال — **مفتاح المدخل**، وتُحرَّر بالنتيجة.
+    msg_id: i64,
+    /// رسالة المستخدم الأصلية (الردّ يقع تحتها).
+    src_msg_id: i64,
+    /// الناتج في **مجلد النتائج** — لا وسيطاً في مجلد مؤقّت يُمحى (وإلا صار
+    /// السؤال يشير إلى ملفٍ محذوف). ولا يُحذف أبداً.
+    path: PathBuf,
+    bytes: u64,
+    duration_secs: f64,
+    has_video: bool,
+    /// ارتفاع الصورة — يُقصّ إليه عند الضغط فلا نُكبّر صورةً صغيرة.
+    height: Option<u32>,
+    file: String,
+    asked: Instant,
+}
+
+/// أسئلة التجاوز المفتوحة، مفتاحها `(chat_id, msg_id)` — فسؤالان في محادثة
+/// واحدة لا يسحق أحدهما الآخر (سؤال الجاسوس ٦).
+#[derive(Default)]
+struct OversizeStore {
+    by_msg: HashMap<(i64, i64), Oversize>,
+}
+
+impl OversizeStore {
+    fn insert(&mut self, o: Oversize) {
+        self.by_msg.insert((o.chat_id, o.msg_id), o);
+    }
+
+    fn get(&self, chat_id: i64, msg_id: i64) -> Option<&Oversize> {
+        self.by_msg.get(&(chat_id, msg_id))
+    }
+
+    fn take(&mut self, chat_id: i64, msg_id: i64) -> Option<Oversize> {
+        self.by_msg.remove(&(chat_id, msg_id))
+    }
+
+    fn count_for(&self, chat_id: i64) -> usize {
+        self.by_msg.keys().filter(|(c, _)| *c == chat_id).count()
+    }
+
+    /// عدد الأسئلة كلها — للاختبار (لا يقرؤه مسار المنتج).
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.by_msg.len()
+    }
+
+    /// يُزيل ما انتهت مدّته **ويعيده** ليعلم صاحبه — لا إسقاط صامت. و`now`
+    /// معاملٌ لا `Instant::now()` داخلياً، فيُقاس انتهاء المدة بلا انتظار حقيقي.
+    fn purge_expired(&mut self, now: Instant) -> Vec<Oversize> {
+        let (dead, live): (Vec<_>, Vec<_>) = self
+            .by_msg
+            .drain()
+            .partition(|(_, o)| now.saturating_duration_since(o.asked) >= OVERSIZE_TTL);
+        self.by_msg = live.into_iter().collect();
+        dead.into_iter().map(|(_, o)| o).collect()
+    }
+}
+
+// ── عدّاد الطابور الفعلي (لا تقدير) ─────────────────────────────────────────
+
+/// مهامّ قُبلت ولم يدخل تنفيذها بعد (عمق قناة المهامّ).
+static QUEUE_DEPTH: AtomicUsize = AtomicUsize::new(0);
+/// مهامّ دخلت `run_job` ولم تنتهِ — تشمل نافذة «التجهيز» التي لا تكون فيها
+/// المهمّة في القناة ولا في سِجلّ الفتحات، فبغيرها يَعُدّ الطابور نفسه ناقصاً.
+static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+
+/// تنقيص **مشبع**: لا يلتفّ العدّاد إلى `usize::MAX` لو نقص أكثر مما زِيد
+/// (يقع عند إعادة تشغيل العامل ومهمّة قديمة ما زالت تنقص).
+fn dec(counter: &AtomicUsize) {
+    let _ = counter.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
+        Some(v.saturating_sub(1))
+    });
+}
+
+/// عدد مهامّ تلغرام التي تسبق مهمّةً جديدة **الآن**: الجارية + المنتظرة.
+/// رقمٌ من عدّادين حقيقيّين، لا تخمين.
+fn jobs_ahead() -> u32 {
+    let inflight = IN_FLIGHT.load(Ordering::SeqCst) as u32;
+    let queued = QUEUE_DEPTH.load(Ordering::SeqCst) as u32;
+    inflight.saturating_add(queued)
+}
+
+/// مهمّة دخلت التنفيذ — تُحسب «جارية» من أول سطر إلى آخر مخرج (`Drop`).
+struct InFlightGuard;
+
+impl InFlightGuard {
+    fn enter() -> Self {
+        IN_FLIGHT.fetch_add(1, Ordering::SeqCst);
+        Self
+    }
+}
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        dec(&IN_FLIGHT);
+    }
+}
+
+// ── `telegram-jobs`: ما تعرضه الواجهة (عقد مُجمَّد) ──────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JobState {
+    Queued,
+    Running,
+    Done,
+    Failed,
+}
+
+impl JobState {
+    fn as_str(self) -> &'static str {
+        match self {
+            JobState::Queued => "queued",
+            JobState::Running => "running",
+            JobState::Done => "done",
+            JobState::Failed => "failed",
+        }
+    }
+}
+
+/// صفّ مهمّة — **بلا مسار ملف** (الخصوصية: الاسم المعروض وحده).
+#[derive(Debug, Clone)]
+struct TgJobRow {
+    id: u64,
+    chat_id: i64,
+    user: String,
+    file: String,
+    state: JobState,
+    pct: Option<f64>,
+}
+
+static TG_JOBS: OnceLock<Mutex<Vec<TgJobRow>>> = OnceLock::new();
+static TG_JOB_SEQ: AtomicU64 = AtomicU64::new(1);
+
+fn tg_jobs() -> &'static Mutex<Vec<TgJobRow>> {
+    TG_JOBS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// حمولة `telegram-jobs` من صفوفٍ بعينها — **نقيّة**، فتُقاس بلا تطبيق ولا شبكة.
+///
+/// **العقد**: مصفوفة مرتّبة بترتيب الوصول؛ ولكل صفّ `chat_id` و`user` و`file`
+/// (اسم معروض بلا مسار) و`state` (`queued|running|done|failed`) و`position`
+/// (‏1 = أول المصفوفة، وهو **التالي أو الجاري**) و`total` (طول المصفوفة) و`pct`
+/// (‏`null` قبل البدء). والصفّ المنتهي **يُبَثّ مرّة واحدة** بحالته النهائية ثم
+/// يُزال — فترى الواجهة `done`/`failed` مرةً ولا يبقى سطرٌ ميت.
+fn jobs_payload(rows: &[TgJobRow]) -> Value {
+    let total = rows.len() as u32;
+    Value::Array(
+        rows.iter()
+            .enumerate()
+            .map(|(i, r)| {
+                json!({
+                    "chat_id": r.chat_id,
+                    "user": r.user,
+                    "file": r.file,
+                    "state": r.state.as_str(),
+                    "position": (i as u32) + 1,
+                    "total": total,
+                    "pct": r.pct,
+                })
+            })
+            .collect(),
+    )
+}
+
+/// يُبَثّ عند **كل تغيّر فعلي** (وصول · بدء · تقدّم · انتهاء) — لا استطلاعاً
+/// دورياً. وبلا تطبيق (اختبارات) لا يفعل شيئاً ولا يفشل.
+fn emit_jobs() {
+    let Some(app) = APP.get() else { return };
+    use tauri::Emitter;
+    let payload = {
+        let rows = tg_jobs().lock().unwrap_or_else(|p| p.into_inner());
+        jobs_payload(&rows)
+    };
+    let _ = app.emit("telegram-jobs", payload);
+}
+
+/// يُسجّل صفّاً عند وصول الملف ويعيد معرّفه (يسافر مع المهمّة حتى نهايتها).
+fn jobs_arrived(chat_id: i64, user: &str, file: &str) -> u64 {
+    let id = TG_JOB_SEQ.fetch_add(1, Ordering::SeqCst);
+    {
+        let mut rows = tg_jobs().lock().unwrap_or_else(|p| p.into_inner());
+        rows.push(TgJobRow {
+            id,
+            chat_id,
+            user: user.to_string(),
+            file: file.to_string(),
+            state: JobState::Queued,
+            pct: None,
+        });
+    }
+    emit_jobs();
+    id
+}
+
+fn jobs_started(id: u64) {
+    {
+        let mut rows = tg_jobs().lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(r) = rows.iter_mut().find(|r| r.id == id) {
+            r.state = JobState::Running;
+            r.pct = Some(0.0);
+        }
+    }
+    emit_jobs();
+}
+
+/// تقريب النسبة إلى عُشر في المئة — **تغيّرٌ فعلي لا ضجيج فواصل عشرية**، وإلا
+/// بُثّ الحدث آلاف المرّات على مهمّة واحدة.
+fn round_pct(pct: f64) -> f64 {
+    (pct.clamp(0.0, 100.0) * 10.0).round() / 10.0
+}
+
+/// تقدّم بنسبة مئوية. **ولا يُبَثّ ضجيج الفواصل**: عتبة ٠٫١٪ تغيّرٌ فعلي.
+fn jobs_progress(id: u64, pct: f64) {
+    let rounded = round_pct(pct);
+    let changed = {
+        let mut rows = tg_jobs().lock().unwrap_or_else(|p| p.into_inner());
+        match rows.iter_mut().find(|r| r.id == id) {
+            Some(r) if r.pct != Some(rounded) => {
+                r.pct = Some(rounded);
+                true
+            }
+            _ => false,
+        }
+    };
+    if changed {
+        emit_jobs();
+    }
+}
+
+/// يُبَثّ الصفّ بحالته النهائية **ثم يُزال**.
+fn jobs_finished(id: u64, ok: bool) {
+    {
+        let mut rows = tg_jobs().lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(r) = rows.iter_mut().find(|r| r.id == id) {
+            r.state = if ok { JobState::Done } else { JobState::Failed };
+            if ok {
+                r.pct = Some(100.0);
+            }
+        }
+    }
+    emit_jobs();
+    tg_jobs()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .retain(|r| r.id != id);
+}
+
+/// يُنهي صفّ المهمّة على **كل** مخرج (`Drop` يعمل عند النجاح والخطأ والذعر).
+/// والافتراض `failed` حتى يُقال `ok()` صراحةً — فلا تُعلَن نجاةٌ لم تُثبَت.
+struct JobRowGuard {
+    id: u64,
+    ok: bool,
+}
+
+impl JobRowGuard {
+    fn ok(&mut self) {
+        self.ok = true;
+    }
+}
+
+impl Drop for JobRowGuard {
+    fn drop(&mut self) {
+        jobs_finished(self.id, self.ok);
+    }
+}
+
+/// حالة خيط التحديثات وحدها: ما ينتظر اختيار الوضع، ومن أُخبر بالاقتران.
+/// (وسِجلّ أسئلة التجاوز **مشترك** مع خيط المهامّ: السؤال يُطرح هناك ويُجاب هنا.)
+#[derive(Default)]
+struct PollState {
+    pending: PendingStore,
+    hinted: HashSet<i64>,
+}
+
+/// صفوف مهامّ محادثةٍ بعينها — للاختبار فقط (لا يقرؤها مسار المنتج).
+#[cfg(test)]
+fn tg_job_states_for_test(chat_id: i64) -> Vec<(String, Option<f64>)> {
+    tg_jobs()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .iter()
+        .filter(|r| r.chat_id == chat_id)
+        .map(|r| (r.state.as_str().to_string(), r.pct))
+        .collect()
+}
+
+/// صفوف محادثةٍ بعينها كحمولة كاملة — للاختبار فقط.
+#[cfg(test)]
+fn tg_job_rows_for_test(chat_id: i64) -> Vec<Value> {
+    let rows = tg_jobs().lock().unwrap_or_else(|p| p.into_inner());
+    let mine: Vec<TgJobRow> = rows
+        .iter()
+        .filter(|r| r.chat_id == chat_id)
+        .cloned()
+        .collect();
+    jobs_payload(&mine).as_array().cloned().unwrap_or_default()
 }
 
 #[derive(Default)]
@@ -911,7 +1374,10 @@ pub fn apply_settings(s: &Settings) {
         return;
     }
     let stop = Arc::new(AtomicBool::new(false));
-    let queue = Arc::new(AtomicUsize::new(0));
+    // عدّاد القناة يبدأ من صفر مع قناة جديدة: ما كان في القناة القديمة لن يُنفَّذ
+    // أبداً، فإبقاء عدّه يجعل «دورك» رقماً عن مهامّ لا وجود لها. أما `IN_FLIGHT`
+    // **فلا يُصفَّر**: مهمّة قديمة ما زالت تعمل تبقى محسوبة حتى تنتهي فعلاً.
+    QUEUE_DEPTH.store(0, Ordering::SeqCst);
     *guard = Some(Runtime {
         cfg: want.clone(),
         stop: stop.clone(),
@@ -922,6 +1388,7 @@ pub fn apply_settings(s: &Settings) {
         st.running = true;
         st.last_error.clear();
         st.paired_id = want.owner_id;
+        st.queue = 0;
     }
     tracing::info!(
         target: "telegram",
@@ -929,21 +1396,25 @@ pub fn apply_settings(s: &Settings) {
         if want.is_local() { " عبر خادم محلي" } else { "" },
         if want.owner_id.is_some() { "مقترن" } else { "وضع الاقتران" }
     );
+    let oversize = Arc::new(Mutex::new(OversizeStore::default()));
     let (tx, rx) = mpsc::channel::<Job>();
-    spawn_job_thread(want.clone(), stop.clone(), rx, queue.clone());
-    spawn_poll_thread(want, stop, tx, queue);
+    spawn_job_thread(want.clone(), stop.clone(), rx, oversize.clone());
+    spawn_poll_thread(want, stop, tx, oversize);
 }
 
 fn spawn_poll_thread(
     cfg: TgConfig,
     stop: Arc<AtomicBool>,
     tx: Sender<Job>,
-    queue: Arc<AtomicUsize>,
+    oversize: Arc<Mutex<OversizeStore>>,
 ) {
     std::thread::Builder::new()
         .name("telegram-poll".into())
         .spawn(move || {
             use tauri::Emitter;
+            // أوامر البوت تُسجَّل عند كل تشغيل: قائمة `/help` **هي** قائمة
+            // `setMyCommands`، فلا يُعلَن أمرٌ لا يعمل ولا يعمل أمرٌ لم يُعلَن.
+            register_commands(&cfg);
             // Drop the backlog: links sent while the app was closed are stale,
             // and processing them unasked would burn the machine at startup.
             let mut offset = match call(
@@ -964,10 +1435,7 @@ fn spawn_poll_thread(
                     0
                 }
             };
-            let mut pending: HashMap<i64, Pending> = HashMap::new();
-            // Chats already told how to pair — a stranger gets one hint, then
-            // silence (never a second reply to keep poking at).
-            let mut hinted: HashSet<i64> = HashSet::new();
+            let mut poll = PollState::default();
             while !stop.load(Ordering::SeqCst) {
                 match get_updates(&cfg, offset) {
                     Ok(updates) => {
@@ -981,7 +1449,7 @@ fn spawn_poll_thread(
                             if stop.load(Ordering::SeqCst) {
                                 break;
                             }
-                            handle_update(&cfg, &mut pending, &mut hinted, &u, &tx, &queue);
+                            handle_update(&cfg, &mut poll, &oversize, &u, &tx);
                         }
                     }
                     Err(e) => {
@@ -996,13 +1464,604 @@ fn spawn_poll_thread(
         .ok();
 }
 
+// ── النصوص والأوامر (م٣/٦) ──────────────────────────────────────────────────
+
+fn mode_label(mode: Mode) -> &'static str {
+    if mode == Mode::Song {
+        "أغنية"
+    } else {
+        "مقطع عادي"
+    }
+}
+
+/// نصّ سؤال الوضع. **وإشعار الانتظار يُقال هنا — عند الوصول**، لا عند الضغط على
+/// الزرّ (شكوى المالك: كان لا يخبره أنه في قائمة الانتظار حتى يضغط).
+///
+/// والمصطلح: **«قائمة الانتظار»** و**«دورك: N»** — كلمة «طابور» مرفوضة.
+fn mode_question_text(hint: &str, ahead: u32) -> String {
+    let wait = if ahead > 0 {
+        format!(
+            "\n⏳ في قائمة الانتظار — دورك: {}\n(قبلك {} مهمّة تعمل أو تنتظر)\n",
+            ahead.saturating_add(1),
+            ahead
+        )
+    } else {
+        String::new()
+    };
+    format!(
+        "{hint}\n{wait}\nهل هذا **أغنية** أم **مقطع عادي**؟\n\
+         (الأغنية: فصل كامل + قصّ الصمت — المقطع: إزالة الموسيقى فقط)"
+    )
+}
+
+/// نصّ الانتظار بعد اختيار الوضع. **ولا يُقال «بدأت» قبل أن تبدأ فعلاً** —
+/// [`running_text`] وحدها تقولها لحظة دخول المهمّة التنفيذ.
+fn waiting_text(label: &str, position: u32) -> String {
+    format!("⏳ في قائمة الانتظار — دورك: {position}\nالوضع: {label}")
+}
+
+/// لحظة **دخول المهمّة التنفيذ** فعلاً.
+fn running_text(label: &str) -> String {
+    format!("▶ بدأت المعالجة — الوضع: {label}")
+}
+
+/// نصّ بلوغ سقف المعلَّقات — صادق وقابل للتنفيذ، لا إسقاط صامت.
+fn pending_full_text() -> String {
+    format!(
+        "⏳ عندك {MAX_PENDING_PER_CHAT} ملفات تنتظر اختيار الوضع — \
+         **أكمل الملفات الحالية أولاً** ثم أعد إرسال هذا الملف."
+    )
+}
+
+/// أوامر البوت — **مصدر واحد**: ما يُسجَّل في تلغرام (`setMyCommands`) هو نفسه
+/// ما يعرضه `/help`، فلا يفترق إعلانٌ عن فعل (قاعدة المالك: ما يظهر يعمل).
+///
+/// **ولا `/stop` في أي مكان**: أمر واحد وظيفته الإلغاء (`/kill`) — فلا اسمان
+/// لحالة واحدة، ولا أمرٌ يُعلَن ولا يفعل شيئاً.
+const COMMANDS: &[(&str, &str)] = &[
+    ("status", "ما يعمل الآن ولِمَن"),
+    ("mode", "إعادة أزرار اختيار الوضع للملفات المنتظرة"),
+    ("lang", "لغة رسائل البوت (العربية وحدها متاحة الآن)"),
+    ("kill", "إلغاء مهمّة هذه المحادثة"),
+    ("help", "قائمة الأوامر"),
+];
+
+/// قائمة موجزة **صادقة**: كل سطر فيها أمرٌ يعمل فعلاً.
+fn help_text() -> String {
+    let mut s = String::from("🤖 أوامر البوت:\n");
+    for (name, desc) in COMMANDS {
+        s.push_str(&format!("/{name} — {desc}\n"));
+    }
+    s.push_str(&format!(
+        "\nأرسل رابط فيديو، أو ارفع ملف صوت/فيديو (حتى {} سحابياً)، \
+         وسأزيل الموسيقى وأعيده إليك.",
+        human_mb(CLOUD_DOWNLOAD_MAX_BYTES)
+    ));
+    s
+}
+
+/// يفصل الأمر ووسيطه: `/kill@MyBot الآن` ⇒ `("kill", Some("الآن"))`.
+/// ويعيد `None` إن لم تكن الرسالة أمراً — فلا يُقرأ نصٌّ عادي أمراً.
+fn parse_command(text: &str) -> Option<(String, Option<String>)> {
+    let rest = text.trim().strip_prefix('/')?;
+    let mut it = rest.splitn(2, char::is_whitespace);
+    let head = it.next().unwrap_or("");
+    // `/kill@TheBot` موجَّه لبوت بعينه — يُقبل ممن يخاطب هذا البوت.
+    let name = head.split('@').next().unwrap_or("").to_ascii_lowercase();
+    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return None;
+    }
+    let arg = it
+        .next()
+        .map(|a| a.trim().to_string())
+        .filter(|a| !a.is_empty());
+    Some((name, arg))
+}
+
+/// نصّ `/status` — **نقيّ** (يأخذ `now_ms`) ليُقاس بلا شبكة ولا مهمّة حقيقية.
+pub fn status_text(
+    chat_id: i64,
+    running: &[slots::JobInfo],
+    queued: usize,
+    pendings: usize,
+    oversize: usize,
+    last_error: &str,
+    now_ms: u128,
+) -> String {
+    let mut s = String::from("📊 الحال الآن\n");
+    let mine: Vec<&slots::JobInfo> = running
+        .iter()
+        .filter(|j| j.label == job_label(chat_id))
+        .collect();
+    if mine.is_empty() {
+        s.push_str("▶ لا شيء يعمل لهذه المحادثة الآن.\n");
+    } else {
+        s.push_str(&format!("▶ يعمل الآن ({}):\n", mine.len()));
+        for j in mine {
+            let secs = now_ms.saturating_sub(j.started_ms) / 1000;
+            let file = j
+                .path
+                .as_deref()
+                .map(display_name)
+                .unwrap_or_else(|| "بلا ملف".to_string());
+            s.push_str(&format!(
+                "   • {file} — منذ {secs} ث{}\n",
+                if j.cancelled {
+                    " (طُلب إلغاؤها)"
+                } else {
+                    ""
+                }
+            ));
+        }
+    }
+    s.push_str(&format!(
+        "⏳ في قائمة الانتظار: {queued}\n\
+         📎 ملفات تنتظر اختيار الوضع: {pendings}\n\
+         ⏳ أسئلة ضغط مفتوحة: {oversize}\n\
+         👤 المحادثة: {chat_id}"
+    ));
+    if !last_error.is_empty() {
+        s.push_str(&format!("\n⚠️ آخر خطأ: {last_error}"));
+    }
+    s
+}
+
+/// نصّ `/lang` — **صادق**: العربية وحدها عاملة، ولا يُوهم بمفتاح لغةٍ لا وجود
+/// لها (تسجيل `/lang` بوصفه مبدِّلاً وهو لا يبدّل شيئاً كذبٌ صريح).
+fn lang_text(arg: Option<&str>) -> String {
+    const AVAILABLE: [(&str, &str); 1] = [("ar", "العربية")];
+    let list = AVAILABLE
+        .iter()
+        .map(|(c, n)| format!("{n} ({c})"))
+        .collect::<Vec<_>>()
+        .join(" · ");
+    match arg {
+        None => format!("🌐 لغة رسائل البوت: العربية\nالمتاح: {list}"),
+        Some(code) => {
+            let code = code.trim().to_ascii_lowercase();
+            if AVAILABLE.iter().any(|(c, _)| *c == code) {
+                format!("🌐 العربية هي اللغة العاملة أصلاً — لا تغيير.\nالمتاح: {list}")
+            } else {
+                format!("🌐 لا تتوفّر لغة «{code}» بعد — الرسائل بالعربية وحدها.\nالمتاح: {list}")
+            }
+        }
+    }
+}
+
+/// يسجّل قائمة الأوامر في تلغرام — **بأفضل جهد**: فشلُ التسجيل لا يُسقط البوت
+/// (يُسجَّل تحذير)، والقائمة المُعلَنة تبقى هي نفسها التي يعرضها `/help`.
+fn register_commands(cfg: &TgConfig) {
+    let cmds: Vec<Value> = COMMANDS
+        .iter()
+        .map(|(c, d)| json!({ "command": c, "description": d }))
+        .collect();
+    match call(
+        cfg,
+        "setMyCommands",
+        &json!({ "commands": cmds }),
+        Duration::from_secs(20),
+    ) {
+        Ok(_) => tracing::info!(target: "telegram", "سُجّلت أوامر البوت: {} أمراً", COMMANDS.len()),
+        Err(e) => tracing::warn!(target: "telegram", "تعذّر تسجيل الأوامر: {e}"),
+    }
+}
+
+// ── سؤال التجاوز: الحساب نقيّ والنصوص ثابتة (م٣/٤) ───────────────────────────
+
+/// الحجم المتوقَّع بالميغابايت لمعدّلٍ ومدة — **معكوس الصيغة نفسها** المستعملة
+/// في `media::target_video_kbps`/`target_audio_kbps` (‏`mb × 8192 / ث`)، فلا
+/// رقمان لشيء واحد.
+fn projected_mb(kbps: u32, secs: f64) -> f64 {
+    if crate::media::invalid_budget(secs) {
+        return f64::INFINITY;
+    }
+    f64::from(kbps) * secs / 8192.0
+}
+
+/// ما يمكن عرضه لصاحب ناتجٍ تجاوز السقف. الصفر يعني «هذا الخيار غير ممكن»،
+/// ولا يُعرض زرٌّ لا يفعل شيئاً (قاعدة المالك: ما يظهر يعمل).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OversizePlan {
+    /// «🗜️ اضغط وأرسل»: إعادة ترميز **الفيديو** إلى هذا المعدّل، أو الصوت إن
+    /// كان الناتج صوتاً. صفر = لا يدخل الهدف.
+    pub shrink_kbps: u32,
+    /// «🎧 أرسله صوتاً»: استخراج الصوت وضغطه إلى هذا المعدّل (ناتج فيديو فقط).
+    pub audio_kbps: u32,
+}
+
+impl OversizePlan {
+    pub fn can_shrink(&self) -> bool {
+        self.shrink_kbps > 0
+    }
+    pub fn can_audio(&self) -> bool {
+        self.audio_kbps > 0
+    }
+    /// هل يمكن إدخال هذا الناتج بالضغط إطلاقاً؟
+    pub fn any(&self) -> bool {
+        self.can_shrink() || self.can_audio()
+    }
+}
+
+/// يخطّط ما يمكن عمله بناتجٍ تجاوز السقف: يحسب المعدّل الذي **يدخل الهدف
+/// فعلاً** (لا الذي يُطلب فقط)، فلا يُعرض خيارٌ لا يبلغه.
+///
+/// ولناتج **فيديو**: «الضغط» إعادة ترميز الصورة، و«أرسله صوتاً» ضغط الصوت —
+/// ولا يُعرض زرّ الصوت إذا لم يكن الصوت نفسه داخل الهدف. وإن لم يدخل الفيديو
+/// بصورةٍ مشاهَدة (`MIN_WATCHABLE_VIDEO_KBPS`) فالزرّ الأول لا يُعرض أصلاً.
+pub fn plan_oversize(duration_secs: f64, has_video: bool) -> OversizePlan {
+    let audio_kbps = crate::media::target_audio_kbps(duration_secs, CLOUD_TARGET_MB);
+    let audio_fits = audio_kbps > 0 && projected_mb(audio_kbps, duration_secs) <= CLOUD_TARGET_MB;
+    if !has_video {
+        // ناتج صوتي: «الضغط» هو إعادة ترميز الصوت نفسه، ولا معنى لزرّ «أرسله صوتاً».
+        return OversizePlan {
+            shrink_kbps: if audio_fits { audio_kbps } else { 0 },
+            audio_kbps: 0,
+        };
+    }
+    let video_kbps = crate::media::target_video_kbps(duration_secs, CLOUD_TARGET_MB, AUDIO_KBPS);
+    let video_fits = video_kbps >= MIN_WATCHABLE_VIDEO_KBPS
+        && projected_mb(video_kbps.saturating_add(AUDIO_KBPS), duration_secs) <= CLOUD_TARGET_MB;
+    OversizePlan {
+        shrink_kbps: if video_fits { video_kbps } else { 0 },
+        audio_kbps: if audio_fits { audio_kbps } else { 0 },
+    }
+}
+
+/// نصّ سؤال التجاوز. **يقول ما سيقع** ولا يَعِد بخيارٍ لا يبلغ الهدف، ويُصرّح
+/// بأن الملف باقٍ في مجلد النتائج (لا حذف — شرط قبول م٣).
+pub fn oversize_text(bytes: u64, file: &str, plan: &OversizePlan) -> String {
+    let head = format!(
+        "⚠️ الناتج {} — {file}\nيتجاوز حدّ الإرسال في تلغرام ({}).\n\
+         الملف محفوظ في مجلد النتائج ولن يُحذف.",
+        human_mb(bytes),
+        human_mb(CLOUD_SEND_MAX_BYTES)
+    );
+    if plan.any() {
+        format!("{head}\n\nاختر ما تريد:")
+    } else {
+        format!(
+            "{head}\n\n✗ ولا يمكن إدخاله بالضغط: أطول من أن يحمله أدنى معدّل صوتي \
+             ({} كيلوبت، والهدف {} م.ب).\n\
+             ارفع الحدّ بخادم Bot API محلي (زرّ «كيف أرفع الحدّ؟»)، أو أرسل مقطعاً أقصر، \
+             أو خُذ الملف من مجلد النتائج على الجهاز.",
+            crate::media::MIN_AUDIO_KBPS,
+            CLOUD_TARGET_MB.round() as u32
+        )
+    }
+}
+
+/// الدليل — **معلوماتي فقط** (ت٥): لا رابط يُفتح تلقائياً ولا إجراء يتّخذ،
+/// والسؤال يبقى قائماً.
+pub fn oversize_guide_text() -> String {
+    format!(
+        "ℹ️ كيف أرفع الحدّ؟\n\n\
+         • حدّ تلغرام السحابي للبوت: {} إرسالاً و{} استقبالاً — وهو حدّ الخدمة، \
+         لا إعداد في هذا البرنامج.\n\
+         • الحلّ الرسمي: تشغيل **خادم Bot API محلي** (‏telegram-bot-api) على الجهاز، \
+         فيصير الحدّ 2000 م.ب.\n\
+         • وبعد تشغيله: الإعدادات ← تيليجرام ← «عنوان الخادم المحلي» \
+         (مثال: {LOCAL_SERVER_HINT}).\n\n\
+         وهذا الزرّ **معلومة لا إجراء**: لا يرسل شيئاً ولا يغيّر إعداداً.\n\
+         ولا أقسّم الناتج إلى أجزاء — قرار المالك.",
+        human_mb(CLOUD_SEND_MAX_BYTES),
+        human_mb(CLOUD_DOWNLOAD_MAX_BYTES)
+    )
+}
+
+/// لوحة أزرار السؤال: زرٌّ لكل فعل **ممكن**، ثم الدليل، ثم الإلغاء.
+fn oversize_keyboard(plan: &OversizePlan) -> Value {
+    let mut actions: Vec<Value> = Vec::new();
+    if plan.can_shrink() {
+        actions.push(json!({
+            "text": format!("🗜️ اضغط وأرسل (حتى ~{} م.ب)", CLOUD_TARGET_MB.round() as u32),
+            "callback_data": "oversize:shrink",
+        }));
+    }
+    if plan.can_audio() {
+        actions.push(json!({ "text": "🎧 أرسله صوتاً", "callback_data": "oversize:audio" }));
+    }
+    let mut rows: Vec<Value> = Vec::new();
+    if !actions.is_empty() {
+        rows.push(Value::Array(actions));
+    }
+    rows.push(json!([{ "text": "ℹ️ كيف أرفع الحدّ؟", "callback_data": "oversize:help" }]));
+    rows.push(json!([{ "text": "❌ إلغاء", "callback_data": "oversize:cancel" }]));
+    json!({ "inline_keyboard": rows })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OversizeAction {
+    Shrink,
+    Audio,
+    Help,
+    Cancel,
+}
+
+/// `oversize:<action>` — الأزرار تحمل **الفعل وحده**، ورسالةُ السؤال نفسها هي
+/// المفتاح (تأتي في `callback_query.message.message_id`) فلا يمكن أن يُطبَّق
+/// فعلٌ على سؤالٍ آخر.
+fn parse_oversize_action(data: &str) -> Option<OversizeAction> {
+    match data.strip_prefix("oversize:")? {
+        "shrink" => Some(OversizeAction::Shrink),
+        "audio" => Some(OversizeAction::Audio),
+        "help" => Some(OversizeAction::Help),
+        "cancel" => Some(OversizeAction::Cancel),
+        _ => None,
+    }
+}
+
+/// كل ما يحتاجه طرحُ سؤال التجاوز — يُبنى في `run_job` ويُمرَّر مجموعةً واحدة
+/// (بدل أحد عشر معاملاً تخطئ في ترتيبها).
+struct OversizeAsk<'a> {
+    chat_id: i64,
+    src_msg_id: i64,
+    /// الناتج في **مجلد النتائج** — لا وسيطاً في مجلد مؤقّت يُمحى.
+    produced: &'a Path,
+    duration_secs: f64,
+    has_video: bool,
+    bytes: u64,
+    height: Option<u32>,
+    file: &'a str,
+}
+
+/// يطرح السؤال ويسجّله. **ويُطرح في كل مرّة**: لا حقل يحفظ جواباً سابقاً،
+/// ولا فرع يقرأ تفضيلاً — فمُفسِد «تخزين الاختيار» لا يجد ما يخزّنه.
+fn ask_oversize(
+    cfg: &TgConfig,
+    store: &Arc<Mutex<OversizeStore>>,
+    ask: OversizeAsk<'_>,
+) -> Result<(), String> {
+    let plan = plan_oversize(ask.duration_secs, ask.has_video);
+    let text = oversize_text(ask.bytes, ask.file, &plan);
+    // رسالة مستقلة **ردٌّ على رسالة المستخدم**: رسالة الحالة تحمل تقدّم معالجةٍ
+    // جرت فعلاً، ولو حُرِّرت إلى سؤالٍ لضاع أثرها.
+    let qid = send_message(
+        cfg,
+        ask.chat_id,
+        &text,
+        Some(oversize_keyboard(&plan)),
+        Some(ask.src_msg_id),
+    )?;
+    store
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .insert(Oversize {
+            chat_id: ask.chat_id,
+            msg_id: qid,
+            src_msg_id: ask.src_msg_id,
+            path: ask.produced.to_path_buf(),
+            bytes: ask.bytes,
+            duration_secs: ask.duration_secs,
+            has_video: ask.has_video,
+            height: ask.height,
+            file: ask.file.to_string(),
+            asked: Instant::now(),
+        });
+    Ok(())
+}
+
+/// يُزيل الأسئلة المنتهية **ويُعلن ذلك** — لا إسقاط صامت، **والملف يبقى**.
+fn purge_oversize(cfg: &TgConfig, store: &Arc<Mutex<OversizeStore>>) {
+    let dead = store
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .purge_expired(Instant::now());
+    for o in dead {
+        let _ = edit_message_kb(
+            cfg,
+            o.chat_id,
+            o.msg_id,
+            &format!(
+                "⌛ انتهت صلاحية سؤال الضغط ({} دقيقة).\n\
+                 الناتج **باقٍ في مجلد النتائج ولم يُحذف**: أعد إرسال الملف إن أردت المحاولة.",
+                OVERSIZE_TTL.as_secs() / 60
+            ),
+            None,
+        );
+        tracing::info!(target: "telegram", "انتهت صلاحية سؤال تجاوز للـ{}", o.chat_id);
+    }
+}
+
+/// ينفّذ ما اختاره صاحب الناتج: يضغط ثم يُرسل في خيط **مستقل**.
+///
+/// **ولماذا خيط مستقل**: الضغط يستغرق دقائق، وهذا النداء يقع على **خيط تحديثات
+/// البوت** — فلو ضغط هنا لتوقّف `/status` و`/kill` وكل المحادثة حتى ينتهي
+/// (وهو الدرس نفسه المسجَّل في `CANCEL_CONFIRM_WAIT`).
+fn run_oversize_action(
+    cfg: &TgConfig,
+    chat_id: i64,
+    msg_id: i64,
+    entry: Oversize,
+    want_audio: bool,
+) {
+    let mut scratch = ScratchGuard::default();
+    let dir = work_dir(&crate::paths::data_dir());
+    let plan = plan_oversize(entry.duration_secs, entry.has_video);
+    let kbps = if want_audio {
+        plan.audio_kbps
+    } else {
+        plan.shrink_kbps
+    };
+    if kbps == 0 {
+        let _ = edit_message_kb(
+            cfg,
+            chat_id,
+            msg_id,
+            "✗ تعذّر الضغط إلى داخل الحدّ — الناتج الأصلي باقٍ في مجلد النتائج.",
+            Some(no_keyboard()),
+        );
+        return;
+    }
+    // الناتج الأصلي **لا يُلمس ولا يُحذف**؛ والمضغوط وسيطٌ مؤقّت يُنظَّف بعد الإرسال.
+    let made = if want_audio || !entry.has_video {
+        let dest = dir.join(format!("ov_{}_audio.mp3", nanos()));
+        crate::media::compress_audio(&entry.path, &dest, kbps).map_err(|e| e.to_string())
+    } else {
+        let dest = dir.join(format!("ov_{}_small.mp4", nanos()));
+        crate::media::transcode_to_bitrate(&entry.path, &dest, kbps, AUDIO_KBPS, entry.height)
+            .map_err(|e| e.to_string())
+    };
+    let small = match made {
+        Ok(p) => {
+            scratch.track(&p);
+            p
+        }
+        Err(e) => {
+            let _ = edit_message_kb(
+                cfg,
+                chat_id,
+                msg_id,
+                &format!("✗ تعذّر الضغط: {e}\nالناتج الأصلي باقٍ في مجلد النتائج."),
+                Some(no_keyboard()),
+            );
+            return;
+        }
+    };
+    let bytes = std::fs::metadata(&small).map(|m| m.len()).unwrap_or(0);
+    if bytes > CLOUD_SEND_MAX_BYTES {
+        // الصدق قبل الطمأنة: الضغط لم يُدخل الملف، ولا يُرسَل ما سيُرفض.
+        let _ = edit_message_kb(
+            cfg,
+            chat_id,
+            msg_id,
+            &format!(
+                "✗ بقي المضغوط {} — فوق حدّ الإرسال ({}).\nالناتج الأصلي باقٍ في مجلد النتائج.",
+                human_mb(bytes),
+                human_mb(CLOUD_SEND_MAX_BYTES)
+            ),
+            Some(no_keyboard()),
+        );
+        return;
+    }
+    let _ = edit_message(cfg, chat_id, msg_id, "📤 جارٍ إرسال المضغوط…");
+    let caption = format!(
+        "🎧 HaramLite — أُزيلت الموسيقى ({} — مضغوط بطلبك)",
+        human_mb(bytes)
+    );
+    match send_media(cfg, chat_id, &small, &caption, Some(entry.src_msg_id)) {
+        Ok(()) => {
+            let _ = edit_message_kb(
+                cfg,
+                chat_id,
+                msg_id,
+                &format!("✅ تم — أُرسل بعد الضغط ({}).", human_mb(bytes)),
+                None,
+            );
+        }
+        Err(e) => {
+            let _ = edit_message_kb(
+                cfg,
+                chat_id,
+                msg_id,
+                &format!("✗ فشل الإرسال: {e}\nالناتج الأصلي باقٍ في مجلد النتائج."),
+                Some(no_keyboard()),
+            );
+        }
+    }
+}
+
+/// يعالج ضغطة على سؤال تجاوز. **وكل ضغطة تُجاب** (`answerCallbackQuery`) وإلا
+/// بقي مؤشّر العميل يدور.
+fn handle_oversize_action(
+    cfg: &TgConfig,
+    store: &Arc<Mutex<OversizeStore>>,
+    action: OversizeAction,
+    chat_id: i64,
+    msg_id: i64,
+    cb_id: &str,
+) {
+    let entry = store
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get(chat_id, msg_id)
+        .cloned();
+    let Some(entry) = entry else {
+        // ضغطة ثانية على الزرّ نفسه، أو سؤال انتهى وقته: **لا رفع مرّتين**،
+        // وتُجاب الضغطة بصدق.
+        answer_callback(cfg, cb_id, "لم يعد هذا السؤال فعّالاً");
+        return;
+    };
+    match action {
+        OversizeAction::Help => {
+            // معلوماتي فقط: السؤال **يبقى** ولوحته تبقى (ت٥).
+            answer_callback(cfg, cb_id, "معلومة");
+            let plan = plan_oversize(entry.duration_secs, entry.has_video);
+            let text = format!(
+                "{}\n\n{}",
+                oversize_text(entry.bytes, &entry.file, &plan),
+                oversize_guide_text()
+            );
+            let _ = edit_message_kb(cfg, chat_id, msg_id, &text, Some(oversize_keyboard(&plan)));
+        }
+        OversizeAction::Cancel => {
+            let taken = store
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .take(chat_id, msg_id);
+            answer_callback(cfg, cb_id, "أُلغي الإرسال");
+            if taken.is_some() {
+                // لا رفع ولا حذف: الناتج يبقى في مجلد النتائج (ت٤).
+                let _ = edit_message_kb(
+                    cfg,
+                    chat_id,
+                    msg_id,
+                    "❌ أُلغي الإرسال — الناتج باقٍ في مجلد النتائج ولم يُحذف.",
+                    None,
+                );
+            }
+        }
+        OversizeAction::Shrink | OversizeAction::Audio => {
+            // **يُسحب المدخل قبل بدء العمل**: ضغطة ثانية لا تجد شيئاً فلا يُرفع
+            // الملف مرّتين ولا يتنازع ضغطان على المخرج نفسه.
+            let taken = store
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .take(chat_id, msg_id);
+            let Some(entry) = taken else {
+                answer_callback(cfg, cb_id, "جارٍ التنفيذ بالفعل");
+                return;
+            };
+            let want_audio = action == OversizeAction::Audio;
+            answer_callback(
+                cfg,
+                cb_id,
+                if want_audio {
+                    "أستخرج الصوت وأضغطه…"
+                } else {
+                    "أضغط ثم أرسل…"
+                },
+            );
+            let _ = edit_message_kb(
+                cfg,
+                chat_id,
+                msg_id,
+                "🗜️ جارٍ الضغط… (لن تُحجب بقية المحادثة)",
+                Some(no_keyboard()),
+            );
+            let thread_cfg = cfg.clone();
+            if let Err(e) = std::thread::Builder::new()
+                .name("telegram-oversize".into())
+                .spawn(move || run_oversize_action(&thread_cfg, chat_id, msg_id, entry, want_audio))
+            {
+                // فشل إنشاء الخيط لا يُسقط الطلب بصمت: يُقال في المحادثة.
+                let _ = edit_message_kb(
+                    cfg,
+                    chat_id,
+                    msg_id,
+                    &format!("✗ تعذّر بدء الضغط: {e}\nالناتج باقٍ في مجلد النتائج."),
+                    Some(no_keyboard()),
+                );
+            }
+        }
+    }
+}
+
 fn handle_update(
     cfg: &TgConfig,
-    pending: &mut HashMap<i64, Pending>,
-    hinted: &mut HashSet<i64>,
+    poll: &mut PollState,
+    oversize: &Arc<Mutex<OversizeStore>>,
     u: &Value,
     tx: &Sender<Job>,
-    queue: &Arc<AtomicUsize>,
 ) {
     if let Some(cb) = u.get("callback_query") {
         let from_id = cb
@@ -1033,54 +2092,77 @@ fn handle_update(
             let reply = cancel_chat_jobs(target);
             answer_callback(cfg, cb_id, &reply);
             if msg_id != 0 {
-                let _ = edit_message(cfg, chat_id, msg_id, &reply, Some(empty_keyboard()));
+                // الزرّ يُزال **صراحةً** بلوحة فارغة: الرسالة كانت تحمله، وتعديلٌ
+                // بلا لوحة يحذفه في تلغرام — فالطلب صريح لا ضمني.
+                let _ = edit_message_kb(cfg, chat_id, msg_id, &reply, Some(no_keyboard()));
             }
             set_activity(reply);
+            return;
+        }
+        // ── أزرار سؤال التجاوز (م٣) — قبل أزرار الوضع، فشكل البيانات مختلف ──
+        if let Some(action) = parse_oversize_action(data) {
+            handle_oversize_action(cfg, oversize, action, chat_id, msg_id, cb_id);
             return;
         }
         let Some((token, mode)) = parse_mode_action(data) else {
             answer_callback(cfg, cb_id, "");
             return;
         };
-        let Some(p) = pending.remove(&chat_id) else {
+        // **البحث بالرمز لا بالمحادثة** (م٣/١): اختيار وضع ملفٍ لا يُلغي غيره.
+        let Some(p) = poll.pending.take(chat_id, &token) else {
             answer_callback(cfg, cb_id, "انتهت صلاحية هذا الطلب — أعد الإرسال");
             return;
         };
-        if p.token != token {
-            answer_callback(cfg, cb_id, "طلب قديم");
-            return;
-        }
-        let label = if mode == Mode::Song {
-            "أغنية"
-        } else {
-            "مقطع عادي"
-        };
+        let label = mode_label(mode);
         answer_callback(cfg, cb_id, &format!("اخترت: {label}"));
-        let queued = queue.fetch_add(1, Ordering::SeqCst) + 1;
+        let Pending {
+            source,
+            src_msg_id,
+            file,
+            row_id,
+            ..
+        } = p;
+        // الدور يُقرأ من العدّادات **قبل** إضافة هذه المهمّة، ثم يُقال `ahead+1`.
+        let position = jobs_ahead().saturating_add(1);
+        QUEUE_DEPTH.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut st) = status().lock() {
-            st.queue = queued;
+            st.queue = QUEUE_DEPTH.load(Ordering::SeqCst);
         }
-        if tx
+        let queued_ok = tx
             .send(Job {
                 chat_id,
-                source: p.source,
+                source,
                 mode,
+                src_msg_id,
+                status_msg_id: msg_id,
+                file,
+                row_id,
             })
-            .is_err()
-        {
-            queue.fetch_sub(1, Ordering::SeqCst);
-            let _ = send_message(cfg, chat_id, "⚠ تعذر جدولة المهمة", None);
+            .is_ok();
+        if !queued_ok {
+            dec(&QUEUE_DEPTH);
+            if let Ok(mut st) = status().lock() {
+                st.queue = QUEUE_DEPTH.load(Ordering::SeqCst);
+            }
+            jobs_finished(row_id, false);
+            let _ = send_message(cfg, chat_id, "⚠ تعذر جدولة المهمة", None, Some(src_msg_id));
             return;
         }
-        let text = if queued > 1 {
-            format!("⏳ في الطابور (المكان {queued}) — الوضع: {label}")
-        } else {
-            format!("▶ بدأ العمل — الوضع: {label}")
-        };
+        // **ولا يُقال «بدأت» هنا**: المهمّة في القائمة، و`run_job` وحدها تقول
+        // «بدأت المعالجة» لحظة دخولها التنفيذ.
+        let text = waiting_text(label, position);
         if msg_id != 0 {
-            let _ = edit_message(cfg, chat_id, msg_id, &text, Some(empty_keyboard()));
+            // زرّ الإلغاء **يحلّ محلّ أزرار الوضع** على الرسالة نفسها: زرٌّ واحد
+            // صادق بدل زرَّين لا يفعلان شيئاً بعد الاختيار.
+            let _ = edit_message_kb(cfg, chat_id, msg_id, &text, Some(cancel_button(chat_id)));
         } else {
-            let _ = send_message(cfg, chat_id, &text, None);
+            let _ = send_message(
+                cfg,
+                chat_id,
+                &text,
+                Some(cancel_button(chat_id)),
+                Some(src_msg_id),
+            );
         }
         return;
     }
@@ -1102,6 +2184,7 @@ fn handle_update(
     } else {
         // Pairing mode: the ONE thing that opens this bot is the one-time code
         // shown in the app's settings panel.
+        let src_msg_id = msg.get("message_id").and_then(Value::as_i64).unwrap_or(0);
         let text = msg
             .get("text")
             .and_then(Value::as_str)
@@ -1119,7 +2202,7 @@ fn handle_update(
                     }
                     Err(e) => format!("⚠ تعذر حفظ الاقتران: {e}"),
                 };
-                let _ = send_message(cfg, chat_id, &reply, None);
+                let _ = send_message(cfg, chat_id, &reply, None, Some(src_msg_id));
                 set_activity(format!("اقتران ناجح: {from_id}"));
                 return;
             }
@@ -1129,66 +2212,175 @@ fn handle_update(
                 } else {
                     format!("❌ كود غير صحيح. المحاولات المتبقية: {fails_left}")
                 };
-                let _ = send_message(cfg, chat_id, &body, None);
+                let _ = send_message(cfg, chat_id, &body, None, Some(src_msg_id));
                 set_activity(format!("محاولة اقتران فاشلة من {from_id}"));
                 return;
             }
             PairTry::NotAnAttempt => {}
         }
-        if hinted.insert(chat_id) {
-            let _ = send_message(cfg, chat_id, &pairing_hint(from_id), None);
+        if poll.hinted.insert(chat_id) {
+            let _ = send_message(cfg, chat_id, &pairing_hint(from_id), None, None);
         }
         set_activity(format!("غير مقترن: رسالة من {from_id}"));
         return;
     }
 
+    // أسئلة تجاوزٍ انتهى وقتها: تُزال **ويُقال ذلك** قبل معالجة أي تحديث جديد.
+    purge_oversize(cfg, oversize);
+
     match incoming {
         Incoming::Job(source) => {
             let token = format!("{:x}", nanos());
+            let src_msg_id = msg.get("message_id").and_then(Value::as_i64).unwrap_or(0);
+            let user = display_user(msg.get("from").unwrap_or(&Value::Null));
+            let file = match &source {
+                Source::Link(u) => display_name(u),
+                Source::File { name, .. } => display_name(name),
+            };
             let hint = match &source {
                 Source::Link(u) => format!("🔗 {u}"),
-                Source::File { name, .. } => format!("📎 {name}"),
+                Source::File { .. } => format!("📎 {file}"),
             };
+            // ① الحدّ الأعلى **صراحةً وقبل الإرسال**: لا سؤال يُرسَل ثم يُلغى،
+            //    ولا إسقاط صامت — رسالة واحدة تقول ما يلزم عمله.
+            if !poll.pending.can_accept(chat_id) {
+                let _ = send_message(cfg, chat_id, &pending_full_text(), None, Some(src_msg_id));
+                return;
+            }
+            // ② إشعار الانتظار يُحسب **من الطابور الفعلي** ويُرسَل مع السؤال
+            //    **عند الوصول** (لا عند الضغط على الزرّ).
+            let ahead = jobs_ahead();
             let keyboard = json!({
                 "inline_keyboard": [[
                     { "text": "🎵 أغنية", "callback_data": format!("mode:song:{token}") },
                     { "text": "🎬 مقطع عادي", "callback_data": format!("mode:clip:{token}") }
                 ]]
             });
-            let text = format!(
-                "{hint}\n\nهل هذا **أغنية** أم **مقطع عادي**؟\n\
-                 (الأغنية: فصل كامل + قصّ الصمت — المقطع: إزالة الموسيقى فقط)"
-            );
-            match send_message(cfg, chat_id, &text, Some(keyboard)) {
+            let text = mode_question_text(&hint, ahead);
+            match send_message(cfg, chat_id, &text, Some(keyboard), Some(src_msg_id)) {
                 Ok(_) => {
-                    pending.insert(chat_id, Pending { token, source });
+                    let row_id = jobs_arrived(chat_id, &user, &file);
+                    let inserted = poll.pending.insert(Pending {
+                        chat_id,
+                        token,
+                        source,
+                        src_msg_id,
+                        file,
+                        row_id,
+                    });
+                    if !inserted {
+                        // لا يقع اليوم (الفحص أعلاه على الخيط نفسه) — لكن السقوط
+                        // الصامت أسوأ من سطر.
+                        jobs_finished(row_id, false);
+                        let _ = send_message(
+                            cfg,
+                            chat_id,
+                            &pending_full_text(),
+                            None,
+                            Some(src_msg_id),
+                        );
+                    }
                 }
                 Err(e) => set_error(e),
             }
         }
         Incoming::Smalltalk(t) => {
-            let help =
-                "أرسل رابط فيديو، أو ارفع ملف صوت/فيديو (حتى 20MB)، وسأزيل الموسيقى وأعيده إليك.";
-            // ── `/kill` (م٢): المالك وحده، ويُلغي مهمّة **هذه المحادثة** ──
-            // (وقد تجاوز الفحص أعلاه كل من ليس المالك، فلا حاجة لفحص ثانٍ.)
-            // **ولا يوجد `/stop`**: قرار المالك «ما يظهر يعمل» — أمر واحد
-            // وظيفته الإلغاء، فلا اسمان لحالة واحدة.
-            let cmd = t.trim().to_ascii_lowercase();
-            if cmd == "/kill" || cmd.starts_with("/kill@") || cmd.starts_with("/kill ") {
-                let reply = cancel_chat_jobs(chat_id);
-                let _ = send_message(cfg, chat_id, &reply, None);
-                set_activity(reply);
-                return;
-            }
-            if t.trim_start().starts_with('/') || t.trim().is_empty() {
-                let _ = send_message(cfg, chat_id, help, None);
-            } else {
-                let _ = send_message(
-                    cfg,
-                    chat_id,
-                    &format!("لم أجد رابطاً في رسالتك.\n{help}"),
-                    None,
-                );
+            // رسالة المستخدم الأصلية: كل ردٍّ في هذا الفرع ردٌّ عليها (م٣).
+            let src_msg_id = msg.get("message_id").and_then(Value::as_i64).unwrap_or(0);
+            let cmd = parse_command(&t);
+            let name = cmd.as_ref().map(|(n, _)| n.as_str()).unwrap_or("");
+            let arg = cmd.as_ref().and_then(|(_, a)| a.as_deref());
+            match name {
+                // ── `/kill` (م٢): المالك وحده (الفحص أعلاه ردّ كل من ليس المالك)،
+                //    ويُلغي مهمّة **هذه المحادثة**. **ولا `/stop`** في أي مكان. ──
+                "kill" => {
+                    let reply = cancel_chat_jobs(chat_id);
+                    let _ = send_message(cfg, chat_id, &reply, None, Some(src_msg_id));
+                    set_activity(reply);
+                }
+                // ── `/status` (م٣): ماذا يعمل الآن **ولِمَن**. ──
+                "status" => {
+                    let running = slots::active_jobs();
+                    let text = status_text(
+                        chat_id,
+                        &running,
+                        QUEUE_DEPTH.load(Ordering::SeqCst),
+                        poll.pending.count_for(chat_id),
+                        oversize
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner())
+                            .count_for(chat_id),
+                        &status()
+                            .lock()
+                            .map(|s| s.last_error.clone())
+                            .unwrap_or_default(),
+                        epoch_ms(),
+                    );
+                    let _ = send_message(cfg, chat_id, &text, None, Some(src_msg_id));
+                }
+                // ── `/mode`: يُعيد أزرار الوضع للملفات المنتظرة ──
+                "mode" => {
+                    let items: Vec<(String, String, i64)> = poll
+                        .pending
+                        .for_chat(chat_id)
+                        .iter()
+                        .map(|p| (p.token.clone(), p.file.clone(), p.src_msg_id))
+                        .collect();
+                    if items.is_empty() {
+                        let _ = send_message(
+                            cfg,
+                            chat_id,
+                            "لا ملفات تنتظر اختيار الوضع الآن.\nأرسل ملفاً أو رابطاً وسأسألك.",
+                            None,
+                            Some(src_msg_id),
+                        );
+                    } else {
+                        let position = jobs_ahead().saturating_add(1);
+                        for (token, file, src) in items {
+                            let keyboard = json!({
+                                "inline_keyboard": [[
+                                    { "text": "🎵 أغنية", "callback_data": format!("mode:song:{token}") },
+                                    { "text": "🎬 مقطع عادي", "callback_data": format!("mode:clip:{token}") }
+                                ]]
+                            });
+                            let text =
+                                format!("📎 {file}\n\n{}", waiting_text("لم يُختر بعد", position));
+                            let _ = send_message(cfg, chat_id, &text, Some(keyboard), Some(src));
+                        }
+                    }
+                }
+                // ── `/lang`: يقول اللغات المتاحة بصدق ولا يدّعي تبديلاً ──
+                "lang" => {
+                    let _ = send_message(cfg, chat_id, &lang_text(arg), None, Some(src_msg_id));
+                }
+                // ── `/help` (و`/start` الذي يرسله كل عميل): القائمة نفسها التي
+                //    سُجّلت في `setMyCommands` — لا قائمتان تفترقان. ──
+                "help" | "start" => {
+                    let _ = send_message(cfg, chat_id, &help_text(), None, Some(src_msg_id));
+                }
+                // أمر معروف الشكل لا نعرفه: يُقال بصراحة بدل صمت أو تنكّر.
+                other if !other.is_empty() => {
+                    let _ = send_message(
+                        cfg,
+                        chat_id,
+                        &format!("لا أعرف الأمر /{other}.\n\n{}", help_text()),
+                        None,
+                        Some(src_msg_id),
+                    );
+                }
+                _ => {
+                    if t.trim().is_empty() || t.trim_start().starts_with('/') {
+                        let _ = send_message(cfg, chat_id, &help_text(), None, Some(src_msg_id));
+                    } else {
+                        let _ = send_message(
+                            cfg,
+                            chat_id,
+                            &format!("لم أجد رابطاً في رسالتك.\n{}", help_text()),
+                            None,
+                            Some(src_msg_id),
+                        );
+                    }
+                }
             }
         }
     }
@@ -1198,7 +2390,7 @@ fn spawn_job_thread(
     cfg: TgConfig,
     stop: Arc<AtomicBool>,
     rx: Receiver<Job>,
-    queue: Arc<AtomicUsize>,
+    oversize: Arc<Mutex<OversizeStore>>,
 ) {
     std::thread::Builder::new()
         .name("telegram-jobs".into())
@@ -1210,11 +2402,9 @@ fn spawn_job_thread(
                 if stop.load(Ordering::SeqCst) {
                     break;
                 }
-                queue.fetch_sub(1, Ordering::SeqCst);
-                if let Ok(mut st) = status().lock() {
-                    st.queue = queue.load(Ordering::SeqCst);
-                }
-                run_job(&cfg, job, &stop);
+                // الخارج من القناة يُحسب **داخل** `run_job` بعد `InFlightGuard`
+                // (لا هنا): بهذا لا توجد لحظة تكون فيها المهمّة في لا عدّاد.
+                run_job(&cfg, job, &stop, &oversize);
                 if let Ok(mut st) = status().lock() {
                     st.processed += 1;
                     st.last_activity = now_stamp();
@@ -1232,48 +2422,53 @@ fn now_stamp() -> String {
     format!("{secs}")
 }
 
+/// نفس ساعة `slots::JobInfo::started_ms` (ميلي ثانية منذ حقبة يونكس) — فتُقاس
+/// مدة المهمّة بمصدر واحد لا بمصدرين يفترقان.
+fn epoch_ms() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+}
+
 /// Throttled status message: Telegram rate-limits edits, and progress is
 /// cosmetic — 3s granularity is plenty.
+///
+/// **واللوحة تُمرَّر مع كل تعديل**: زرّ الإلغاء يبقى ما دامت المهمّة، ويُزال
+/// **بلوحة فارغة صراحةً** في التعديل النهائي (`end`) — لأن تعديلاً بلا
+/// `reply_markup` يمحو اللوحة في تلغرام، وهو عطل المالك المقيس.
 struct StatusMsg {
     chat_id: i64,
     message_id: i64,
     last: Instant,
     text: String,
-    /// اللوحة التي تُرسَل مع **كل** تعديل. الغياب (`None`) يعني «بلا لوحة» في
-    /// المعنى الذي يفرضه تليجرام: يحذفها. ولذلك نحمل هنا **زرّ الإلغاء** ما دامت
-    /// المهمّة جارية، ونستبدله بلوحة فارغة عند الانتهاء.
-    keyboard: Option<Value>,
+    /// هل اللوحة المرفقة الآن هي زرّ الإلغاء؟ (يُصفَّر عند الإنهاء.)
+    button_live: bool,
 }
 
 impl StatusMsg {
-    fn new(chat_id: i64, message_id: i64, text: String, keyboard: Option<Value>) -> Self {
+    fn new(chat_id: i64, message_id: i64) -> Self {
         Self {
             chat_id,
             message_id,
             last: Instant::now(),
-            text,
-            keyboard,
+            text: String::new(),
+            button_live: message_id != 0,
         }
     }
 
-    /// جسم تعديل الحالة — **دالّة نقيّة تُقاس باختبار** (لا HTTP): العطل الذي
-    /// رآه المالك كان في هذا الجسم بالضبط (لوحة غائبة ⇒ زرّ يختفي).
-    fn edit_body(&self, text: &str) -> Value {
-        let mut body =
-            json!({ "chat_id": self.chat_id, "message_id": self.message_id, "text": text });
-        if let Some(k) = &self.keyboard {
-            body["reply_markup"] = k.clone();
-        }
-        body
-    }
-
-    /// يُنهي رسالة الحالة: **يزيل زر الإلغاء صراحةً** (لوحة فارغة) ويثبّت النصّ.
-    fn finish(&mut self, cfg: &TgConfig, text: String) {
-        self.keyboard = Some(empty_keyboard());
-        self.set(cfg, text, true);
-    }
-
+    /// تحديث **أثناء العمل**: يمرّر زرّ الإلغاء فيبقى على الرسالة.
     fn set(&mut self, cfg: &TgConfig, text: String, force: bool) {
+        self.push(cfg, text, force, cancel_button(self.chat_id));
+    }
+
+    /// تحديث **نهائي**: يمرّر لوحة فارغة **صراحةً** فيزول الزر — ولا يُترك
+    /// زواله لسلوك ضمني هشّ.
+    fn end(&mut self, cfg: &TgConfig, text: String) {
+        self.push(cfg, text, true, no_keyboard());
+    }
+
+    fn push(&mut self, cfg: &TgConfig, text: String, force: bool, keyboard: Value) {
         if !force && self.last.elapsed() < EDIT_MIN_GAP && text == self.text {
             return;
         }
@@ -1282,29 +2477,38 @@ impl StatusMsg {
         }
         self.last = Instant::now();
         self.text = text.clone();
+        // اللوحة الفارغة تعني «انتهت» — يُسجَّل ذلك حتى لا تُعاد الإزالة مرّتين.
+        self.button_live = !keyboard
+            .pointer("/inline_keyboard")
+            .and_then(Value::as_array)
+            .map(|a| a.is_empty())
+            .unwrap_or(false);
         if self.message_id != 0 {
-            let body = self.edit_body(&text);
-            let _ = call(cfg, "editMessageText", &body, Duration::from_secs(20));
+            let _ = edit_message_kb(cfg, self.chat_id, self.message_id, &text, Some(keyboard));
         }
     }
 }
 
-/// **إزالة زر الإلغاء مضمونة على كل مسار خروج** — بما فيه العودة المبكرة
-/// (`return`) عند فشل التنزيل أو تجاوز الحجم: لو تركنا الزرّ على رسالة مهمّة
-/// منتهية لكان زرّاً يكذب (يُضغط فيقول «لا مهمّة جارية»). والحارس يُسقط نفسه
-/// مع أي `return` أو ذعر، فيقع التنظيف دائماً.
-struct StatusFinishGuard<'a> {
-    status: &'a std::cell::RefCell<StatusMsg>,
+/// **ضمانة بنيوية**: على كل باب خروج من `run_job` — نجاحاً أو خطأً أو ذعراً —
+/// يُزال زرّ الإلغاء بلوحة فارغة صراحةً إن لم يكن فرعٌ قد أزاله. فلا يبقى زرّ
+/// إلغاء على مهمّة منتهية، ولا يتوقّف ذلك على تذكّر كل فرع.
+struct CancelButtonGuard<'a> {
     cfg: &'a TgConfig,
+    status: &'a std::cell::RefCell<StatusMsg>,
 }
 
-impl Drop for StatusFinishGuard<'_> {
+impl Drop for CancelButtonGuard<'_> {
     fn drop(&mut self) {
-        let text = self.status.borrow().text.clone();
-        if text.is_empty() {
-            return; // لم تُكتب حالة بعد ⇒ لا شيء يُعدَّل
+        let s = self.status.borrow();
+        if s.message_id != 0 && s.button_live && !s.text.is_empty() {
+            let _ = edit_message_kb(
+                self.cfg,
+                s.chat_id,
+                s.message_id,
+                &s.text,
+                Some(no_keyboard()),
+            );
         }
-        self.status.borrow_mut().finish(self.cfg, text);
     }
 }
 
@@ -1379,7 +2583,33 @@ fn out_dir() -> PathBuf {
     crate::results_dir()
 }
 
-fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
+fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>, oversize: &Arc<Mutex<OversizeStore>>) {
+    // ① المهمّة «جارية» **قبل** أن تخرج من عدّاد القناة: لا لحظة تكون فيها في
+    //    لا عدّاد (وإلا عُدّ «دورك» ناقصاً في تلك النافذة).
+    let _in_flight = InFlightGuard::enter();
+    dec(&QUEUE_DEPTH);
+    if let Ok(mut st) = status().lock() {
+        st.queue = QUEUE_DEPTH.load(Ordering::SeqCst);
+    }
+    let row_id = job.row_id;
+    jobs_started(row_id);
+    // الافتراض `failed` حتى يُقال `ok()` صراحةً عند نجاةٍ مُثبَتة.
+    let mut row = JobRowGuard {
+        id: row_id,
+        ok: false,
+    };
+    // **م٣: التسجيل قبل التنزيل لا بعده.** قبله كانت المهمّة خارج السِجلّ حتى
+    // `run_separation`، فكان زرّ الإلغاء (و`/kill`) يردّ «لا مهمّة جارية» كذباً
+    // وهو ظاهر على الشاشة — قياس: للمهمّة نافذة تحضير كاملة لا يُلغيها أحد.
+    // والمسار يُثبَّت لاحقاً (`set_path`) فور أن يصير معلوماً: `None` هنا صادق
+    // (لم يُعرف بعد)، ولا يكسر مطابقة الواجهة بالمسار.
+    // **م٣: التسجيل قبل التنزيل لا بعده.** قبله كانت المهمّة خارج السِجلّ حتى
+    // `run_separation`، فكان زرّ الإلغاء (و`/kill`) يردّ «لا مهمّة جارية» كذباً
+    // وهو ظاهر على الشاشة — قياس: للمهمّة نافذة تحضير كاملة لا يُلغيها أحد.
+    // والمسار يُثبَّت لاحقاً (`set_path`) فور أن يصير معلوماً: `None` هنا صادق
+    // (لم يُعرف بعد)، ولا يكسر مطابقة الواجهة بالمسار.
+    let early = slots::register_early(&job_label(job.chat_id), None);
+
     let app_data = crate::paths::data_dir();
     let scratch = work_dir(&app_data);
     // Delivered results live with the user's other results; the scratch dir
@@ -1390,36 +2620,51 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
         chat_id,
         source,
         mode,
+        src_msg_id,
+        status_msg_id,
+        file: job_file,
+        row_id: _,
     } = job;
 
-    let msg_id = send_message(
-        cfg,
-        chat_id,
-        "📥 جارٍ التجهيز…",
-        // م٢: زر إلغاء صريح على رسالة التقدّم — يقع عليه النداء مرة أخرى،
-        // فيُلغى الطلب فعلاً (لا رسالة تُشعِر بلا فعل).
-        Some(cancel_button(chat_id)),
-    )
-    .unwrap_or(0);
+    let label = mode_label(mode);
+    // ② «بدأت المعالجة» تُقال **الآن** لا عند الضغط على الزرّ. ورسالة الحالة هي
+    //    **رسالة السؤال نفسها** حين أمكن: رسالة واحدة للملف تُحرَّر في مكانها
+    //    (لا رسالة لكل تحديث)، وزرّ الإلغاء يحلّ محلّ أزرار الوضع.
+    let msg_id = if status_msg_id != 0 {
+        let _ = edit_message_kb(
+            cfg,
+            chat_id,
+            status_msg_id,
+            &running_text(label),
+            Some(cancel_button(chat_id)),
+        );
+        status_msg_id
+    } else {
+        send_message(
+            cfg,
+            chat_id,
+            &running_text(label),
+            Some(cancel_button(chat_id)),
+            Some(src_msg_id),
+        )
+        .unwrap_or(0)
+    };
     // RefCell: the progress closure AND the stage closure both report through
     // the same status message, and two `&mut` captures cannot coexist.
-    // **وزرّ الإلغاء يُحمَل في الرسالة نفسها** (لا مرة واحدة عند الإنشاء): كل
-    // تعديل يُعيد تمريره، وإلا حذفه تليجرام — وهو عطل «الزر يختفي» المقيس.
-    let status = std::cell::RefCell::new(StatusMsg::new(
-        chat_id,
-        msg_id,
-        String::new(),
-        Some(cancel_button(chat_id)),
-    ));
-    // وحارس يُزيل الزرّ عند **أي** خروج من هذه الدالّة (نجاحاً أو فشلاً).
-    let _finish_guard = StatusFinishGuard {
-        status: &status,
+    let status = std::cell::RefCell::new(StatusMsg::new(chat_id, msg_id));
+    // ضمانة بنيوية: **على كل باب خروج** يُزال زرّ الإلغاء صراحةً لو نسي فرعٌ
+    // ذلك، فلا يبقى زرّ على مهمّة منتهية أبداً.
+    let _cancel_button_guard = CancelButtonGuard {
         cfg,
+        status: &status,
     };
 
     // 1. Obtain the input. Everything this job creates inside the scratch dir
     //    is disposable and tracked here, so no exit path can leak it.
-    let cancel = Arc::new(AtomicBool::new(false));
+    // رمز الإلغاء **رمز المهمّة نفسه**: ضغطة الزرّ تضبطه، فيتوقّف التنزيل
+    // (‏yt-dlp يستقبل هذا العلم بعينه ويستطلع عليه)، وتُقتل شجرته لأن سياق
+    // المهمّة مثبَّت على هذا الخيط منذ `register_early`.
+    let cancel = early.cancel_flag();
     let mut scratch_files = ScratchGuard::default();
     let input: PathBuf = match &source {
         Source::Link(url) => {
@@ -1439,9 +2684,7 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
             match crate::yt_dlp::download_media(url, &dir, &dl, &cancel) {
                 Ok(p) => p,
                 Err(e) => {
-                    status
-                        .borrow_mut()
-                        .set(cfg, format!("✗ فشل التنزيل: {e}"), true);
+                    status.borrow_mut().end(cfg, format!("✗ فشل التنزيل: {e}"));
                     return;
                 }
             }
@@ -1452,7 +2695,8 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
             size,
         } => {
             if !cfg.is_local() && *size > 0 && *size > CLOUD_DOWNLOAD_MAX_BYTES {
-                let _ = edit_message(
+                // الرسالة تحمل زرّ الإلغاء من إنشائها، فيُزال **صراحةً** هنا.
+                let _ = edit_message_kb(
                     cfg,
                     chat_id,
                     msg_id,
@@ -1462,7 +2706,7 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
                         human_mb(*size),
                         human_mb(CLOUD_DOWNLOAD_MAX_BYTES)
                     ),
-                    Some(empty_keyboard()),
+                    Some(no_keyboard()),
                 );
                 return;
             }
@@ -1474,7 +2718,7 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
                 Err(e) => {
                     status
                         .borrow_mut()
-                        .set(cfg, format!("✗ تعذر استلام الملف: {e}"), true);
+                        .end(cfg, format!("✗ تعذر استلام الملف: {e}"));
                     return;
                 }
             };
@@ -1492,24 +2736,24 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
                         Err(e) => {
                             status
                                 .borrow_mut()
-                                .set(cfg, format!("✗ تعذر نسخ الملف: {e}"), true);
+                                .end(cfg, format!("✗ تعذر نسخ الملف: {e}"));
                             return;
                         }
                     }
                 } else {
                     status
                         .borrow_mut()
-                        .set(cfg, "✗ مسار الملف المحلي غير موجود".into(), true);
+                        .end(cfg, "✗ مسار الملف المحلي غير موجود".into());
                     return;
                 }
             } else {
-                match download_cloud_file(cfg, &remote, &dest, CLOUD_DOWNLOAD_MAX_BYTES) {
+                match download_cloud_file(cfg, &remote, &dest, CLOUD_DOWNLOAD_MAX_BYTES, &cancel) {
                     Ok(_) => {
                         scratch_files.track(&dest);
                         dest
                     }
                     Err(e) => {
-                        status.borrow_mut().set(cfg, format!("✗ {e}"), true);
+                        status.borrow_mut().end(cfg, format!("✗ {e}"));
                         return;
                     }
                 }
@@ -1518,6 +2762,8 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
     };
 
     // 2. Probe: duration decides whether a cloud upload can carry a picture.
+    // المسار صار معلوماً ⇒ يُثبَّت في السِجلّ (تطابق الواجهة بالمسار كما في م٢).
+    early.set_path(&input.to_string_lossy());
     let info = crate::media::probe(&input).ok();
     let duration = info.as_ref().map(|i| i.duration_secs).unwrap_or(0.0);
     let source_has_video = info
@@ -1559,6 +2805,8 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
         }
     };
     let prog = |p: f32| {
+        // تقدّم حقيقي ⇒ بثٌّ حقيقي (`telegram-jobs`)، لا استطلاعاً دورياً.
+        jobs_progress(row_id, f64::from(p) * 100.0);
         status.borrow_mut().set(
             cfg,
             format!("🎛️ فصل الصوت… {}%", (p * 100.0).round()),
@@ -1579,30 +2827,23 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
     // م١: مهمّة البوت تأخذ فتحة جهاز مثل كل مدخل آخر.
     // م٢: ووسمها يحمل معرّف المحادثة (`telegram:<chat_id>`) فيجدها `/kill`،
     // ويُسجَّل مسار الإدخال معها فتظهر الواجهةُ المهمّةَ بمصدرها.
-    let processed = slots::run_separation(
-        &job_label(chat_id),
+    // م٣: والتسجيل **مبكر** (فُتح قبل التنزيل)، فلا تُسجَّل المهمّة مرّتين ولا
+    // يُبنى رمز إلغاء ثانٍ — الفتحة وحدها تُؤخذ هنا.
+    let processed = slots::run_separation_registered(
+        early,
         // Results land in the user's results folder — the same place the
         // browser bridge puts them — NOT in our scratch dir. That was the bug
         // behind the 150MB of "temporary" files the owner found in AppData:
         // the delivered artefact was being written to the scratch folder and
         // never cleaned (2026-09-11).
-        &input,
-        &results,
-        mode,
-        kind,
-        false,
-        true,
-        s.cuda,
-        None,
-        &prog,
-        &stage,
+        &input, &results, mode, kind, false, true, s.cuda, None, &prog, &stage,
     );
     let out = match processed {
         Ok(o) => o,
         Err(e) => {
             status
                 .borrow_mut()
-                .set(cfg, format!("✗ فشلت المعالجة: {e}"), true);
+                .end(cfg, format!("✗ فشلت المعالجة: {e}"));
             // A Telegram-sent copy is ours (the guard removes it); a link
             // download is kept for inspection, exactly like the bridge does.
             if matches!(source, Source::Link(_)) {
@@ -1619,7 +2860,7 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
         .or_else(|| out.vocals.clone())
         .or_else(|| out.instrumental.clone());
     let Some(produced) = produced else {
-        status.borrow_mut().set(cfg, "✗ لم ينتج ملف".into(), true);
+        status.borrow_mut().end(cfg, "✗ لم ينتج ملف".into());
         return;
     };
     let has_video = produced
@@ -1658,11 +2899,9 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
                         match audio_fallback(cfg, &produced, &scratch, &mut scratch_files) {
                             Some(a) => a,
                             None => {
-                                status.borrow_mut().set(
-                                    cfg,
-                                    "✗ تعذر تصغير الناتج ليدخل في حد تيليجرام".into(),
-                                    true,
-                                );
+                                status
+                                    .borrow_mut()
+                                    .end(cfg, "✗ تعذر تصغير الناتج ليدخل في حد تيليجرام".into());
                                 return;
                             }
                         }
@@ -1677,7 +2916,7 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
                         None => {
                             status
                                 .borrow_mut()
-                                .set(cfg, format!("✗ تعذر ضغط الناتج: {e}"), true);
+                                .end(cfg, format!("✗ تعذر ضغط الناتج: {e}"));
                             return;
                         }
                     }
@@ -1689,9 +2928,7 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
                 match audio_fallback(cfg, &produced, &scratch, &mut scratch_files) {
                     Some(a) => a,
                     None => {
-                        status
-                            .borrow_mut()
-                            .set(cfg, "✗ تعذر استخراج الصوت".into(), true);
+                        status.borrow_mut().end(cfg, "✗ تعذر استخراج الصوت".into());
                         return;
                     }
                 }
@@ -1701,46 +2938,69 @@ fn run_job(cfg: &TgConfig, job: Job, stop: &Arc<AtomicBool>) {
         }
     };
 
-    // 5. Send it.
+    // 5. Send it — أو **اسأل** عند التجاوز (م٣): الرفض الصامت كان يترك الناتج
+    //    عالقاً بلا خيار. والسؤال يُطرح هنا **بعد** أن فرغت فتحة الجهاز
+    //    (`run_separation` أعادت)، فلا تُحتجز مورد على انتظار ضغطة (شرط م٣).
     let bytes_out = std::fs::metadata(&to_send).map(|m| m.len()).unwrap_or(0);
     if !cfg.is_local() && bytes_out > CLOUD_SEND_MAX_BYTES {
-        status.borrow_mut().set(
-            cfg,
-            format!(
-                "✗ الناتج {} يتجاوز حد الإرسال ({}).",
-                human_mb(bytes_out),
-                human_mb(CLOUD_SEND_MAX_BYTES)
-            ),
-            true,
-        );
+        // **يُسأل عن الناتج الأصلي في مجلد النتائج** — لا عن `to_send` الذي قد
+        // يكون وسيطاً في المجلد المؤقّت (`ScratchGuard` يمحوه عند الخروج)، فكان
+        // السؤال يشير إلى ملفٍ محذوف.
+        let ask = OversizeAsk {
+            chat_id,
+            src_msg_id,
+            produced: &produced,
+            duration_secs: duration,
+            has_video,
+            bytes: bytes_out,
+            height: info.as_ref().and_then(|i| i.height).map(|h| h.min(720)),
+            file: &job_file,
+        };
+        match ask_oversize(cfg, oversize, ask) {
+            // المعالجة نجحت والملف موجود وينتظر قراراً: هذا ليس فشلاً.
+            Ok(()) => {
+                row.ok();
+                // الحالة تُنهى بزرٍّ مُزال: لا شيء يُلغى بعد الآن.
+                status.borrow_mut().end(
+                    cfg,
+                    format!(
+                        "⏳ الناتج {} فوق حدّ الإرسال — سألتك في الرسالة أدناه.",
+                        human_mb(bytes_out)
+                    ),
+                );
+            }
+            Err(e) => {
+                status
+                    .borrow_mut()
+                    .end(cfg, format!("✗ تعذّر طرح سؤال الضغط: {e}"));
+            }
+        }
+        if matches!(source, Source::Link(_)) {
+            let _ = std::fs::remove_file(&input);
+        }
         return;
     }
     status.borrow_mut().set(cfg, "📤 جارٍ الإرسال…".into(), true);
     let caption = format!(
         "🎧 HaramLite — أُزيلت الموسيقى ({})\nالوضع: {}",
         human_mb(bytes_out),
-        if mode == Mode::Song {
-            "أغنية"
-        } else {
-            "مقطع عادي"
-        }
+        mode_label(mode)
     );
-    match send_media(cfg, chat_id, &to_send, &caption) {
+    // م٣: الناتج **ردٌّ على رسالة المستخدم** فيقع تحت الوسائط المعالجة.
+    match send_media(cfg, chat_id, &to_send, &caption, Some(src_msg_id)) {
         Ok(()) => {
-            status.borrow_mut().set(
+            row.ok();
+            status.borrow_mut().end(
                 cfg,
                 format!(
                     "✅ تم — {} في {:.0} ثانية",
                     human_mb(bytes_out),
                     out.seconds
                 ),
-                true,
             );
         }
         Err(e) => {
-            status
-                .borrow_mut()
-                .set(cfg, format!("✗ فشل الإرسال: {e}"), true);
+            status.borrow_mut().end(cfg, format!("✗ فشل الإرسال: {e}"));
         }
     }
     // Housekeeping: a downloaded link source is ours, not the user's, and the
@@ -1803,57 +3063,334 @@ fn sanitize_name(name: &str) -> String {
 mod tests {
     use super::*;
 
-    /// **عطل مقيس من المالك (2026-09-21)**: «زر الإلغاء يظهر لثانية أو أقل ثم
-    /// يختفي». السبب: `editMessageText` **يحذف لوحة الأزرار** إن لم يُمرَّر معه
-    /// `reply_markup`، وتعديلات التقدّم لم تكن تمرّره ⇒ أول تحديث يمحو الزرّ.
-    /// وهذا الاختبار يقيس **جسم التعديل نفسه** (لا HTTP): الزرّ حاضر في كل
-    /// تحديث، ولا يغيب إلا بإزالة متعمَّدة عند انتهاء المهمّة.
-    ///
-    /// **المُفسَد**: أزل `reply_markup` من `StatusMsg::edit_body` ⇒ يسقط هذا
-    /// الاختبار (وهو نفسه العطل الذي رآه المالك).
-    #[test]
-    fn every_status_update_carries_the_cancel_button_until_the_job_finishes() {
-        let mut status = StatusMsg::new(7, 42, String::new(), Some(cancel_button(7)));
-        for text in ["📥 جارٍ التنزيل… 0%", "🎚️ الفصل 40%", "🎛️ التنقية 80%"]
-        {
-            let body = status.edit_body(text);
-            let kb = body
-                .get("reply_markup")
-                .expect("اللوحة تُمرَّر مع **كل** تحديث وإلا حذفها تليجرام");
-            assert_eq!(
-                kb["inline_keyboard"][0][0]["callback_data"]
-                    .as_str()
-                    .unwrap_or_default(),
-                "cancel:7",
-                "والزرّ هو زرّ هذه المحادثة"
-            );
-            assert_eq!(body["text"], text, "والنصّ هو نصّ هذه المرحلة");
-            assert_eq!(
-                body["message_id"], 42,
-                "وعلى الرسالة نفسها (تحرير لا رسالة جديدة)"
-            );
-        }
-        // وعند الانتهاء: إزالة **صريحة** بلوحة فارغة — لا اختفاء بالسهو.
-        status.keyboard = Some(empty_keyboard());
-        let body = status.edit_body("✔ تم");
-        assert_eq!(
-            body["reply_markup"]["inline_keyboard"]
-                .as_array()
-                .map(|a| a.len()),
-            Some(0),
-            "اللوحة الفارغة تُرسَل صراحةً فتُزال الأزرار بلا التباس"
-        );
+    // ═══════════════════════════════════════════════════════════════════════
+    //  م٣ — خادم Bot API وهمي محلي: يقيس **ما يُرسَل فعلاً** بلا شبكة خارجية
+    //  ولا توكن ولا تلغرام حقيقي. النمط مأخوذ من اختبار multipart القائم في هذا
+    //  الملف (‏`TcpListener` حقيقي على 127.0.0.1).
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[derive(Debug, Clone)]
+    struct SeenCall {
+        method: String,
+        body: String,
     }
 
-    /// واللوحة الفارغة نفسها: مصفوفة فارغة (ما يفهمه تليجرام كإزالة).
+    struct FakeBot {
+        addr: std::net::SocketAddr,
+        seen: Arc<Mutex<Vec<SeenCall>>>,
+        stop: Arc<AtomicBool>,
+        handle: Option<std::thread::JoinHandle<()>>,
+    }
+
+    /// يقرأ طلب HTTP واحد: (اسم الدوال، الجسم الخام).
+    fn read_http_request(sock: &mut std::net::TcpStream) -> (String, String) {
+        let mut buf: Vec<u8> = Vec::new();
+        let mut chunk = [0u8; 8192];
+        let mut split: Option<usize> = None;
+        let mut content_len = 0usize;
+        loop {
+            if split.is_none() {
+                if let Some(p) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                    split = Some(p);
+                    let head = String::from_utf8_lossy(&buf[..p]).to_ascii_lowercase();
+                    content_len = head
+                        .lines()
+                        .find_map(|l| l.strip_prefix("content-length:"))
+                        .and_then(|v| v.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                }
+            }
+            if let Some(p) = split {
+                if buf.len() >= p + 4 + content_len {
+                    break;
+                }
+            }
+            if buf.len() > 8 * 1024 * 1024 {
+                break; // لا يُعلَّق الاختبار على طلب مشوّه
+            }
+            match std::io::Read::read(sock, &mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => buf.extend_from_slice(&chunk[..n]),
+            }
+        }
+        let p = split.unwrap_or(buf.len());
+        let head = String::from_utf8_lossy(&buf[..p.min(buf.len())]).to_string();
+        let method = head
+            .lines()
+            .next()
+            .unwrap_or("")
+            .split_whitespace()
+            .nth(1)
+            .unwrap_or("")
+            .rsplit('/')
+            .next()
+            .unwrap_or("")
+            .to_string();
+        let body_start = (p + 4).min(buf.len());
+        let body = String::from_utf8_lossy(&buf[body_start..]).to_string();
+        (method, body)
+    }
+
+    fn fake_reply(method: &str, next_msg_id: &mut i64) -> String {
+        let result = match method {
+            "sendMessage" => {
+                *next_msg_id += 1;
+                json!({ "message_id": *next_msg_id }).to_string()
+            }
+            // تأخير قصير يمثّل long-polling، فلا تدور حلقة الاستطلاع بلا توقّف.
+            "getUpdates" => {
+                std::thread::sleep(Duration::from_millis(120));
+                "[]".to_string()
+            }
+            // **بطيء عمداً**: يفتح نافذة استلامٍ يُقاس فيها أن المهمّة مسجَّلة
+            // أثناءه (التسجيل المبكر، م٣) — وهي النافذة التي كان الزرّ فيها
+            // يردّ «لا مهمّة جارية» كذباً.
+            "getFile" => {
+                std::thread::sleep(Duration::from_millis(400));
+                json!({ "file_path": "hl_m3_absent.bin", "file_size": 0 }).to_string()
+            }
+            _ => "true".to_string(),
+        };
+        let body = format!("{{\"ok\":true,\"result\":{result}}}");
+        format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        )
+    }
+
+    impl FakeBot {
+        fn start() -> Self {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.set_nonblocking(true).unwrap();
+            let addr = listener.local_addr().unwrap();
+            let seen = Arc::new(Mutex::new(Vec::new()));
+            let stop = Arc::new(AtomicBool::new(false));
+            let handle = {
+                let seen = seen.clone();
+                let stop = stop.clone();
+                std::thread::spawn(move || {
+                    use std::io::Write as _;
+                    let mut next_msg_id: i64 = 1000;
+                    while !stop.load(Ordering::SeqCst) {
+                        match listener.accept() {
+                            Ok((mut sock, _)) => {
+                                // **مقيس**: على ويندوز يرث المقبس المقبول وضعَ
+                                // المستمع غير الحاجب، فيعود `read` بـ`WouldBlock`
+                                // فوراً ويُقرأ **صفر بايت** — والخادم يردّ ردّاً
+                                // صحيحاً عن طلبٍ لم يقرأه، فيبدو القياس ناجحاً
+                                // وكأن شيئاً لم يُرسَل. فيُعاد إلى الحجب صراحةً.
+                                sock.set_nonblocking(false).ok();
+                                sock.set_read_timeout(Some(Duration::from_secs(5))).ok();
+                                let (method, body) = read_http_request(&mut sock);
+                                if !method.is_empty() {
+                                    seen.lock()
+                                        .unwrap_or_else(|p| p.into_inner())
+                                        .push(SeenCall {
+                                            method: method.clone(),
+                                            body,
+                                        });
+                                }
+                                let reply = fake_reply(&method, &mut next_msg_id);
+                                let _ = sock.write_all(reply.as_bytes());
+                                let _ = sock.flush();
+                            }
+                            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                                std::thread::sleep(Duration::from_millis(2));
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                })
+            };
+            Self {
+                addr,
+                seen,
+                stop,
+                handle: Some(handle),
+            }
+        }
+
+        /// إعداد **محلي** (‏`local_url` ⇒ `is_local()`): يعني أن مسار السحابة
+        /// (‏سقف الإرسال وسؤال التجاوز) **لا يُفعَّل**، وأن ملفاً مُرسَلاً يُقرأ من
+        /// مسار على القرص — وهو ما يجعل `run_job` يُقاس بلا محرّك.
+        fn cfg(&self, owner: i64) -> TgConfig {
+            TgConfig {
+                token: "TESTTOKEN".into(),
+                owner_id: Some(owner),
+                audio_only: false,
+                local_url: Some(format!("http://{}", self.addr)),
+            }
+        }
+
+        fn calls(&self) -> Vec<SeenCall> {
+            self.seen.lock().unwrap_or_else(|p| p.into_inner()).clone()
+        }
+
+        fn bodies(&self, method: &str) -> Vec<String> {
+            self.calls()
+                .into_iter()
+                .filter(|c| c.method == method)
+                .map(|c| c.body)
+                .collect()
+        }
+
+        fn count(&self, method: &str) -> usize {
+            self.calls().iter().filter(|c| c.method == method).count()
+        }
+
+        fn clear(&self) {
+            self.seen.lock().unwrap_or_else(|p| p.into_inner()).clear();
+        }
+
+        /// أجسام `sendMessage` كـJSON — للفحص بالحقل لا بالبحث النصّي.
+        fn sent_messages(&self) -> Vec<Value> {
+            self.bodies("sendMessage")
+                .iter()
+                .filter_map(|b| serde_json::from_str::<Value>(b).ok())
+                .collect()
+        }
+
+        fn edited_messages(&self) -> Vec<Value> {
+            self.bodies("editMessageText")
+                .iter()
+                .filter_map(|b| serde_json::from_str::<Value>(b).ok())
+                .collect()
+        }
+    }
+
+    impl Drop for FakeBot {
+        fn drop(&mut self) {
+            self.stop.store(true, Ordering::SeqCst);
+            if let Some(h) = self.handle.take() {
+                let _ = h.join();
+            }
+        }
+    }
+
+    /// قفل اختبارات الحالة العملية-الشاملة: `QUEUE_DEPTH` و`IN_FLIGHT` و`TG_JOBS`
+    /// و`STATUS` مشتركة بين كل اختبارات العمليّة، و`cargo test` يشغّلها على خيوط
+    /// متوازية ⇒ كل اختبار يلمسها يأخذ هذا القفل، وإلا كان «دورك: 2» رقماً عن
+    /// اختبارٍ آخر لا عن الحالة المقيسة.
+    fn state_lock() -> std::sync::MutexGuard<'static, ()> {
+        static L: OnceLock<Mutex<()>> = OnceLock::new();
+        let g = L.get_or_init(|| Mutex::new(())).lock();
+        match g {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
+    /// يصفّر العدّادات — يُنادى **بعد** أخذ `state_lock` فقط.
+    fn reset_counters() {
+        QUEUE_DEPTH.store(0, Ordering::SeqCst);
+        IN_FLIGHT.store(0, Ordering::SeqCst);
+    }
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("hl_tg_m3_{}_{tag}", std::process::id()));
+        let _ = std::fs::create_dir_all(&d);
+        d
+    }
+
+    fn file_msg(from: i64, message_id: i64, name: &str) -> Value {
+        json!({
+            "update_id": 100 + message_id,
+            "message": {
+                "message_id": message_id,
+                "from": { "id": from, "first_name": "المالك" },
+                "chat": { "id": from },
+                "video": { "file_id": format!("F{message_id}"), "file_name": name, "file_size": 1024 }
+            }
+        })
+    }
+
+    fn text_msg(from: i64, message_id: i64, text: &str) -> Value {
+        json!({
+            "update_id": 200 + message_id,
+            "message": {
+                "message_id": message_id,
+                "from": { "id": from, "first_name": "المالك" },
+                "chat": { "id": from },
+                "text": text
+            }
+        })
+    }
+
+    fn press(from: i64, msg_id: i64, data: &str) -> Value {
+        json!({
+            "update_id": 300 + msg_id,
+            "callback_query": {
+                "id": format!("CB{msg_id}"),
+                "from": { "id": from },
+                "data": data,
+                "message": { "message_id": msg_id, "chat": { "id": from } }
+            }
+        })
+    }
+
+    /// رموز الملفات كما وردت **فعلاً** في أزرار الرسائل المُرسَلة (لا من حالة
+    /// داخلية) — فالقياس على ما يراه المستخدم. **ورمز واحد لكل ملف**: زرّا
+    /// «أغنية» و«مقطع عادي» يحملان الرمز نفسه، فيُطوى المكرّر.
+    fn mode_tokens(bot: &FakeBot) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for m in bot.sent_messages() {
+            let rows = m
+                .pointer("/reply_markup/inline_keyboard")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            for row in rows {
+                for btn in row.as_array().cloned().unwrap_or_default() {
+                    if let Some(d) = btn.get("callback_data").and_then(Value::as_str) {
+                        if let Some((token, _)) = parse_mode_action(d) {
+                            if !out.contains(&token) {
+                                out.push(token);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// نصوص `sendMessage` المُرسَلة.
+    fn sent_texts(bot: &FakeBot) -> Vec<String> {
+        bot.sent_messages()
+            .iter()
+            .filter_map(|m| m.get("text").and_then(Value::as_str).map(str::to_string))
+            .collect()
+    }
+
+    fn new_oversize_store() -> Arc<Mutex<OversizeStore>> {
+        Arc::new(Mutex::new(OversizeStore::default()))
+    }
+
+    /// حارس على الأداة نفسها: الخادم الوهمي **يقرأ الطلب** فعلاً ويسجّله. بغير
+    /// هذا الحارس كان كل قياسٍ لاحقٍ «صفر طلبات» — وهو ما يبدو كنجاحٍ صامت.
     #[test]
-    fn the_empty_keyboard_is_an_explicit_empty_list() {
+    fn the_fake_bot_actually_records_what_it_receives() {
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
         assert_eq!(
-            empty_keyboard()["inline_keyboard"]
-                .as_array()
-                .map(|a| a.len()),
-            Some(0)
+            call(&cfg, "getMe", &json!({}), Duration::from_secs(5)),
+            Ok(json!(true))
         );
+        let calls = bot.calls();
+        assert_eq!(calls.len(), 1, "الخادم الوهمي لم يسجّل الطلب");
+        assert_eq!(calls[0].method, "getMe", "اسم الدوال مقروء من المسار");
+    }
+
+    /// حالة استطلاع فارغة — للاختبارات التي لا تقرأ المعلَّقات.
+    fn poll_state() -> PollState {
+        PollState::default()
+    }
+
+    /// قناة مهامّ: يُعاد **الطرفان** حتى يبقى المستقبِل حيّاً (مستقبِلٌ يُسقَط
+    /// فوراً يجعل كل `send` فاشلاً فيتغيّر المسار المقيس).
+    fn chan() -> (Sender<Job>, Receiver<Job>) {
+        mpsc::channel()
     }
 
     #[test]
@@ -2408,5 +3945,1220 @@ mod tests {
             CANCEL_CONFIRM_WAIT >= Duration::from_millis(500),
             "وانتظار بلا معنى لا يكفي الحالة الغالبة: {CANCEL_CONFIRM_WAIT:?}"
         );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  م٣/إصلاح — المهمّة مسجَّلة **قبل** عملها التحضيري (فيصدق الزرّ)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// **العطل**: كان التسجيل يقع عند `run_separation` وحدها، فطوال التنزيل/
+    /// الاستلام لا مهمّة في السِجلّ ⇒ زرّ الإلغاء و`/kill` يردّان «لا مهمّة
+    /// جارية» **وهما ظاهران**.
+    ///
+    /// **القياس السلوكي**: `run_job` على خيط، والخادم الوهمي يُبطئ `getFile`،
+    /// وأثناء تلك النافذة نقرأ سِجلّ المهامّ **الحقيقي** ونجرّب الإلغاء عبر
+    /// `cancel_chat_jobs` (نفس ما يناديه الزرّ و`/kill` حرفاً).
+    #[test]
+    fn the_job_is_registered_and_cancellable_while_the_file_is_still_arriving() {
+        // السِجلّ العامّ واحد للعملية: نفس القفل الذي تتسلسل عليه اختبارات
+        // `slots` — وإلا صار قياسها تابعاً لترتيب الخيوط (وقع فعلاً).
+        let _reg = crate::slots::registry_test_lock();
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let ov = new_oversize_store();
+        let job = Job {
+            chat_id: 7,
+            source: Source::File {
+                file_id: "F12".into(),
+                name: "second.mp4".into(),
+                size: 0,
+            },
+            mode: Mode::Song,
+            src_msg_id: 12,
+            status_msg_id: 1001,
+            file: "second.mp4".into(),
+            row_id: jobs_arrived(7, "المالك", "second.mp4"),
+        };
+        let stop = Arc::new(AtomicBool::new(false));
+        let worker = {
+            let cfg = cfg.clone();
+            let ov = ov.clone();
+            let stop = stop.clone();
+            std::thread::spawn(move || run_job(&cfg, job, &stop, &ov))
+        };
+
+        // ننتظر ظهور المهمّة في السِجلّ العام (‏`slots::active_jobs`) ثم نحكم.
+        let mut live = false;
+        for _ in 0..300 {
+            if slots::active_jobs().iter().any(|j| j.label == job_label(7)) {
+                live = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            live,
+            "المهمّة ليست في السِجلّ أثناء الاستلام — الزرّ و/kill يكذبان الآن"
+        );
+        // والمسارات في السِجلّ لم تُعرف بعد ⇒ None صادق لا مخترع.
+        let entry = slots::active_jobs();
+        let mine = entry.iter().find(|j| j.label == job_label(7)).unwrap();
+        assert!(mine.path.is_none(), "مسار مخترع قبل التنزيل: {mine:?}");
+
+        // **والزرّ يعمل فعلاً**: نفس الدالّة التي يناديها الزرّ و`/kill`.
+        let reply = cancel_chat_jobs(7);
+        assert_ne!(
+            reply, "لا مهمّة جارية",
+            "الإلغاء أثناء الاستلام لم يجد المهمّة (العطل الأصلي)"
+        );
+
+        let _ = worker.join();
+        // وبعد الانتهاء لا تبقى مهمّة معلّقة في السِجلّ.
+        assert!(
+            !slots::active_jobs().iter().any(|j| j.label == job_label(7)),
+            "تسريب تسجيل بعد انتهاء المهمّة"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  عطل ميداني — زرّ الإلغاء يختفي بعد أول تعديل (بلاغ المالك)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// **العَرَض**: «زر الإلغاء يظهر في تلغرام لثانية واحدة أو أقل ثم يختفي».
+    ///
+    /// **السبب المقيس**: رسالة الحالة تُنشأ بالزر، ثم **أول تعديل** لها كان
+    /// يمرّ بلا `reply_markup` — وتلغرام يحذف لوحة الأزرار عند تعديلٍ لا لوحة
+    /// فيه. ومسار الملف يحرّر تحريرين قسريّين (`📥 جارٍ استلام الملف…` ثم
+    /// `✗ …`) قبل أن يمضي ثانياً ⇒ الزر يُمحى فوراً، لا بعد دقيقة.
+    ///
+    /// **القياس**: كل تعديلات المهمّة وهي جارية تحمل زرّ الإلغاء، والتعديل
+    /// **النهائي** يحمل `inline_keyboard` **فارغة صراحةً**.
+    #[test]
+    fn the_cancel_button_survives_every_update_and_is_removed_explicitly_at_the_end() {
+        let _reg = crate::slots::registry_test_lock();
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let ov = new_oversize_store();
+        let job = Job {
+            chat_id: 7,
+            source: Source::File {
+                file_id: "F12".into(),
+                name: "second.mp4".into(),
+                size: 0,
+            },
+            mode: Mode::Song,
+            src_msg_id: 12,
+            status_msg_id: 1001,
+            file: "second.mp4".into(),
+            row_id: jobs_arrived(7, "المالك", "second.mp4"),
+        };
+        let stop = Arc::new(AtomicBool::new(false));
+        run_job(&cfg, job, &stop, &ov);
+
+        let edits = bot.edited_messages();
+        assert!(
+            edits.len() >= 3,
+            "المسار يحرّر ثلاث مرات على الأقل (بدء · استلام · خروج): {edits:?}"
+        );
+        for e in &edits[..edits.len() - 1] {
+            assert_eq!(
+                e.pointer("/reply_markup/inline_keyboard/0/0/callback_data")
+                    .and_then(Value::as_str),
+                Some("cancel:7"),
+                "تعديل **أثناء العمل** بلا زرّ إلغاء ⇒ الزر يختفي في تلغرام: {e}"
+            );
+        }
+        let last = edits.last().unwrap();
+        assert_eq!(
+            last.pointer("/reply_markup/inline_keyboard"),
+            Some(&json!([])),
+            "التعديل النهائي يجب أن يمرّر **لوحة فارغة صراحةً**: {last}"
+        );
+        assert!(
+            last["text"].as_str().unwrap_or("").starts_with('✗'),
+            "والتعديل الأخير هو الخروج: {last}"
+        );
+        // ولا تعديل واحد بلا `reply_markup` إطلاقاً — هذا هو الحارس الحقيقي:
+        // أي تعديل يُسقط الحقل يمحو اللوحة في تلغرام.
+        for e in &edits {
+            assert!(
+                e.get("reply_markup").is_some(),
+                "تعديل بلا لوحة يحذف أزرار الرسالة في تلغرام: {e}"
+            );
+        }
+    }
+
+    /// والضغطة على الزرّ القديم بعد انتهاء المهمّة تبقى صادقة (سلوك م٢ محفوظ).
+    #[test]
+    fn a_stale_cancel_press_still_answers_honestly_and_is_explicit() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let ov = new_oversize_store();
+        let (tx, _rx) = chan();
+        handle_update(
+            &cfg,
+            &mut poll_state(),
+            &ov,
+            &press(7, 1001, "cancel:7"),
+            &tx,
+        );
+        let answers: Vec<String> = bot
+            .bodies("answerCallbackQuery")
+            .iter()
+            .filter_map(|b| serde_json::from_str::<Value>(b).ok())
+            .filter_map(|v| v.get("text").and_then(Value::as_str).map(str::to_string))
+            .collect();
+        assert_eq!(answers, vec!["لا مهمّة جارية".to_string()]);
+        let edits = bot.edited_messages();
+        assert_eq!(
+            edits[0].pointer("/reply_markup/inline_keyboard"),
+            Some(&json!([])),
+            "الإزالة صريحة لا ضمنية: {edits:?}"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  م٣/١ — **معلَّق لكل ملف** لا لكل محادثة
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// **العطل المقيس**: `HashMap<chat_id, Pending>` كان يسحق ملفاً بملف.
+    /// وهذا الاختبار يقيس الأثر لا الشكل: ملفان قبل أي اختيار ⇒ **الاثنان
+    /// موجودان**، واختيار الأول **لا يُلغي** الثاني، والمهمّتان تصلان القناة.
+    #[test]
+    fn two_files_waiting_together_are_both_kept_and_one_choice_never_drops_the_other() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let mut poll = PollState::default();
+        let ov = new_oversize_store();
+        let (tx, rx) = mpsc::channel::<Job>();
+
+        handle_update(&cfg, &mut poll, &ov, &file_msg(7, 11, "first.mp4"), &tx);
+        handle_update(&cfg, &mut poll, &ov, &file_msg(7, 12, "second.mp4"), &tx);
+        assert_eq!(
+            poll.pending.count_for(7),
+            2,
+            "وصول ملفٍ ثانٍ أسحق الأول (عطل البيانات المقيس)"
+        );
+        let tokens = mode_tokens(&bot);
+        assert_eq!(tokens.len(), 2, "لكل ملف رمزُه: {tokens:?}");
+        assert_ne!(tokens[0], tokens[1], "رموز الملفين يجب أن تتمايز");
+
+        // اختيار الأول: يخرج هو وحده.
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &press(7, 1001, &format!("mode:song:{}", tokens[0])),
+            &tx,
+        );
+        assert_eq!(poll.pending.count_for(7), 1, "اختيار الأول ألغى الثاني");
+        // والثاني ما زال قابلاً للاختيار برمزه.
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &press(7, 1002, &format!("mode:clip:{}", tokens[1])),
+            &tx,
+        );
+        assert_eq!(poll.pending.count_for(7), 0);
+        let jobs: Vec<Job> = rx.try_iter().collect();
+        assert_eq!(jobs.len(), 2, "ملفٌ ضاع في الطريق إلى القناة");
+        assert_eq!(jobs[0].file, "first.mp4");
+        assert_eq!(jobs[1].file, "second.mp4");
+        assert_eq!(jobs[0].mode, Mode::Song);
+        assert_eq!(jobs[1].mode, Mode::Clip);
+    }
+
+    /// **حدّ أعلى صريح**: بلوغه يُرفض به **رسالة صادقة قابلة للتنفيذ**، ولا
+    /// يُسقط معلَّقاً قائماً ولا ينمو بلا سقف.
+    #[test]
+    fn the_pending_list_has_an_explicit_cap_with_an_honest_message() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let mut poll = PollState::default();
+        let ov = new_oversize_store();
+        let (tx, _rx) = mpsc::channel::<Job>();
+
+        for i in 0..MAX_PENDING_PER_CHAT {
+            handle_update(
+                &cfg,
+                &mut poll,
+                &ov,
+                &file_msg(7, 100 + i as i64, &format!("f{i}.mp4")),
+                &tx,
+            );
+        }
+        assert_eq!(poll.pending.count_for(7), MAX_PENDING_PER_CHAT);
+        bot.clear();
+        // الملف رقم MAX+1: لا سؤال، بل رسالة الحدّ.
+        handle_update(&cfg, &mut poll, &ov, &file_msg(7, 900, "extra.mp4"), &tx);
+        assert_eq!(
+            poll.pending.count_for(7),
+            MAX_PENDING_PER_CHAT,
+            "نما السِجلّ فوق السقف"
+        );
+        assert_eq!(bot.count("sendMessage"), 1, "لم تُرسَل رسالة الحدّ وحدها");
+        let sent = bot.sent_messages();
+        let text = sent[0].get("text").and_then(Value::as_str).unwrap_or("");
+        assert!(text.contains("أكمل الملفات الحالية أولاً"), "النصّ: {text}");
+        assert!(
+            text.contains(&MAX_PENDING_PER_CHAT.to_string()),
+            "الرسالة تذكر الحدّ: {text}"
+        );
+        assert!(
+            sent[0].get("reply_markup").is_none(),
+            "لا أزرار لملفٍ لم يُقبل: {sent:?}"
+        );
+    }
+
+    /// السِجلّ **لا يُسقط شيئاً أبداً**: الإدراج فوق السقف يعيد `false` ويترك
+    /// القائم كما هو. (نقيّ — بلا شبكة.)
+    #[test]
+    fn the_pending_insert_never_evicts_an_existing_entry() {
+        let mut store = PendingStore::default();
+        let mk = |token: &str| Pending {
+            chat_id: 5,
+            token: token.into(),
+            source: Source::Link(format!("https://x/{token}")),
+            src_msg_id: 1,
+            file: format!("{token}.mp4"),
+            row_id: 1,
+        };
+        for i in 0..MAX_PENDING_PER_CHAT {
+            assert!(store.insert(mk(&format!("t{i}"))), "إدراج داخل السقف");
+        }
+        assert!(!store.insert(mk("overflow")), "السقف يجب أن يردّ");
+        assert_eq!(store.count_for(5), MAX_PENDING_PER_CHAT);
+        assert_eq!(
+            store.len(),
+            MAX_PENDING_PER_CHAT,
+            "المجموع = مجموع المحادثة"
+        );
+        assert!(store.take(5, "t0").is_some(), "الأول ما زال محفوظاً");
+        assert!(store.take(5, "overflow").is_none(), "لم يُدرَج");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  م٣/٢ — إشعار قائمة الانتظار **عند الوصول**
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// **الشكوى**: «لا يخبرني أنه في قائمة الانتظار» — كان الإشعار يُرسَل عند
+    /// الضغط على الزرّ فقط. والقياس: ملف يصل ومهمّة جارية (عدّاد حقيقي، لا حقل
+    /// مزروع) ⇒ **رسالة الوصول نفسها** تحمل «⏳ في قائمة الانتظار — دورك: 2».
+    #[test]
+    fn the_wait_notice_arrives_with_the_second_file_not_on_the_button_press() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let mut poll = PollState::default();
+        let ov = new_oversize_store();
+        let (tx, _rx) = mpsc::channel::<Job>();
+
+        // مهمّة جارية فعلاً (نفس العدّاد الذي تعدّه المهامّ الحقيقية).
+        let running = InFlightGuard::enter();
+        // مهمّة ثانية تنتظر في القناة.
+        QUEUE_DEPTH.fetch_add(1, Ordering::SeqCst);
+
+        handle_update(&cfg, &mut poll, &ov, &file_msg(7, 31, "second.mp4"), &tx);
+
+        let text = &sent_texts(&bot)[0];
+        assert!(
+            text.contains("⏳ في قائمة الانتظار"),
+            "الإشعار يجب أن يأتي **عند الوصول**: {text}"
+        );
+        assert!(
+            text.contains("دورك: 3"),
+            "الدور من الطابور الفعلي (جارية 1 + منتظرة 1 + هذه): {text}"
+        );
+        assert!(
+            !text.contains("طابور"),
+            "المصطلح المعتمد «قائمة الانتظار» لا «طابور»: {text}"
+        );
+        assert!(
+            text.contains("reply_markup") || bot.sent_messages()[0].get("reply_markup").is_some(),
+            "أزرار الوضع تُرسَل مع الإشعار نفسه"
+        );
+        drop(running);
+        dec(&QUEUE_DEPTH);
+    }
+
+    /// ولا إشعار انتظار حين لا يسبق الملفَ شيء: الرسالة تقول السؤال وحده.
+    /// (مُفسَد محروس: ذِكر «قائمة الانتظار» دائماً.)
+    #[test]
+    fn no_wait_notice_when_nothing_is_ahead() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let mut poll = PollState::default();
+        let ov = new_oversize_store();
+        let (tx, _rx) = mpsc::channel::<Job>();
+        handle_update(&cfg, &mut poll, &ov, &file_msg(7, 41, "only.mp4"), &tx);
+        let text = &sent_texts(&bot)[0];
+        assert!(!text.contains("قائمة الانتظار"), "لا انتظار بلا سابق: {text}");
+        assert!(text.contains("هل هذا **أغنية**"), "السؤال قائم: {text}");
+    }
+
+    /// **«ثم حرّرها لمّا يبدأ الدور»**: رسالة الوضع تصير رسالة الحالة، وتُحرَّر
+    /// إلى «▶ بدأت المعالجة» لحظة دخول المهمّة التنفيذ — **ولا رسالة جديدة**.
+    #[test]
+    fn the_wait_notice_is_edited_to_started_processing_when_the_turn_comes() {
+        let _reg = crate::slots::registry_test_lock();
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let ov = new_oversize_store();
+        // رسالة السؤال الحقيقية للملف الثاني هي رقم 1001 في الخادم الوهمي.
+        let job = Job {
+            chat_id: 7,
+            source: Source::File {
+                file_id: "F12".into(),
+                name: "second.mp4".into(),
+                size: 0,
+            },
+            mode: Mode::Song,
+            src_msg_id: 12,
+            status_msg_id: 1001,
+            file: "second.mp4".into(),
+            row_id: jobs_arrived(7, "المالك", "second.mp4"),
+        };
+        let stop = Arc::new(AtomicBool::new(false));
+        run_job(&cfg, job, &stop, &ov);
+
+        let edits = bot.edited_messages();
+        assert!(!edits.is_empty(), "لا تحرير لرسالة الحالة");
+        let first = &edits[0];
+        assert_eq!(
+            first.get("message_id").and_then(Value::as_i64),
+            Some(1001),
+            "الحالة تُحرَّر في مكانها (رسالة السؤال نفسها)"
+        );
+        let t0 = first.get("text").and_then(Value::as_str).unwrap_or("");
+        assert!(t0.contains("▶ بدأت المعالجة"), "أول تحرير: {t0}");
+        assert!(t0.contains("أغنية"), "الوضع مذكور: {t0}");
+        assert!(
+            first.get("reply_markup").is_some(),
+            "زرّ الإلغاء يرافق رسالة الحالة"
+        );
+        // **ولا رسالة جديدة لكل تحديث**: كل التحديثات تحريرٌ لرسالة واحدة.
+        assert_eq!(
+            bot.count("sendMessage"),
+            0,
+            "أُنشئت رسالة جديدة بدل التحرير في المكان: {:?}",
+            sent_texts(&bot)
+        );
+        assert!(
+            edits
+                .iter()
+                .all(|e| e.get("message_id").and_then(Value::as_i64) == Some(1001)),
+            "كل التحديثات على الرسالة نفسها"
+        );
+        // والمهمّة وصلت خطوة الاستلام ثم سقطت على مسار غير موجود (لا محرّك هنا).
+        let last = edits
+            .last()
+            .unwrap()
+            .get("text")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        assert!(
+            last.starts_with('✗'),
+            "يُقاس المسار كاملاً إلى أول خروج: {last}"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  م٣/٣ — ربط الرسائل (`reply_parameters`)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// **الشكوى**: «المحادثة مشتتة». القياس: الناتج يُرسَل بـ`reply_parameters`
+    /// يشير إلى **رسالة المستخدم** التي جاء منها الطلب.
+    #[test]
+    fn the_sent_media_is_a_reply_to_the_users_own_message() {
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let dir = temp_dir("reply");
+        let f = dir.join("out.mp3");
+        std::fs::write(&f, vec![1u8; 512]).unwrap();
+
+        send_media(&cfg, 7, &f, "نتيجة", Some(4242)).unwrap();
+        let body = &bot.bodies("sendAudio")[0];
+        assert!(
+            body.contains("name=\"reply_parameters\""),
+            "لا حقل reply_parameters في الطلب: {body}"
+        );
+        assert!(
+            body.contains("{\"message_id\":4242}"),
+            "الردّ لا يشير إلى رسالة المستخدم: {body}"
+        );
+
+        // وبلا معرّف لا يُرسَل الحقل أصلاً (لا `message_id: 0`).
+        bot.clear();
+        send_media(&cfg, 7, &f, "نتيجة", Some(0)).unwrap();
+        assert!(
+            !bot.bodies("sendAudio")[0].contains("reply_parameters"),
+            "صفر ليس معرّفاً"
+        );
+        let _ = std::fs::remove_file(&f);
+    }
+
+    /// ورسالة الوضع (وعاء الحالة) ردٌّ على رسالة المستخدم أيضاً.
+    #[test]
+    fn the_status_anchor_replies_to_the_users_message() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let mut poll = PollState::default();
+        let ov = new_oversize_store();
+        let (tx, _rx) = mpsc::channel::<Job>();
+        handle_update(&cfg, &mut poll, &ov, &file_msg(7, 51, "clip.mp4"), &tx);
+        let msg = &bot.sent_messages()[0];
+        assert_eq!(
+            msg.pointer("/reply_parameters/message_id")
+                .and_then(Value::as_i64),
+            Some(51),
+            "رسالة الحالة ليست ردّاً على رسالة المستخدم: {msg}"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  م٣/٤ — سؤال التجاوز بلوحة أزرار
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// الحساب: ناتج صوتي طوله ساعة لا يدخل 40 م.ب بأي معدّل معقول؟ لا — بل
+    /// يدخل بـ327 كيلوبت. والفحص على **معكوس الصيغة** لا على رقم مكتوب بيد.
+    #[test]
+    fn the_oversize_plan_offers_only_options_that_really_fit() {
+        // فيديو 10 دقائق: الفيديو يدخل بصورة مشاهَدة، والصوت يدخل أيضاً ⇒ زرّان.
+        let p = plan_oversize(600.0, true);
+        assert!(p.can_shrink() && p.can_audio(), "{p:?}");
+        assert!(projected_mb(p.shrink_kbps + AUDIO_KBPS, 600.0) <= CLOUD_TARGET_MB);
+        assert!(projected_mb(p.audio_kbps, 600.0) <= CLOUD_TARGET_MB);
+
+        // صوت بلا صورة: «الضغط» إعادة ترميز الصوت، ولا زرّ «أرسله صوتاً».
+        let p = plan_oversize(600.0, false);
+        assert!(p.can_shrink() && !p.can_audio(), "{p:?}");
+
+        // فيديو 5 ساعات: لا صورة مشاهَدة ولا صوت داخل الهدف ⇒ **لا وعود كاذبة**.
+        let p = plan_oversize(5.0 * 3600.0, true);
+        assert!(!p.any(), "وُعد بخيار لا يبلغ الهدف: {p:?}");
+
+        // مدة مجهولة (فشل probe) ⇒ لا حساب ولا وعد.
+        let p = plan_oversize(0.0, false);
+        assert!(!p.any(), "{p:?}");
+    }
+
+    /// الأزرار: **٣ للناتج الصوتي و٤ للفيديو** — وكل زرّ فعلُه (لا زرّ ساكن).
+    #[test]
+    fn the_oversize_panel_has_the_declared_buttons_and_the_guide_is_informational() {
+        let audio = plan_oversize(600.0, false);
+        let kb = oversize_keyboard(&audio);
+        let flat: Vec<String> = kb["inline_keyboard"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|r| r.as_array().unwrap().clone())
+            .map(|b| b["callback_data"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            flat,
+            vec!["oversize:shrink", "oversize:help", "oversize:cancel"],
+            "لوحة الناتج الصوتي: ٣ أزرار"
+        );
+        let video = plan_oversize(600.0, true);
+        let kb = oversize_keyboard(&video);
+        let flat: Vec<String> = kb["inline_keyboard"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|r| r.as_array().unwrap().clone())
+            .map(|b| b["callback_data"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            flat,
+            vec![
+                "oversize:shrink",
+                "oversize:audio",
+                "oversize:help",
+                "oversize:cancel"
+            ],
+            "لوحة الفيديو: ٤ أزرار"
+        );
+
+        // الدليل **معلومة لا إجراء**: يذكر الحدّ والخادم المحلي، ولا وعدَ تقسيم.
+        let guide = oversize_guide_text();
+        assert!(guide.contains("2000"), "يذكر حدّ الخادم المحلي: {guide}");
+        assert!(guide.contains(LOCAL_SERVER_HINT), "ويذكر العنوان: {guide}");
+        assert!(guide.contains("معلومة لا إجراء"), "{guide}");
+        assert!(guide.contains("لا أقسّم"), "لا تقسيم للناتج: {guide}");
+    }
+
+    /// **«يُسأل كل مرّة»** (قرار المالك): سؤالان متتاليان لنفس المحادثة ⇒
+    /// **رسالتا سؤال**. ومُفسَد هذا الاختبار: تخزين الاختيار ⇒ الثاني يمرّ بلا سؤال.
+    #[test]
+    fn the_oversize_question_is_asked_every_single_time() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let ov = new_oversize_store();
+        let dir = temp_dir("asked_twice");
+        let produced = dir.join("big.mp3");
+        std::fs::write(&produced, vec![3u8; 256]).unwrap();
+
+        for i in 0..2 {
+            let ask = OversizeAsk {
+                chat_id: 7,
+                src_msg_id: 60 + i,
+                produced: &produced,
+                duration_secs: 600.0,
+                has_video: false,
+                bytes: 60 * 1024 * 1024,
+                height: None,
+                file: "big.mp3",
+            };
+            ask_oversize(&cfg, &ov, ask).unwrap();
+        }
+        assert_eq!(
+            bot.sent_messages().len(),
+            2,
+            "سُئل مرة واحدة فقط — الجواب حُفظ (ممنوع)"
+        );
+        assert_eq!(ov.lock().unwrap().count_for(7), 2, "سؤالان مفتوحان معاً");
+        // وكل سؤال يحمل لوحته، وردٌّ على **رسالة المستخدم التي جاء منها**.
+        let replies: Vec<Option<i64>> = bot
+            .sent_messages()
+            .iter()
+            .map(|m| {
+                m.pointer("/reply_parameters/message_id")
+                    .and_then(Value::as_i64)
+            })
+            .collect();
+        assert_eq!(replies, vec![Some(60), Some(61)], "الربط برسالة المستخدم");
+        for m in bot.sent_messages() {
+            assert!(m.get("reply_markup").is_some(), "سؤال بلا لوحة: {m}");
+        }
+        // والنصّ يقول الحجم والحدّ **وأن الملف باقٍ**.
+        let text = &sent_texts(&bot)[0];
+        assert!(text.contains("60.0MB"), "{text}");
+        assert!(text.contains("50.0MB"), "{text}");
+        assert!(text.contains("لن يُحذف"), "{text}");
+        let _ = std::fs::remove_file(&produced);
+    }
+
+    /// «❌ إلغاء» ⇒ **لا رفع ولا حذف** (ت٤)، والسؤال يُزال، والضغطة تُجاب.
+    #[test]
+    fn cancelling_an_oversize_question_uploads_nothing_and_deletes_nothing() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let ov = new_oversize_store();
+        let dir = temp_dir("cancel");
+        let produced = dir.join("keep_me.mp3");
+        std::fs::write(&produced, vec![9u8; 128]).unwrap();
+        ov.lock().unwrap().insert(Oversize {
+            chat_id: 7,
+            msg_id: 777,
+            src_msg_id: 61,
+            path: produced.clone(),
+            bytes: 60 * 1024 * 1024,
+            duration_secs: 600.0,
+            has_video: false,
+            height: None,
+            file: "keep_me.mp3".into(),
+            asked: Instant::now(),
+        });
+
+        let (tx, _rx) = chan();
+        handle_update(
+            &cfg,
+            &mut poll_state(),
+            &ov,
+            &press(7, 777, "oversize:cancel"),
+            &tx,
+        );
+
+        assert_eq!(ov.lock().unwrap().len(), 0, "السؤال لم يُزل");
+        assert_eq!(
+            bot.count("sendAudio") + bot.count("sendVideo"),
+            0,
+            "رُفع ملف"
+        );
+        assert_eq!(bot.count("sendDocument"), 0, "رُفع ملف");
+        assert!(produced.is_file(), "حُذف الناتج عند الإلغاء (ممنوع)");
+        let answers: Vec<String> = bot
+            .bodies("answerCallbackQuery")
+            .iter()
+            .filter_map(|b| serde_json::from_str::<Value>(b).ok())
+            .filter_map(|v| v.get("text").and_then(Value::as_str).map(str::to_string))
+            .collect();
+        assert_eq!(answers.len(), 1, "كل ضغطة تُجاب: {answers:?}");
+        assert!(answers[0].contains("أُلغي"), "{answers:?}");
+        let edits = bot.edited_messages();
+        assert!(
+            edits[0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("باقٍ في مجلد النتائج"),
+            "يُقال إن الملف باقٍ: {edits:?}"
+        );
+        let _ = std::fs::remove_file(&produced);
+    }
+
+    /// «ℹ️» ⇒ نصّ الدليل **ويبقى السؤال** بلوحته (ت٥: معلومة لا إجراء).
+    #[test]
+    fn the_guide_button_keeps_the_question_open_and_takes_no_action() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let ov = new_oversize_store();
+        let dir = temp_dir("guide");
+        let produced = dir.join("q.mp3");
+        std::fs::write(&produced, vec![1u8; 64]).unwrap();
+        ov.lock().unwrap().insert(Oversize {
+            chat_id: 7,
+            msg_id: 778,
+            src_msg_id: 62,
+            path: produced.clone(),
+            bytes: 55 * 1024 * 1024,
+            duration_secs: 600.0,
+            has_video: false,
+            height: None,
+            file: "q.mp3".into(),
+            asked: Instant::now(),
+        });
+
+        let (tx, _rx) = chan();
+        handle_update(
+            &cfg,
+            &mut poll_state(),
+            &ov,
+            &press(7, 778, "oversize:help"),
+            &tx,
+        );
+
+        assert_eq!(ov.lock().unwrap().len(), 1, "السؤال يجب أن يبقى مفتوحاً");
+        let edits = bot.edited_messages();
+        assert_eq!(edits.len(), 1);
+        let text = edits[0]["text"].as_str().unwrap();
+        assert!(text.contains("كيف أرفع الحدّ"), "{text}");
+        assert!(text.contains("2000"), "{text}");
+        assert!(text.contains("معلومة لا إجراء"), "{text}");
+        assert!(
+            edits[0].get("reply_markup").is_some(),
+            "اللوحة تبقى بعد الدليل"
+        );
+        assert_eq!(
+            bot.count("sendAudio") + bot.count("sendVideo"),
+            0,
+            "أُرسل ملف"
+        );
+        let _ = std::fs::remove_file(&produced);
+    }
+
+    /// **صلاحية السؤال** (ت٦): بعد المدة تُزال الحالة **ويُعلَن ذلك**، والملف
+    /// يبقى. والقياس بلا انتظار حقيقي: `Instant` مصنوع في الماضي.
+    #[test]
+    fn an_expired_question_leaks_no_state_and_keeps_the_file() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let mut store = OversizeStore::default();
+        let dir = temp_dir("ttl");
+        let produced = dir.join("old.mp3");
+        std::fs::write(&produced, vec![2u8; 32]).unwrap();
+        let now = Instant::now();
+        let mk = |msg_id: i64, asked: Instant| Oversize {
+            chat_id: 7,
+            msg_id,
+            src_msg_id: 63,
+            path: produced.clone(),
+            bytes: 51 * 1024 * 1024,
+            duration_secs: 600.0,
+            has_video: false,
+            height: None,
+            file: "old.mp3".into(),
+            asked,
+        };
+        store.insert(mk(801, now - OVERSIZE_TTL - Duration::from_secs(1)));
+        store.insert(mk(802, now - Duration::from_secs(5)));
+
+        let dead = store.purge_expired(now);
+        assert_eq!(dead.len(), 1, "المنتهي وحده يُزال: {dead:?}");
+        assert_eq!(dead[0].msg_id, 801);
+        assert_eq!(store.len(), 1, "الحالة لم تتسرّب");
+        assert!(store.get(7, 802).is_some(), "الحديث يبقى");
+
+        // والسلوكي: الإعلان في المحادثة عبر المسار الحقيقي.
+        let ov = Arc::new(Mutex::new(store));
+        ov.lock()
+            .unwrap()
+            .insert(mk(803, now - OVERSIZE_TTL - Duration::from_secs(30)));
+        purge_oversize(&cfg, &ov);
+        assert_eq!(ov.lock().unwrap().len(), 1, "بقي المنتهي");
+        assert!(produced.is_file(), "حُذف الملف عند انتهاء المدة (ممنوع)");
+        let edits = bot.edited_messages();
+        assert_eq!(edits[0]["message_id"].as_i64(), Some(803));
+        assert!(
+            edits[0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("باقٍ في مجلد النتائج"),
+            "{edits:?}"
+        );
+        let _ = std::fs::remove_file(&produced);
+    }
+
+    /// **ضغطة من غير المالك** (ت٨): لا تنفيذ ولا استهلاك للحالة، والضغطة تُجاب.
+    #[test]
+    fn an_oversize_press_from_a_stranger_is_rejected_without_consuming_the_question() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let ov = new_oversize_store();
+        ov.lock().unwrap().insert(Oversize {
+            chat_id: 7,
+            msg_id: 779,
+            src_msg_id: 64,
+            path: PathBuf::from("does-not-matter.mp3"),
+            bytes: 60 * 1024 * 1024,
+            duration_secs: 600.0,
+            has_video: false,
+            height: None,
+            file: "x.mp3".into(),
+            asked: Instant::now(),
+        });
+        // المتطفل يخاطب المحادثة نفسها بضغطة على الزرّ نفسه.
+        let mut stranger = press(999, 779, "oversize:cancel");
+        stranger["callback_query"]["message"]["chat"]["id"] = json!(7);
+        let (tx, _rx) = chan();
+        handle_update(&cfg, &mut poll_state(), &ov, &stranger, &tx);
+
+        assert_eq!(ov.lock().unwrap().len(), 1, "المتطفل استهلك السؤال");
+        assert_eq!(bot.count("editMessageText"), 0, "المتطفل حرّر رسالة");
+        let answers: Vec<String> = bot
+            .bodies("answerCallbackQuery")
+            .iter()
+            .filter_map(|b| serde_json::from_str::<Value>(b).ok())
+            .filter_map(|v| v.get("text").and_then(Value::as_str).map(str::to_string))
+            .collect();
+        assert_eq!(answers, vec!["غير مصرّح".to_string()]);
+    }
+
+    /// **ضغطتان متزامنتان** (سؤال الجاسوس ٢): الضغطة الثانية لا تجد مدخلاً
+    /// فلا يُرفع الملف مرّتين، وتُجاب بصدق.
+    #[test]
+    fn a_second_press_on_the_same_button_never_uploads_twice() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let ov = new_oversize_store();
+        ov.lock().unwrap().insert(Oversize {
+            chat_id: 7,
+            msg_id: 780,
+            src_msg_id: 65,
+            // مسار غير موجود: ffmpeg يفشل فوراً فلا يعتمد القياس على ترميز حقيقي.
+            path: PathBuf::from("hl_m3_no_such_input.mp3"),
+            bytes: 60 * 1024 * 1024,
+            duration_secs: 600.0,
+            has_video: false,
+            height: None,
+            file: "gone.mp3".into(),
+            asked: Instant::now(),
+        });
+        let (tx, _rx) = chan();
+        handle_update(
+            &cfg,
+            &mut poll_state(),
+            &ov,
+            &press(7, 780, "oversize:shrink"),
+            &tx,
+        );
+        assert_eq!(ov.lock().unwrap().len(), 0, "المدخل يُسحب قبل العمل");
+        bot.clear();
+        handle_update(
+            &cfg,
+            &mut poll_state(),
+            &ov,
+            &press(7, 780, "oversize:shrink"),
+            &tx,
+        );
+        assert_eq!(ov.lock().unwrap().len(), 0);
+        assert_eq!(
+            bot.count("sendAudio") + bot.count("sendVideo") + bot.count("sendDocument"),
+            0,
+            "رُفع الملف من ضغطةٍ بلا مدخل"
+        );
+        let answers: Vec<String> = bot
+            .bodies("answerCallbackQuery")
+            .iter()
+            .filter_map(|b| serde_json::from_str::<Value>(b).ok())
+            .filter_map(|v| v.get("text").and_then(Value::as_str).map(str::to_string))
+            .collect();
+        assert_eq!(answers, vec!["لم يعد هذا السؤال فعّالاً".to_string()]);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  م٣/٥ — حدث `telegram-jobs` (العقد المُجمَّد)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// الحمولة **نقيّة** فتُقاس بلا تطبيق: الترتيب بترتيب الوصول، و`position`
+    /// واحدٌ للأول، و`total` طول المصفوفة، والحالات بأسمائها، و`pct` `null`
+    /// قبل البدء، **والاسم بلا مسار**.
+    #[test]
+    fn the_jobs_payload_matches_the_frozen_contract() {
+        let rows = vec![
+            TgJobRow {
+                id: 1,
+                chat_id: 7,
+                user: "المالك".into(),
+                file: "a.mp4".into(),
+                state: JobState::Running,
+                pct: Some(37.5),
+            },
+            TgJobRow {
+                id: 2,
+                chat_id: 7,
+                user: "المالك".into(),
+                file: "b.mp4".into(),
+                state: JobState::Queued,
+                pct: None,
+            },
+            TgJobRow {
+                id: 3,
+                chat_id: 8,
+                user: "آخر".into(),
+                file: "c.mp4".into(),
+                state: JobState::Done,
+                pct: Some(100.0),
+            },
+            TgJobRow {
+                id: 4,
+                chat_id: 8,
+                user: "آخر".into(),
+                file: "d.mp4".into(),
+                state: JobState::Failed,
+                pct: None,
+            },
+        ];
+        let v = jobs_payload(&rows);
+        let arr = v.as_array().unwrap();
+        assert_eq!(arr.len(), 4);
+        assert_eq!(arr[0]["state"], json!("running"));
+        assert_eq!(arr[0]["position"], json!(1));
+        assert_eq!(arr[1]["position"], json!(2));
+        assert_eq!(arr[1]["pct"], Value::Null);
+        assert_eq!(arr[0]["total"], json!(4));
+        assert_eq!(arr[2]["state"], json!("done"));
+        assert_eq!(arr[3]["state"], json!("failed"));
+        // **المفاتيح الأربعة المعلَنة** لا غيرها (العقد مُجمَّد للواجهة).
+        let keys: Vec<&str> = arr[0]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(|k| k.as_str())
+            .collect();
+        assert_eq!(
+            keys,
+            vec!["chat_id", "file", "pct", "position", "state", "total", "user"]
+        );
+        // ولا مسار في `file` — الخصوصية.
+        assert!(!arr[0]["file"].as_str().unwrap().contains('\\'));
+    }
+
+    /// `display_name` يقصّ المسار: الاسم المعروض لا يكشف مجلد الجهاز.
+    #[test]
+    fn the_displayed_name_never_carries_a_path() {
+        assert_eq!(display_name("C:\\Users\\me\\Videos\\song.mp4"), "song.mp4");
+        assert_eq!(display_name("/home/me/سر.mp4"), "سر.mp4");
+        assert_eq!(display_name("   "), "ملف");
+        assert_eq!(display_name(""), "ملف");
+        assert_eq!(display_name("song.mp4"), "song.mp4");
+    }
+
+    /// **عند كل تغيّر فعلي**: وصول ⇒ صفّ `queued`؛ بدء ⇒ `running`؛ انتهاء ⇒
+    /// يُبَثّ `done` **مرّة** ثم يُزال (فلا سطر ميت في اللوحة).
+    #[test]
+    fn a_job_row_walks_queued_running_done_and_is_then_removed() {
+        let _g = state_lock();
+        reset_counters();
+        let id = jobs_arrived(4242, "المالك", "clip.mp4");
+        assert_eq!(tg_job_states_for_test(4242), vec![("queued".into(), None)]);
+        jobs_started(id);
+        assert_eq!(
+            tg_job_states_for_test(4242),
+            vec![("running".into(), Some(0.0))]
+        );
+        jobs_progress(id, 37.44);
+        assert_eq!(
+            tg_job_states_for_test(4242),
+            vec![("running".into(), Some(37.4))],
+            "النسبة مقرّبة لعُشر — تغيّر فعلي لا ضجيج"
+        );
+        // نسبة لا تتغيّر ⇒ لا بثّ: التقريب نفسه هو الحارس (يُقاس نقيّاً).
+        assert_eq!(
+            round_pct(37.44),
+            round_pct(37.449),
+            "فرقٌ دون العُشر ليس تغيّراً"
+        );
+        assert_ne!(round_pct(37.44), round_pct(37.46), "فرقٌ فوق العُشر تغيّر");
+        jobs_finished(id, true);
+        assert!(
+            tg_job_states_for_test(4242).is_empty(),
+            "الصفّ المنتهي يجب أن يُزال بعد بثّه"
+        );
+    }
+
+    /// والوصول الحقيقي (عبر `handle_update`) يُسجّل صفّاً باسم الملف المعروض.
+    #[test]
+    fn an_arriving_file_shows_up_in_the_jobs_list_without_a_path() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let mut poll = PollState::default();
+        let ov = new_oversize_store();
+        let (tx, _rx) = chan();
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &file_msg(7, 71, "C:\\secret\\dir\\song.mp4"),
+            &tx,
+        );
+        let rows = tg_job_rows_for_test(7);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0]["file"], json!("song.mp4"), "المسار يتسرّب");
+        assert_eq!(rows[0]["state"], json!("queued"));
+        assert_eq!(rows[0]["user"], json!("المالك"));
+        assert_eq!(rows[0]["position"], json!(1));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  م٣/٦ — الأوامر
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// `/help` يعرض **القائمة نفسها** التي تُسجَّل في تلغرام؛ ولا `/stop`
+    /// في القائمة ولا في النصّ (قاعدة المالك: ما يظهر يعمل).
+    #[test]
+    fn the_help_list_is_the_registered_list_and_has_no_stop() {
+        let help = help_text();
+        for (name, desc) in COMMANDS {
+            assert!(help.contains(&format!("/{name}")), "أمر غير معروض: {name}");
+            assert!(!desc.is_empty(), "وصف فارغ لـ{name}");
+            assert!(
+                name.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'),
+                "اسم أمر غير مقبول في Bot API: {name}"
+            );
+        }
+        // الأمر الممنوع: يُبنى النصّ مقطّعاً حتى لا يجد الحارس نفسه في المصدر.
+        let banned = concat!("/st", "op");
+        assert!(!help.contains(banned), "ظهر أمر ممنوع في /help");
+        // النصّ الممنوع يُبنى بـ`concat!` حتى في هذا الفحص نفسه — وإلا وجد
+        // الحارسُ نفسَه في المصدر (وقع فعلاً: `"stop"` هنا أسقطت الفحص).
+        assert!(!COMMANDS.iter().any(|(n, _)| *n == concat!("st", "op")));
+        // وحارس على المصدر: **أسطر التعليق تُنزع أولاً** — فالتعليق الذي يمنع
+        // الأمر يذكر نصّه، ومسبارٌ خام كان يسقط على توثيقه هو (وقع فعلاً).
+        let code: String = include_str!("telegram.rs")
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            !code.contains(banned) && !code.contains("\"stop\""),
+            "ذُكر {banned} في كود المصدر (ممنوع في أي مكان)"
+        );
+    }
+
+    /// `setMyCommands` يُرسَل بالقائمة نفسها — سطرٌ واحد لا قائمتان تفترقان.
+    #[test]
+    fn the_commands_are_registered_with_telegram_verbatim() {
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        register_commands(&cfg);
+        let bodies = bot.bodies("setMyCommands");
+        assert_eq!(bodies.len(), 1, "لم يُسجَّل الأمر مرة واحدة");
+        let v: Value = serde_json::from_str(&bodies[0]).unwrap();
+        let listed: Vec<(String, String)> = v["commands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| {
+                (
+                    c["command"].as_str().unwrap().to_string(),
+                    c["description"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect();
+        let declared: Vec<(String, String)> = COMMANDS
+            .iter()
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .collect();
+        assert_eq!(listed, declared, "قائمة الإعلان ≠ قائمة العرض");
+    }
+
+    /// `/status` **نقيّ**: يقول ما يعمل ولمن، ويعدّ المنتظر والمعلَّق.
+    #[test]
+    fn status_text_names_what_runs_for_whom_and_counts_the_rest() {
+        let running = vec![
+            slots::JobInfo {
+                id: 1,
+                label: job_label(7),
+                path: Some("C:\\tmp\\mysong.mp4".into()),
+                started_ms: 12_000,
+                cancelled: false,
+            },
+            // مهمّة مصدرها الواجهة: ليست لهذه المحادثة فلا تُنسب إليها.
+            slots::JobInfo {
+                id: 2,
+                label: "gui".into(),
+                path: Some("other.mp4".into()),
+                started_ms: 1_000,
+                cancelled: false,
+            },
+        ];
+        let t = status_text(7, &running, 3, 2, 1, "", 17_500);
+        assert!(t.contains("mysong.mp4"), "{t}");
+        assert!(t.contains("منذ 5 ث"), "المدة مقيسة من started_ms: {t}");
+        assert!(!t.contains("other.mp4"), "مهمّة مصدرٍ آخر نُسبت للمحادثة: {t}");
+        assert!(t.contains("قائمة الانتظار: 3"), "{t}");
+        assert!(t.contains("تنتظر اختيار الوضع: 2"), "{t}");
+        assert!(t.contains("أسئلة ضغط مفتوحة: 1"), "{t}");
+        assert!(t.contains("المحادثة: 7"), "«ولِمَن»: {t}");
+        // بلا مهمّة: يُقال بصراحة، ولا قائمة فارغة.
+        let idle = status_text(7, &running[1..], 0, 0, 0, "خطأ ما", 17_500);
+        assert!(idle.contains("لا شيء يعمل"), "{idle}");
+        assert!(idle.contains("خطأ ما"), "الخطأ الأخير يُقال: {idle}");
+        // ومهمّة طُلب إلغاؤها تُوصَف بذلك لا بأنها تعمل بصمت.
+        let mut c = running.clone();
+        c[0].cancelled = true;
+        assert!(status_text(7, &c, 0, 0, 0, "", 17_500).contains("طُلب إلغاؤها"));
+    }
+
+    /// `/status` و`/kill` يعملان فعلاً في المحادثة (سلوكي، بخادم وهمي).
+    #[test]
+    fn slash_commands_answer_in_the_chat_and_a_stranger_gets_silence() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let mut poll = PollState::default();
+        let ov = new_oversize_store();
+        let (tx, _rx) = chan();
+
+        for (i, cmd) in [
+            "/status",
+            "/help",
+            "/lang",
+            "/lang en",
+            "/mode",
+            "/nonsense",
+        ]
+        .iter()
+        .enumerate()
+        {
+            handle_update(&cfg, &mut poll, &ov, &text_msg(7, 200 + i as i64, cmd), &tx);
+        }
+        let texts = sent_texts(&bot);
+        assert_eq!(texts.len(), 6, "كل أمر يُجاب: {texts:?}");
+        assert!(texts[0].contains("📊 الحال الآن"), "{}", texts[0]);
+        assert!(texts[1].contains("/status"), "{}", texts[1]);
+        assert!(texts[2].contains("العربية"), "{}", texts[2]);
+        assert!(texts[3].contains("لا تتوفّر لغة"), "{}", texts[3]);
+        assert!(texts[4].contains("لا ملفات تنتظر"), "{}", texts[4]);
+        assert!(
+            texts[5].contains("لا أعرف الأمر /nonsense"),
+            "الأمر المجهول يُقال بصراحة: {}",
+            texts[5]
+        );
+
+        // متطفل: **صمت تام** — ولا حتى إقرار (نفس سياسة الرسائل).
+        bot.clear();
+        handle_update(&cfg, &mut poll, &ov, &text_msg(999, 300, "/status"), &tx);
+        assert_eq!(bot.calls().len(), 0, "ردّ على غير المالك");
+    }
+
+    /// `/mode` يُعيد الأزرار للملفات المنتظرة **برمزها** فيصلح الزرّان معاً.
+    #[test]
+    fn the_mode_command_resends_the_buttons_for_every_waiting_file() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let mut poll = PollState::default();
+        let ov = new_oversize_store();
+        let (tx, _rx) = chan();
+        handle_update(&cfg, &mut poll, &ov, &file_msg(7, 81, "a.mp4"), &tx);
+        handle_update(&cfg, &mut poll, &ov, &file_msg(7, 82, "b.mp4"), &tx);
+        let tokens = mode_tokens(&bot);
+        bot.clear();
+        handle_update(&cfg, &mut poll, &ov, &text_msg(7, 301, "/mode"), &tx);
+        let again = mode_tokens(&bot);
+        assert_eq!(again, tokens, "رموز جديدة تعني أزراراً قديمة معطّلة");
+        assert_eq!(sent_texts(&bot).len(), 2, "سؤال لكل ملف منتظر");
+        // ولا يُلغى اختيار ملفٍ بإعادة العرض: المدخلان ما زالا قائمين.
+        assert_eq!(poll.pending.count_for(7), 2);
+    }
+
+    /// الخيط الذي يُسجّل الأوامر عند الإقلاع: القائمة تصل إلى تلغرام **قبل**
+    /// أول استطلاع. (مُفسَد محروس: حذف `register_commands` من خيط الاستطلاع.)
+    #[test]
+    fn the_poll_thread_registers_the_commands_at_startup() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let stop = Arc::new(AtomicBool::new(false));
+        let (tx, _rx) = chan();
+        spawn_poll_thread(cfg, stop.clone(), tx, new_oversize_store());
+        for _ in 0..200 {
+            if bot.count("setMyCommands") > 0 && bot.count("getUpdates") > 0 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        stop.store(true, Ordering::SeqCst);
+        assert_eq!(bot.count("setMyCommands"), 1, "الأوامر لم تُسجَّل عند الإقلاع");
+        assert!(bot.count("getUpdates") >= 1, "لم يبدأ الاستطلاع");
+    }
+
+    /// الأوامر تُفهم بصورها المتكافئة: `/kill@TheBot` و`/status الآن`.
+    #[test]
+    fn commands_are_parsed_in_their_equivalent_spellings() {
+        assert_eq!(
+            parse_command("/kill@MyBot"),
+            Some(("kill".to_string(), None))
+        );
+        assert_eq!(
+            parse_command("  /STATUS  "),
+            Some(("status".to_string(), None))
+        );
+        assert_eq!(
+            parse_command("/lang en"),
+            Some(("lang".to_string(), Some("en".to_string())))
+        );
+        // نصّ عادي ليس أمراً، و«/» وحدها ليست أمراً.
+        assert_eq!(parse_command("مرحبا"), None);
+        assert_eq!(parse_command("/"), None);
+        assert_eq!(parse_command(""), None);
+        assert_eq!(parse_command("//x"), None);
     }
 }
