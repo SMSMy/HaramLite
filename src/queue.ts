@@ -11,10 +11,20 @@
  * لم يُنقل outDirOf() هنا: بقي في src/media.ts حيث يخدم الفصل والتنزيل وفتح
  * المجلد معاً، فلا نسخة ثانية منه.
  * لم يتغيّر أي معرّف DOM ولا صيغة localStorage (hl.batch) ولا اسم أي أمر
- * (separate_file، cancel_process، download_media_cmd، update_ytdlp، push_log)
- * ولا حقل واحد في حِمل separate_file. الوحيد المضاف: export على ما تحتاجه
+ * (separate_file، download_media_cmd، update_ytdlp، push_log)
+ * ولا حقل واحد في حِمل separate_file. والوحيد المضاف: export على ما تحتاجه
  * main.ts (ingestFiles، stopBatch، wireSeparate، wireUrlDownload،
  * restoreBatchState، updateQualityOptions).
+ *
+ * **م٢ — الإلغاء الحقيقي**: لم يبقَ في هذا الملف نداءٌ لـ`cancel_process`
+ * (العلم العامّ لكل التطبيق). كل زرّ إلغاء يستهدف **مهمّته**: يُقرأ سِجلّ
+ * الخلفية (`active_jobs`) ويُطابَق مسار المهمّة بمسار الصفّ (`src/jobs.ts`)،
+ * ثم `cancel_job(id)`. وإن لم توجد مهمّة ⇒ إلغاء **محلي** بلا أي إلغاء عام.
+ * والاستثناء الوحيد المسمّى صراحةً: `stopBatch()` (إفراغ الطابور قبل تشغيل
+ * جديد) ⇒ `cancel_all_jobs()` — وهو نفس ما كان يفعله العلم العامّ سابقاً،
+ * بعقد صريح يعيد العدد. وإضافةً إلى ذلك: شريط إيقاف ثابت (`#stop-bar`) خارج
+ * منطقة تمرير الطابور، واستطلاع كل ثانية **أثناء وجود مهامّ** يُوائم حالة
+ * الصفوف مع السِجلّ (فلا يبقى صفٌّ «يعمل» بنسبة قديمة بعد أن ماتت مهمّته).
  */
 
 import { listen } from '@tauri-apps/api/event';
@@ -26,6 +36,18 @@ import type { SepResult } from './types';
 import { outDirOf, pathInputEl, probeEl, runProbe, sepBtnEl, sepResultEl, setVerdict, setVerdictHtml, verdictHtml } from './media';
 import * as session from './session';
 import { refreshYtdlpUpdateUi } from './ytdlpUi';
+import {
+  STOP_CEILING_SECS,
+  cancelJobById,
+  cancelMessage,
+  cancelPath,
+  fetchActiveJobs,
+  jobDisplayName,
+  jobForPath,
+  reconcileItemState,
+  stopTarget,
+} from './jobs';
+import type { CancelOutcome, JobInfo, JobInvoker } from './jobs';
 
 /** Handle one or many files: single → fill+probe; many → queue for batch. */
 export async function ingestFiles(files: string[]): Promise<void> {
@@ -86,10 +108,21 @@ export function updateQualityOptions(srcHeight: number | null): void {
 
 /* ── batch engine (F5): sequential, continue-on-fail ────────────────── */
 let batchAbort = false;
-/** Stop the batch AND the backend job behind it. Without cancel_process the
+/** مسار الملف الذي **نداء فصله معلَّق الآن** في الواجهة (null حين لا تشغيل).
+ *  ضروريّ لثلاثة أشياء: أن يعرف زرّ الإيقاف مهمّته، وأن يُمنع وسم صفٍّ «ميت»
+ *  بين `markBatchItem('run')` وتسجيل المهمّة في الخلف (نافذة زمنية حقيقية)،
+ *  وأن يُسمّى الهدف في شريط الإيقاف. */
+let runInFlightPath: string | null = null;
+
+/** Stop the batch AND the backend jobs behind it. Without cancelling them the
  *  Rust pipeline keeps grinding (ghost processing) and `batchRunning` stays
  *  true until it finishes — the next "فصل" click then cancels instead of
- *  starting. */
+ *  starting.
+ *
+ *  م٢: كان هنا `cancel_process` — **علمٌ عامّ** يُلغي كل شيء بلا هويّة. وصار
+ *  النداء `cancel_all_jobs()` الصريح الذي يعيد **عدد** ما سُجِّل إلغاؤه، فما
+ *  كان يُدَّعى صار يُقاس. والعرض نفسه (كل المهامّ) مقصود: هذا مسار «أفرِغ
+ *  الطابور قبل تشغيل جديد»، وهو ما كان العلم العامّ يفعله بالحرف. */
 export async function stopBatch(): Promise<void> {
   batchAbort = true;
   session.setBatchQueue([]);
@@ -98,13 +131,18 @@ export async function stopBatch(): Promise<void> {
   document.getElementById('batch-list')?.classList.add('hidden');
   document.getElementById('batch-counter')?.classList.add('hidden');
   // Phantom-cancel fix: stopBatch runs on EVERY single-file ingest, and it
-  // used to fire cancel_process (and its scary backend WARN line) even with
-  // nothing running. Only signal when a job actually exists to abort.
+  // used to fire the cancel command (and its scary backend WARN line) even
+  // with nothing running. Only signal when a job actually exists to abort.
   if (!session.getBatchRunning() && !session.getSingleRunning()) return;
   try {
-    await invoke('cancel_process');
+    const n = await invoke<number>('cancel_all_jobs');
+    invoke('push_log', {
+      level: n ? 'warn' : 'info',
+      message: `batch stop: cancel_all_jobs → ${n}`,
+    });
   } catch (e) {
-    console.error('cancel_process failed', e);
+    console.error('cancel_all_jobs failed', e);
+    invoke('push_log', { level: 'error', message: `batch stop: cancel_all_jobs failed: ${e}` });
   }
 }
 
@@ -211,6 +249,11 @@ export function restoreBatchState(): void {
   session.setBatchQueue(files);
   renderBatchList();
   setBatchCounter(0, session.getBatchQueue().length);
+  // م٢: الصفوف المُستعادة تُبنى «في الانتظار» (`renderBatchList` تكتب pending
+  // لكل الصفوف)، وقد تكون مهمّة أحدها **حيّة في الخلف** (إعادة تحميل الواجهة
+  // لا تقتل مهمّة Rust). فالاستطلاع يسأل السِجلّ ويصحّح العرض بدل أن تدّعي
+  // الشاشة غير ما في الخلفية.
+  startJobsPolling();
   showToast(t('batch_restored', {
     count: files.length,
     skipped: skipped ? t('batch_restored_skipped', { skipped }) : '',
@@ -241,8 +284,11 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?:
       if (actionsDiv) {
           actionsDiv.innerHTML = `<button class="text-error hover:text-red-400 p-1" title="${t('cancel_processing')}"><span class="material-symbols-outlined text-sm" data-icon="cancel">cancel</span></button>`;
           actionsDiv.classList.remove('hidden');
+          // م٢: هذا الزرّ كان ينادي `cancel_process` (علم عامّ) — فيُلغي كل
+          // شيء أو لا يُلغي شيئاً، ولا يعرف أيّ مهمّة يقصد. واليوم يستهدف
+          // مهمّة هذا الصفّ وحدها عبر مساره (والمنطق كله في cancelQueueItem).
           actionsDiv.querySelector('button')?.addEventListener('click', () => {
-              invoke('cancel_process').catch(console.error);
+              void cancelQueueItem(file);
           });
       }
   } else if (status === 'ok') {
@@ -289,6 +335,267 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run', resultPath?:
   }
   styleBatchItem(item); // className swaps above wipe it — restore last
   saveBatchState();
+}
+
+/* ── م٢: إلغاء مهمّة بعينها + شريط الإيقاف الثابت + مواءمة الطابور ─────────
+ * ثلاث وظائف مترابطة تعيش هنا لأنها تلمس حالة الطابور (`batchStatus` ·
+ * `runInFlightPath` · DOM الصفوف)، وكل القرارات النقية في `src/jobs.ts`:
+ *   ١) cancelQueueItem()   — زرّ الصفّ: مهمّته وحدها، وإلا إلغاء محلي.
+ *   ٢) wireStopBar()       — الزرّ الثابت + إلغاء الكل (منفصل ومسمّى).
+ *   ٣) استطلاع كل ثانية    — يوائم الصفوف مع سِجلّ الخلفية أثناء وجود مهامّ.
+ * ولا `cancel_process` العامّ في أي مسار هنا. */
+
+/** مستوى السجلّ للنصّ الذي يُكتب في الواجهة — الألوان دلالية لا تجميلية. */
+function toneClass(tone: 'ok' | 'warn' | 'error'): string {
+  return tone === 'error' ? 'text-error' : tone === 'warn' ? 'text-warn-yellow' : 'text-clay-accent';
+}
+
+/** يكتب نتيجة طلب الإلغاء في مكانين: سطر حالة الصفّ (إن وُجد)، وسطر شريط
+ *  الإيقاف. النصّ يأتي من `cancelMessage()` (تغطية كل حالة صريحة)، وسقف
+ *  الانتظار يُضاف **فقط** في حالة النجاح — حيث يُسأل «متى يتوقّف؟». */
+function reportCancelOutcome(outcome: CancelOutcome, file: string): void {
+  const m = cancelMessage(outcome);
+  const text = t(m.key, m.vars);
+  const cls = toneClass(m.tone);
+  const item = document.querySelector<HTMLElement>(`#batch-list div[data-file="${CSS.escape(file)}"]`);
+  const statusSpan = item?.querySelector<HTMLElement>('.status-text') ?? null;
+  if (statusSpan) {
+    statusSpan.textContent = text;
+    statusSpan.className = `status-text font-label-sm text-label-sm ${cls} relative z-10 flex-1`;
+  }
+  const note = document.getElementById('stop-note');
+  if (note) {
+    note.textContent = m.tone === 'ok'
+      ? `${text} ${t('stop_note_wait', { secs: STOP_CEILING_SECS })}`
+      : text;
+    note.className = `font-label-sm text-label-sm ${cls} leading-relaxed`;
+    noteHoldUntil = Date.now() + NOTE_HOLD_MS;
+  }
+  invoke('push_log', {
+    level: m.tone === 'error' ? 'error' : 'info',
+    message: `cancel [${outcome.kind}] ${file || '(no path)'}`,
+  });
+}
+
+/** إلغاء صفٍّ واحد من الطابور: **مهمّته وحدها** إن كانت مسجَّلة في الخلف
+ *  (`cancel_job`)، وإلا إلغاء **محلي** (تُوقف حلقة الدفعة) — ولا `cancel_process`
+ *  العامّ في أي فرع. ويعيد النتيجة كي يقيسها الاختبار ويُبلّغها النداء.
+ *
+ *  والمُدخَل `invoker` يُمرَّر (افتراضه `invoke` الحقيقي) فيُختبر السلوك بنداء
+ *  وهمي يُسجّل الأوامر — بلا تشغيل التطبيق. */
+export async function cancelQueueItem(
+  file: string,
+  invoker: JobInvoker = invoke,
+): Promise<CancelOutcome> {
+  const outcome = await cancelPath(invoker, file);
+  if (outcome.kind === 'local') {
+    // المهمّة لم تبدأ بعد (أو انتهت للتوّ): الإلغاء محلي — نفس ما يفعله
+    // مسار F-3 في زرّ الفصل، ولا إلغاء عامّ.
+    batchAbort = true;
+  }
+  reportCancelOutcome(outcome, file);
+  return outcome;
+}
+
+/** إلغاء المهمّة التي **تخصّ التشغيل الجاري في الواجهة** — يستعمله زرّ الفصل
+ *  حين يعمل كزرّ إلغاء (F-3/F-4)، فيستهدف مهمّته بدل كل التطبيق. */
+async function cancelRunningPath(): Promise<void> {
+  const file = runInFlightPath;
+  if (!file) {
+    // لا مسار معروف ⇒ لا نخمّن مهمّة ولا نقتل عريضاً: نقول ما نعرفه فقط.
+    const note = document.getElementById('stop-note');
+    if (note) {
+      note.textContent = t('stop_local_queued');
+      note.className = `font-label-sm text-label-sm ${toneClass('warn')} leading-relaxed`;
+    }
+    batchAbort = true;
+    return;
+  }
+  await cancelQueueItem(file);
+}
+
+/* ── استطلاع السِجلّ ومواءمة الصفوف ────────────────────────────────────── */
+let jobsPollTimer: number | undefined;
+/** آخر قراءة موفَّقة (أو فارغة عند الفشل) — يقرأها رسم الشريط. */
+let lastJobs: JobInfo[] = [];
+/** رسالة فشل القراءة، أو null إن نجحت — «لا نعرف» حالة صريحة لا صفر مهامّ. */
+let lastJobsError: string | null = null;
+let failedPolls = 0;
+/** بعد هذا العدد من القراءات الفاشلة المتتالية يتوقّف الاستطلاع (ويبقى نصّ
+ *  الفشل معروضاً): لا نُنفق نداءً فاشلاً كل ثانية إلى الأبد. وأي ضغط على زرّ
+ *  إيقاف أو بدء تشغيل يُعيد التسليح. */
+const FAILED_POLL_LIMIT = 30;
+/** بصمة آخر رسم — تمنع الكتابة في DOM كل ثانية بلا تغيّر (نفس نمط extSig). */
+let stopBarSig = '';
+/** نتيجة آخر ضغط من المستخدم تبقى معروضة هذه المدّة على الأقل، فلا يمحوها
+ *  الاستطلاع بعد ثانية قبل أن يقرأها. */
+const NOTE_HOLD_MS = 8000;
+let noteHoldUntil = 0;
+
+/** يسحب المهامّ النشطة مرّة، ويوائم الصفوف، ويرسم الشريط، ويوقف نفسه حين
+ *  يخلو السِجلّ ولا تشغيل في الواجهة. */
+async function syncJobsOnce(): Promise<void> {
+  const reg = await fetchActiveJobs(invoke);
+  if (reg.ok) {
+    failedPolls = 0;
+    lastJobsError = null;
+    lastJobs = reg.jobs;
+    reconcileBatchRows(reg.jobs);
+  } else {
+    failedPolls += 1;
+    lastJobs = [];
+    if (lastJobsError !== reg.error) {
+      // يُسجَّل مرّة لكل خطأ مختلف — الفشل لا يُبتلع بصمت.
+      invoke('push_log', { level: 'error', message: `active_jobs failed: ${reg.error}` });
+    }
+    lastJobsError = reg.error;
+  }
+  renderStopBar();
+  if (reg.ok && !reg.jobs.length && session.isIdle() && !runInFlightPath) {
+    stopJobsPolling();
+  } else if (!reg.ok && failedPolls >= FAILED_POLL_LIMIT && session.isIdle() && !runInFlightPath) {
+    stopJobsPolling(); // يبقى نصّ الفشل معروضاً، ويكفي أن نتوقّف عن الإلحاح
+  }
+}
+
+/** يبدأ (أو يُعيد تسليح) الاستطلاع: قراءة فورية ثم كل ثانية أثناء وجود مهامّ.
+ *  وإعادة التسليح تمسح أي مؤقّت قائم أولاً — فالنداء متكرّر (بداية كل صفٍّ في
+ *  الدفعة) ولا يجوز أن يتراكم مؤقّتان يقرآن السِجلّ مرّتين في الثانية. */
+export function startJobsPolling(): void {
+  if (jobsPollTimer !== undefined) window.clearInterval(jobsPollTimer);
+  jobsPollTimer = window.setInterval(() => { void syncJobsOnce(); }, 1000);
+  void syncJobsOnce();
+}
+
+function stopJobsPolling(): void {
+  if (jobsPollTimer === undefined) return;
+  window.clearInterval(jobsPollTimer);
+  jobsPollTimer = undefined;
+}
+
+/** يوائم حالة كل صفّ طابور مع السِجلّ: صفٌّ مهمّته حيّة يُعرض «يعمل» (وهذا
+ *  إصلاح صفٍّ مُستعاد من `hl.batch` بعد إعادة تحميل الواجهة كان يقول «في
+ *  الانتظار» ومهمّته تعمل)، وصفٌّ ادّعى العمل ولا مهمّة له تُصفَّر نسبته
+ *  ويُعاد إلى الانتظار برسالة صريحة — فلا تبقى نسبة قديمة على الشاشة. */
+function reconcileBatchRows(jobs: readonly JobInfo[]): void {
+  const queue = session.getBatchQueue();
+  if (!queue.length) return;
+  for (const f of queue) {
+    const local = batchStatus.get(f) ?? 'pending';
+    const hasJob = jobForPath(jobs, f) !== null;
+    const r = reconcileItemState(local, hasJob, runInFlightPath === f);
+    if (!r.changed) continue;
+    if (r.stale) {
+      batchStatus.set(f, 'pending');
+      const item = document.querySelector<HTMLElement>(`#batch-list div[data-file="${CSS.escape(f)}"]`);
+      if (item) resetBatchItemProgress(item, t('stop_row_stale'));
+      saveBatchState();
+      invoke('push_log', { level: 'warn', message: `queue row reset to pending (no backend job): ${f}` });
+      continue;
+    }
+    markBatchItem(f, 'run');
+    invoke('push_log', { level: 'info', message: `queue row marked running from active_jobs: ${f}` });
+  }
+}
+
+/** يُعيد صفاً إلى شكل «في الانتظار» **ويصفّر نسبته المعروضة** — الاسم وحده
+ *  لا يكفي: النسبة كانت تُرسم على حدث `sep-progress` ولا يمحوها شيء إذا ماتت
+ *  المهمّة، فتبقى على الشاشة كأن العمل جارٍ. */
+function resetBatchItemProgress(item: HTMLElement, note: string): void {
+  item.className = 'batch-item bg-coal-surface/40 border border-border-muted rounded p-stack-sm flex flex-col gap-unit opacity-60 transition-all duration-300 apple-ease cursor-default relative overflow-hidden';
+  item.querySelector('.batch-prog-bg')?.classList.add('hidden');
+  item.querySelector('.batch-pct')?.classList.add('hidden');
+  item.querySelector('.batch-prog-wrap')?.classList.add('hidden');
+  const bg = item.querySelector<HTMLElement>('.batch-prog-bg');
+  if (bg) bg.style.inlineSize = '0%';
+  const bar = item.querySelector<HTMLElement>('.batch-prog-bar');
+  if (bar) bar.style.inlineSize = '0%';
+  const pct = item.querySelector<HTMLElement>('.batch-pct');
+  if (pct) pct.textContent = '0%';
+  const statusSpan = item.querySelector<HTMLElement>('.status-text');
+  if (statusSpan) {
+    statusSpan.textContent = note;
+    statusSpan.className = 'status-text font-label-sm text-label-sm text-on-surface-variant relative z-10 flex-1';
+  }
+  item.querySelector('.batch-actions')?.classList.add('hidden');
+  styleBatchItem(item);
+}
+
+/** يرسم شريط الإيقاف: الظهور والهدف والعدّاد ونصّ الفشل.
+ *  قاعدة الظهور: يظهر ما دام في السِجلّ مهمّة، أو في الواجهة تشغيل جارٍ، أو
+ *  فشلت القراءة (فلا ندّعي «لا مهامّ»). */
+function renderStopBar(): void {
+  const bar = document.getElementById('stop-bar');
+  if (!bar) return;
+  const target = stopTarget(lastJobs, runInFlightPath);
+  const busy = runInFlightPath !== null || session.getActiveRun() !== null;
+  const visible = lastJobsError !== null || lastJobs.length > 0 || busy;
+  const sig = `${visible}|${lastJobsError ?? ''}|${lastJobs.length}|${target?.id ?? '-'}|${runInFlightPath ?? '-'}`;
+  bar.classList.toggle('hidden', !visible);
+  if (!visible) { stopBarSig = sig; return; }
+  if (sig === stopBarSig) return; // لا كتابة في DOM بلا تغيّر
+  stopBarSig = sig;
+  const count = document.getElementById('stop-count');
+  if (count) count.textContent = lastJobsError ? '?' : t('stop_count', { n: lastJobs.length });
+  const targetEl = document.getElementById('stop-target');
+  if (targetEl) {
+    targetEl.textContent = target
+      ? t('stop_target_line', { name: jobDisplayName(target) })
+      : t('stop_local_queued');
+  }
+  const note = document.getElementById('stop-note');
+  if (note && lastJobsError) {
+    note.textContent = t('stop_registry_failed', { error: lastJobsError });
+    note.className = `font-label-sm text-label-sm ${toneClass('error')} leading-relaxed`;
+  } else if (note && Date.now() >= noteHoldUntil) {
+    note.textContent = '';
+    note.className = 'font-label-sm text-label-sm text-on-surface-variant leading-relaxed';
+  }
+}
+
+/** إلغاء الكل — زرّ منفصل ومسمّى صراحةً، لا يفعل ما يفعله زرّ المهمّة. */
+async function stopAllJobs(): Promise<void> {
+  const note = document.getElementById('stop-note');
+  const write = (text: string, tone: 'ok' | 'warn' | 'error'): void => {
+    if (!note) return;
+    note.textContent = text;
+    note.className = `font-label-sm text-label-sm ${toneClass(tone)} leading-relaxed`;
+    noteHoldUntil = Date.now() + NOTE_HOLD_MS;
+  };
+  try {
+    const n = await invoke<number>('cancel_all_jobs');
+    write(n ? t('stop_all_result', { n }) : t('stop_all_none'), n ? 'ok' : 'warn');
+    invoke('push_log', { level: n ? 'warn' : 'info', message: `cancel_all_jobs → ${n}` });
+  } catch (e) {
+    write(t('stop_all_failed', { error: String(e) }), 'error');
+    invoke('push_log', { level: 'error', message: `cancel_all_jobs failed: ${e}` });
+  }
+}
+
+/** إيقاف المهمّة المعروضة: مهمّة الصفّ الجاري إن وُجد، وإلا **المهمّة التي
+ *  يسمّيها الشريط** — وهي أقدم مهمّة نشطة، ومعروضة نصّاً في `#stop-target`
+ *  فلا يُلغي الزرّ شيئاً لم يره المستخدم. */
+async function stopDisplayedJob(): Promise<void> {
+  if (runInFlightPath) {
+    await cancelQueueItem(runInFlightPath);
+    return;
+  }
+  const target = stopTarget(lastJobs, null);
+  if (!target) {
+    // لا مهمّة معروفة: إلغاء محلي فقط + رسالة صريحة (ولا إلغاء عامّ).
+    const outcome: CancelOutcome = { kind: 'local' };
+    reportCancelOutcome(outcome, '');
+    return;
+  }
+  const outcome = await cancelJobById(invoke, target.id);
+  reportCancelOutcome(outcome, typeof target.path === 'string' ? target.path : '');
+}
+
+/** ربط شريط الإيقاف (يُنادى من main.ts بعد الإقلاع). */
+export function wireStopBar(): void {
+  document.getElementById('btn-stop-job')?.addEventListener('click', () => { void stopDisplayedJob(); });
+  document.getElementById('btn-stop-all')?.addEventListener('click', () => { void stopAllJobs(); });
+  startJobsPolling();
 }
 
 /** Re-run one failed batch item with the last used separation options.
@@ -398,14 +705,16 @@ export function wireSeparate(): void {
 
   sepBtnEl()?.addEventListener('click', async () => {
     if (session.getBatchRunning()) {
-      // F-3: abort the file being processed NOW, not just the ones after it
+      // F-3: abort the file being processed NOW, not just the ones after it.
+      // م٢: والإلغاء يستهدف **مهمّة الملف الجاري** (cancel_job بمسارها) بدل
+      // العلم العامّ الذي كان يُلغي كل شيء ولا يعرف أيّ مهمّة يقصد.
       batchAbort = true;
-      void invoke('cancel_process');
+      await cancelRunningPath();
       return;
     }
     if (session.getSingleRunning()) {
       // F-4: the separate button doubles as a cancel button for single runs
-      void invoke('cancel_process');
+      await cancelRunningPath();
       return;
     }
     const keepInst = (document.getElementById('keep-inst') as HTMLInputElement)?.checked ?? false;
@@ -442,6 +751,8 @@ export function wireSeparate(): void {
     for (const f of session.getBatchQueue()) {
       if (batchAbort) break;
       markBatchItem(f, 'run');
+      runInFlightPath = f; // م٢: مسار المهمّة الجارية — يقرؤه زرّ الإيقاف والمواءمة
+      startJobsPolling();
       setBatchCounter(done, total);
       try {
         const res = await runSeparationFor(f, keepInst, { outKind, quality, advFmt });
@@ -453,6 +764,10 @@ export function wireSeparate(): void {
         failures.push(`${f} — ${e}`);
         invoke('push_log', { level: 'error', message: `batch item failed: ${f}: ${e}` });
         void notify(t('notify_fail'), fileBaseName(f));
+      } finally {
+        // النداء انتهى: لا «تشغيل معلَّق» بعد الآن (فلا تُقرأ مهمّة لم تُسجَّل
+        // بعد ولا يُمنع وسم صفٍّ ميت بأنه يعمل).
+        if (runInFlightPath === f) runInFlightPath = null;
       }
       done += 1;
       setBatchCounter(done, total);
@@ -506,6 +821,8 @@ async function runOne(
   btn.textContent = t('toggle_cancel');
   result.classList.add('hidden');
   markBatchItem(path, 'run');
+  runInFlightPath = path; // م٢: هويّة مهمّته — يقرؤها زرّ الإيقاف والمواءمة
+  startJobsPolling();
   try {
     const res = await runSeparationFor(path, keepInst, o);
     const lines = [t('sep_done_secs', { secs: res.seconds.toFixed(1) })];
@@ -526,6 +843,7 @@ async function runOne(
     void notify(t('notify_fail'), fileBaseName(path));
   } finally {
     session.endRun('single');
+    if (runInFlightPath === path) runInFlightPath = null;
     btn.disabled = false;
     btn.innerHTML = prevHtml;
   }
