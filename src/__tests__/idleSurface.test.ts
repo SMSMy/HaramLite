@@ -289,6 +289,31 @@ describe('ع١ · الإفراغ يُصفّي الصفوف التي لم تعد 
     expect(emptyVisible(), 'فراغ مُعلَن وصفوف معروضة').toBe(false);
     expect(visibleText()).not.toContain(i18n.ar.queue_empty);
   });
+
+  it('والصفّ **الملغى** سِجلٌ كذلك — لا يُمحى عند الإفراغ (عطل 2026-09-21)', async () => {
+    // `'cancelled'` حالة انتهاء لا حالة عمل: كانت `finished` في `stopBatch`
+    // تحوي `ok`/`fail` وحدها، فيُمحى الملغى ويبقى الفاشل — تناقض من الصنف نفسه.
+    mountApp();
+    session.setBatchQueue([]);
+    localStorage.clear();
+    h.invoke.mockImplementation(async () => null);
+    const list = document.getElementById('batch-list')!;
+    const div = document.createElement('div');
+    div.dataset.file = A;
+    div.dataset.state = 'cancelled';
+    const span = document.createElement('span');
+    span.className = 'status-text';
+    span.textContent = i18n.ar.sep_cancelled_short;
+    div.append(span);
+    list.append(div);
+    expect(rows(), 'صفّ ملغى مزروع').toHaveLength(1);
+
+    await stopBatch();
+
+    expect(rows(), 'الصفّ الملغى باقٍ سِجلاً').toHaveLength(1);
+    expect(rowStatuses()[0]).toBe(i18n.ar.sep_cancelled_short);
+    expect(emptyVisible(), 'فراغ مُعلَن وصفّ ملغى معروض').toBe(false);
+  });
 });
 
 /* ══ ٣) ع٢: مهمّة حيّة بطابور فارغ ⇒ لا يُعلَن خمول ════════════════════════ */

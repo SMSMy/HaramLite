@@ -143,7 +143,10 @@ export async function stopBatch(): Promise<void> {
   // (`data-state`، يكتبها `setBatchItemState`) لا بنصّه: مطابقة النصّ تتفرّق عن
   // الحقيقة بأول صياغة جديدة. وصفوف `ok`/`fail` تبقى عن قصد: سِجلّ ما جرى حتى
   // الرسم التالي (موثَّق في ترويسة `stopBatch`).
-  const finished = new Set<BatchItemState>(['ok', 'fail']);
+  // عطل ميداني 2026-09-21: `'cancelled'` **حالة انتهاء** كـ`ok`/`fail` لا حالة
+  // عمل ⇒ تُضاف إلى `finished`، وإلا مُحي الصفّ الملغى من الشاشة عند الإفراغ
+  // بينما يبقى الفاشل (قِيس: `rowCount:0` لصفٍّ `data-state="cancelled"`).
+  const finished = new Set<BatchItemState>(['ok', 'fail', 'cancelled']);
   for (const row of visibleBatchRows()) {
     if (!finished.has((row.dataset.state ?? 'pending') as BatchItemState)) row.remove();
   }
