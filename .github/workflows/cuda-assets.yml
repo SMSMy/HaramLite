@@ -170,9 +170,36 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # **كل أمر له فحص رمز خروج صريح** (دَين 0.2.8: خطوة pwsh «تنجح» وإن فشل أمرها،
+          # فيُعلَن الرفع تامّاً والقناة ناقصة ⇒ روابط 404 لكل مستخدم مثبَّت).
+          $ErrorActionPreference = 'Stop'
+          function Assert-Ok([string]$what) {
+            if ($LASTEXITCODE -ne 0) { throw "$what فشل برمز $LASTEXITCODE" }
+          }
           $work = Join-Path $env:RUNNER_TEMP 'cuda-runtime'
           $repo = 'SMSMy/HaramLite'  # -R: this job has no checkout, so gh needs the repo explicitly
-          if (-not (gh release view assets-v1 -R $repo --json tagName -q .tagName 2>$null)) {
+
+          # وجود القناة يُقاس برمز الخروج لا بصدق المخرَج: «فشل gh» (شبكة/توكن) ليس «القناة غائبة»،
+          # ولو خلطنا بينهما لأنشأنا إصداراً جديداً على عطل عابر.
+          $null = gh release view assets-v1 -R $repo --json tagName -q .tagName 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host 'assets-v1 موجودة — يُرفع فوقها بـ--clobber'
+          } elseif ($LASTEXITCODE -eq 1) {
+            Write-Host 'assets-v1 غير موجودة — تُنشأ الآن'
             gh release create assets-v1 -R $repo --title "Repair assets (stable)" --notes "مصادر معالج الإصلاح الذاتي — لا تحذف هذا الإصدار. الرخص: رخصة NVIDIA CUDA (البند 1.1.2 Distribution Requirements) لأصول CUDA/cuDNN، و MIT لمزوّدي ONNX Runtime — والتفاصيل في THIRD-PARTY-NOTICES.md في المستودع."
+            Assert-Ok 'إنشاء القناة'
+          } else {
+            throw "gh release view فشل برمز $LASTEXITCODE — لا نُفرّق بين «غائبة» و«عطل» فلا نُنشئ شيئاً"
           }
-          gh release upload assets-v1 -R $repo (Get-ChildItem (Join-Path $work 'bin') -Filter '*.dll').FullName (Join-Path $work 'cuda-runtime-manifest.json') --clobber
+
+          $payload = @(Get-ChildItem (Join-Path $work 'bin') -Filter '*.dll').FullName + (Join-Path $work 'cuda-runtime-manifest.json')
+          gh release upload assets-v1 -R $repo @payload --clobber
+          Assert-Ok 'رفع الأصول'
+
+          # **والتحقّق بعد الرفع**: القناة تُقرأ من الشبكة وتُقابَل بما رُفع، فلا يُعلَن نجاحٌ بلا أثر.
+          $expected = @($payload | ForEach-Object { Split-Path $_ -Leaf }) | Sort-Object -Unique
+          $have = @((gh release view assets-v1 -R $repo --json assets -q '.assets[].name') -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() })
+          Assert-Ok 'قراءة القناة بعد الرفع'
+          $missing = @($expected | Where-Object { $have -notcontains $_ })
+          if ($missing.Count) { throw "بعد الرفع: أصول غائبة عن القناة: $($missing -join ', ')" }
+          Write-Host "تحقّق الرفع: $($have.Count) أصلاً في assets-v1 — وكل المرفوع حاضر"
