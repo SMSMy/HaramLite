@@ -41,7 +41,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { findTable, balancedBlock } = require('./check-extension-i18n.cjs');
+const { findTable, balancedBlock, stripComments } = require('./check-extension-i18n.cjs');
 
 const EXIT = { PASS: 0, FAIL: 1, MISUSE: 2 };
 const ROOT_DEFAULT = path.resolve(__dirname, '..');
@@ -50,6 +50,14 @@ const TABLE_RELS = [
   path.join('browser-extension', 'content.js'),
   path.join('browser-extension', 'popup.js'),
 ];
+/** ملفات التشغيل التي تُعرَض فيها نصوص الخطأ — وفيها `background.js` ناقلاً أيضاً. */
+const RUNTIME_RELS = TABLE_RELS.concat([path.join('browser-extension', 'background.js')]);
+/** الدالّتان الوحيدتان المسموح لهما بقراءة النصّ الخام (وما عداهما يُعلَن). */
+const SANCTIONED_FNS = ['errText', 'bridgeError'];
+/** قراءة حقل خطأ: `.error` أو `.message` — والعدّ **جارف** (يشمل ما في نصّ حرفيّ).
+ *  واستُثني ما يتبعه قوس (`console.error(`) لأنه **استدعاء دالّة** لا قراءة حقل —
+ *  وقراءة الحقل لا تُتبع بقوس في أي صيغة هنا. */
+const RAW_READ_RE = /\.\s*(?:error|message)\b(?!\s*\()/g;
 /** شكل الرمز: ASCII صغير بـ`snake_case` — فيصلح مفتاحاً `code.<رمز>` بلا هروب. */
 const CODE_RE = /^[a-z][a-z0-9_]*$/;
 /** ثابت الرمز في الرست: `pub const E_X: &str = "value";` */
@@ -230,6 +238,73 @@ function readSwitchCases(src) {
   return out;
 }
 
+/** مدى جسم دالّة في نصّ JS: `[بداية القوس, نهايته)` — بتجاوز النصوص والتعليقات. */
+function fnSpan(text, name) {
+  const at = new RegExp('function\\s+' + name + '\\s*\\(').exec(text);
+  if (!at) return null;
+  const open = text.indexOf('{', at.index);
+  if (open < 0) return null;
+  const blk = balancedBlock(text, open);
+  return blk ? { start: open, end: blk.end, body: blk.body } : null;
+}
+
+/** جُسَيْمات حالات `switch` داخل `errText`: الرمز ⇒ نصّ ما بينه وبين الحالة التالية. */
+function caseChunks(src) {
+  const span = fnSpan(src, 'errText');
+  if (!span) return null;
+  const re = /(?:case\s+'([a-z][a-z0-9_]*)'|(default))\s*:/g;
+  const marks = [];
+  let m;
+  while ((m = re.exec(span.body)) !== null) marks.push({ code: m[1] || null, at: re.lastIndex });
+  return marks.map((mk, i) => ({
+    code: mk.code,
+    body: span.body.slice(mk.at, i + 1 < marks.length ? marks[i + 1].at : span.body.length),
+  }));
+}
+
+/* ── قاعدة العرض: لا قراءة خامّة خارج المصرَّح ───────────────────────────────
+ * **ث١ (جاسوس م٦-ج)**: ثلاثة مسارات عرض — `content.js` الاستطلاع (`st.last.error`)
+ * وجلب الصوت · `popup.js` بطاقة الاكتمال (`last.error`) — كانت تقرأ النصّ الخام
+ * مباشرةً، فمُفسَدات الجاسوس Ⓓ/Ⓕ/Ⓖ **مرّت على حارس الرموز وحارس jsdom معاً**،
+ * وأخطرها **الاستطلاع** لأنه أحد مسارَي العطل الأصلي (`ARCHIVE/m6j-brief.md` §١).
+ * فالقاعدة: **كل قراءة لـ`.error`/`.message` في ملفات التشغيل خارج `errText`
+ * و`bridgeError` يجب أن تكون مُعلَنة هنا باسمها وعددها وتعليلها** — وقراءة جديدة
+ * (أو زيادة في عدد قائم) تُسقط الحارس. والبديل الصحيح لمن كتب عرضاً جديداً:
+ * يمرّره بـ`errText`.
+ *
+ * والعدّ **جارف** (يشمل ما وقع داخل نصّ حرفيّ) عمداً: الجارف لا يُفلت قراءة حقيقية،
+ * والزائد **يُسمّى بموضعه** فيُعلَن أو يُزال — بخلاف عدّ يحتاج تجريد النصوص فيُخفي
+ * ما فيه. والنصوص المعلَنة أدناه كلها **ليست من نصّ التطبيق**: أخطاء المتصفّح نفسه،
+ * وحقل الطلب، وأخطاء النقل في الناقل — و`background.js` يمرّر حمولة الجسر خامّة
+ * (`sendResponse({ ok: true, resp: r })`) فلا يُسقط `code`.
+ */
+const RAW_READS = [
+  {
+    file: 'content.js', n: 1, re: /chrome\.runtime\.lastError\.message/,
+    why: 'خطأ المتصفّح نفسه عند فشل `sendMessage` — نصّ كروم الإنجليزي، ولا رمز جسر له',
+  },
+  {
+    file: 'content.js', n: 1, re: /String\(\(e && e\.message\) \|\| e\)/,
+    why: 'ردّ رسالة `watch-toggle` إلى النافذة (`sendResponse`) — لا يُعرض: النافذة تعرض نصّها من جدولها (`watch.needPlayer`)',
+  },
+  {
+    file: 'popup.js', n: 1, re: /chrome\.runtime\.lastError\.message/,
+    why: 'خطأ المتصفّح نفسه في `ask()` — لا نصّ التطبيق',
+  },
+  {
+    file: 'background.js', n: 1, re: /chrome\.runtime\.lastError\.message/,
+    why: 'خطأ المتصفّح عند انقطاع منفذ المضيف — لا نصّ حمولة',
+  },
+  {
+    file: 'background.js', n: 2, re: /msg\.message/,
+    why: 'حقل **الطلب** (`msg.message`) لا الخطأ: الرسالة المُرسَلة إلى المضيف',
+  },
+  {
+    file: 'background.js', n: 6, re: /e\.message/,
+    why: 'أخطاء **النقل** في الناقل (منفذ مقطوع · مهلة · `postMessage`) — تُمرَّر للنافذة/السجلّ ولا نصّ حمولة فيها',
+  },
+];
+
 /* ══ ③ القياس ══════════════════════════════════════════════════════════════ */
 
 const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
@@ -260,6 +335,8 @@ function audit(root, log) {
   const bridgeSrc = read(root, BRIDGE_REL);
   const tableSrc = {};
   for (const rel of TABLE_RELS) tableSrc[rel] = read(root, rel);
+  const runtimeSrc = {};
+  for (const rel of RUNTIME_RELS) runtimeSrc[rel] = read(root, rel);
 
   const { declared, order, sites } = readBridgeCodes(bridgeSrc);
 
@@ -361,10 +438,67 @@ function audit(root, log) {
         ? 'دالّة `errText` أو حالاتها غير مقروءة'
         : 'فرق الحالات: ' + (diff(t.ar, cases).concat(diff(cases, t.ar)).join(' · ') || '—')
     );
+
+    /* ④ج كل حالة **تُرجع ترجمتها** (`t('code.<نفسها>')`) — لا `raw` ولا نصّاً عامّاً.
+     * عطب أثبته الجاسوس (Ⓒ): المدخل قائم والحالة قائمة، لكن جسمها يُرجع النصّ
+     * الخام ⇒ العربية تعود إلى الواجهة الإنجليزية، وحارس الرموز وحده **يمرّ**. */
+    const chunks = caseChunks(tableSrc[rel]);
+    const silent = (chunks || []).filter((c) => c.code && !c.body.includes(`t('code.${c.code}')`));
+    ok(
+      `[${short}] وكل حالة في \`errText\` تُرجع ترجمتها (\`t('code.<نفسها>')\`)`,
+      Array.isArray(chunks) && chunks.length > 0 && silent.length === 0,
+      !Array.isArray(chunks) || chunks.length === 0
+        ? 'دالّة `errText` أو حالاتها غير مقروءة'
+        : silent.map((c) => `الحالة \`${c.code}\` لا تُرجع \`t('code.${c.code}')\``).join(' · ')
+    );
+  }
+
+  /* ④ب قاعدة العرض: لا قراءة `.error`/`.message` خارج `errText`/`bridgeError`
+   * إلّا بما هو **مُعلَن بالاسم والعدد والتعليل** في `RAW_READS` (ث١). */
+  const readReport = [];
+  for (const rel of RUNTIME_RELS) {
+    const short = rel.replace(/\\/g, '/').replace('browser-extension/', '');
+    const noCom = stripComments(runtimeSrc[rel]);
+    const sanctioned = SANCTIONED_FNS
+      .map((n) => fnSpan(noCom, n))
+      .filter(Boolean)
+      .map((s) => [s.start, s.end]);
+    const inside = (at) => sanctioned.some(([a, b]) => at > a && at < b);
+    const outside = [];
+    for (const m of noCom.matchAll(RAW_READ_RE)) {
+      if (!inside(m.index)) outside.push({ at: m.index, line: lineOf(runtimeSrc[rel], m.index), text: m[0] });
+    }
+    const declared = RAW_READS.filter((d) => d.file === short);
+    const unmatched = [];
+    const counts = new Map(declared.map((d) => [d, 0]));
+    for (const hit of outside) {
+      const d = declared.find((x) => x.re.test(noCom.slice(Math.max(0, hit.at - 60), hit.at + 60)));
+      const ctx = runtimeSrc[rel].slice(Math.max(0, hit.at - 24), hit.at + 14).replace(/\s+/g, ' ');
+      if (!d) unmatched.push(`سطر ${hit.line}: …${ctx}…`);
+      else counts.set(d, counts.get(d) + 1);
+    }
+    const wrong = [...counts.entries()].filter(([d, n]) => n !== d.n)
+      .map(([d, n]) => `${d.re} — المتوقَّع ${d.n} ووُجد ${n}`);
+    ok(
+      `[${short}] كل قراءة \`.error\`/\`.message\` خارج ${SANCTIONED_FNS.join('/')} مُعلَنة بالاسم والعدد (${outside.length} قراءة · ${declared.length} إعلاناً)`,
+      unmatched.length === 0 && wrong.length === 0,
+      [unmatched.length ? 'غير مُعلَنة: ' + unmatched.join(' · ') : '', wrong.length ? 'عدد مخالف: ' + wrong.join(' · ') : '']
+        .filter(Boolean).join(' — ')
+    );
+    readReport.push({ file: short, outside: outside.length, declared: declared.length });
+  }
+
+  /* وصفر مدخل في القاعدة نفسها: الدالّتان المصرَّح بهما موجودتان فعلاً — وإلا
+   * فالقاعدة تقيس الفراغ (لا موضع مصرَّح ⇒ كل قراءة «خارج» ⇒ سقوط كاذب، أو العكس). */
+  for (const rel of TABLE_RELS) {
+    const short = rel.replace(/\\/g, '/').replace('browser-extension/', '');
+    const missing = SANCTIONED_FNS.filter((n) => !fnSpan(stripComments(runtimeSrc[rel]), n));
+    ok(`[${short}] الدالّتان المصرَّح بهما قائمتان (${SANCTIONED_FNS.join(' · ')})`,
+      missing.length === 0, 'مفقودة: ' + (missing.join(' · ') || '—'));
   }
 
   const allCheckCount = checks.length;
-  return { checks: allCheckCount, failures, codes, declared, order, sites, tables };
+  return { checks: allCheckCount, failures, codes, declared, order, sites, tables, readReport };
 }
 
 /* ══ ④ العرض ═══════════════════════════════════════════════════════════════ */
@@ -386,7 +520,7 @@ function run(root, quiet) {
     console.log(`  الجذر: ${root}`);
     console.log(`  الرست: ${BRIDGE_REL} · الجدولان: ${TABLE_RELS.map((p) => p.replace(/\\/g, '/')).join(' · ')}\n`);
   }
-  const r = audit(root, quiet ? () => {} : undefined);
+  const r = audit(root, quiet ? () => {} : (line) => console.log(line));
   if (!quiet) printTable(r);
   if (r.failures.length) {
     console.error(`\n✗ فشل حارس رموز الجسر (${r.failures.length} من ${r.checks} فحصاً):`);
@@ -406,11 +540,12 @@ function run(root, quiet) {
 
 /* ══ ⑤ الفحص الذاتي: الحارس يُقاس بضابطه ومُفسَداته وصفر مدخله ═══════════════ */
 
-/** جذر مصنوع: نسخ **الملفات المشحونة نفسها** (المقيس هو المشحون لا نسخة منه). */
+/** جذر مصنوع: نسخ **الملفات المشحونة نفسها** (المقيس هو المشحون لا نسخة منه) —
+ *  الرست + ملفات التشغيل الثلاثة (`content.js` · `popup.js` · `background.js`). */
 function writeFixture(root, { noBridge = false, emptyBridge = false } = {}) {
   const copies = [
     [BRIDGE_REL, path.join(ROOT_DEFAULT, BRIDGE_REL)],
-    ...TABLE_RELS.map((rel) => [rel, path.join(ROOT_DEFAULT, rel)]),
+    ...RUNTIME_RELS.map((rel) => [rel, path.join(ROOT_DEFAULT, rel)]),
   ];
   for (const [rel, src] of copies) {
     const dst = path.join(root, rel);
@@ -557,6 +692,38 @@ function selfcheck() {
         EXIT.FAIL,
         res,
         ['✗ فشل حارس رموز الجسر', 'probe_only']
+      );
+    }
+    /* Ⓔ مُفسَد (و): **قراءة خامّة في مسار عرض** — الاستطلاع يعرض `st.last.error`
+       مباشرةً بدل `errText` (وهو مُفسَد الجاسوس Ⓓ بعينه: مرّ على حارس الرموز
+       وحارس jsdom معاً قبل هذه القاعدة). ⇒ يسقط بموضعه. */
+    {
+      const dir = writeFixture(path.join(work, 'mutant-raw-read'));
+      edit(dir, TABLE_RELS[0],
+        "toast('✗ ' + errText(st.last, t('poll.failed')), 4000);",
+        "toast('✗ ' + String(st.last.error), 4000);");
+      const res = runChild(dir);
+      add(
+        'Ⓔ مُفسَد (و): مسار عرض يقرأ `.error` خامّاً خارج errText ⇒ يسقط بموضعه',
+        EXIT.FAIL,
+        res,
+        ['✗ فشل حارس رموز الجسر', 'غير مُعلَنة', 'st.last.error']
+      );
+    }
+
+    /* Ⓕ مُفسَد (ز): حالة `case` قائمة لا تُرجع ترجمتها (مُفسَد الجاسوس Ⓒ:
+       حارس الرموز وحده كان يمرّ عليه). ⇒ يسقط مسمّياً الحالة. */
+    {
+      const dir = writeFixture(path.join(work, 'mutant-silent-case'));
+      edit(dir, TABLE_RELS[0],
+        "      case 'duplicate_link': return t('code.duplicate_link');",
+        "      case 'duplicate_link': return raw;");
+      const res = runChild(dir);
+      add(
+        'Ⓕ مُفسَد (ز): حالة في errText لا تُرجع ترجمتها ⇒ يسقط مسمّياً الحالة',
+        EXIT.FAIL,
+        res,
+        ['✗ فشل حارس رموز الجسر', 'لا تُرجع', 'duplicate_link']
       );
     }
   } catch (e) {
