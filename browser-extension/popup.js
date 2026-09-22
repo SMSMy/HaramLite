@@ -321,16 +321,26 @@ function ask(message) {
   });
 }
 
+/* خطأ الجسر المرميّ: النصّ كما هو ومعَه رمزه المستقرّ `code` إن حمله الردّ.
+ * ونظيرتها في `content.js` حرفياً: بناء الخطأ في موضع واحد يجعل `code` لا يسقط
+ * في الطريق، والحارس البنيوي في `scripts/check-bridge-codes.cjs` يعدّ كل قراءة
+ * خامّة **خارج** هذه الدالّة و`errText` ويشترط أن تكون مُعلَنة باسمها. */
+function bridgeError(resp, fallback) {
+  const e = new Error((resp && resp.error) || fallback);
+  if (resp && typeof resp.code === 'string') e.code = resp.code;
+  return e;
+}
+
 function status() {
   return ask({ type: 'status' }).then((resp) => {
-    if (!resp || !resp.ok) throw new Error((resp && resp.error) || t('err.bridgeUnreachable'));
+    if (!resp || !resp.ok) throw bridgeError(resp, t('err.bridgeUnreachable'));
     return resp.resp || {};
   });
 }
 
 function native(message) {
   return ask({ type: 'native', message }).then((resp) => {
-    if (!resp || !resp.ok) throw new Error((resp && resp.error) || t('err.connectFailed'));
+    if (!resp || !resp.ok) throw bridgeError(resp, t('err.connectFailed'));
     return resp.resp || {};
   });
 }
