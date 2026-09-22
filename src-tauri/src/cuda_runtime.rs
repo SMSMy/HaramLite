@@ -3,9 +3,23 @@
 //!
 //! عند أول تفعيل لخيار CUDA، ينزّل التطبيق منفستاً من إصدار `assets-v1`
 //! (يولّده CI عند الرفع) ثم المكتبات الست عشرة بتحقق SHA-256 وتثبيت ذري.
-//! ملاحظة معمارية: مكتبات ONNX Runtime مربوطة ربطاً ثابتاً داخل التنفيذي —
-//! مزوّد CUDA مضمّن فيه ويحمّل ملفات NVIDIA هذه ديناميكياً (LoadLibrary)،
-//! لذلك لا حاجة لملف `onnxruntime_providers_cuda.dll` منفصل في هذا البناء.
+//!
+//! ملاحظة معمارية **مصحَّحة بالقياس** (ن-٣، 2026-09-22): الوصف القديم هنا كان
+//! «مكتبات ONNX Runtime مربوطة ربطاً ثابتاً، ومزوّد CUDA مضمّن فيه، لذلك لا حاجة
+//! لملف `onnxruntime_providers_cuda.dll` منفصل» — وهو **نصف صحيح يتناقض مع
+//! `CUDA_FILES` أدناه**. المقيس:
+//!   · `onnxruntime` نفسه **مربوط ثابتاً** (build.rs يربط
+//!     `static=onnxruntime` من حزمة pyke) ⇒ **لا** `onnxruntime.dll` في أي
+//!     مثبّت (قِيس في MSI 0.2.7 و0.2.8) وهذا الشقّ صحيح.
+//!   · أمّا **مزوّد CUDA** فيُحمَّل من ملفين منفصلين `onnxruntime_providers_cuda.dll`
+//!     و`onnxruntime_providers_shared.dll` يبحث عنهما جسر ORT **في مجلد التنفيذي
+//!     فقط** (لا `SetDllDirectoryW` ولا `PATH`) — ولذلك `heal_provider_dlls_in`
+//!     ينسخهما من `bin/` عند كل إقلاع، ولذلك هما في `CUDA_FILES` ولذلك يثبّت
+//!     `cuda_ep_registers_with_shipped_runtime` نجاح تسجيلهما حيّاً.
+//!   · وفي MSI المنشور كان **يكفي** أن يكون الملفان بجوار التنفيذي — لكن بنسخة
+//!     كريت `ort` من ذاكرة الباني وببصمة مرفوضة (انظر تعليق `Cargo.toml`)،
+//!     فكانت تُظلّل نسخة `bin/` المُتحقَّق منها. و`default-features = false`
+//!     أزال المصدر: لا دلّالات بجوار التنفيذي من البناء أصلاً.
 
 use std::path::{Path, PathBuf};
 
@@ -224,6 +238,70 @@ pub fn is_available() -> bool {
 /// اسم مكتبة التعريف (`nvcuda.dll` يأتي مع تعريف NVIDIA نفسه).
 pub(crate) const DRIVER_DLL: &str = "nvcuda.dll";
 
+// ─────────────── ن-٣: عَلَم `--provider` — فرض سلسلة المزوّد صراحةً ───────────
+//
+// **ما الذي كان معطَّلاً**: لا وسيلة لتعطيل CUDA وDirectML **معاً**، فصفّ المصفوفة
+// 2.2 («لا GPU ⇒ مسار CPU/`h264_mf`») لا يُقاس على جهاز فيه كرت: `--cuda` يطلب
+// CUDA، وغيابه يترك DirectML أولاً. وهذا الفرض هو ما يجعل مسار CPU قابلاً للقياس
+// على هذا الجهاز نفسه.
+//
+// **ولماذا ثابت عام لا وسيط**: `use_cuda: bool` يمرّ في ستّة مواضع
+// (`cli → slots → pipeline → separator`)، واثنان منها (`slots.rs` · `pipeline.rs`)
+// خارج نطاق هذا البند. والفرض **خاصية عملية**: `cli::entry` يضبطه **مرة واحدة**
+// قبل أي خيط وقبل أي فصل، وواجهة الرسوم لا تضبطه أبداً — فغيابه يعني السلوك
+// الحالي حرفياً، وهذا ما يثبّته `provider_flag_absent_keeps_todays_behaviour`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForcedChain {
+    /// `--provider cuda`: نفس سلسلة `--cuda` (CUDA ثم DirectML ثم CPU).
+    Cuda,
+    /// `--provider dml`: DirectML ثم CPU — CUDA لا تُجرَّب إطلاقاً.
+    Dml,
+    /// `--provider cpu`: CPU وحده — لا CUDA ولا DirectML.
+    Cpu,
+}
+
+const FORCED_NONE: u8 = 0;
+const FORCED_CUDA: u8 = 1;
+const FORCED_DML: u8 = 2;
+const FORCED_CPU: u8 = 3;
+
+static FORCED_CHAIN: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(FORCED_NONE);
+
+/// ترقيم الفرض (نقي ⇒ يُختبر بلا ثابت عام، فلا سباق بين خيوط الاختبار).
+fn forced_code(f: ForcedChain) -> u8 {
+    match f {
+        ForcedChain::Cuda => FORCED_CUDA,
+        ForcedChain::Dml => FORCED_DML,
+        ForcedChain::Cpu => FORCED_CPU,
+    }
+}
+
+/// عكس [`forced_code`]؛ أي قيمة غير معروفة تعني «لا فرض» (لا تخمين).
+fn forced_from_code(v: u8) -> Option<ForcedChain> {
+    match v {
+        FORCED_CUDA => Some(ForcedChain::Cuda),
+        FORCED_DML => Some(ForcedChain::Dml),
+        FORCED_CPU => Some(ForcedChain::Cpu),
+        _ => None,
+    }
+}
+
+/// يضبط الفرض (يناديه `cli::entry` وحده اليوم). `None` = السلوك الحالي.
+pub(crate) fn set_forced_chain(forced: Option<ForcedChain>) {
+    use std::sync::atomic::Ordering;
+    FORCED_CHAIN.store(
+        forced.map(forced_code).unwrap_or(FORCED_NONE),
+        Ordering::SeqCst,
+    );
+}
+
+/// الفرض الحالي — `None` في واجهة الرسوم وفي الاختبارات (لا اختبار يضبطه، فلا
+/// سباق بين خيوط الاختبار المتوازية: القرار يُقاس في الدوال النقية).
+pub(crate) fn forced_chain() -> Option<ForcedChain> {
+    use std::sync::atomic::Ordering;
+    forced_from_code(FORCED_CHAIN.load(Ordering::SeqCst))
+}
+
 /// هل يوجد كرت NVIDIA أصلاً؟ النسخة القابلة للاختبار: تقبل جذر النظام.
 pub(crate) fn nvidia_gpu_present_in(system_root: &Path) -> bool {
     system_root.join("System32").join(DRIVER_DLL).exists()
@@ -276,6 +354,11 @@ pub(crate) enum CudaState {
     RuntimeIncomplete,
     /// الأسماء الستة عشر كاملة والشاشة عليها كرت — تُجرَّب CUDA فعلاً.
     Ready,
+    /// ن-٣: `--provider cpu` — **فرض صريح** من سطر الأوامر: CPU وحده، ولا مزوّد
+    /// رسوميات يُجرَّب إطلاقاً. ليست حالة جهاز بل قرار مستخدم، ولها نصّها الخاص
+    /// كي لا يكذب التشخيص على الطلب («CUDA غير مطلوبة — DirectML أولاً» كانت
+    /// ستوحي بأن DirectML سيُجرَّب وهو مستبعَد هنا).
+    ForcedCpu,
 }
 
 /// تشخيص كامل قابل للاختبار بلا عتاد (تُمرَّر له كل المدخلات).
@@ -296,6 +379,9 @@ impl CudaDiagnosis {
     pub fn message(&self) -> String {
         match self.state {
             CudaState::NotRequested => "CUDA غير مطلوبة — DirectML أولاً".to_string(),
+            CudaState::ForcedCpu => "المزوّد مفروض من سطر الأوامر: CPU وحده (‏--provider cpu) — \
+                 لا تُجرَّب CUDA ولا DirectML في هذه الجلسة"
+                .to_string(),
             CudaState::Ready => format!(
                 "CUDA مكتملة ({}/{} ملفاً) — ستُجرَّب أولاً",
                 self.present,
@@ -353,13 +439,38 @@ fn summarize_missing(missing: &[String]) -> String {
 }
 
 /// التشخيص النقي: كل مدخل يُمرَّر صراحةً فيصير الاختبار ممكناً بلا عتاد.
+/// (`#[cfg(test)]`: الإنتاج يمرّر الفرض صراحةً عبر [`diagnose_with`]، وهذا
+/// اختصار الاختبارات — فلا يبقى صنف ميت في بناء الإصدار.)
+#[cfg(test)]
 pub(crate) fn diagnose(use_cuda: bool, gpu_present: bool, gap: RuntimeGap) -> CudaDiagnosis {
+    diagnose_with(use_cuda, gpu_present, gap, None)
+}
+
+/// ن-٣: نفسه مع الفرض الصريح. `--provider cpu` **يسبق كل شيء**: ليس «طلب CUDA
+/// فشل» بل قرار أُلغي فيه مزوّدا الرسوميات، فحالته `ForcedCpu` وحدها.
+pub(crate) fn diagnose_with(
+    use_cuda: bool,
+    gpu_present: bool,
+    gap: RuntimeGap,
+    forced: Option<ForcedChain>,
+) -> CudaDiagnosis {
     let missing = match &gap {
         RuntimeGap::Usable => Vec::new(),
         RuntimeGap::Absent => CUDA_FILES.iter().map(|f| (*f).to_string()).collect(),
         RuntimeGap::Incomplete(m) => m.clone(),
     };
     let present = CUDA_FILES.len() - missing.len();
+    if forced == Some(ForcedChain::Cpu) {
+        return CudaDiagnosis {
+            state: CudaState::ForcedCpu,
+            present,
+            missing,
+            gpu_present,
+        };
+    }
+    // `--provider cuda` = طلب CUDA الصريح (نفس `--cuda`)؛ و`--provider dml` لا
+    // يطلبها فيبقى `NotRequested` ورسالته صادقة.
+    let use_cuda = use_cuda || forced == Some(ForcedChain::Cuda);
     // Not asking = no warning, whatever the machine looks like.
     if !use_cuda {
         return CudaDiagnosis {
@@ -395,29 +506,60 @@ pub(crate) struct CudaPlan {
     pub attempt_cuda: bool,
     /// ترتيب المزودين الذي ستسلكه السلسلة فعلاً (للسجل: لا ادّعاء ولا إخفاء).
     pub provider_chain: &'static str,
+    /// ن-٣: `--provider cpu` — CPU وحده، ولا مزوّد رسوميات يُجرَّب. وهو المدخل
+    /// الوحيد الذي يفتح الفرع الحصري في `separator::MdxSession::load`.
+    pub cpu_only: bool,
 }
 
 /// الخطوة التالية: سلسلة المحاولات كما هي في `MdxSession::load` بلا تغيير،
 /// لكن مع تصريح حالة الجهاز التي أُسقطت سابقاً من التقرير.
+/// (`#[cfg(test)]`: الإنتاج يستعمل [`plan_for`] بالفرض الصريح — وهذا اختصار
+/// الاختبارات ليقرأ الضابط كما كان.)
+#[cfg(test)]
 pub(crate) fn plan(d: &CudaDiagnosis) -> CudaPlan {
-    if d.attempt_cuda() {
-        CudaPlan {
-            attempt_cuda: true,
-            provider_chain: "CUDA -> DirectML -> CPU",
-        }
-    } else {
-        CudaPlan {
+    plan_for(d, None)
+}
+
+/// ن-٣: نفسه مع الفرض الصريح من سطر الأوامر.
+/// **والسلوك الافتراضي حرفيّاً كما كان**: `plan(d) == plan_for(d, None)`، فالغياب
+/// لا يغيّر شيئاً — وهذه هي قاعدة التوافق في هذا البند.
+pub(crate) fn plan_for(d: &CudaDiagnosis, forced: Option<ForcedChain>) -> CudaPlan {
+    match forced {
+        Some(ForcedChain::Cpu) => CudaPlan {
+            attempt_cuda: false,
+            provider_chain: "CPU",
+            cpu_only: true,
+        },
+        Some(ForcedChain::Dml) => CudaPlan {
             attempt_cuda: false,
             provider_chain: "DirectML -> CPU",
-        }
+            cpu_only: false,
+        },
+        Some(ForcedChain::Cuda) | None if d.attempt_cuda() => CudaPlan {
+            attempt_cuda: true,
+            provider_chain: "CUDA -> DirectML -> CPU",
+            cpu_only: false,
+        },
+        _ => CudaPlan {
+            attempt_cuda: false,
+            provider_chain: "DirectML -> CPU",
+            cpu_only: false,
+        },
     }
 }
 
 /// التشخيص الفعلي على هذا الجهاز (يقرأ القرص والبيئة مرة واحدة).
+/// **الفرض يُقرأ هنا** فيراه كل مستدعٍ بلا وسيط جديد — ومستدعياه اليوم
+/// `separator::MdxSession::load` و`pipeline::health_check` (صفّ `--check`).
 pub(crate) fn current_diagnosis(use_cuda: bool) -> CudaDiagnosis {
+    current_diagnosis_with(use_cuda, forced_chain())
+}
+
+/// ن-٣: التشخيص مع فرض صريح (نقي من الثابت العام ⇒ قابل للاختبار).
+pub(crate) fn current_diagnosis_with(use_cuda: bool, forced: Option<ForcedChain>) -> CudaDiagnosis {
     let sysroot = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
     let driver = nvidia_gpu_present_in(Path::new(&sysroot));
-    diagnose(use_cuda, driver, runtime_gap_in(&bin_dir()))
+    diagnose_with(use_cuda, driver, runtime_gap_in(&bin_dir()), forced)
 }
 
 /// هل يوجد كرت NVIDIA أصلاً؟ (`nvcuda.dll` يأتي مع تعريف الكرت)
@@ -1057,5 +1199,320 @@ mod failure_states {
             "absent wording: {absent}"
         );
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// ن-٣ — ترقيم الفرض: كل قيمة تُقرأ كما كُتبت، وصفر/قيمة غريبة = لا فرض.
+    /// **مُفسَد**: لو تبدّل ترقيم قيمتين (‏cuda ↔ cpu) لسقط هذا الاختبار — وهو
+    /// الخطر الحقيقي في ثابت `AtomicU8` بلا نوع.
+    #[test]
+    fn forced_chain_codes_roundtrip_and_unknown_means_none() {
+        for f in [ForcedChain::Cuda, ForcedChain::Dml, ForcedChain::Cpu] {
+            assert_eq!(forced_from_code(forced_code(f)), Some(f));
+        }
+        let codes = [
+            forced_code(ForcedChain::Cuda),
+            forced_code(ForcedChain::Dml),
+            forced_code(ForcedChain::Cpu),
+        ];
+        assert_eq!(
+            codes.iter().collect::<std::collections::HashSet<_>>().len(),
+            3,
+            "الترقيم متميّز: {codes:?}"
+        );
+        assert_ne!(forced_code(ForcedChain::Cuda), FORCED_NONE);
+        assert_eq!(forced_from_code(FORCED_NONE), None, "صفر = لا فرض");
+        assert_eq!(forced_from_code(200), None, "قيمة غريبة = لا فرض لا تخمين");
+    }
+
+    /// ن-٣ — **الفرض الصريح**: `--provider cpu` يعطّل CUDA وDirectML **معاً**،
+    /// وهو ما كان متعذّراً قبل العَلَم (فصفّ المصفوفة 2.2 لا يُقاس على جهاز فيه
+    /// كرت). وفي المقابل: `dml` يُسقط CUDA من السلسلة، و`cuda` = الطلب الصريح.
+    #[test]
+    fn provider_chain_can_be_forced_all_the_way_to_cpu() {
+        use ForcedChain::*;
+        // جهاز كامل بكرت: التشخيص التلقائي يقول Ready — وبالفرض CPU وحده.
+        let auto = diagnose_with(true, true, RuntimeGap::Usable, None);
+        assert_eq!(auto.state, CudaState::Ready, "الضابط: بلا فرض تُجرَّب CUDA");
+        assert_eq!(
+            plan_for(&auto, None).provider_chain,
+            "CUDA -> DirectML -> CPU"
+        );
+
+        let cpu = diagnose_with(true, true, RuntimeGap::Usable, Some(Cpu));
+        assert_eq!(cpu.state, CudaState::ForcedCpu);
+        assert!(!cpu.attempt_cuda(), "لا محاولة CUDA عند الفرض cpu");
+        assert!(
+            cpu.message().contains("CPU وحده"),
+            "الرسالة تصف الفرض: {}",
+            cpu.message()
+        );
+        assert!(
+            cpu.message().contains("--provider cpu"),
+            "وتسمّي العَلَم: {}",
+            cpu.message()
+        );
+        let pc = plan_for(&cpu, Some(Cpu));
+        assert!(pc.cpu_only, "الفرع الحصري في separator يُفتح بهذا وحده");
+        assert!(!pc.attempt_cuda);
+        assert_eq!(pc.provider_chain, "CPU");
+
+        // dml: CUDA خارج السلسلة تماماً، وDirectML أولاً.
+        let dml = diagnose_with(false, true, RuntimeGap::Usable, Some(Dml));
+        assert_eq!(dml.state, CudaState::NotRequested);
+        assert!(!dml.attempt_cuda());
+        let pd = plan_for(&dml, Some(Dml));
+        assert!(!pd.cpu_only);
+        assert!(!pd.attempt_cuda);
+        assert_eq!(pd.provider_chain, "DirectML -> CPU");
+        // ...وحتى لو مرّ `use_cuda=true` مع فرض dml يبقى القرار: لا CUDA.
+        let dml2 = diagnose_with(true, true, RuntimeGap::Usable, Some(Dml));
+        assert!(!plan_for(&dml2, Some(Dml)).attempt_cuda);
+
+        // cuda: نفس `--cuda` (طلب صريح) — تُجرَّب على جهاز كامل، وتُبلَّغ إن نقص.
+        let c = diagnose_with(false, true, RuntimeGap::Usable, Some(Cuda));
+        assert_eq!(c.state, CudaState::Ready);
+        assert!(plan_for(&c, Some(Cuda)).attempt_cuda);
+        let incomplete = diagnose_with(false, true, RuntimeGap::Absent, Some(Cuda));
+        assert!(!plan_for(&incomplete, Some(Cuda)).attempt_cuda);
+        assert_eq!(incomplete.state, CudaState::RuntimeIncomplete);
+
+        // والتوافق: `plan(d)` (بلا فرض) لم يتغيّر — نفس ما كان قبل العَلَم.
+        assert_eq!(
+            plan(&auto).provider_chain,
+            plan_for(&auto, None).provider_chain
+        );
+        assert!(!plan(&auto).cpu_only);
+    }
+
+    /// ن-٣ — **الافتراضي بلا فرض**: الثابت العام يبدأ `None`، ولا اختبار آخر
+    /// يعتمد على ضبطه (فالقياس كله في الدوال النقية أعلاه).
+    #[test]
+    fn forced_chain_is_unset_by_default() {
+        assert_eq!(forced_chain(), None);
+    }
+}
+
+/// ن-٣ — **حارس التغليف**: دلّالات ORT لا تعود إلى حزمة MSI.
+///
+/// **ما يقيسه بالضبط** (ثلاثة مداخل نصّية — بلا بناء مثبّت):
+///   ① `src-tauri/Cargo.toml`: سطر اعتماد `ort` يحمل `default-features = false`
+///      **ولا** يسمّي `copy-dylibs` (وهو مصدر الروابط الرمزية بجوار التنفيذي —
+///      `ort-sys/build.rs:124`)، **ويسمّي** الميزات التي يقوم عليها البناء
+///      (`std` · `tracing` · `download-binaries` · `directml` · `cuda`) فلا
+///      «يُصلَح» العطل بإسقاط ميزة لازمة لإسكات الحارس.
+///   ② `tauri.conf.json`: `bundle.resources` موجود **ولا يسمّي** أي دلّالة ORT
+///      (باب ثانٍ لدخول ملف إلى الحزمة).
+///   ③ `target/release/wix/x64/main.wxs` **إن وُجد**: مولّد WiX يحصد كل ملف
+///      بجوار التنفيذي — قِيس في بناء 0.2.7 المحلي أنه كتب أربعة أسطر
+///      `Source="…\target\release\<dll>"` (‏`main.wxs:119`)، والملف المُولَّد
+///      شهادة على محتوى الحزمة. **ولا يُشترط وجوده**: استنساخ نظيف بلا بناء لا
+///      `target/` فيه، فشرطه يجعل الحارس يسقط على غياب بيئي لا على عطل.
+///
+/// **ولماذا لا يُقاس مجلد التنفيذي الحيّ** (`target/release/*.dll`): لأن
+/// `heal_provider_dlls_in` ينسخ **بحقّ** مكتبتَي الجسر المثبَّتتين من `bin/` إلى
+/// مجلد التنفيذي عند كل تشغيل — فوجودهما هناك بعد تشغيل التطبيق لا يقول شيئاً
+/// عن البناء، وحارسٌ يسقط على سلوك منتج مشروع حارسٌ يُطفأ لا يُصلَح. والمقيس
+/// بدلاً منه **مصدر** الملفات + الـwxs في مسار الإصدار (و`.github/workflows/release.yml`
+/// يقيس المولَّد فعلاً بعد البناء، قبل أي تشغيل للتطبيق).
+#[cfg(test)]
+mod packaging_guard {
+    use super::*;
+
+    /// أسماء الدلّالات التي دخلت MSI 0.2.7 و0.2.8 بحجم 199,942,176 بايت.
+    const ORT_ARTIFACTS: &[&str] = &[
+        "onnxruntime_providers_cuda.dll",
+        "onnxruntime_providers_shared.dll",
+        "onnxruntime_providers_tensorrt.dll",
+        "DirectML.dll",
+        "onnxruntime.dll",
+    ];
+
+    /// سطر اعتماد `ort` من `Cargo.toml` (أول سطر يبدأ بـ`ort =`).
+    fn ort_dependency_line(cargo_toml: &str) -> Option<String> {
+        cargo_toml
+            .lines()
+            .find(|l| l.trim_start().starts_with("ort ="))
+            .map(|l| l.trim().to_string())
+    }
+
+    /// الدالة النقية: تُقاس بالمُفسَدات أدناه، والحقيقيان يمرّان عليها.
+    fn packaging_problems(
+        cargo_toml: &str,
+        tauri_conf: &str,
+        main_wxs: Option<&str>,
+    ) -> Vec<String> {
+        let mut p = Vec::new();
+
+        match ort_dependency_line(cargo_toml) {
+            None => p.push("صفر مدخل: اعتماد `ort` غير موجود في Cargo.toml".to_string()),
+            Some(line) => {
+                if !line.contains("default-features = false") {
+                    p.push(format!(
+                        "اعتماد `ort` بلا `default-features = false` — افتراضيات rc.10 تشمل \
+                         `copy-dylibs` فتُوضع دلّالات ORT بجوار التنفيذي ويحصدها مولّد MSI: {line}"
+                    ));
+                }
+                if line.contains("copy-dylibs") {
+                    p.push(format!("`copy-dylibs` مُعلَنة صراحةً في اعتماد `ort`: {line}"));
+                }
+                for feat in ["std", "tracing", "download-binaries", "directml", "cuda"] {
+                    if !line.contains(feat) {
+                        p.push(format!(
+                            "ميزة `{feat}` مفقودة من اعتماد `ort` — لا تُسقَط ميزة لازمة \
+                             لإسكات الحارس: {line}"
+                        ));
+                    }
+                }
+            }
+        }
+
+        // تهيئة الحزمة: يجب أن تحمل `resources` (وإلا فالحارس لا يرى بابًا آخر)،
+        // وألّا يسمّي أي دلّالة ORT.
+        match serde_json::from_str::<serde_json::Value>(tauri_conf) {
+            Err(e) => p.push(format!("صفر مدخل: tauri.conf.json غير مقروء: {e}")),
+            Ok(v) => match v
+                .get("bundle")
+                .and_then(|b| b.get("resources"))
+                .map(|r| r.to_string())
+            {
+                None => p.push("صفر مدخل: bundle.resources غير موجود في tauri.conf.json".into()),
+                Some(res) => {
+                    for a in ORT_ARTIFACTS {
+                        if res.contains(a) {
+                            p.push(format!("`bundle.resources` تسمّي دلّالة ORT: {a}"));
+                        }
+                    }
+                }
+            },
+        }
+
+        if let Some(wxs) = main_wxs {
+            for a in ORT_ARTIFACTS {
+                if wxs.contains(a) {
+                    p.push(format!(
+                        "مولّد WiX يحصد دلّالة ORT في الحزمة (`main.wxs` يذكر {a}) — \
+                         هذا ما قِيس في MSI 0.2.7/0.2.8"
+                    ));
+                }
+            }
+        }
+
+        p
+    }
+
+    /// الضابط: المداخل الحقيقية تمرّ (وإن وُجد `target/` فـwxs المُولَّد يُقاس).
+    #[test]
+    fn ort_artifacts_would_have_to_come_back_through_a_named_door() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let cargo = std::fs::read_to_string(root.join("Cargo.toml")).expect("Cargo.toml");
+        let conf = std::fs::read_to_string(root.join("tauri.conf.json")).expect("tauri.conf.json");
+        let wxs = std::fs::read_to_string(root.join("target/release/wix/x64/main.wxs")).ok();
+        let problems = packaging_problems(&cargo, &conf, wxs.as_deref());
+        assert!(
+            problems.is_empty(),
+            "حارس التغليف: دلّالات ORT عادت إلى باب مسمّى — {problems:#?}"
+        );
+        // المدخل الثالث يُقاس حين يوجد مُولَّد (ولا يُشترط وجوده — انظر الشرح).
+        if let Some(text) = &wxs {
+            assert!(
+                text.contains("<File"),
+                "wxs موجود لكنه ليس مولَّد WiX — القياس لا يرى شيئاً: {} حرفاً",
+                text.len()
+            );
+        }
+    }
+
+    /// **المُفسَدات**: كل طريقٍ لعودة الدلّالات يجب أن يُسقط الحارس بسبب مسمّى.
+    #[test]
+    fn every_door_back_into_the_bundle_is_caught() {
+        let good_cargo = "ort = { version = \"=2.0.0-rc.10\", default-features = false, \
+                          features = [\"std\", \"tracing\", \"download-binaries\", \"directml\", \"cuda\"] }";
+        let good_conf = r#"{"bundle":{"resources":{"../bin":"bin","../models":"models"}}}"#;
+        let good_wxs = r#"<File Id="PathFile_I1" Source="C:\x\target\release\HaramLite.exe" />"#;
+        assert!(
+            packaging_problems(good_cargo, good_conf, Some(good_wxs)).is_empty(),
+            "ضابط: المداخل السليمة تمرّ"
+        );
+
+        // ① الافتراضيات عادت — وهو العطل الأصلي حرفياً (السطر قبل ن-٣).
+        let defaults_back =
+            "ort = { version = \"=2.0.0-rc.10\", features = [\"directml\", \"cuda\"] }";
+        let p = packaging_problems(defaults_back, good_conf, None);
+        assert!(
+            p.iter().any(|m| m.contains("default-features")),
+            "المُفسَد ① يجب أن يُسمّى: {p:#?}"
+        );
+
+        // ② `copy-dylibs` صراحةً مع `default-features = false`.
+        let explicit = "ort = { version = \"=2.0.0-rc.10\", default-features = false, \
+                        features = [\"std\", \"tracing\", \"download-binaries\", \"directml\", \"cuda\", \"copy-dylibs\"] }";
+        assert!(
+            packaging_problems(explicit, good_conf, None)
+                .iter()
+                .any(|m| m.contains("copy-dylibs")),
+            "المُفسَد ② يجب أن يُسمّى"
+        );
+
+        // ③ «إصلاح» بقطع ميزة لازمة (المزوّد أو الجلب أو التتبّع).
+        const NEEDED: [&str; 5] = ["std", "tracing", "download-binaries", "directml", "cuda"];
+        for (i, missing) in NEEDED.iter().enumerate() {
+            let kept: Vec<String> = NEEDED
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| *j != i)
+                .map(|(_, f)| format!("\"{f}\""))
+                .collect();
+            let gutted = format!(
+                "ort = {{ version = \"=2.0.0-rc.10\", default-features = false, features = [{}] }}",
+                kept.join(", ")
+            );
+            assert!(
+                !gutted.contains(&format!("\"{missing}\"")),
+                "التحضير: حُذفت {missing} من {gutted}"
+            );
+            let p = packaging_problems(&gutted, good_conf, None);
+            assert!(
+                p.iter().any(|m| m.contains(missing)),
+                "المُفسَد ③ ({missing}) يجب أن يُسمّى: {p:#?}"
+            );
+        }
+
+        // ④ الـwxs المُولَّد يحمل دلّالة — الصورة المقيسة في MSI 0.2.7/0.2.8.
+        let dirty_wxs = r#"<File Id="PathFile_I18726209" Source="C:\…\target\release\onnxruntime_providers_cuda.dll" />"#;
+        assert!(
+            packaging_problems(good_cargo, good_conf, Some(dirty_wxs))
+                .iter()
+                .any(|m| m.contains("onnxruntime_providers_cuda.dll")),
+            "المُفسَد ④ يجب أن يُسمّى"
+        );
+
+        // ⑤ تهيئة الحزمة تسمّي دلّالة في `resources` (باب ثانٍ).
+        let dirty_conf = r#"{"bundle":{"resources":{"../target/release/DirectML.dll":"."}}}"#;
+        assert!(
+            packaging_problems(good_cargo, dirty_conf, None)
+                .iter()
+                .any(|m| m.contains("DirectML.dll")),
+            "المُفسَد ⑤ يجب أن يُسمّى"
+        );
+
+        // ⑥ صفر مدخل: لا اعتماد `ort` ولا `resources` ⇒ لا مرور صامت.
+        assert!(
+            packaging_problems("", good_conf, None)
+                .iter()
+                .any(|m| m.contains("صفر مدخل")),
+            "المُفسَد ⑥ (بلا اعتماد) يجب أن يُسمّى"
+        );
+        assert!(
+            packaging_problems(good_cargo, "{}", None)
+                .iter()
+                .any(|m| m.contains("صفر مدخل")),
+            "المُفسَد ⑥ (بلا resources) يجب أن يُسمّى"
+        );
+        assert!(
+            packaging_problems(good_cargo, "not json", None)
+                .iter()
+                .any(|m| m.contains("صفر مدخل")),
+            "المُفسَد ⑥ (تهيئة تالفة) يجب أن يُسمّى"
+        );
     }
 }

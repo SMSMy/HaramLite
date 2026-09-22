@@ -89,6 +89,44 @@ jobs:
           # is added; the in-app updater UI already degrades gracefully.
           includeUpdaterJson: false
 
+      # ── ن-٣: دلّالات ORT لا تعود إلى حزمة MSI ─────────────────────────────
+      # العطل المقيس (0.2.7 و0.2.8): MSI كان يحمل 199,942,176 بايت من دلّالات
+      # ORT/DirectML (‏`onnxruntime_providers_cuda.dll` 180,731,904 + `_shared`
+      # 10,752 + `_tensorrt` 671,744 + `DirectML.dll` 18,527,776) ببصمة مخالفة
+      # للثابت المثبَّت في التطبيق — مصدرها `copy-dylibs` في اعتماد `ort`، ومولّد
+      # WiX يحصد كل DLL بجوار التنفيذي. والخطوة تقيس **المولَّد فعلاً** في هذا
+      # التشغيل (‏`main.wxs`)، لا نيّة في ملف: بعد البناء وقبل أي تشغيل للتطبيق
+      # — لأن التطبيق نفسه ينسخ مكتبتَي الجسر المثبَّتتين إلى مجلد التنفيذي عند
+      # تشغيله (‏`heal_provider_dlls_in`)، فقياسٌ بعد تشغيل لا يقول شيئاً عن البناء.
+      # ومصدر السبب الجذري محروس أيضاً: اعتماد `ort` في Cargo.toml (يفشل بصوت عالٍ).
+      #
+      # **حدّ معلَن**: الخطوة بعد `tauri-action` (الذي يبني **وينشر**) — فهي تُحمّر
+      # التشغيل وتكشف العودة، لكنها لا تمنع نشر أصل سيئ في تلك اللحظة؛ ومنعُه يحتاج
+      # فصل البناء عن النشر (خارج نطاق ن-٣). ومسار البناء المحلي (`pnpm tauri build`)
+      # لا يمرّ بهذه الخطوة أصلاً — حارسه `mod packaging_guard` في `cargo test`.
+      - name: Guard — no ORT/DirectML DLLs in the bundled MSI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cargo = Get-Content 'src-tauri/Cargo.toml' -Raw
+          $ortLine = ($cargo -split "`n" | Where-Object { $_.TrimStart().StartsWith('ort =') }) -join ' '
+          if (-not $ortLine) { throw 'لا سطر اعتماد ort في Cargo.toml — الحارس لا يرى' }
+          if ($ortLine -notmatch 'default-features\s*=\s*false') {
+            throw "اعتماد ort بلا default-features=false ⇒ copy-dylibs تعود فتُشحن دلّالات ORT في MSI: $ortLine"
+          }
+          if ($ortLine -match 'copy-dylibs') { throw "copy-dylibs مُعلَنة صراحةً: $ortLine" }
+          foreach ($f in @('std','tracing','download-binaries','directml','cuda')) {
+            if ($ortLine -notmatch [regex]::Escape($f)) { throw "ميزة $f مفقودة من اعتماد ort: $ortLine" }
+          }
+          $wxs = 'src-tauri/target/release/wix/x64/main.wxs'
+          if (-not (Test-Path $wxs)) { throw "$wxs غير موجود — حزمة MSI لم تُولَّد فلا يُقاس محتواها (لا مرور صامت)" }
+          $text = Get-Content $wxs -Raw
+          $bad = @('onnxruntime_providers_cuda.dll','onnxruntime_providers_shared.dll','onnxruntime_providers_tensorrt.dll','DirectML.dll','onnxruntime.dll')
+          $hit = @($bad | Where-Object { $text.Contains($_) })
+          if ($hit.Count -gt 0) { throw "مولّد MSI يحصد دلّالات ORT: $($hit -join ' · ') — راجع src-tauri/Cargo.toml" }
+          $files = @([regex]::Matches($text, '<File ')).Count
+          Write-Host "✓ main.wxs بلا دلّالات ORT ($files سطر File مقيس)"
+
       # ── تكافؤ أصول الإصدار (ن-٥ في خطة 0.2.9 §١١) ──────────────────────────
       # المقيس بـ`gh release view --json assets`: v0.2.7 نُشرت بـ**٥** أصول وv0.2.8
       # بـ**٣** — `build-info.json` و`sbom.cdx.json` كانا يُرفعان **يدوياً** من جهاز

@@ -375,15 +375,19 @@ impl MdxSession {
         // provider is the same (DirectML), one wasted build is saved, and the
         // log now names the real cause. AUDIT.md records this delta as the only
         // behaviour change of item ٩.
+        let forced = crate::cuda_runtime::forced_chain();
         let diag = crate::cuda_runtime::current_diagnosis(use_cuda);
-        let cuda_plan = crate::cuda_runtime::plan(&diag);
+        let cuda_plan = crate::cuda_runtime::plan_for(&diag, forced);
         let try_cuda = cuda_plan.attempt_cuda;
-        if use_cuda {
+        // ن-٣: يُطبع التشخيص أيضاً عند الفرض الصريح (`--provider`) ولو لم يُطلب
+        // CUDA — فالسلسلة المفروضة جزء من الحقيقة التي يجب أن يراها القارئ.
+        if use_cuda || forced.is_some() {
             // `warn` (not `info`) when CUDA was asked for and will not be
             // attempted: that is the case the user must be able to find, and it
             // is the level the previous single-line message used. A ready CUDA
-            // is the expected outcome and stays at `info`.
-            if cuda_plan.attempt_cuda {
+            // is the expected outcome and stays at `info`. والفرض الصريح لغير
+            // CUDA (`--provider dml|cpu`) **ليس فشلاً** فلا يُنذر عليه.
+            if cuda_plan.attempt_cuda || !use_cuda {
                 tracing::info!(
                     target: "sep",
                     "تشخيص CUDA: {} | السلسلة: {}",
@@ -457,7 +461,20 @@ impl MdxSession {
             );
         };
 
-        let session = if try_cuda {
+        let session = if cuda_plan.cpu_only {
+            // ن-٣ — `--provider cpu`: CPU وحده. الفرع يسبق السلسلة كلها فيمنع
+            // بناء مزوّد رسوميات **أصلاً** (لا محاولة محكومة بالفشل ثم سقوط)،
+            // وهو الفرق الوحيد الذي أضافه العَلَم إلى السلوك: بلا فرض لا سبيل
+            // لتعطيل CUDA وDirectML معاً، فلا يُقاس مسار CPU على جهاز فيه كرت.
+            tracing::info!(
+                target: "sep",
+                "المزوّد مفروض من سطر الأوامر: CPU وحده — لا تُجرَّب CUDA ولا DirectML"
+            );
+            let s = attempt("cpu")
+                .ok_or_else(|| SepError::Inference("تعذر إنشاء جلسة الاستدلال على CPU".into()))?;
+            ready("CPU");
+            s
+        } else if try_cuda {
             if let Some(s) = attempt("cuda") {
                 ready("CUDA (NVIDIA GPU)");
                 provider_name = "CUDA";
@@ -1613,6 +1630,33 @@ mod tests {
             read_provider_in(&provider_file_in(&base)),
             None,
             "no field → unknown"
+        );
+        // ن-٣: المُفسَدات التي تُنتج «غير معروف» ولا تُنتج اسماً كاذباً — فالسطر
+        // في الواجهة يقرأ من هنا، و«غير معروف» يجب أن تبقى ممكنة.
+        for bad in [
+            &b"{\"provider\": 3}"[..],         // رقم لا نصّ
+            &b"{\"provider\": null}"[..],      // JSON صحيح بلا قيمة
+            &b"{\"provider\": [\"CPU\"]}"[..], // مصفوفة
+            &b"\"CPU\""[..],                   // نصّ لا كائن
+            &b"[1,2]"[..],                     // مصفوفة جذرية
+            &b""[..],                          // ملف فارغ
+            &b"   \r\n"[..],                   // مسافات فقط
+            &b"{\"Provider\":\"CPU\"}"[..],    // مفتاح بحرف كبير ≠ مفتاحنا
+        ] {
+            std::fs::write(provider_file_in(&base), bad).unwrap();
+            assert_eq!(
+                read_provider_in(&provider_file_in(&base)),
+                None,
+                "مُفسَد {:?} يجب أن يُقرأ «غير معروف» لا اسماً",
+                String::from_utf8_lossy(bad)
+            );
+        }
+        // واسم صالح بمسافات حوله: يُعاد كما هو (التقليم مسؤولية العارض، والاختبار
+        // في `providerSurface.test.ts` يقيس أن المسافات لا تُنتج اسماً فارغاً).
+        std::fs::write(provider_file_in(&base), b"{\"provider\":\"  CPU  \"}").unwrap();
+        assert_eq!(
+            read_provider_in(&provider_file_in(&base)),
+            Some("  CPU  ".into())
         );
         let _ = std::fs::remove_dir_all(&base);
     }

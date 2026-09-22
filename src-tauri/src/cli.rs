@@ -15,6 +15,50 @@ use crate::slots;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// ن-٣: قيمة `--provider` كما كُتبت على سطر الأوامر.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProviderFlag {
+    Cuda,
+    Dml,
+    Cpu,
+}
+
+impl ProviderFlag {
+    fn parse(v: &str) -> Option<Self> {
+        match v.to_ascii_lowercase().as_str() {
+            "cuda" => Some(Self::Cuda),
+            // `directml` مقبول كمرادف لأن الاسم في السجلّ و`provider.json`
+            // كذلك — والخطأ في قيمة صحيحة أسوأ من قبول مرادف.
+            "dml" | "directml" => Some(Self::Dml),
+            "cpu" => Some(Self::Cpu),
+            _ => None,
+        }
+    }
+
+    fn forced(self) -> crate::cuda_runtime::ForcedChain {
+        match self {
+            Self::Cuda => crate::cuda_runtime::ForcedChain::Cuda,
+            Self::Dml => crate::cuda_runtime::ForcedChain::Dml,
+            Self::Cpu => crate::cuda_runtime::ForcedChain::Cpu,
+        }
+    }
+}
+
+/// يحوّل (‏`--cuda`، `--provider`) إلى: هل تُجرَّب CUDA؟ وما الفرض الصريح؟
+///
+/// **قاعدة التوافق**: غياب العَلَم = السلوك الحالي حرفياً — `(cuda_flag, None)`.
+/// و`--provider` أكثر تحديداً فيسبق `--cuda` عند اجتماعهما (لا خطأ: الطلب
+/// الأصرح يفوز، ويُطبع في السجلّ ما فاز).
+fn resolve_provider(
+    cuda_flag: bool,
+    provider: Option<ProviderFlag>,
+) -> (bool, Option<crate::cuda_runtime::ForcedChain>) {
+    match provider {
+        Some(p) => (p == ProviderFlag::Cuda, Some(p.forced())),
+        None => (cuda_flag, None),
+    }
+}
+
 struct CliOpts {
     files: Vec<String>,
     mode: Mode,
@@ -31,10 +75,17 @@ struct CliOpts {
     /// ROADMAP §٧.ب بند ٩: طلب CUDA من سطر الأوامر، ليكون مسار السقوط
     /// (CUDA ← DirectML ← CPU) قابلاً للاختبار بلا واجهة.
     cuda: bool,
+    /// ن-٣: فرض سلسلة المزوّد صراحةً (`--provider cuda|dml|cpu`). `None` = لا
+    /// فرض ⇒ السلوك الحالي حرفياً. و`cpu` هو ما كان معطَّلاً: تعطيل CUDA
+    /// وDirectML معاً لقياس مسار CPU على جهاز فيه كرت (صفّ المصفوفة 2.2).
+    provider: Option<ProviderFlag>,
 }
 
-fn print_help() {
-    println!(
+/// نصّ شاشة المساعدة — **دالة** لا `println!` مباشر، كي يقيسها اختبار
+/// (`help_mentions_the_provider_flag`) على النصّ نفسه الذي يراه المستخدم، لا على
+/// نسخةٍ منه في المصدر.
+fn help_text() -> String {
+    format!(
         "HaramLite v{VERSION} — إزالة الموسيقى بالذكاء الاصطناعي (Rust)
 
 الاستخدام:
@@ -51,6 +102,9 @@ fn print_help() {
   --probe FILE       فحص ملف وطباعة تصنيفه ثم الخروج
   --check            فحص صحة الأدوات والنموذج ثم الخروج
   --cuda             محاولة تسريع CUDA أولاً (تسقط إلى DirectML ثم CPU تلقائياً)
+  --provider P       فرض سلسلة المزوّد: cuda (‏CUDA ثم DirectML ثم CPU) · dml (‏DirectML ثم CPU)
+                     · cpu (‏CPU وحده — لا تُجرَّب CUDA ولا DirectML؛ لقياس مسار المعالج على جهاز فيه كرت)
+                     غياب العَلَم = السلوك الافتراضي (‏--cuda وحده يقرّر)، و`--provider` يسبقه إن اجتمعا
   -h, --help         هذه الشاشة
   -V, --version      رقم الإصدار
 
@@ -58,7 +112,11 @@ fn print_help() {
   haramlite song.mp4 -m song
   haramlite a.wav b.wav -m clip --out ./cleaned
   haramlite --probe weird.mp4"
-    );
+    )
+}
+
+fn print_help() {
+    println!("{}", help_text());
 }
 
 fn parse_args(args: &[String]) -> Result<CliOpts, String> {
@@ -76,6 +134,7 @@ fn parse_args(args: &[String]) -> Result<CliOpts, String> {
         url: None,
         update_ytdlp: false,
         cuda: false,
+        provider: None,
     };
 
     let mut i = 0usize;
@@ -104,6 +163,14 @@ fn parse_args(args: &[String]) -> Result<CliOpts, String> {
             }
             "--update-ytdlp" => o.update_ytdlp = true,
             "--cuda" => o.cuda = true,
+            "--provider" => {
+                i += 1;
+                let v = args.get(i).ok_or("--provider يحتاج قيمة cuda|dml|cpu")?;
+                o.provider = Some(
+                    ProviderFlag::parse(v)
+                        .ok_or_else(|| format!("مزوّد غير معروف: {v} (المسموح cuda|dml|cpu)"))?,
+                );
+            }
             "--video" => o.video = true,
             "--video-h" => {
                 i += 1;
@@ -291,7 +358,7 @@ fn run_files(o: &CliOpts) -> i32 {
 /// CLI entrypoint — returns process exit code.
 /// (Logging is initialized by lib::cli_entry before calling us.)
 pub fn entry(args: &[String]) -> i32 {
-    let opts = match parse_args(args) {
+    let mut opts = match parse_args(args) {
         Ok(o) => o,
         Err(e) => {
             eprintln!("خطأ: {e}\n");
@@ -299,6 +366,13 @@ pub fn entry(args: &[String]) -> i32 {
             return 2;
         }
     };
+
+    // ن-٣: الفرض يُحلّ مرة واحدة هنا ثم **يُثبَّت في العملية** قبل أي خيط وقبل
+    // أي فصل. و`opts.cuda` يصير القيمة الفعّالة (لا العلم الخام) فيمرّ إلى
+    // `slots::run_separation` بالوسيط نفسه وبالمعنى نفسه كما كان حرفياً.
+    let (use_cuda, forced) = resolve_provider(opts.cuda, opts.provider);
+    crate::cuda_runtime::set_forced_chain(forced);
+    opts.cuda = use_cuda;
 
     if let Some(p) = &opts.probe {
         return run_probe(p);
@@ -351,4 +425,100 @@ pub fn entry(args: &[String]) -> i32 {
         }
     }
     run_files(&opts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    /// **قاعدة التوافق**: غياب `--provider` = السلوك الحالي حرفياً — `--cuda`
+    /// وحده يقرّر، ولا فرض. لو صار الغياب يفرض شيئاً لسقط هذا الاختبار.
+    #[test]
+    fn provider_flag_absent_keeps_todays_behaviour() {
+        assert_eq!(resolve_provider(false, None), (false, None));
+        assert_eq!(resolve_provider(true, None), (true, None));
+    }
+
+    /// **مُفسَد**: الفرض لكل قيمة يقود إلى سلسلته — و`cpu` هي الحالة التي كانت
+    /// متعذّرة (لا وسيلة لتعطيل CUDA وDirectML معاً).
+    #[test]
+    fn provider_flag_forces_the_named_chain() {
+        use crate::cuda_runtime::ForcedChain;
+        assert_eq!(
+            resolve_provider(false, Some(ProviderFlag::Cuda)),
+            (true, Some(ForcedChain::Cuda))
+        );
+        assert_eq!(
+            resolve_provider(true, Some(ProviderFlag::Cuda)),
+            (true, Some(ForcedChain::Cuda))
+        );
+        assert_eq!(
+            resolve_provider(false, Some(ProviderFlag::Dml)),
+            (false, Some(ForcedChain::Dml))
+        );
+        // `--cuda --provider cpu`: الأصرح يفوز — و`use_cuda=false` أي أن CUDA
+        // لا تُجرَّب أصلاً (فرق مقيس عن `--cuda` وحده).
+        assert_eq!(
+            resolve_provider(true, Some(ProviderFlag::Cpu)),
+            (false, Some(ForcedChain::Cpu))
+        );
+        assert_eq!(
+            resolve_provider(false, Some(ProviderFlag::Cpu)),
+            (false, Some(ForcedChain::Cpu))
+        );
+    }
+
+    /// التحليل: القيم الثلاث تُقبل (و`directml` مرادف)، وغيرها يُرفض برسالة
+    /// تسمّي المسموح — لا سقوط صامت إلى الافتراضي.
+    #[test]
+    fn provider_values_are_parsed_and_bad_ones_refused() {
+        assert_eq!(ProviderFlag::parse("cuda"), Some(ProviderFlag::Cuda));
+        assert_eq!(ProviderFlag::parse("DML"), Some(ProviderFlag::Dml));
+        assert_eq!(ProviderFlag::parse("directml"), Some(ProviderFlag::Dml));
+        assert_eq!(ProviderFlag::parse("CPU"), Some(ProviderFlag::Cpu));
+        assert_eq!(ProviderFlag::parse("gpu"), None);
+        assert_eq!(ProviderFlag::parse(""), None);
+
+        let o = parse_args(&args(&["--provider", "cpu", "a.mp4"])).expect("--provider cpu يُقبل");
+        assert_eq!(o.provider, Some(ProviderFlag::Cpu));
+        assert_eq!(o.files, vec!["a.mp4".to_string()]);
+
+        // بلا قيمة، وبقيمة غير معروفة: كلاهما خطأ صريح (لا افتراضي صامت).
+        assert!(parse_args(&args(&["--provider"])).is_err());
+        let err = if let Err(e) = parse_args(&args(&["--provider", "tpu"])) {
+            e
+        } else {
+            panic!("--provider tpu يجب أن يُرفض — لا سقوط صامت إلى الافتراضي");
+        };
+        assert!(err.contains("tpu"), "الرسالة تسمّي القيمة: {err}");
+        assert!(err.contains("cuda|dml|cpu"), "وتسمّي المسموح: {err}");
+    }
+
+    /// الخطاف كما يراه المستخدم: `--help` يعلن العَلَم وقيمه الثلاث، ويعلن أن
+    /// غيابه = السلوك الافتراضي. (النصّ المقيس هو نصّ `help_text()` نفسه الذي
+    /// يُطبع — لا نسخةً منه في المصدر.)
+    #[test]
+    fn help_mentions_the_provider_flag() {
+        let help = help_text();
+        let at = help
+            .find("--provider P")
+            .expect("العَلَم --provider في شاشة المساعدة");
+        // كتلة العَلَم ثلاثة أسطر (القيم الثلاث موزّعة عليها) — تُقاس ككثلة واحدة.
+        let block = help[at..].lines().take(3).collect::<Vec<_>>().join(" ");
+        for v in ["cuda", "dml", "cpu"] {
+            assert!(block.contains(v), "القيمة {v} معلَنة في --help: {block}");
+        }
+        assert!(
+            help.contains("غياب العَلَم = السلوك الافتراضي"),
+            "التوافق معلَن في الشاشة (غياب العَلَم لا يغيّر شيئاً)"
+        );
+        // ولا يدّعي العَلَم ما ليس فيه: الأسماء الحقيقية للمزوّدين مذكورة.
+        for name in ["CUDA", "DirectML", "CPU"] {
+            assert!(help.contains(name), "الاسم {name} مذكور");
+        }
+    }
 }

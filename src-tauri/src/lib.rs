@@ -1045,15 +1045,36 @@ fn telegram_set_commands() -> Result<serde_json::Value, String> {
     telegram::set_commands_now().map_err(|e| e.to_string())
 }
 
+/// مفتاح حالة CUDA والمزوّد كما تراه الواجهة — دالة **نقية** كي يُختبر العقد بلا
+/// تطبيق Tauri (والاختبار الحيّ عبر IPC في `p2_tests`).
+///
+/// ن-٣: `provider` هو المزوّد الفعّال في **آخر جلسة فصل**، مقروءاً من
+/// `provider.json` (`separator::read_provider`) لا من `ACTIVE_PROVIDER` — ذاك
+/// `OnceLock` فأول جلسة في العملية تفوز، والملف يُكتب في **كل** جلسة، فالملف
+/// أصدق لسؤال «ما الذي عملت عليه آخر جلسة». و`provider_known = false` تعني
+/// «لم تُجرَّ جلسة فصل بعد» (أو ملف تالف) ⇒ **لا «CPU»**: الحقل `null` صريح،
+/// ولا صفر ولا ادّعاء.
+fn cuda_status_payload(nvidia: bool, cuda: bool, provider: Option<String>) -> serde_json::Value {
+    let known = provider.is_some();
+    serde_json::json!({
+        "nvidia": nvidia,
+        "cuda": cuda,
+        "provider": provider,
+        "provider_known": known,
+    })
+}
+
 /// Smart CUDA toggle support: NVIDIA GPU present? runtime DLLs ready?
 /// `cuda: true` means the sixteen runtime files sit in the app's bin folder
 /// (self-downloaded) — the UI offers the one-click install when false.
+/// (ن-٣: ومعه `provider` و`provider_known` — آخر جلسة فصل، أو «لم يُقَس بعد».)
 #[tauri::command]
 fn cuda_status() -> serde_json::Value {
-    serde_json::json!({
-        "nvidia": cuda_runtime::nvidia_gpu_present(),
-        "cuda": cuda_runtime::is_available(),
-    })
+    cuda_status_payload(
+        cuda_runtime::nvidia_gpu_present(),
+        cuda_runtime::is_available(),
+        separator::read_provider(),
+    )
 }
 
 /// CUDA_RUNTIME_PLAN: download + verify + install the CUDA runtime on first
@@ -1940,5 +1961,80 @@ mod open_file_tests {
         assert_eq!(program, "explorer");
         assert_eq!(args[0], abs.as_os_str().to_os_string());
         let _ = std::fs::remove_file(&f);
+    }
+
+    /// ن-٣ — عقد `cuda_status`: **«غير معروف» ليست «CPU»**.
+    ///
+    /// **مُفسَد**: لو عاد الغياب صفراً (`""`/`0`) أو بديلاً (`"CPU"`) — وهو ما
+    /// تفعله الواجهات عادةً «لتجنّب الفراغ» — لسقط هذا الاختبار. والمقيس أن
+    /// الغياب `null` صريح مع راية `provider_known=false`، وأن الحقلين القديمين
+    /// (`nvidia` · `cuda`) باقيان بحروفهما فلا ينكسر قارئ قديم.
+    #[test]
+    fn cuda_status_payload_reports_unknown_without_claiming_cpu() {
+        let unknown = cuda_status_payload(false, false, None);
+        assert_eq!(unknown["provider"], serde_json::Value::Null);
+        assert_eq!(unknown["provider_known"], serde_json::json!(false));
+        assert_eq!(unknown["nvidia"], serde_json::json!(false));
+        assert_eq!(unknown["cuda"], serde_json::json!(false));
+        assert!(
+            !unknown.to_string().contains("CPU"),
+            "غياب المعرفة لا يُترجَم إلى CPU: {unknown}"
+        );
+
+        // معروف: الاسم يُنقل كما كُتب، والراية صادقة عليه.
+        for name in ["CUDA", "DirectML", "CPU"] {
+            let known = cuda_status_payload(true, true, Some(name.to_string()));
+            assert_eq!(known["provider"], serde_json::json!(name));
+            assert_eq!(known["provider_known"], serde_json::json!(true));
+        }
+    }
+
+    /// ن-٣ — القياس الحيّ: الأمر نفسه عبر **طبقة IPC** في تطبيق مصنوع
+    /// (`mock_runtime`)، لا نداء دالة مباشر. المقيس: الردّ JSON يحمل المفاتيح
+    /// الأربعة، و`provider_known` توافق `provider` بالضبط (لا راية تكذب على
+    /// الحقل)، وغياب المعرفة لا يظهر بصيغة «CPU».
+    ///
+    /// **ما لا يقيسه**: لا واجهة ولا نافذة حقيقية ولا WebView2 — الردّ يمرّ في
+    /// مسار أوامر tauri نفسه، ثم ترسمه `providerSurface.test.ts` في jsdom.
+    #[test]
+    fn cuda_status_command_answers_over_ipc_with_an_honest_provider_field() {
+        let app = tauri::test::mock_builder()
+            .invoke_handler(tauri::generate_handler![cuda_status])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("mock webview");
+        let res = tauri::test::get_ipc_response(
+            &webview,
+            tauri::webview::InvokeRequest {
+                cmd: "cuda_status".into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: "http://tauri.localhost".parse().unwrap(),
+                body: tauri::ipc::InvokeBody::default(),
+                headers: Default::default(),
+                invoke_key: tauri::test::INVOKE_KEY.to_string(),
+            },
+        )
+        .expect("cuda_status must answer over IPC");
+        let v = res
+            .deserialize::<serde_json::Value>()
+            .expect("JSON payload");
+        // **يُطبع حرفياً** ليكون دليلاً حيّاً يُقتبس (`--nocapture`): ردّ الأمر نفسه
+        // عبر طبقة IPC — أي أن المقيس مخرَج التطبيق لا نداء دالة.
+        eprintln!("cuda_status (IPC) = {v}");
+        for key in ["nvidia", "cuda", "provider", "provider_known"] {
+            assert!(v.get(key).is_some(), "المفتاح {key} في الردّ: {v}");
+        }
+        let provider = v["provider"].as_str().map(|s| s.to_string());
+        assert_eq!(
+            v["provider_known"],
+            serde_json::json!(provider.is_some()),
+            "الراية توافق الحقل على هذه الجهاز: {v}"
+        );
+        if provider.is_none() {
+            assert!(!v.to_string().contains("CPU"), "لا ادّعاء CPU بلا قياس: {v}");
+        }
     }
 }

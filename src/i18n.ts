@@ -194,6 +194,12 @@ const i18n = {
     cuda_downloading: 'جارٍ تنزيل مكتبات تسريع CUDA…',
     cuda_download_failed: 'تعذر تنزيل مكتبات CUDA — سيبقى DirectML نشطاً. أعد المحاولة لاحقاً',
     cuda_banner_enable: 'كرت NVIDIA لديك مدعوم! فعّل تسريع CUDA من الإعدادات — سيُنزّل التطبيق المكتبات تلقائياً (تنزيل لمرة واحدة).',
+    // ن-٣: المزوّد الفعّال في الواجهة. المصدر `provider.json` (آخر جلسة فصل)
+    // لا `ACTIVE_PROVIDER` (OnceLock: أول جلسة تفوز في العملية). وغياب الملف
+    // يعني **لم يُقَس بعد** — لا «CPU»: نصّ «غير معروف» صريح لا صفر ولا ادّعاء.
+    cuda_provider_unknown: 'لم تُجرَّ جلسة فصل بعد — المزوّد الفعّال غير معروف',
+    cuda_provider_label: 'المزوّد الفعّال في آخر جلسة فصل: {name}',
+    cuda_provider_cpu_warn: '⚠ آخر جلسة فصل عملت على المعالج (CPU) — التسريع بالكرت لم يُستخدم',
     // Audit 2026-09-15: every string still hard-coded in index.html got a key so
     // the English UI is no longer half-Arabic. `tagline_pre`/`tagline_hl` keep the
     // same two-span markup in both languages because applyLang() writes innerHTML.
@@ -500,6 +506,9 @@ const i18n = {
     cuda_downloading: 'Downloading CUDA acceleration libraries…',
     cuda_download_failed: 'Could not download the CUDA libraries — DirectML stays active. Try again later',
     cuda_banner_enable: 'Your NVIDIA GPU is supported! Enable CUDA acceleration in Settings — the app downloads the libraries automatically (one-time download).',
+    cuda_provider_unknown: 'No separation has run yet — the active provider is unknown',
+    cuda_provider_label: 'Active provider in the last session: {name}',
+    cuda_provider_cpu_warn: '⚠ The last separation ran on the CPU — GPU acceleration was not used',
     tagline_pre: 'Music does not suit a heart that seeks',
     tagline_hl: 'tranquility',
     dlg_advanced: 'Advanced settings',
