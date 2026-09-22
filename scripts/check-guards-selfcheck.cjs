@@ -604,6 +604,12 @@ function sepFixture(dir) {
     'pub fn process_file(a: u8) -> u8 { a }\n\n' +
     '#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() { let _ = process_file(1); }\n}\n');
   mk(dir, 'src-tauri/src/separator.rs', 'pub fn run() { let _ = crate::pipeline::process_file(a); }\n');
+  // حارسة تفنيد م٦-ب: وحدة اختبار مسموحة بـ**موضعين مثبَّتين** (أُدرجت 2026-09-22 بعد أن
+  // أسقط الحارسُ الحقيقيُّ الملفَ على `main` وأنا أظنّ البوّابات خضراء). البيئة المصنوعة
+  // تحمل الموضعين نفسهما، وإلا عدّ الحارس «موضعاً موعوداً غاب» فسقط **الضابط** لا المُفسَد.
+  mk(dir, 'src-tauri/src/m6b_clip_guard.rs',
+    'pub fn a() { let _ = crate::pipeline::process_file(a); }\n' +
+    'pub fn b() { let _ = crate::pipeline::process_file(b); }\n');
 }
 CASES.push({
   name: 'check-separation-entry.cjs',
@@ -611,7 +617,7 @@ CASES.push({
   build(dir) { sepFixture(dir); },
   controlArgs: (dir) => ['--root', dir],
   saw: (dir, res) => { const m = res.out.match(/(\d+) مواضع مسموحة/); return m ? Number(m[1]) : 0; },
-  sawExpected: 3,
+  sawExpected: 5,
   mutants: [
     { label: 'مدخل سادس في ملف جديد غير مسموح ⇒ يُسمّى الملف والسطر',
       apply: (dir) => mk(dir, 'src-tauri/src/downloader.rs', SEP_CALL('pipeline')),
