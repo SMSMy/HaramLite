@@ -651,6 +651,12 @@ function sepFixture(dir) {
     'pub fn process_file(a: u8) -> u8 { a }\n\n' +
     '#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() { let _ = process_file(1); }\n}\n');
   mk(dir, 'src-tauri/src/separator.rs', 'pub fn run() { let _ = crate::pipeline::process_file(a); }\n');
+  // حارسة تفنيد م٦-ب: وحدة اختبار مسموحة بـ**موضعين مثبَّتين** (أُدرجت 2026-09-22 بعد أن
+  // أسقط الحارسُ الحقيقيُّ الملفَ على `main` وأنا أظنّ البوّابات خضراء). البيئة المصنوعة
+  // تحمل الموضعين نفسهما، وإلا عدّ الحارس «موضعاً موعوداً غاب» فسقط **الضابط** لا المُفسَد.
+  mk(dir, 'src-tauri/src/m6b_clip_guard.rs',
+    'pub fn a() { let _ = crate::pipeline::process_file(a); }\n' +
+    'pub fn b() { let _ = crate::pipeline::process_file(b); }\n');
 }
 CASES.push({
   name: 'check-separation-entry.cjs',
@@ -658,7 +664,7 @@ CASES.push({
   build(dir) { sepFixture(dir); },
   controlArgs: (dir) => ['--root', dir],
   saw: (dir, res) => { const m = res.out.match(/(\d+) مواضع مسموحة/); return m ? Number(m[1]) : 0; },
-  sawExpected: 3,
+  sawExpected: 5,
   mutants: [
     { label: 'مدخل سادس في ملف جديد غير مسموح ⇒ يُسمّى الملف والسطر',
       apply: (dir) => mk(dir, 'src-tauri/src/downloader.rs', SEP_CALL('pipeline')),
@@ -716,22 +722,30 @@ CASES.push({
       copyInto(dir, 'browser-extension/' + f, path.join(REPO, 'browser-extension', f));
     }
   },
-  controlArgs: (dir) => ['--root', dir, '--engine=jsdom'],
+  controlArgs: (dir) => ['--root', dir, '--engine=jsdom', '--no-out'],
   saw: (dir, res) => { const m = res.out.match(/صفوف: (\d+)/); return m ? Number(m[1]) : 0; },
   sawExpected: 3,
   mutants: [
     { label: 'قلب `acc` في mapFullToCut (مُفسَد الطبقة) ⇒ keptSum والموضع النهائي يسقطان',
       apply: (dir) => editExt(dir, 'content.js', 'acc += Math.min(t, b) - a;', 'acc -= Math.min(t, b) - a;'),
       mustMatch: /audioFinal=-57\.5/ },
-    { label: 'إزاحة isGap نصف ثانية ⇒ عدد القفزات يخالف عدد الفجوات',
+    { label: 'إزاحة isGap نصف ثانية ⇒ ثواني الفجوات أو عدد القفزات يخالف',
       apply: (dir) => editExt(dir, 'content.js', 'if (t >= a && t < b) return false;', 'if (t >= a - 0.5 && t < b) return false;'),
-      mustMatch: /عدد القفزات/ },
+      mustMatch: /عدد القفزات|ثواني الفجوات/ },
     { label: 'رفع بوّابة الوضعين في background.js ⇒ وضع مُفسَد يعبر',
       apply: (dir) => editExt(dir, 'background.js', "if (msg.mode === 'song' || msg.mode === 'clip') link.mode = msg.mode;", 'if (msg.mode) link.mode = msg.mode;'),
       mustMatch: /القيمتان المقبولتان/ },
     { label: 'تثبيت الاتجاه LTR في popup.js ⇒ العربية تفقد rtl',
       apply: (dir) => editExt(dir, 'popup.js', "const RTL = LANG === 'ar';", 'const RTL = false;'),
       mustMatch: /direction=rtl/ },
+    { label: 'pageVideo تسقط إلى المحدِّد العام ⇒ الفيديو المُضلِّل يكشفها (ثقب و-١)',
+      apply: (dir) => editExt(dir, 'content.js',
+        "return document.querySelector('#movie_player video') || document.querySelector('video');",
+        "return document.querySelector('video');"),
+      mustMatch: /مُحدِّد المشغّل/ },
+    { label: 'وضع song لا يُختار في المنبثقة ⇒ نقرة song لا تصل (ثقب و-٣)',
+      apply: (dir) => editExt(dir, 'popup.js', "  mode = next === 'song' ? 'song' : 'clip';", "  mode = next === 'song' ? 'clip' : 'clip';"),
+      mustMatch: /نقرة على #mode-song/ },
   ],
   zero: { label: 'browser-extension غائب عن البيئة',
     apply: (dir) => fs.rmSync(path.join(dir, 'browser-extension'), { recursive: true, force: true }) },

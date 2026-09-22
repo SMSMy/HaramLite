@@ -1,0 +1,111 @@
+{
+  "row": "8.1",
+  "id": "browser.popup",
+  "title": "المنبثقة (popup.html + popup.js)",
+  "evaluator": "scripts/check-browser-rows.mjs",
+  "evaluator_sha256": "858221c287d646745417097c94d0e7a13010a51aae2079733cb990918f52c86b",
+  "engine": "jsdom",
+  "measured": true,
+  "verdict": "pass",
+  "outputs": [
+    {
+      "key": "fields",
+      "value": 6
+    },
+    {
+      "key": "buttons",
+      "value": 4
+    },
+    {
+      "key": "roleButtons",
+      "value": 2
+    },
+    {
+      "key": "i18nBoundNodes",
+      "value": 21
+    },
+    {
+      "key": "i18nBoundNodesNaiveRegex",
+      "value": 21
+    },
+    {
+      "key": "dirAr",
+      "value": "rtl"
+    },
+    {
+      "key": "langAr",
+      "value": "ar"
+    },
+    {
+      "key": "dirEn",
+      "value": "ltr"
+    },
+    {
+      "key": "langEn",
+      "value": "en"
+    },
+    {
+      "key": "modeItems",
+      "value": 2
+    },
+    {
+      "key": "initialAria.clip",
+      "value": "true"
+    },
+    {
+      "key": "initialAria.song",
+      "value": "false"
+    },
+    {
+      "key": "clipAfterSongClick.clip",
+      "value": "false"
+    },
+    {
+      "key": "clipAfterSongClick.song",
+      "value": "true"
+    },
+    {
+      "key": "clipAfterClipClick.clip",
+      "value": "true"
+    },
+    {
+      "key": "clipAfterClipClick.song",
+      "value": "false"
+    },
+    {
+      "key": "sentModeSong",
+      "value": "song"
+    },
+    {
+      "key": "sentModeClip",
+      "value": "clip"
+    },
+    {
+      "key": "storedModeSong",
+      "value": "song"
+    },
+    {
+      "key": "storedModeClip",
+      "value": "clip"
+    }
+  ],
+  "outputs_sha256": "6ce9d3fadfa4898d5c04afcdf98a059faf8135ac61ad069f7908c19f8017feed",
+  "surface": [
+    {
+      "path": "browser-extension/popup.html",
+      "sha256": "5425ec88ab167894ba800ea4be579d18df1b3a3f54f25d42f51f2e3c7120b582"
+    },
+    {
+      "path": "browser-extension/popup.js",
+      "sha256": "ad5bfd5fd4aa16303dbd1cea3a69193a8b80d99e9de3e5e2eea52d8675f1ae13"
+    },
+    {
+      "path": "browser-extension/manifest.json",
+      "sha256": "b4be267ff688e31f3061c524e19d3b9982876cdf8b98e38d6b9fda60b62edef9"
+    },
+    {
+      "path": "scripts/check-browser-rows.mjs",
+      "sha256": "858221c287d646745417097c94d0e7a13010a51aae2079733cb990918f52c86b"
+    }
+  ]
+}
