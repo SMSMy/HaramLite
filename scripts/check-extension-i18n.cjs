@@ -1197,7 +1197,7 @@ const TARGETS = [
       storage: { keys: ['hl.popup.mode'], why: 'تفضيل الوضع الوحيد؛ صفر مفتاح تخزين جديد في م٦-ب' },
       direction: true,
       navigatorLang: true,
-      placeholders: { n: 3, why: '{q} في الطابور · {s} الثواني · {e} نصّ الخطأ' },
+      placeholders: { n: 4, why: '{q} في الطابور · {s} الثواني · {e} نصّ الخطأ · و{e} في `code.engine_error` (م٦-ج: تفصيل خطأ المحرّك الخام داخل نصّه المترجم)' },
       computedT: {
         n: 2,
         why: 'موضعان في applyI18n() يقرآن المفتاح من data-i18n/data-i18n-attr؛ والمفاتيح مجموعة مغلقة يفحص auditHtml وجود كل عنصرها في الجدول باللغتين',

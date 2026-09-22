@@ -113,6 +113,16 @@ const I18N = {
     // التذييل
     'footer.privacy': 'معالجة محلية 100% · بلا سحابة',
     'footer.install': 'دليل التثبيت ⚙',
+    // رموز خطأ التطبيق المستقرّة (`code` في عقد الجسر — م٦-ج): النافذة تعرض
+    // `last.error`، وهو نصّ يصوغه التطبيق بالعربية ⇒ يُترجم برمزه لا بنصّه.
+    // ويحرس التقابل في الاتجاهين `scripts/check-bridge-codes.cjs`.
+    'code.duplicate_link': 'هذا الرابط طُلب من قبل في هذه الجلسة — تخطي المكرر',
+    'code.cancelled_by_user': 'أُلغيت المعالجة من قبل المستخدم',
+    'code.download_cancelled': 'أُلغي التنزيل من قبل المستخدم',
+    'code.internal_error': 'عطل داخلي — أعد المحاولة',
+    'code.engine_error': 'فشل المحرّك: {e}',
+    'code.unknown_message': 'رسالة غير معروفة بين الإضافة والتطبيق',
+    'code.bad_input': 'طلب غير صالح',
   },
   en: {
     'header.sub': 'The local bridge for your browser',
@@ -158,6 +168,13 @@ const I18N = {
     'yt.body': 'The inline controls (process this video / watch without music) are injected automatically into the YouTube bar inside the page.',
     'footer.privacy': '100% local processing · no cloud',
     'footer.install': 'Install guide ⚙',
+    'code.duplicate_link': 'This link was already requested in this session — skipping the duplicate',
+    'code.cancelled_by_user': 'Processing was cancelled by the user',
+    'code.download_cancelled': 'The download was cancelled by the user',
+    'code.internal_error': 'Internal error — try again',
+    'code.engine_error': 'Engine failed: {e}',
+    'code.unknown_message': 'Unknown message between the extension and the app',
+    'code.bad_input': 'Invalid request',
   },
 };
 
@@ -193,6 +210,26 @@ function t(key) {
 }
 /** {q} · {s} · {e} — استبدال موضعي لنصّ **من الجدول**، بلا تركيب نصّ جديد. */
 const fill = (s, vars) => s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
+
+/* نصّ خطأ التطبيق: **الترجمة برمزه المستقرّ** `code`، وإلا فالنصّ الخام كما هو.
+ * نفس الدالّة في `content.js` حرفياً (والجدول نفسه)، لأن العقد واحد: التطبيق
+ * يُصدر `{ ok:false, error:<نصّه>, code:<رمز> }`، والقارئ القديم يقرأ `error`
+ * ويتجاهل ما لا يعرفه. ورمز **مجهول** (تطبيق أحدث من الإضافة) يقع على `error`
+ * الخام: توافق خلفي بلا فراغ. والربط جدول ثابت بمفاتيح نصّ حرفية (§٢٦)، ويحرس
+ * التقابل في الاتجاهين `scripts/check-bridge-codes.cjs`. */
+function errText(err, fallback) {
+  const raw = String((err && (err.message || err.error)) || fallback || '');
+  switch ((err && err.code) || '') {
+    case 'duplicate_link': return t('code.duplicate_link');
+    case 'cancelled_by_user': return t('code.cancelled_by_user');
+    case 'download_cancelled': return t('code.download_cancelled');
+    case 'internal_error': return t('code.internal_error');
+    case 'engine_error': return fill(t('code.engine_error'), { e: raw });
+    case 'unknown_message': return t('code.unknown_message');
+    case 'bad_input': return t('code.bad_input');
+    default: return raw;
+  }
+}
 
 /* ── ربط نصوص الصفحة الثابتة، واتجاهها ─────────────────────────────────────
  * الموضعان الوحيدان في هذا الملف اللذان يُنادى فيهما `t` بمفتاح **محسوب**
@@ -284,16 +321,26 @@ function ask(message) {
   });
 }
 
+/* خطأ الجسر المرميّ: النصّ كما هو ومعَه رمزه المستقرّ `code` إن حمله الردّ.
+ * ونظيرتها في `content.js` حرفياً: بناء الخطأ في موضع واحد يجعل `code` لا يسقط
+ * في الطريق، والحارس البنيوي في `scripts/check-bridge-codes.cjs` يعدّ كل قراءة
+ * خامّة **خارج** هذه الدالّة و`errText` ويشترط أن تكون مُعلَنة باسمها. */
+function bridgeError(resp, fallback) {
+  const e = new Error((resp && resp.error) || fallback);
+  if (resp && typeof resp.code === 'string') e.code = resp.code;
+  return e;
+}
+
 function status() {
   return ask({ type: 'status' }).then((resp) => {
-    if (!resp || !resp.ok) throw new Error((resp && resp.error) || t('err.bridgeUnreachable'));
+    if (!resp || !resp.ok) throw bridgeError(resp, t('err.bridgeUnreachable'));
     return resp.resp || {};
   });
 }
 
 function native(message) {
   return ask({ type: 'native', message }).then((resp) => {
-    if (!resp || !resp.ok) throw new Error((resp && resp.error) || t('err.connectFailed'));
+    if (!resp || !resp.ok) throw bridgeError(resp, t('err.connectFailed'));
     return resp.resp || {};
   });
 }
@@ -372,7 +419,7 @@ function renderCompleted(last, provider) {
   setState('completed');
   el.completedText.textContent = last.ok
     ? fill(t('done.okSeconds'), { s: (last.seconds || 0).toFixed(1) })
-    : fill(t('done.failed'), { e: last.error || t('err.unknown') });
+    : fill(t('done.failed'), { e: errText(last, t('err.unknown')) });
   el.completed.classList.toggle('bad', !last.ok);
   el.jobHw.textContent = provider ? String(provider) : '';
   // لا معنى لزر المشاهدة إن فشلت المعالجة، ولا لفتح مجلد نتائج فارغ.

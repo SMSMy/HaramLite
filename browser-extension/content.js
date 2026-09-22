@@ -96,6 +96,17 @@
       'watch.playAudio': '▶ اضغط تشغيل لبدء الصوت المفلتر',
       'watch.playVideo': '▶ اضغط تشغيل الفيديو لبدء المشاهدة',
       'watch.stopped': '⏹ توقفت المشاهدة — عاد صوت الصفحة الأصلي',
+      // رموز خطأ التطبيق المستقرّة (`code` في عقد الجسر — م٦-ج).
+      // والعطل المقيس: نصوص التطبيق تصل عربية فتُعرض في واجهة إنجليزية؛ فهذه
+      // المداخل هي ترجمتها بالرمز، ويحرس التقابل `scripts/check-bridge-codes.cjs`.
+      // و`{e}` في `code.engine_error`: التفصيل الخام من المحرّك، ويُملأ بـ`fill`.
+      'code.duplicate_link': 'هذا الرابط طُلب من قبل في هذه الجلسة — تخطي المكرر',
+      'code.cancelled_by_user': 'أُلغيت المعالجة من قبل المستخدم',
+      'code.download_cancelled': 'أُلغي التنزيل من قبل المستخدم',
+      'code.internal_error': 'عطل داخلي — أعد المحاولة',
+      'code.engine_error': 'فشل المحرّك: {e}',
+      'code.unknown_message': 'رسالة غير معروفة بين الإضافة والتطبيق',
+      'code.bad_input': 'طلب غير صالح',
     },
     en: {
       'btn.proc.idle': 'Process this video',
@@ -132,6 +143,13 @@
       'watch.playAudio': '▶ Press play to start the filtered audio',
       'watch.playVideo': '▶ Press play on the video to start watching',
       'watch.stopped': '⏹ Watching stopped — the page audio is back',
+      'code.duplicate_link': 'This link was already requested in this session — skipping the duplicate',
+      'code.cancelled_by_user': 'Processing was cancelled by the user',
+      'code.download_cancelled': 'The download was cancelled by the user',
+      'code.internal_error': 'Internal error — try again',
+      'code.engine_error': 'Engine failed: {e}',
+      'code.unknown_message': 'Unknown message between the extension and the app',
+      'code.bad_input': 'Invalid request',
     },
   };
 
@@ -169,6 +187,35 @@
   /** {pct} · {s} — استبدال موضعي لنصّ **من الجدول**، بلا تركيب نصّ جديد. */
   const fill = (s, vars) => s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
 
+  /* نصّ خطأ التطبيق: **الترجمة برمزه المستقرّ** `code`، وإلا فالنصّ الخام كما هو.
+   *
+   * والعقد (م٦-ج): التطبيق يُصدر `{ ok:false, error:<نصّه كما هو>, code:<رمز> }`،
+   * فالقارئ القديم يقرأ `error` ويتجاهل ما لا يعرفه، وهذا القارئ يترجم بالرمز —
+   * فالنصّ العربي لا يظهر في واجهة إنجليزية. ورمز **مجهول** (تطبيق أحدث من
+   * الإضافة) يقع على `error` الخام: توافق خلفي، ولا فراغ ولا خطأ مكتوم.
+   *
+   * والربط **جدول ثابت**: رمز ⇒ مفتاح `code.<رمز>` في `I18N` أعلاه، وكلٌّ بمفتاح
+   * نصّ حرفيّ (§٢٦ يمنع المفتاح المحسوب). ويحرس التقابل في الاتجاهين
+   * `scripts/check-bridge-codes.cjs`: رمز في الرست بلا مدخل هنا يُسقطه، ومدخل
+   * هنا بلا رمز في الرست يُسقطه، وموضع خطأ في الرست لا يمرّر رمزاً يُسقطه.
+   *
+   * والاتجاه **لا يُشتقّ من هذا النصّ** بل من `RTL` (اللغة المُختارة)، فالعربية
+   * الخام في واجهة إنجليزية تبقى `ltr` — القاعدة المُعلَنة، لا استنتاج من المحتوى.
+   */
+  function errText(err, fallback) {
+    const raw = String((err && (err.message || err.error)) || fallback || '');
+    switch ((err && err.code) || '') {
+      case 'duplicate_link': return t('code.duplicate_link');
+      case 'cancelled_by_user': return t('code.cancelled_by_user');
+      case 'download_cancelled': return t('code.download_cancelled');
+      case 'internal_error': return t('code.internal_error');
+      case 'engine_error': return fill(t('code.engine_error'), { e: raw });
+      case 'unknown_message': return t('code.unknown_message');
+      case 'bad_input': return t('code.bad_input');
+      default: return raw;
+    }
+  }
+
   let procBtn = null;
   let watchBtn = null;
   let menuCloser = null;
@@ -198,13 +245,20 @@
     return !!va && va === vb;
   }
 
+  /** خطأ الجسر: النصّ كما هو ومعَه رمزه المستقرّ `code` إن حمله الردّ. */
+  function bridgeError(resp) {
+    const e = new Error((resp && resp.error) || t('bridge.noResponse'));
+    if (resp && typeof resp.code === 'string') e.code = resp.code;
+    return e;
+  }
+
   function native(msg) {
     return new Promise((resolve, reject) => {
       // sendNativeMessage is not available to content scripts — proxy
       // through the background service worker.
       chrome.runtime.sendMessage({ type: 'native', message: msg }, (resp) => {
         if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-        else if (!resp || !resp.ok) reject(new Error((resp && resp.error) || t('bridge.noResponse')));
+        else if (!resp || !resp.ok) reject(bridgeError(resp));
         else resolve(resp.resp || {});
       });
     });
@@ -223,6 +277,9 @@
         `font-size:12px;direction:${RTL ? 'rtl' : 'ltr'};transition:opacity .4s;`;
       document.body.appendChild(el);
     }
+    // والاتجاه يتبع **اللغة** لا النصّ: نصّ خام من تطبيق أحدث قد يكون عربياً في
+    // واجهة إنجليزية، فلا يُقلب اتجاه الواجهة تبعاً له (القاعدة نفسها في الجدول).
+    el.style.direction = RTL ? 'rtl' : 'ltr';
     el.textContent = msg;
     el.style.opacity = '1';
     if (toastTimer) clearTimeout(toastTimer);
@@ -405,11 +462,11 @@
     try {
       r = await native({ type: 'link', url: location.href, mode: 'watch' });
     } catch (e) {
-      toast('⚠ ' + (e && e.message ? e.message : t('start.sendFailed')), 4000);
+      toast('⚠ ' + errText(e, t('start.sendFailed')), 4000);
       return;
     }
     if (!r || !r.ok) {
-      toast('✗ ' + ((r && r.error) || t('start.sendFailed')), 4000);
+      toast('✗ ' + errText(r, t('start.sendFailed')), 4000);
       return;
     }
     BUSY = true;
@@ -453,7 +510,7 @@
             toast(t('poll.ok'));
           } else {
             resetBar();
-            toast('✗ ' + (st.last.error || t('poll.failed')), 4000);
+            toast('✗ ' + errText(st.last, t('poll.failed')), 4000);
           }
         }
       } catch {
@@ -721,7 +778,7 @@ function keptStretchAround(kept, gapStart, gapEnd) {
       });
     } catch (e) {
       setWatchBtn('ready');
-      toast('✗ ' + (e && e.message ? e.message : t('fetch.failed')), 4000);
+      toast('✗ ' + errText(e, t('fetch.failed')), 4000);
       return;
     }
     const audio = new Audio();
@@ -736,7 +793,7 @@ function keptStretchAround(kept, gapStart, gapEnd) {
     } catch (e) {
       URL.revokeObjectURL(url);
       setWatchBtn('ready');
-      toast('✗ ' + e.message, 4000);
+      toast('✗ ' + errText(e), 4000);
       return;
     }
     // Duration gate: song outputs mirror silence cuts (mapped via kept);

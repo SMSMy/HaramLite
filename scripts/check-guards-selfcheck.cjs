@@ -412,6 +412,91 @@ CASES.push({
     apply: (dir) => mk(dir, 'browser-extension/content.js', '') },
 });
 
+/* ═══ ٥ج) حارس رموز خطأ الجسر (م٦-ج) ═════════════════════════════════════════
+ * البيئة المصنوعة تحمل **الملفات المشحونة نفسها** (`src-tauri/src/bridge.rs`
+ * والجدولين `content.js` و`popup.js`)، والحارس يُنادى بـ`--root=<البيئة>` فيقرأها.
+ * والضابط يشترط أن **يرى** مدخلاً غير صفري: عدد الرموز المُصدَرة (٧ اليوم).
+ * والمُفسَدات هنا **مستقلّة** عن مُفسَدات `--selfcheck` الداخلية للحارس: هذه تُثبت
+ * أن البوّابة ترى الحارس يسقط، وتلك تُثبت أن الحارس يرى العيب نفسه.
+ * والبيئة تحمل **ملفات التشغيل الثلاثة** (`content.js` · `popup.js` ·
+ * `background.js`) لأن قاعدة العرض تقيس الثلاثة — ونقصان واحد يُسقط الحارس بـ2
+ * (وهو ما قِيس فعلاً في أول تشغيل: البيئة بنسخ ملفين فقط ⇒ «صفر مدخل»). */
+CASES.push({
+  name: 'check-bridge-codes.cjs',
+  script: S('check-bridge-codes.cjs'),
+  build(dir) {
+    copyInto(dir, 'src-tauri/src/bridge.rs', path.join(REPO, 'src-tauri', 'src', 'bridge.rs'));
+    for (const f of ['content.js', 'popup.js', 'background.js']) {
+      copyInto(dir, 'browser-extension/' + f, path.join(REPO, 'browser-extension', f));
+    }
+  },
+  controlArgs: (dir) => ['--root=' + dir],
+  saw: (dir, res) => { const m = res.out.match(/(\d+) رمزاً مُصدَراً/); return m ? Number(m[1]) : 0; },
+  sawExpected: 7,
+  mutants: [
+    { label: 'رمز جديد في bridge.rs بلا مدخل في جدول الإضافة',
+      apply: (dir) => fs.appendFileSync(path.join(dir, 'src-tauri/src/bridge.rs'),
+        '\npub const E_PROBE_GUARD: &str = "probe_guard_code";\n' +
+        'fn probe_guard() {\n    reply_err(E_PROBE_GUARD, "probe");\n}\n'),
+      mustMatch: /probe_guard_code/ },
+    { label: 'مدخل الرمز محذوف من جدول content.js (والرمز ما زال يُصدَر)',
+      apply: (dir) => {
+        const p = path.join(dir, 'browser-extension/content.js');
+        const s = fs.readFileSync(p, 'utf8');
+        const out = s.replace("      'code.duplicate_link': 'هذا الرابط طُلب من قبل في هذه الجلسة — تخطي المكرر',\n", '');
+        if (out === s) throw new Error('مُفسَد لم يغيّر content.js');
+        fs.writeFileSync(p, out);
+      },
+      mustMatch: /duplicate_link/ },
+    { label: 'موضع خطأ يمرّر نصّاً بدل الرمز',
+      apply: (dir) => {
+        const p = path.join(dir, 'src-tauri/src/bridge.rs');
+        const s = fs.readFileSync(p, 'utf8');
+        const out = s.replace('reply_err(E_BAD_INPUT, "empty url");', 'reply_err("bad_input", "empty url");');
+        if (out === s) throw new Error('مُفسَد لم يغيّر bridge.rs');
+        fs.writeFileSync(p, out);
+      },
+      mustMatch: /الوسيط الأول/ },
+    /* ث١ (جاسوس م٦-ج): **مسار عرض يقرأ النصّ الخام** — كان يمرّ على حارس الرموز
+       وحارس jsdom معاً؛ فالمُفسَد هنا يُثبت أن البوّابة ترى القاعدة الجديدة تسقط. */
+    { label: 'مسار عرض (الاستطلاع) يقرأ st.last.error خامّاً (ث١)',
+      apply: (dir) => {
+        const p = path.join(dir, 'browser-extension/content.js');
+        const s = fs.readFileSync(p, 'utf8');
+        const out = s.replace("toast('✗ ' + errText(st.last, t('poll.failed')), 4000);",
+          "toast('✗ ' + String(st.last.error), 4000);");
+        if (out === s) throw new Error('مُفسَد لم يغيّر content.js');
+        fs.writeFileSync(p, out);
+      },
+      mustMatch: /غير مُعلَنة/ },
+    /* ث٢: حالة `case` قائمة لا تُرجع ترجمتها. */
+    { label: 'حالة في errText لا تُرجع ترجمتها (ث٢)',
+      apply: (dir) => {
+        const p = path.join(dir, 'browser-extension/content.js');
+        const s = fs.readFileSync(p, 'utf8');
+        const out = s.replace("      case 'duplicate_link': return t('code.duplicate_link');",
+          "      case 'duplicate_link': return raw;");
+        if (out === s) throw new Error('مُفسَد لم يغيّر content.js');
+        fs.writeFileSync(p, out);
+      },
+      mustMatch: /لا تُرجع/ },
+    /* ث١ على **مسار لا يُقاس حيّاً** (جلب الصوت): مُفسَد الجاسوس Ⓕ — يقيسه حارس
+       الرموز وحده، لأن قيادته حيّاً تحتاج `Audio`/decode حقيقيين. */
+    { label: 'مسار جلب الصوت يقرأ e.message خامّاً (مُفسَد الجاسوس Ⓕ)',
+      apply: (dir) => {
+        const p = path.join(dir, 'browser-extension/content.js');
+        const s = fs.readFileSync(p, 'utf8');
+        const out = s.replace("toast('✗ ' + errText(e, t('fetch.failed')), 4000);",
+          "toast('✗ ' + String(e && e.message), 4000);");
+        if (out === s) throw new Error('مُفسَد لم يغيّر content.js');
+        fs.writeFileSync(p, out);
+      },
+      mustMatch: /غير مُعلَنة/ },
+  ],
+  zero: { label: 'bridge.rs غائب عن البيئة',
+    apply: (dir) => fs.rmSync(path.join(dir, 'src-tauri'), { recursive: true, force: true }) },
+});
+
 /* ═══ 6) خادم المعاينة ══════════════════════════════════════════════════════ */
 const SERVE_MARK = 'OUTSIDE-DOCS-SECRET';
 CASES.push({

@@ -22,8 +22,26 @@
  * مقطوع) و**ضابط سالب** (تعليق عربي، وتغيير قيمة إنجليزية في اللغتين معاً) —
  * بلا ملف مؤقت ولا كتابة على القرص ولا عملية فرعية.
  *
+ * **وم٦-ج: مسار خطأ `content.js` يُقاس في DOM حقيقي كذلك** (`measureContent`):
+ * العطل المقيس كان أن **نصوص التطبيق** تصل عربية فتُعرض في واجهة إنجليزية. فالمقيس
+ * هنا المسار المشحون نفسه: يُنفَّذ `content.js` المشحون في صفحة يوتيوب مصنوعة،
+ * ويُنقر زرّ المعالجة (`#haramlite-yt-proc`)، ويُردّ على رسالة `link` بحمولة خطأ
+ * تحمل `code` — ثم يُقرأ **نصّ التوست المعروض واتجاهه**:
+ *   (أ) `code: duplicate_link` بواجهة إنجليزية ⇒ المعروض **إنجليزي** والاتجاه `ltr`
+ *       (وبالعربية ⇒ العربي و`rtl`: التكافؤ).
+ *   (ب) رمز **مجهول** ⇒ النصّ الخام كما هو (توافق خلفي)، والاتجاه يبقى اتجاه اللغة.
+ * والنصّ الخام للرمز المعلوم **يُقرأ من `src-tauri/src/bridge.rs` نفسه** (نصّ
+ * التطبيق المشحون لا نصّ مكتوب بيد)، وغيابه **يُسقط** القياس بصوت عالٍ.
+ * **ومسار الاستطلاع** (`poll()` ← `st.last.error`) يُقاس حيّاً كذلك لأنه أحد
+ * مسارَي العطل الأصلي: ردّ `link` بالنجاح ثم حالة جسر فاشلة تحمل `code`.
+ * **وبطاقة الاكتمال في المنبثقة** (`popup.js:412`) تُقاس بتشغيل الدالّة المشحونة
+ * `renderCompleted` على مستند جديد وقراءة البطاقة.
+ * ومُفسَدات هذا القياس خمسة: فرع الرمز المعلوم محذوف · الرمز المجهول لم يعد يقع
+ * على النصّ الخام · والاتجاه ثُبِّت `rtl` · **ومسار الاستطلاع يقرأ النصّ الخام**
+ * (مُفسَد الجاسوس Ⓓ) · **وبطاقة الاكتمال تقرأ النصّ الخام** (مُفسَد الجاسوس Ⓖ).
+ *
  * **وحدّ مُعلَن**: هذا قياس **DOM لا متصفّح**. لا يرسم خطوطاً، ولا يختبر CSP،
- * ولا `chrome.*` الحقيقية، ولا تحميل الإضافة، ولا `content.js` على يوتيوب.
+ * ولا `chrome.*` الحقيقية، ولا تحميل الإضافة، ولا `content.js` على يوتيوب حقيقي.
  */
 const fs = require('fs');
 const path = require('path');
@@ -37,6 +55,17 @@ const SHIPPED = {
   js: fs.readFileSync(path.join(EXT, 'popup.js'), 'utf8'),
   version: JSON.parse(fs.readFileSync(path.join(EXT, 'manifest.json'), 'utf8')).version,
 };
+/* وقياس مسار خطأ المحتوى: مصدره المشحون + نصّ التطبيق الخام من الرست. */
+const CONTENT = { js: fs.readFileSync(path.join(EXT, 'content.js'), 'utf8') };
+const RUST_DUP_MSG = (() => {
+  const src = fs.readFileSync(path.join(REPO, 'src-tauri', 'src', 'bridge.rs'), 'utf8');
+  const m = /err_last\(E_DUPLICATE_LINK,\s*&url,\s*"([^"]+)"\)/.exec(src);
+  return m ? m[1] : null;
+})();
+/** رمز لا يعرفه هذا الإصدار من الإضافة — يحاكي تطبيقاً أحدث منها. */
+const UNKNOWN_CODE = 'a_code_from_a_newer_app';
+const CONTENT_PAGE = '<!doctype html><html><body><div id="movie_player">' +
+  '<div class="ytp-right-controls"></div></div></body></html>';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const textOf = (w, sel) => { const n = w.document.querySelector(sel); return n ? n.textContent : null; };
@@ -145,6 +174,29 @@ async function measure(src, report) {
   report('وسم الإصدار = إصدار المانيفست (' + src.version + ')',
     textOf(ar, '.version-tag') === 'v' + src.version, 'وُجد ' + JSON.stringify(textOf(ar, '.version-tag')));
 
+  /* **بطاقة الاكتمال** (`popup.js:412` — `last.error`): ثالث مسار عرض لم يكن
+   * يحرسه شيء (مُفسَد الجاسوس Ⓖ مرّ على الحارسين). فتُنادى الدالّة **المشحونة**
+   * `renderCompleted` مباشرةً على مستند جديد، وتُقرأ البطاقة — بلا مؤقّتات،
+   * فالمقيس هو الدالّة والجدول والاتجاه في DOM حقيقي. */
+  const expectFailed = (lang, e) => String(I18N[lang]['done.failed']).replace('{e}', e);
+  const cardEn = render(src, ['en-US', 'ar']);
+  const cardAr = render(src, ['ar-SA', 'en']);
+  cardEn.renderCompleted({ ok: false, error: RUST_DUP_MSG, code: 'duplicate_link' }, null);
+  const cardEnKnown = textOf(cardEn, '#completed-text');
+  report('بطاقة الاكتمال (en): رمز معلوم ⇒ نصّ الجدول بلغته لا النصّ الخام',
+    cardEnKnown === expectFailed('en', I18N.en['code.duplicate_link']), 'وُجد ' + JSON.stringify(cardEnKnown));
+  report('والبطاقة الإنجليزية بصفر محرف عربي',
+    ![...String(cardEnKnown)].some((c) => AR.test(c)), 'وُجد ' +
+    [...String(cardEnKnown)].filter((c) => AR.test(c)).length + ' محرفاً');
+  cardEn.renderCompleted({ ok: false, error: RUST_DUP_MSG, code: UNKNOWN_CODE }, null);
+  report('بطاقة الاكتمال (en): رمز مجهول ⇒ النصّ الخام كما هو (توافق خلفي)',
+    textOf(cardEn, '#completed-text') === expectFailed('en', RUST_DUP_MSG),
+    'وُجد ' + JSON.stringify(textOf(cardEn, '#completed-text')));
+  cardAr.renderCompleted({ ok: false, error: RUST_DUP_MSG, code: 'duplicate_link' }, null);
+  report('بطاقة الاكتمال (ar): رمز معلوم ⇒ نصّ الجدول العربي (تكافؤ)',
+    textOf(cardAr, '#completed-text') === expectFailed('ar', I18N.ar['code.duplicate_link']),
+    'وُجد ' + JSON.stringify(textOf(cardAr, '#completed-text')));
+
   /* ثم تُترك آلة الحالة تكتب: مسار الاتصال، ثم مسار الانقطاع. */
   await sleep(30);
   report('مسار الاتصال: الحالة تُعرض بنصّ الجدول (status.connected)',
@@ -167,8 +219,7 @@ async function measure(src, report) {
     'وُجد ' + frAr.document.documentElement.dir + '/' + frAr.document.documentElement.lang);
 }
 
-/* ── أدوات المُفسَدات: كلها في الذاكرة ───────────────────────────────────── */
-function sub(src, re, repl) {
+/* ── أدوات المُفسَدات: كلها في الذاكرة ───────────────────────────────────── */function sub(src, re, repl) {
   if (!re.test(src)) throw new Error('النمط لا يطابق: ' + re);
   const out = src.replace(re, repl);
   if (out === src) throw new Error('الاستبدال لم يغيّر شيئاً: ' + re);
@@ -179,6 +230,139 @@ const grab = (src, re, n) => {
   if (!m) throw new Error('الالتقاط فشل: ' + re);
   return m[n === undefined ? 1 : n];
 };
+
+/* ══ م٦-ج: قياس مسار خطأ `content.js` في DOM حقيقي ═════════════════════════
+ * صفحة يوتيوب مصنوعة + واجهة `chrome` مصنوعة ⇒ يُنفَّذ `content.js` المشحون،
+ * ويُشتقّ الزرّ (بحدث `yt-navigate-finish` كما في يوتيوب)، ثم يُنقر فيُرسل
+ * `{type:'link'}` ويُردّ بحمولة خطأ تحمل `code` — ويُقرأ نصّ التوست واتجاهه. */
+function renderContent(jsSrc, languages, replyFn) {
+  const dom = new JSDOM(CONTENT_PAGE, { url: 'https://www.youtube.com/watch?v=abc', runScripts: 'outside-only' });
+  const w = dom.window;
+  Object.defineProperty(w.navigator, 'languages', { value: languages, configurable: true });
+  Object.defineProperty(w.navigator, 'language', { value: languages[0] || 'en', configurable: true });
+  w.chrome = {
+    runtime: {
+      lastError: null,
+      // كل ردّ هو ردّ الجسر: `{ok:true, resp:<الحمولة>}` كما يمرّ عبر background.js.
+      // والردّ **دالّة على الرسالة** فتُقاس مسارات مختلفة (الإرسال · الاستطلاع) في نافذة واحدة.
+      sendMessage: (msg, cb) => { if (cb) setTimeout(() => cb({ ok: true, resp: replyFn(msg) }), 0); },
+      onMessage: { addListener: () => {} },
+    },
+  };
+  w.eval(jsSrc);
+  return w;
+}
+
+/** ينقر زرّ المعالجة ويردّ بحمولة خطأ، ثم يُعيد [نصّ التوست، اتجاهه]. */
+async function contentError(jsSrc, languages, reply) {
+  let w = null;
+  try { w = renderContent(jsSrc, languages, () => reply); } catch (e) { return { why: 'تنفيذ content.js رمى: ' + (e && e.message ? e.message : e) }; }
+  w.dispatchEvent(new w.Event('yt-navigate-finish'));   // مسار الحقن الحقيقي في SPA
+  await sleep(320);
+  const btn = w.document.getElementById('haramlite-yt-proc');
+  if (!btn) return { why: 'الزرّ لم يُحقن (#haramlite-yt-proc غائب)' };
+  btn.click();
+  await sleep(120);
+  const el = w.document.getElementById('haramlite-toast');
+  if (!el) return { why: 'التوست لم يظهر' };
+  return { text: el.textContent, dir: el.style.direction };
+}
+
+/* **مسار الاستطلاع** (`poll()` — `content.js:513`): هذا هو المسار الذي قِيس عليه
+ * العطل الأصلي (`ARCHIVE/m6j-brief.md` §١ يسمّي `st.last.error`)، وكان **بلا حارس**
+ * حتى مُفسَد الجاسوس Ⓓ. فيُقاس حيّاً هنا: ردّ `link` بالنجاح فيبدأ الاستطلاع،
+ * ثم تُردّ حالة جسر فاشلة تحمل `code` — ويُقرأ نصّ التوست واتجاهه بعد دورة
+ * الاستطلاع (1500ms). و`last.url` هو رابط الصفحة نفسه ليطابق `sameVideo`. */
+async function contentPollError(jsSrc, languages, last) {
+  const videoUrl = 'https://www.youtube.com/watch?v=abc';
+  // الردّ يُبنى من **الرسالة الداخلية**: `content.js` يُغلّفها
+  // `{type:'native', message:{type:'link'|'status'|…}}` كما يفعل مع العامل.
+  const replyFor = (env) => {
+    const message = (env && env.message) || env || {};
+    const type = message.type;
+    if (type === 'link') return { ok: true };
+    if (type === 'status') return { state: { running: null, last } };
+    return {};
+  };
+  let w = null;
+  try { w = renderContent(jsSrc, languages, replyFor); } catch (e) { return { why: 'تنفيذ content.js رمى: ' + (e && e.message ? e.message : e) }; }
+  w.dispatchEvent(new w.Event('yt-navigate-finish'));
+  await sleep(320);
+  const btn = w.document.getElementById('haramlite-yt-proc');
+  if (!btn) return { why: 'الزرّ لم يُحقن (#haramlite-yt-proc غائب)' };
+  btn.click();
+  await sleep(1750);                                   // دورة الاستطلاع 1500ms
+  const el = w.document.getElementById('haramlite-toast');
+  if (!el) return { why: 'توست الاستطلاع لم يظهر' };
+  return { text: el.textContent, dir: el.style.direction, url: videoUrl };
+}
+
+/** القياس كاملاً على مصدر `content.js` مُمرَّر (فالمُفسَدات في الذاكرة). */
+async function measureContent(src, report) {
+  const I18N = parseTable(src.js);
+  if (!I18N) { report('جدول الترجمة في content.js مقروء', false, 'لا `const I18N = {`'); return; }
+  /* صفر مدخل: النصّ الخام يأتي من الرست المشحون — لو غاب فالمقيس نصٌّ مكتوب بيد. */
+  report('صفر مدخل: نصّ التطبيق الخام (`duplicate_link`) مقروء من bridge.rs',
+    typeof RUST_DUP_MSG === 'string' && RUST_DUP_MSG.length > 0,
+    'لم أقرأ نصّ `err_last(E_DUPLICATE_LINK, …)` من bridge.rs');
+  if (typeof RUST_DUP_MSG !== 'string' || !RUST_DUP_MSG) return;
+
+  const both = [
+    { lang: 'en', langs: ['en-US', 'ar'], dir: 'ltr' },
+    { lang: 'ar', langs: ['ar-SA', 'en'], dir: 'rtl' },
+  ];
+  for (const L of both) {
+    /* (أ) رمز معلوم ⇒ نصّ الجدول بلغته، والاتجاه اتجاه اللغة. */
+    const known = await contentError(src.js, L.langs, { ok: false, error: RUST_DUP_MSG, code: 'duplicate_link' });
+    const want = I18N[L.lang] ? I18N[L.lang]['code.duplicate_link'] : null;
+    if (!known.text) {
+      report(`[${L.lang}] صفر مدخل: الزرّ حُقن والتوست ظهر (رمز معلوم)`, false, known.why);
+    } else {
+      report(`[${L.lang}] رمز معلوم (\`duplicate_link\`) ⇒ نصّ الجدول بلغته، لا النصّ العربي الخام`,
+        typeof want === 'string' && known.text === '✗ ' + want, 'وُجد ' + JSON.stringify(known.text));
+      report(`[${L.lang}] والاتجاه اتجاه اللغة (${L.dir}) لا اتجاه النصّ`,
+        known.dir === L.dir, 'وُجد ' + JSON.stringify(known.dir));
+      if (L.lang === 'en') {
+        const arChars = [...known.text].filter((c) => AR.test(c)).length;
+        report('والمعروض في الواجهة الإنجليزية بصفر محرف عربي', arChars === 0, 'وُجد ' + arChars + ' محرفاً');
+      }
+    }
+    /* (ب) رمز مجهول ⇒ النصّ الخام كما هو (توافق خلفي)، والاتجاه يتبع اللغة. */
+    const unknown = await contentError(src.js, L.langs, { ok: false, error: RUST_DUP_MSG, code: UNKNOWN_CODE });
+    if (!unknown.text) {
+      report(`[${L.lang}] صفر مدخل: الزرّ حُقن والتوست ظهر (رمز مجهول)`, false, unknown.why);
+    } else {
+      report(`[${L.lang}] رمز مجهول ⇒ النصّ الخام كما هو (توافق خلفي: تطبيق أحدث من الإضافة)`,
+        unknown.text === '✗ ' + RUST_DUP_MSG, 'وُجد ' + JSON.stringify(unknown.text));
+      report(`[${L.lang}] والاتجاه يبقى اتجاه اللغة (${L.dir}) ولو كان النصّ عربياً`,
+        unknown.dir === L.dir, 'وُجد ' + JSON.stringify(unknown.dir));
+    }
+    /* (ج) ولا `code` أصلاً (تطبيق أقدم من الإضافة) ⇒ النصّ الخام كما هو: هذا هو
+       الصفّ 4.12 في `qa/TEST-MATRIX.md`، ويُقاس هنا في مساره البرمجي نفسه. */
+    const legacy = await contentError(src.js, L.langs, { ok: false, error: RUST_DUP_MSG });
+    if (!legacy.text) {
+      report(`[${L.lang}] صفر مدخل: الزرّ حُقن والتوست ظهر (بلا code)`, false, legacy.why);
+    } else {
+      report(`[${L.lang}] ولا \`code\` أصلاً (تطبيق أقدم) ⇒ النصّ الخام كما هو`,
+        legacy.text === '✗ ' + RUST_DUP_MSG, 'وُجد ' + JSON.stringify(legacy.text));
+    }
+  }
+
+  /* (د) **مسار الاستطلاع** (`poll()` — `content.js:513`، وهو أحد مسارَي العطل
+     الأصلي): حالة جسر فاشلة تحمل `code` ⇒ التوست يعرض الترجمة، والاتجاه اتجاه
+     اللغة. و`url` هو رابط الصفحة نفسه ليطابق `sameVideo` فيُقبل `last`. */
+  const pollEn = await contentPollError(src.js, ['en-US', 'ar'], {
+    ok: false, url: 'https://www.youtube.com/watch?v=abc', error: RUST_DUP_MSG, code: 'duplicate_link',
+  });
+  if (!pollEn.text) {
+    report('[en] صفر مدخل: زرّ الاستطلاع نُقر والتوست ظهر', false, pollEn.why);
+  } else {
+    report('[en] الاستطلاع (`st.last` فاشل برمز) ⇒ نصّ الجدول بلغته لا النصّ الخام',
+      pollEn.text === '✗ ' + I18N.en['code.duplicate_link'], 'وُجد ' + JSON.stringify(pollEn.text));
+    report('[en] واتجاه توست الاستطلاع اتجاه اللغة (ltr) ولو كان النصّ الخام عربياً',
+      pollEn.dir === 'ltr', 'وُجد ' + JSON.stringify(pollEn.dir));
+  }
+}
 
 async function main() {
   let checks = 0;
@@ -191,6 +375,9 @@ async function main() {
 
   console.log('=== قياس حيّ (jsdom) للنافذة المنبثقة: النصّ والاتجاه ===');
   await measure(SHIPPED, ok);
+
+  console.log('\n=== قياس حيّ (jsdom) لمسار خطأ content.js: النصّ والاتجاه ===');
+  await measureContent(CONTENT, ok);
 
   console.log('\n=== مُفسَدات هذا القياس (في الذاكرة — لا ملف مؤقت) ===');
   const AR_SUB = grab(SHIPPED.js, /'header\.sub':\s*'([^']+)'/, 1);
@@ -209,13 +396,32 @@ async function main() {
       { ...SHIPPED, html: sub(SHIPPED.html, /<body>/, (m) => m + '\n<!-- ' + AR_SUB + ' -->') }, 'pass'],
     ['ض٢ قيمة إنجليزية مُبدَّلة في الجدول (والصفحة تقرأ منه) — يجب ألّا يُسقط',
       { ...SHIPPED, js: sub(SHIPPED.js, /'footer\.install': '([^']+)'/, "'footer.install': 'Setup guide ⚙'") }, 'pass'],
+    /* Ⓖ مُفسَد الجاسوس: **بطاقة الاكتمال** تقرأ `last.error` خامّاً — كان يمرّ على
+       الحارسين معاً قبل قاعدة العرض. */
+    ['⑩ بطاقة الاكتمال تقرأ `last.error` خامّاً بدل `errText` (مُفسَد الجاسوس Ⓖ)',
+      { ...SHIPPED, js: sub(SHIPPED.js, /fill\(t\('done\.failed'\), \{ e: errText\(last, t\('err\.unknown'\)\) \}\);/, "fill(t('done.failed'), { e: String(last.error || '') });") }, 'fall'],
+  ];
+
+  /* ── مُفسَدات مسار خطأ `content.js` (م٦-ج): كلها في الذاكرة ─────────────── */
+  const CONTENT_CASES = [
+    ['⑥ فرع الرمز المعلوم محذوف من `errText` ⇒ العربية الخام تُعرض في واجهة إنجليزية',
+      { js: sub(CONTENT.js, /      case 'duplicate_link': return t\('code\.duplicate_link'\);\n/, '') }, 'fall'],
+    ['⑦ الرمز المجهول لم يعد يقع على النصّ الخام (سقط إلى نصّ عام من الجدول)',
+      { js: sub(CONTENT.js, /      default: return raw;/, "      default: return t('poll.failed');") }, 'fall'],
+    ['⑧ الاتجاه ثُبِّت `rtl` بدل الاشتقاق من اللغة ⇒ الواجهة الإنجليزية تسقط',
+      { js: sub(CONTENT.js, /el\.style\.direction = RTL \? 'rtl' : 'ltr';/, "el.style.direction = 'rtl';") }, 'fall'],
+    /* Ⓓ مُفسَد الجاسوس: **الاستطلاع** يقرأ النصّ الخام مباشرةً — كان يمرّ على
+       حارس الرموز وحارس jsdom معاً قبل قاعدة العرض، والاستطلاع أحد مسارَي العطل الأصلي. */
+    ['⑨ الاستطلاع يقرأ `st.last.error` خامّاً بدل `errText` (مُفسَد الجاسوس Ⓓ)',
+      { js: sub(CONTENT.js, /toast\('✗ ' \+ errText\(st\.last, t\('poll\.failed'\)\), 4000\);/, "toast('✗ ' + String(st.last.error), 4000);") }, 'fall'],
   ];
 
   let caught = 0, survived = 0, passed = 0, badPass = 0, skipped = 0;
   const holes = [], regressions = [];
-  for (const [label, src, want] of CASES) {
+  for (const [label, src, want, kind] of CASES.concat(CONTENT_CASES.map((c) => [c[0], c[1], c[2], 'content']))) {
     let r = null;
-    try { r = { checks: 0, failures: [] }; await measure(src, (l, c, d) => { r.checks++; if (!c) r.failures.push(d ? l + ' — ' + d : l); }); } catch (e) { r = null; }
+    const run = kind === 'content' ? measureContent : measure;
+    try { r = { checks: 0, failures: [] }; await run(src, (l, c, d) => { r.checks++; if (!c) r.failures.push(d ? l + ' — ' + d : l); }); } catch (e) { r = null; }
     if (!r) { skipped++; console.log('  ⚠ لم يُطبَّق  ' + label); continue; }
     const fell = r.failures.length > 0;
     if (want === 'fall') {
