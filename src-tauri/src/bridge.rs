@@ -2452,7 +2452,8 @@ mod m6b_spy_probe {
     use super::*;
 
     fn tools_available() -> bool {
-        crate::media::resolve_tool("ffmpeg").is_ok() && crate::media::resolve_tool("ffprobe").is_ok()
+        crate::media::resolve_tool("ffmpeg").is_ok()
+            && crate::media::resolve_tool("ffprobe").is_ok()
     }
 
     fn tmp_dir(name: &str) -> PathBuf {
@@ -2506,8 +2507,15 @@ mod m6b_spy_probe {
         assert_eq!(clip["mode"], serde_json::json!("clip"));
         assert_eq!(song["kept"], serde_json::json!(song_map));
         assert_eq!(clip["kept"], serde_json::json!(clip_map));
-        assert_eq!(song["page_kept"], serde_json::json!([]), "أغنية: الحقل الجديد فارغ");
-        assert_eq!(clip["page_kept"], clip["kept"], "clip: الحقلان متطابقان دائماً");
+        assert_eq!(
+            song["page_kept"],
+            serde_json::json!([]),
+            "أغنية: الحقل الجديد فارغ"
+        );
+        assert_eq!(
+            clip["page_kept"], clip["kept"],
+            "clip: الحقلان متطابقان دائماً"
+        );
         assert_eq!(uncut["kept"], serde_json::json!([]));
         assert_eq!(uncut["page_kept"], serde_json::json!([]));
         println!(
@@ -2541,7 +2549,8 @@ mod m6b_spy_probe {
         let user_file = crate::media::extract_audio(&src_wav, "mp3", &user_dir).expect("mp3");
         let before = std::fs::read(&user_file).unwrap();
 
-        let map = crate::silence::kept_ranges_sec(&l, &r, sr, &crate::silence::SilenceConfig::default());
+        let map =
+            crate::silence::kept_ranges_sec(&l, &r, sr, &crate::silence::SilenceConfig::default());
         assert_eq!(map.len(), 2, "فجوة وسطى واحدة ⇒ مقطعان محفوظان: {map:?}");
         let sum: f64 = map.iter().map(|(a, b)| b - a).sum();
 
@@ -2561,7 +2570,10 @@ mod m6b_spy_probe {
             before,
             "ملف المستخدم تغيّر — وعد i18n.ts:22 منقوض"
         );
-        assert_ne!(served.path, user_file, "المُسلَّم هو ملف المستخدم نفسه (بلا قصّ)");
+        assert_ne!(
+            served.path, user_file,
+            "المُسلَّم هو ملف المستخدم نفسه (بلا قصّ)"
+        );
         assert_eq!(served.kept, map, "الخريطة المُسلَّمة ليست خريطة المصدر");
         let served_secs = crate::media::probe(&served.path)
             .map(|i| i.duration_secs)
@@ -2653,7 +2665,8 @@ mod m6b_spy_probe {
         let (l, r) = tone_silence_tone(sr);
         let source_inside = dir.join("user_page.wav");
         crate::separator::write_wav_stereo_f32_pub(&source_inside, &l, &r, sr).unwrap();
-        let map = crate::silence::kept_ranges_sec(&l, &r, sr, &crate::silence::SilenceConfig::default());
+        let map =
+            crate::silence::kept_ranges_sec(&l, &r, sr, &crate::silence::SilenceConfig::default());
         let o = crate::pipeline::PipelineOutput {
             vocals: Some(source_inside.clone()),
             instrumental: None,

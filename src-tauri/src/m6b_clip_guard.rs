@@ -652,7 +652,10 @@ fn the_clip_contract_carries_page_kept_and_keeps_kept_ranges_empty() {
         clip.kept_ranges.is_empty(),
         "ب٥: مسار clip لا يملأ kept_ranges"
     );
-    assert_eq!(clip.page_kept, map_secs, "ب٣: الحقل المستقل يحمل خريطة الصفحة");
+    assert_eq!(
+        clip.page_kept, map_secs,
+        "ب٣: الحقل المستقل يحمل خريطة الصفحة"
+    );
     // والقانون ② على الحقل الجديد: خريطته تصف ملف صوت الصفحة (المقصوص).
     law_published_map_matches_file(&clip.page_kept, kept_sum(&page_map) as f64 / SR as f64)
         .expect("خريطة الصفحة تصف ملفها");
