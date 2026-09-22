@@ -429,28 +429,206 @@ fn sweep_deletable(entry: &Path, dir: &Path, keep: Option<&Path>) -> bool {
     entry.parent() == Some(dir) && Some(entry) != keep
 }
 
+/// صوت الصفحة المُسلَّم للمشغّل + **خريطة الملف المُسلَّم نفسه**.
+///
+/// `kept` تصف **هذا الملف** لا غيره: فارغة ⇒ الملف كامل الطول (والمشغّل يعامل
+/// الفراغ كهوية، `content.js:489`)، وغير فارغة ⇒ الملف مقصوص بهذه المقاطع
+/// فعلاً. وهذا هو الثابت الذي يمنع «خريطة لا تصف ملفها» (م٦-ب).
+struct PageAudio {
+    path: PathBuf,
+    kept: Vec<(f64, f64)>,
+}
+
 /// Page-audio for in-page watching: the vocals mp3 reused for audio jobs;
 /// a compact mp3 extracted beside it for video jobs (the Clean MP4 is far
 /// too heavy for 1MB native messages). None ⇒ watching unavailable — the
 /// file pipeline itself is unaffected (graceful, warned).
-fn ensure_page_audio(o: &crate::pipeline::PipelineOutput, dir: &Path) -> Option<PathBuf> {
-    if o.video.is_none() {
-        return o.vocals.clone();
-    }
-    let video = o.video.as_ref()?;
-    // Audit 2026-09-15 (٤.ب.٤): extract FIRST, sweep after. The old order
-    // emptied the folder and only then produced the file, so a failed
-    // extraction destroyed the page-audio it was about to need.
-    match crate::media::extract_audio(video, "mp3", dir) {
-        Ok(p) => {
-            sweep_page_audio_dir(dir, Some(&p));
-            Some(p)
+///
+/// **م٦-ب (مسار clip)**: ملف المستخدم يبقى كامل الطول في هذا المسار (وعد
+/// `src/i18n.ts:22`: «لن يقطع الصمت»)، فتُقصّ **نسخة** منه هنا
+/// ([`cut_page_audio`]) ويُسلَّم المقصوص؛ ومسار الأغنية كما كان (ملفّه مقصوص
+/// أصلاً، وخريطته هي خريطة الملف نفسه).
+fn ensure_page_audio(
+    o: &crate::pipeline::PipelineOutput,
+    dir: &Path,
+    mode: Mode,
+) -> Option<PageAudio> {
+    // (١) الملف كامل الطول الذي يُشتقّ منه صوت الصفحة — كما كان بالضبط.
+    let (source, produced_in_dir) = if o.video.is_none() {
+        (o.vocals.clone()?, false)
+    } else {
+        let video = o.video.as_ref()?;
+        // Audit 2026-09-15 (٤.ب.٤): extract FIRST, sweep after. The old order
+        // emptied the folder and only then produced the file, so a failed
+        // extraction destroyed the page-audio it was about to need.
+        match crate::media::extract_audio(video, "mp3", dir) {
+            Ok(p) => (p, true),
+            Err(e) => {
+                tracing::warn!(target: "bridge", "تعذر استخراج صوت الصفحة ({e}) — المشاهدة داخل الصفحة غير متاحة");
+                return None;
+            }
         }
+    };
+    // (٢) مسار clip: ما يُسلَّم للمشغّل نسخة **مقصوصة**، وملف المستخدم لا يُمَس.
+    if matches!(mode, Mode::Clip) && !o.page_kept.is_empty() {
+        match cut_page_audio(&source, &o.page_kept, dir) {
+            Some(served) => {
+                sweep_page_audio_dir(dir, Some(&served.path));
+                return Some(served);
+            }
+            // الفشل **آمن**: يُسلَّم الملف كامل الطول بلا خريطة ⇒ المشغّل يعامله
+            // كهوية ويعمل كما عمل قبل م٦-ب (يفقد التخطّي ولا يفقد المزامنة).
+            None => tracing::warn!(
+                target: "bridge",
+                "تعذّر قصّ صوت الصفحة — يُسلَّم كامل الطول بلا خريطة"
+            ),
+        }
+    }
+    if produced_in_dir {
+        sweep_page_audio_dir(dir, Some(&source));
+    }
+    Some(PageAudio {
+        path: source,
+        kept: o.kept_ranges.clone(),
+    })
+}
+
+/// قصّ **نسخة** من صوت الصفحة بمقاطع [`crate::pipeline::PipelineOutput::page_kept`]
+/// وتسليم مسار mp3 جديد + خريطته **بعد التحقّق أنها تصف المقصوص**.
+///
+/// **ملف المصدر لا يُمَس إطلاقاً** (وقد يكون ملف المستخدم في مهمّة حفظ): الفكّ
+/// إلى `wav` والقصّ والترميز إلى `mp3` كلها على مسارات جديدة داخل مجلد صوت
+/// الصفحة، والوسائط تُنظَّف في كل مسار خروج.
+///
+/// `None` عند أي فشل (أداة غائبة · ملف غير مقروء · خريطة لا تصف المقصوص) —
+/// والمستدعي يتراجع للملف كامل الطول.
+fn cut_page_audio(source: &Path, kept: &[(f64, f64)], dir: &Path) -> Option<PageAudio> {
+    let full_wav = match crate::media::extract_audio(source, "wav", dir) {
+        Ok(p) => p,
         Err(e) => {
-            tracing::warn!(target: "bridge", "تعذر استخراج صوت الصفحة ({e}) — المشاهدة داخل الصفحة غير متاحة");
+            tracing::warn!(target: "bridge", "تعذّر فكّ صوت الصفحة للقصّ ({e})");
+            return None;
+        }
+    };
+    let result = cut_page_audio_inner(&full_wav, kept, dir);
+    let _ = std::fs::remove_file(&full_wav);
+    match result {
+        Ok(served) => Some(served),
+        Err(e) => {
+            tracing::warn!(target: "bridge", "تعذّر قصّ صوت الصفحة ({e})");
             None
         }
     }
+}
+
+/// داخل [`cut_page_audio`]: يقرأ العيّنات، يقصّ، يكتب، يرمّز، ثم **يتحقّق** أن
+/// الخريطة تصف الملف المُسلَّم فعلاً ([`crate::playermap::verified_map`]).
+///
+/// والخريطة تُقاس على **العيّنات المقصوصة** (`served_secs`) مقابل طول الأصل
+/// (`full_secs`) — فالمدّة هنا مدّة الصوت نفسه لا تخمين، وmp3 يضيف حشواً بإطار
+/// وهو داخل [`crate::playermap::MAP_TOLERANCE_SECS`].
+fn cut_page_audio_inner(
+    full_wav: &Path,
+    kept: &[(f64, f64)],
+    dir: &Path,
+) -> Result<PageAudio, String> {
+    let (mut l, mut r, sr) =
+        crate::separator::read_wav_stereo(full_wav).map_err(|e| e.to_string())?;
+    if sr == 0 || l.is_empty() {
+        return Err("صوت الصفحة فارغ".into());
+    }
+    let full_secs = l.len() as f64 / sr as f64;
+    let ranges = crate::silence::ranges_from_secs(kept, sr);
+    crate::silence::cut_silence_with_ranges(
+        &mut l,
+        &mut r,
+        sr,
+        &crate::silence::SilenceConfig::default(),
+        &ranges,
+    );
+    let served_secs = l.len() as f64 / sr as f64;
+
+    let stem = full_wav
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "page".into());
+    let cut_wav = dir.join(format!("{stem}_cut.wav"));
+    crate::separator::write_wav_stereo_f32_pub(&cut_wav, &l, &r, sr).map_err(|e| e.to_string())?;
+    let encoded = crate::media::extract_audio(&cut_wav, "mp3", dir).map_err(|e| e.to_string());
+    let _ = std::fs::remove_file(&cut_wav);
+    let mp3 = encoded?;
+
+    let verified = crate::playermap::verified_map(kept, served_secs, full_secs);
+    if verified.is_empty() {
+        // خريطة لا تصف المقصوص ⇒ **لا يُسلَّم ملف مقصوص بلا خريطة**: انزياح
+        // صامت قد يبلغ ثانيتين قبل أن ترفضه بوّابة المدة في الإضافة.
+        let _ = std::fs::remove_file(&mp3);
+        return Err("الخريطة لا تصف الملف المقصوص".into());
+    }
+    Ok(PageAudio {
+        path: mp3,
+        kept: verified,
+    })
+}
+
+/// مدخلات حِمل `last` في كائن واحد: النداء بثمانية وسائط يخترق خطّ أساس clippy
+/// (`too_many_arguments` ≤ 14 موضعاً **مُراجَعاً**، وهذا ليس منها).
+struct LastJob<'a> {
+    name: &'a str,
+    seconds: f32,
+    vocals: Option<&'a Path>,
+    video: Option<&'a Path>,
+    page_audio: Option<&'a Path>,
+    /// خريطة **الملف المُسلَّم للصفحة** (فارغة ⇔ الملف كامل الطول).
+    served_kept: &'a [(f64, f64)],
+    mode: Mode,
+    url: &'a str,
+}
+
+/// حِمل `last` لمهمّة ناجحة — **دالّة نقيّة** (تُختبر وحدها، بلا I/O).
+///
+/// **عقد الإضافة (م٦-ب · `ARCHIVE/0.2.9PLAN.md` §٩-ب)**:
+/// * `kept` — خريطة **الملف الذي يقدّمه التطبيق للصفحة** (`page_audio`).
+///   ومعناها محفوظ: خريطة **قصّ وقع في ذلك الملف فعلاً** — ولا تُرسل أبداً
+///   خريطة كتم على ملف كامل الطول (وهو الثابت المؤسِّس في
+///   `scripts/check-extension-sync.cjs` §٢: «الخريطة مسطّحة داخل الفجوة»).
+/// * `page_kept` — **حقل جديد**: خريطة صوت الصفحة في مسار `clip` (فارغ في مسار
+///   الأغنية، لأن صوت الصفحة هناك هو الملف المُسلَّم نفسه وخريطته `kept`).
+/// * `mode` — **حقل جديد**: `"song"` أو `"clip"`، لأن
+///   `checkStatusForCurrentVideo` (`content.js:1243-1267`) يقرأ `last.kept`
+///   **بلا تمييز**؛ وبلا `mode` يخلط المشغّل خريطة أغنية بخريطة clip.
+///
+/// **التقادم (تراكمي)**: «تطبيق جديد + إضافة قديمة» ⇒ الإضافة تقرأ `kept`
+/// فتعمل كما عملت؛ و«إضافة جديدة + تطبيق قديم» ⇒ `mode`/`page_kept` غائبان
+/// فترجع الإضافة إلى `kept`. **وتغيير معنى حقل قائم مستقبلاً يقتضي
+/// `state_version`** في هذه الحالة — لا مجرّد حقل جديد.
+fn last_ok_payload(job: &LastJob<'_>) -> serde_json::Value {
+    let LastJob {
+        name,
+        seconds,
+        vocals,
+        video,
+        page_audio,
+        served_kept,
+        mode,
+        url,
+    } = *job;
+    serde_json::json!({
+        "name": name,
+        "ok": true,
+        "seconds": seconds,
+        "vocals": vocals.map(|p| p.to_string_lossy().into_owned()),
+        "video": video.map(|p| p.to_string_lossy().into_owned()),
+        "page_audio": page_audio.map(|p| p.to_string_lossy().into_owned()),
+        "kept": served_kept,
+        // خريطة مسار clip وحدها: في مسار الأغنية يصف `kept` صوت الصفحة أصلاً.
+        "page_kept": if matches!(mode, Mode::Clip) { served_kept.to_vec() } else { Vec::new() },
+        "mode": mode,
+        // The requesting page URL: the extension matches completions by video
+        // identity (output names derive from titles, not ids — name-matching
+        // would misfire). Old states lack it: None.
+        "url": url,
+    })
 }
 
 /// Pure predicate (unit-tested): remove the auto-downloaded source only when
@@ -940,27 +1118,34 @@ fn handle_request(
                     // silently skipped. Dedup now only guards the
                     // running/queued window.
                     forget_seen(url);
-                    // In-page watching surface: compact page-audio + kept
-                    // ranges (the page maps its clock through them so song
-                    // outputs with mirrored silence cuts stay in sync).
-                    let page_audio = ensure_page_audio(&o, &page_audio_dir());
+                    // In-page watching surface: compact page-audio + the map of
+                    // THAT file (the page maps its clock through it so the
+                    // filtered audio stays in sync with the page video). مسار
+                    // clip يُسلِّم نسخة مقصوصة من صوت الصفحة — وملف المستخدم
+                    // يبقى كامل الطول.
+                    let page = ensure_page_audio(&o, &page_audio_dir(), mode);
                     if watch {
                         // Temp listens must not accumulate: keep only this job's file.
-                        sweep_page_audio_dir(&page_audio_dir(), page_audio.as_deref());
+                        sweep_page_audio_dir(
+                            &page_audio_dir(),
+                            page.as_ref().map(|p| p.path.as_path()),
+                        );
                     }
+                    let served_kept: &[(f64, f64)] =
+                        page.as_ref().map(|p| p.kept.as_slice()).unwrap_or(&[]);
                     write_state(&serde_json::json!({
                         "running": null,
                         "queue": 0,
-                        "last": { "name": out_name, "ok": true, "seconds": o.seconds,
-                                  "vocals": o.vocals.as_ref().map(|p| p.to_string_lossy().into_owned()),
-                                  "video": o.video.as_ref().map(|p| p.to_string_lossy().into_owned()),
-                                  "page_audio": page_audio.as_ref().map(|p| p.to_string_lossy().into_owned()),
-                                  "kept": o.kept_ranges.clone(),
-                                  // The requesting page URL: the extension matches
-                                  // completions by video identity (output names
-                                  // derive from titles, not ids — name-matching
-                                  // would misfire). Old states lack it: None.
-                                  "url": url }
+                        "last": last_ok_payload(&LastJob {
+                            name: &out_name,
+                            seconds: o.seconds,
+                            vocals: o.vocals.as_deref(),
+                            video: o.video.as_deref(),
+                            page_audio: page.as_ref().map(|p| p.path.as_path()),
+                            served_kept,
+                            mode,
+                            url,
+                        })
                     }));
                     let _ = app.emit(
                         "bridge-done",
@@ -1866,9 +2051,132 @@ mod tests {
             instrumental: None,
             video: None,
             kept_ranges: Vec::new(),
+            page_kept: Vec::new(),
             seconds: 0.0,
         };
-        assert!(ensure_page_audio(&o, &page_audio_dir()).is_none());
+        assert!(ensure_page_audio(&o, &page_audio_dir(), Mode::Song).is_none());
+        assert!(ensure_page_audio(&o, &page_audio_dir(), Mode::Clip).is_none());
+    }
+
+    /// **ب٢ — عقد `last`**: `mode` حاضر ويُميَّز، و`kept` يصف الملف المُسلَّم.
+    ///
+    /// **مُفسَده**: حذف سطر `"mode": mode,` من [`last_ok_payload`] ⇒ يسقط
+    /// (يصير `last["mode"]` غائباً فيخلط المشغّل خريطة أغنية بخريطة clip).
+    #[test]
+    fn last_payload_carries_a_distinguishing_mode_and_the_served_map() {
+        let song_map = vec![(0.0f64, 10.0), (20.0, 30.0)];
+        let clip_map = vec![(0.0f64, 12.0), (18.0, 30.0)];
+        let p = PathBuf::from("C:\\pa\\a.mp3");
+        let mk = |m: &[(f64, f64)], mode: Mode| {
+            last_ok_payload(&LastJob {
+                name: "a.mp4",
+                seconds: 12.5,
+                vocals: Some(&p),
+                video: None,
+                page_audio: Some(&p),
+                served_kept: m,
+                mode,
+                url: "https://youtu.be/x",
+            })
+        };
+        let song = mk(&song_map, Mode::Song);
+        let clip = mk(&clip_map, Mode::Clip);
+
+        // (١) mode موجود ويُميَّز المسارين.
+        assert_eq!(song["mode"], serde_json::json!("song"));
+        assert_eq!(clip["mode"], serde_json::json!("clip"));
+        assert_ne!(song["mode"], clip["mode"], "mode يجب أن يميّز المسارين");
+        // (٢) kept يصف الملف المُسلَّم في الحالتين (لا فراغ في clip بعد القصّ).
+        assert_eq!(song["kept"], serde_json::json!(song_map));
+        assert_eq!(clip["kept"], serde_json::json!(clip_map));
+        // (٣) page_kept حقل جديد: خريطة clip وحدها، وفارغ في مسار الأغنية.
+        assert_eq!(song["page_kept"], serde_json::json!([]));
+        assert_eq!(clip["page_kept"], serde_json::json!(clip_map));
+        // (٤) خريطة فارغة ⇔ ملف كامل الطول (الثابت في review-0.2.9-cline §٤-٥).
+        let uncut = mk(&[], Mode::Clip);
+        assert_eq!(uncut["kept"], serde_json::json!([]));
+        assert_eq!(uncut["page_kept"], serde_json::json!([]));
+        // وحقول الحالة القديمة باقية كما كانت (تقادم تراكمي).
+        assert_eq!(song["url"], serde_json::json!("https://youtu.be/x"));
+        assert_eq!(song["ok"], serde_json::json!(true));
+    }
+
+    /// **ب٣ + ب٤ (طرفٌ لطرف — يحتاج ffmpeg)**: على **دالّة الإنتاج نفسها**
+    /// ([`cut_page_audio`]): الخريطة المُسلَّمة تصف الملف المُسلَّم فعلاً، وملف
+    /// المستخدم يبقى **كامل الطول بايتاً بايتاً**.
+    ///
+    /// مُهمَل في التشغيل العادي (يحتاج `bin/ffmpeg`) كبقيّة اختبارات الـe2e؛
+    /// يُشغَّل بـ`cargo test -- --ignored`.
+    #[test]
+    #[ignore = "يحتاج ffmpeg (bin/) — يُشغَّل يدوياً كبقيّة اختبارات e2e"]
+    fn e2e_clip_page_audio_is_cut_and_the_map_describes_the_cut_file() {
+        let dir = std::env::temp_dir().join(format!("hl_page_cut_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let sr = 44100u32;
+
+        // 2s نغمة / 2s صمت / 2s نغمة ⇒ فجوة وسطى واحدة.
+        let mut l: Vec<f32> = Vec::with_capacity(sr as usize * 6);
+        for loud in [true, false, true] {
+            for i in 0..sr as usize * 2 {
+                let t = i as f32 / sr as f32;
+                l.push(if loud {
+                    (2.0 * std::f32::consts::PI * 440.0 * t).sin() * 0.5
+                } else {
+                    0.0
+                });
+            }
+        }
+        let r = l.clone();
+        // ملف «المستخدم»: هو **المصدر** الذي يجب ألا يُمَس.
+        let user_file = dir.join("user_song.wav");
+        crate::separator::write_wav_stereo_f32_pub(&user_file, &l, &r, sr).unwrap();
+        let user_bytes = std::fs::read(&user_file).unwrap();
+
+        let map =
+            crate::silence::kept_ranges_sec(&l, &r, sr, &crate::silence::SilenceConfig::default());
+        assert_eq!(map.len(), 2, "فجوة واحدة ⇒ مقطعان محفوظان: {map:?}");
+
+        let served = cut_page_audio(&user_file, &map, &dir).expect("القصّ مع ffmpeg المتاح");
+        // **ب٤**: ملف المستخدم لم يُمَس (بايتاً بايتاً) — وعد `i18n.ts:22`.
+        assert_eq!(
+            std::fs::read(&user_file).unwrap(),
+            user_bytes,
+            "ملف المستخدم كامل الطول ولا يُمَس"
+        );
+        assert_ne!(served.path, user_file, "المُسلَّم ملف آخر لا ملف المستخدم");
+
+        // **ب٣**: مدّة الملف المُسلَّم (مقيسة من الملف نفسه بـffprobe) ≈ مجموع
+        // الخريطة المُسلَّمة.
+        let served_secs = crate::media::probe(&served.path)
+            .map(|i| i.duration_secs)
+            .unwrap_or(0.0);
+        let kept_sum: f64 = served.kept.iter().map(|(a, b)| b - a).sum();
+        assert!(served_secs > 0.0, "يجب قياس مدّة الملف المُسلَّم");
+        assert!(
+            (kept_sum - served_secs).abs() <= crate::playermap::MAP_TOLERANCE_SECS,
+            "الخريطة لا تصف ملفها: keptSum={kept_sum:.3}s · المُسلَّم={served_secs:.3}s"
+        );
+        println!(
+            "M6B-PAGE-CUT full={:.3}s kept_sum={kept_sum:.3}s served={served_secs:.3}s diff={:.4}s map={:?}",
+            l.len() as f64 / sr as f64,
+            kept_sum - served_secs,
+            served.kept
+        );
+        // والفجوة حُذفت فعلاً: المُسلَّم أقصر من الأصل بنحو ثانيتين.
+        assert!(
+            (served_secs - 4.0).abs() < 0.5,
+            "المُسلَّم يجب أن يكون ≈4s بعد حذف الفجوة: {served_secs:.3}s"
+        );
+        // والوسائط نُظّفت: لا wav باقٍ في المجلد.
+        let leftovers: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".wav") && n != "user_song.wav")
+            .collect();
+        assert!(leftovers.is_empty(), "وسائط لم تُنظَّف: {leftovers:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Negative test for ٤.ب.٤ (a): the sweep must be unable to delete anything
@@ -1926,10 +2234,11 @@ mod tests {
             instrumental: None,
             video: Some(dir.join("missing_input.mp4")),
             kept_ranges: Vec::new(),
+            page_kept: Vec::new(),
             seconds: 0.0,
         };
         assert!(
-            ensure_page_audio(&o, &dir).is_none(),
+            ensure_page_audio(&o, &dir, Mode::Song).is_none(),
             "extraction must fail here"
         );
         assert!(

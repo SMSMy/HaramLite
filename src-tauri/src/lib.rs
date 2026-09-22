@@ -16,6 +16,7 @@ mod media;
 mod paths;
 mod pipeline;
 mod player;
+mod playermap;
 mod proc;
 mod repair;
 mod reverb_delay;
