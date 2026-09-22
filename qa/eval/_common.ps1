@@ -113,7 +113,28 @@ function New-EvalSandbox {
     #>
     param([Parameter(Mandatory)][string]$Row)
     $root = Join-Path ([System.IO.Path]::GetTempPath()) ("hl-eval\" + $Row)
-    if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
+    # **التنظيف لا يُسقط صفّاً** (مقيس 2026-09-22): فُشِّل صفّ 2.4 برمز 1 مرّتين بلا أي عطل في
+    # التطبيق — والسبب كان `Remove-Item` على `app\HaramLite.exe` من **تشغيل سابق**:
+    # «Access to the path … is denied» مع أن الصلاحيات كاملة ولا عملية تحمله (قفل عابر من
+    # ماسح/مرشّح ملفات على ملف تنفيذي حديث). فالعلاج: إعادة محاولة قصيرة، وإن أصرّ القفل
+    # **يُنزاح المجلد جانباً** (النقل كان ينجح دائماً) فيمضي الصفّ على مجلد جديد، ويُطبع تحذير
+    # باسم المسار المتروك — فلا يُنسب عطل بيئة إلى المنتج، ولا يُبتلع القفل بصمت.
+    if (Test-Path -LiteralPath $root) {
+        $removed = $false
+        foreach ($attempt in 1..3) {
+            try { Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction Stop; $removed = $true; break }
+            catch { Start-Sleep -Milliseconds (250 * $attempt) }
+        }
+        if (-not $removed) {
+            $aside = "$root.locked-" + (Get-Date -Format 'HHmmss')
+            try {
+                Move-Item -LiteralPath $root -Destination $aside -ErrorAction Stop
+                Write-Warning "تعذّر حذف $root (ملف مقفول) — أُزيح إلى $aside ومضى الصفّ على مجلد جديد"
+            } catch {
+                throw "تعذّر حذف $root ولا إزاحته: $($_.Exception.Message)"
+            }
+        }
+    }
     $in = Join-Path $root 'in'
     $data = Join-Path $root 'data'
     $lad = Join-Path $root 'localappdata'
