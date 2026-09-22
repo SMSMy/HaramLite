@@ -190,7 +190,7 @@ pub fn native_host_entry() -> i32 {
         }
         let len = u32::from_le_bytes(len_buf) as usize;
         if len == 0 || len > 1_000_000 {
-            reply_err("bad message length");
+            reply_err(E_BAD_INPUT, "bad message length");
             // A refused frame must still be CONSUMED whole. The browser keeps
             // ONE host process per `connectNative` port, so skipping the
             // payload would make the loop read its first bytes as the next
@@ -211,7 +211,7 @@ pub fn native_host_entry() -> i32 {
         }
         match serde_json::from_slice::<serde_json::Value>(&buf) {
             Ok(msg) => handle_host_message(&msg),
-            Err(_) => reply_err("invalid json"),
+            Err(_) => reply_err(E_BAD_INPUT, "invalid json"),
         }
     }
     0
@@ -261,7 +261,7 @@ fn handle_host_message(msg: &serde_json::Value) {
                     }
                     reply_ok(serde_json::json!({ "ok": true }));
                 }
-                _ => reply_err("لا يوجد مخرج مكتمل بعد"),
+                _ => reply_err(E_BAD_INPUT, "لا يوجد مخرج مكتمل بعد"),
             }
         }
         "cancel" => {
@@ -286,7 +286,7 @@ fn handle_host_message(msg: &serde_json::Value) {
         "link" => {
             let url = msg.get("url").and_then(|u| u.as_str()).unwrap_or("");
             if url.trim().is_empty() {
-                reply_err("empty url");
+                reply_err(E_BAD_INPUT, "empty url");
                 return;
             }
             match write_request(
@@ -302,7 +302,7 @@ fn handle_host_message(msg: &serde_json::Value) {
                     spawn_main_app();
                     reply_ok(serde_json::json!({ "ok": true, "queued": path }));
                 }
-                Err(e) => reply_err(&e),
+                Err(e) => reply_err(E_ENGINE, &e),
             }
         }
         "result_file" => {
@@ -315,10 +315,10 @@ fn handle_host_message(msg: &serde_json::Value) {
                 .unwrap_or(PAGE_SLICE_MAX as u64) as usize;
             match serve_page_audio_slice(offset, len) {
                 Ok(v) => reply_ok(serde_json::json!({ "ok": true, "file": v })),
-                Err(e) => reply_err(&e),
+                Err(e) => reply_err(E_ENGINE, &e),
             }
         }
-        other => reply_err(&format!("unknown message type: {other}")),
+        other => reply_err(E_UNKNOWN_MESSAGE, &format!("unknown message type: {other}")),
     }
 }
 
@@ -330,8 +330,55 @@ fn reply_ok(v: serde_json::Value) {
     let _ = out.flush();
 }
 
-fn reply_err(msg: &str) {
-    reply_ok(serde_json::json!({ "ok": false, "error": msg }));
+// ─────────────────────────────────────────────────────────────────────
+// م٦-ج — رموز الخطأ المستقرّة في عقد الإضافة
+// ─────────────────────────────────────────────────────────────────────
+//
+// **العطل المقيس** (جاسوس م٦-أ، jsdom بواجهة `en-US`): الإضافة تُعرَّب، أمّا رسائل
+// الخطأ التي يصوغها **التطبيق** فتصل عربية كما هي فتُعرض في واجهة إنجليزية
+// (`⚠ هذا الرابط طُلب من قبل…` و`✗ أُلغيت المعالجة…` بـ`direction="ltr"`)، وزيادة
+// مفاتيح في الإضافة لا تُصلحها لأن النصّ يأتي من هنا.
+//
+// **القرار**: كل حمولة خطأ في عقد الإضافة تحمل نصّها `error` **كما هو حرفياً**
+// (توافق خلفي: القارئ القديم يقرأ `error` ويتجاهل ما لا يعرفه) **ورمزها المستقرّ**
+// `code`. والإضافة تترجم بالرمز، وترجع إلى `error` الخام إن لم تعرفه (نسخة تطبيق
+// أحدث من الإضافة).
+//
+// **والقاعدة**: كل ثابت هنا **يُصدره هذا الملف فعلاً**، وله مقابل في جدول
+// ترجمة الإضافة (`code.<رمز>` في `browser-extension/content.js` و`popup.js`).
+// ويحرس التقابل في الاتجاهين `scripts/check-bridge-codes.cjs`: رمزٌ هنا بلا مدخل
+// هناك يُسقطه، ومدخل هناك بلا رمز هنا يُسقطه، **وموضع خطأ لا يمرّر رمزاً معلوماً
+// يُسقطه** — فلا يمرّ خطأ جديد بلا تصنيف.
+//
+// **وما لا يُصنَّف**: لا موضع اليوم لا ينطبق عليه رمز. والحكم في الموضع الغامض:
+// `E_BAD_INPUT` إن كان الطلب نفسه غير قابل للتنفيذ في الحالة الراهنة، و`E_ENGINE`
+// إن كان الفشل من المحرّك/نظام الملفات (ونصّه الخام هو التفصيل الذي يُعرض).
+/// رابط مكرَّر في الجلسة نفسها (تخطّي، لا عطل).
+pub const E_DUPLICATE_LINK: &str = "duplicate_link";
+/// إلغاء صريح من المستخدم أثناء معالجة ملف.
+pub const E_CANCELLED_BY_USER: &str = "cancelled_by_user";
+/// إلغاء صريح من المستخدم أثناء تنزيل رابط.
+pub const E_DOWNLOAD_CANCELLED: &str = "download_cancelled";
+/// عطل داخلي في العامل (نجا من `catch_unwind`) — إعادة المحاولة مفيدة.
+pub const E_INTERNAL: &str = "internal_error";
+/// فشل من المحرّك/الشبكة/نظام الملفات، ونصّه الخام (`e.to_string()`) هو التفصيل.
+pub const E_ENGINE: &str = "engine_error";
+/// رسالة بروتوكول بنوع غير معروف (لا تُعرض للمستخدم في المسار العادي).
+pub const E_UNKNOWN_MESSAGE: &str = "unknown_message";
+/// طلب غير قابل للتنفيذ: إطار مشوّه · JSON غير مقروء · رابط فارغ · لا مخرج مكتمل.
+pub const E_BAD_INPUT: &str = "bad_input";
+
+/// حمولة `last` الفاشلة في الحالة (يقرأها `status`): النصّ `error` **كما هو** + `code`.
+/// وترتيب الوسائط (`code` أولاً) هو نفسه في `reply_err` عمداً: يحرسه
+/// `scripts/check-bridge-codes.cjs` فيتأكّد أن **كل موضع خطأ يمرّر رمزاً معلَناً**.
+fn err_last(code: &str, name: &str, msg: &str) -> serde_json::Value {
+    serde_json::json!({ "name": name, "ok": false, "error": msg, "code": code })
+}
+
+/// ردّ رسالة بروتوكول فاشلة: الحمولة نفسها على قناة Native Messaging
+/// (‏`ok:false` + `error` كما هو + `code`) — ولا تغيير في `error` القائم.
+fn reply_err(code: &str, msg: &str) {
+    reply_ok(serde_json::json!({ "ok": false, "error": msg, "code": code }));
 }
 
 fn write_request(url: &str, watch: bool, mode: Option<&str>) -> Result<String, String> {
@@ -821,7 +868,7 @@ fn dispatch_file(path: &Path, ctx: &DispatchCtx) {
             write_state(&serde_json::json!({
                 "running": null,
                 "queue": 0,
-                "last": { "name": "—", "ok": false, "error": "أُلغيت المعالجة من قبل المستخدم" }
+                "last": err_last(E_CANCELLED_BY_USER, "—", "أُلغيت المعالجة من قبل المستخدم")
             }));
         }
         "link" => {
@@ -837,7 +884,7 @@ fn dispatch_file(path: &Path, ctx: &DispatchCtx) {
                 tracing::warn!(target: "bridge", "طلب مكرر لنفس الرابط — تخطي: {url}");
                 write_state(&serde_json::json!({
                     "running": null,
-                    "last": { "name": url, "ok": false, "error": "هذا الرابط طُلب من قبل في هذه الجلسة — تخطي المكرر" }
+                    "last": err_last(E_DUPLICATE_LINK, &url, "هذا الرابط طُلب من قبل في هذه الجلسة — تخطي المكرر")
                 }));
                 return;
             }
@@ -923,7 +970,7 @@ fn bridge_loop(app: tauri::AppHandle, settings: Arc<Mutex<Settings>>, dir: PathB
                         write_state(&serde_json::json!({
                             "running": null,
                             "queue": 0,
-                            "last": { "name": job.url, "ok": false, "error": "عطل داخلي — أعد المحاولة" }
+                            "last": err_last(E_INTERNAL, &job.url, "عطل داخلي — أعد المحاولة")
                         }));
                     }
                 }
@@ -1194,8 +1241,11 @@ fn handle_request(
                     write_state(&serde_json::json!({
                         "running": null,
                         "queue": 0,
-                        "last": { "name": file_label, "ok": false,
-                                  "error": if cancelled { "أُلغيت المعالجة من قبل المستخدم".to_string() } else { e.to_string() } }
+                        "last": if cancelled {
+                            err_last(E_CANCELLED_BY_USER, &file_label, "أُلغيت المعالجة من قبل المستخدم")
+                        } else {
+                            err_last(E_ENGINE, &file_label, &e.to_string())
+                        }
                     }));
                     let _ = app.emit(
                         "bridge-done",
@@ -1212,8 +1262,11 @@ fn handle_request(
             write_state(&serde_json::json!({
                 "running": null,
                 "queue": 0,
-                "last": { "name": name_label, "ok": false,
-                          "error": if cancelled { "أُلغي التنزيل من قبل المستخدم".to_string() } else { e.to_string() } }
+                "last": if cancelled {
+                    err_last(E_DOWNLOAD_CANCELLED, &name_label, "أُلغي التنزيل من قبل المستخدم")
+                } else {
+                    err_last(E_ENGINE, &name_label, &e.to_string())
+                }
             }));
             let _ = app.emit(
                 "bridge-done",
