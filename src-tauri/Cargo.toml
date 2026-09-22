@@ -28,9 +28,12 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "registry"] }
 tracing-appender = "0.2"
 # ن-٣ (2026-09-22): `default-features = false` — **وهذا هو الإصلاح لا تجميله**.
-# افتراضيات `ort` rc.10 تشمل `copy-dylibs` (`ort-2.0.0-rc.10/Cargo.toml
-# [features] default = ["std","ndarray","tracing","download-binaries",
-# "copy-dylibs"]`)، و`ort-sys/build.rs:124` ينشئ بها **symlink** لكل DLL في
+# افتراضيات `ort` rc.10 تشمل `copy-dylibs` (`ort-2.0.0-rc.10/Cargo.toml`، كتلة
+# الميزات الافتراضية: std · ndarray · tracing · download-binaries · copy-dylibs)،
+# **ولا تُكتب هنا كمصفوفة حرفية**: كاتب TOML في `tauri build` يعيد تنسيق أي `[…]`
+# داخل تعليق فيُوسّخ الشجرة، وحارس `pnpm rust:gates` يرفض القياس على شجرة متّسخة
+# (قِيس مرّتين: 2026-09-22 — عامل ن-٣ ثم المشرف). و`ort-sys/build.rs:124` ينشئ بها
+# **symlink** لكل DLL في
 # مجلد بناء ORT **بجوار التنفيذي** (`target\release\`). ومولّد WiX في tauri
 # يحصد كل ملف بجوار التنفيذي: قِيس في `target\release\wix\x64\main.wxs:119`
 # (بناء 0.2.7 المحلي) أربعة أسطر `Source="…\target\release\DirectML.dll"` ·
