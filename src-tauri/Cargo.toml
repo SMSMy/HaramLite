@@ -27,7 +27,35 @@ serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "registry"] }
 tracing-appender = "0.2"
-ort = { version = "=2.0.0-rc.10", features = ["directml", "cuda"] }
+# ن-٣ (2026-09-22): `default-features = false` — **وهذا هو الإصلاح لا تجميله**.
+# افتراضيات `ort` rc.10 تشمل `copy-dylibs` (`ort-2.0.0-rc.10/Cargo.toml
+# [features] default = ["std","ndarray","tracing","download-binaries",
+# "copy-dylibs"]`)، و`ort-sys/build.rs:124` ينشئ بها **symlink** لكل DLL في
+# مجلد بناء ORT **بجوار التنفيذي** (`target\release\`). ومولّد WiX في tauri
+# يحصد كل ملف بجوار التنفيذي: قِيس في `target\release\wix\x64\main.wxs:119`
+# (بناء 0.2.7 المحلي) أربعة أسطر `Source="…\target\release\DirectML.dll"` ·
+# `…onnxruntime_providers_cuda.dll` · `…_providers_shared.dll` ·
+# `…_providers_tensorrt.dll`. فأثرها المقيس في المثبّتَين المنشورَين:
+#   · MSI 0.2.7 و0.2.8: تلك الأربعة بحجم **199,942,176** بايت
+#     (180,731,904 + 10,752 + 671,744 + 18,527,776) وببصمة `bfe2b370…`
+#     **مخالفة** للثابت المثبَّت في التطبيق `0f32c09d…` (`cuda_runtime.rs`) —
+#     أي بنية كريت 1.22.0 من ذاكرة جهاز الباني، لا بنية نشرة.
+#   · NSIS (المسار المُختبَر): لا ORT إطلاقاً — والفرق بين المثبّتين = تلك
+#     الدلّالات بالضبط.
+# والمسار المُختبَر للتنزيل عند الطلب يبقى كما هو: `cuda_runtime::install`
+# ينزّل الستة عشر إلى `bin/` ببصمات مثبَّتة، و`heal_provider_dlls_in` ينسخ
+# مكتبتَي الجسر من `bin/` إلى مجلد التنفيذي **عند التشغيل** — وهذا هو الموضع
+# الصحيح لهما (لا نسخة بناء ثالثة تُظلّلهما).
+# والميزات المطلوبة صريحةً بدل الافتراضي:
+#   · `std`                — أساس الكريت (ويجرّ `ndarray` ضمناً كما كان).
+#   · `tracing`            — يلتقطه `separator::EpWatchLayer` (بدونه يسقط كشف
+#                            «بدا ناجحاً ولم يُحمّل»).
+#   · `download-binaries`  — يجلب بناء ORT 1.22 ويُربط **ثابتاً** (`onnxruntime.lib`؛
+#                            ولذلك لا `onnxruntime.dll` في أي مثبّت — قياس 0.2.7/0.2.8).
+#   · `directml` · `cuda`  — المزوّدان اللذان يبنيهما التطبيق فعلاً.
+# والحارس على عودة `copy-dylibs`: `mod packaging_guard` أسفل `cuda_runtime.rs`
+# + خطوة في `.github/workflows/release.yml` تقرأ `main.wxs` المُولَّد فعلاً.
+ort = { version = "=2.0.0-rc.10", default-features = false, features = ["std", "tracing", "download-binaries", "directml", "cuda"] }
 rustfft = "6"
 hound = "3"
 rayon = "1"

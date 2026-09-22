@@ -18,7 +18,7 @@ import { listen } from '@tauri-apps/api/event';
 import { t } from './i18n';
 import { trapFocus } from './util';
 import { groupModeFrom, notifyWatchUiChanged, pushSettings, type RustSettings } from './settings';
-import { showCudaHint, updateCudaBanner } from './cuda';
+import { showCudaHint, updateCudaBanner, refreshProviderLine, type CudaStatus } from './cuda';
 import { askAutostartOnce, refreshAutostart, refreshBridgeExt } from './integration';
 import { refreshYtdlpUpdateUi } from './ytdlpUi';
 
@@ -50,6 +50,9 @@ export function wireSettings(): void {
     if (cb) cb.disabled = false;
     pushSettings();
     void updateCudaBanner();
+    // ن-٣: التثبيت قد يغيّر ما سيُجرَّب في الجلسة القادمة — والسطر يعرض آخر
+    // جلسة **فعلاً**، فيُحدَّث من الحقيقة لا من نيّة التنزيل.
+    void refreshProviderLine();
   });
 
   if (cudaCheckbox) {
@@ -57,7 +60,7 @@ export function wireSettings(): void {
     cudaCheckbox.addEventListener('change', async (e) => {
       const checked = (e.target as HTMLInputElement).checked;
       if (checked) {
-        const st = await invoke<{ nvidia: boolean; cuda: boolean }>('cuda_status').catch(() => null);
+        const st = await invoke<CudaStatus>('cuda_status').catch(() => null);
         if (st && !st.nvidia) {
           cudaCheckbox.checked = false;
           localStorage.setItem('hl.cuda', '0');
@@ -159,6 +162,9 @@ export function wireSettings(): void {
       if (willOpen) {
         menu.classList.remove('hidden');
         if (menuRelease === null) menuRelease = trapFocus(menu);
+        // ن-٣: المزوّد الفعّال يُقرأ عند **فتح** اللوحة لا عند الإقلاع وحده —
+        // فآخر جلسة فصل قد تكون وقعت بعد الإقلاع (وقد تكون جرت من CLI).
+        void refreshProviderLine();
       } else {
         closeMenu();
       }
@@ -192,6 +198,7 @@ export function wireSettings(): void {
       const cb = document.getElementById('setting-cuda') as HTMLInputElement | null;
       if (cb) cb.checked = s.cuda;
       void updateCudaBanner();
+      void refreshProviderLine();
     }
     if (typeof s.notify === 'boolean') {
       localStorage.setItem('hl.notify', s.notify ? '1' : '0');

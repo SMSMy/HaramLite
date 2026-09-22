@@ -17,7 +17,7 @@ import { ingestFiles, restoreBatchState, wireSeparate, wireStopBar, wireUrlDownl
 import { wirePlayer } from './player';
 import { wireAutostart, wireBridge, wireExtJobs, wireTelegram } from './integration';
 import { autoHealthCheck, wireRepair } from './repair';
-import { updateCudaBanner } from './cuda';
+import { updateCudaBanner, refreshProviderLine } from './cuda';
 import { silentUpdateCheck, wireAbout, wireReport, wireUpdateCheck } from './aboutUpdate';
 import { wireSettings } from './settingsPanel';
 
@@ -270,6 +270,10 @@ async function init(): Promise<void> {
   // Smart CUDA advice: permanent green banner while NVIDIA is supported
   // and the CUDA toggle is off (updates itself on every settings change)
   void updateCudaBanner();
+
+  // ن-٣: «المزوّد الفعّال» في قسم الإعدادات — حقيقة آخر جلسة فصل من
+  // `provider.json`، و«غير معروف» حين لم تُجرَّ جلسة بعد.
+  void refreshProviderLine();
 
   // Audit F-1: live log lines arrive as pushed events — no polling.
   void listen<LogLine>('log-line', (ev) => pushLogLine(ev.payload));
