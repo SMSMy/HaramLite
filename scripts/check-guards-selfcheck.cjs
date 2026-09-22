@@ -480,6 +480,18 @@ CASES.push({
         fs.writeFileSync(p, out);
       },
       mustMatch: /لا تُرجع/ },
+    /* ث١ على **مسار لا يُقاس حيّاً** (جلب الصوت): مُفسَد الجاسوس Ⓕ — يقيسه حارس
+       الرموز وحده، لأن قيادته حيّاً تحتاج `Audio`/decode حقيقيين. */
+    { label: 'مسار جلب الصوت يقرأ e.message خامّاً (مُفسَد الجاسوس Ⓕ)',
+      apply: (dir) => {
+        const p = path.join(dir, 'browser-extension/content.js');
+        const s = fs.readFileSync(p, 'utf8');
+        const out = s.replace("toast('✗ ' + errText(e, t('fetch.failed')), 4000);",
+          "toast('✗ ' + String(e && e.message), 4000);");
+        if (out === s) throw new Error('مُفسَد لم يغيّر content.js');
+        fs.writeFileSync(p, out);
+      },
+      mustMatch: /غير مُعلَنة/ },
   ],
   zero: { label: 'bridge.rs غائب عن البيئة',
     apply: (dir) => fs.rmSync(path.join(dir, 'src-tauri'), { recursive: true, force: true }) },

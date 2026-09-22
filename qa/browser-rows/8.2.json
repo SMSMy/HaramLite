@@ -150,7 +150,7 @@
   "surface": [
     {
       "path": "browser-extension/content.js",
-      "sha256": "bc79340354ee96cdd46f2ffb36e96425559a16cf1702514d483c79fa5487869f"
+      "sha256": "e8265cfe8018ae58b714aa52e1d9af2d320a0f2b84ccc0f44ca1cad3c8e3a494"
     },
     {
       "path": "scripts/check-browser-rows.mjs",

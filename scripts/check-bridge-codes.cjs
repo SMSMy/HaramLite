@@ -726,6 +726,23 @@ function selfcheck() {
         ['✗ فشل حارس رموز الجسر', 'لا تُرجع', 'duplicate_link']
       );
     }
+    /* Ⓖ مُفسَد (ح): **مسار لا يمكن قيادته حيّاً** — جلب الصوت (`content.js:781`)
+       يقرأ `e.message` خامّاً. مُفسَد الجاسوس Ⓕ كان يمرّ على الحارسين معاً، وهذا
+       المسار يحتاج `Audio`/decode حقيقيين فلا يقوده القياس الحيّ: فالقاعدة
+       البنيوية هي وحدها ما يمسكه، ولهذا لها مُفسَد دائم هنا. */
+    {
+      const dir = writeFixture(path.join(work, 'mutant-raw-read-fetch'));
+      edit(dir, TABLE_RELS[0],
+        "toast('✗ ' + errText(e, t('fetch.failed')), 4000);",
+        "toast('✗ ' + String(e && e.message), 4000);");
+      const res = runChild(dir);
+      add(
+        'Ⓖ مُفسَد (ح): جلب الصوت يقرأ `e.message` خامّاً (مسار لا يُقاس حيّاً) ⇒ يسقط',
+        EXIT.FAIL,
+        res,
+        ['✗ فشل حارس رموز الجسر', 'غير مُعلَنة', 'e.message']
+      );
+    }
   } catch (e) {
     cases.push({ label: 'بناء حالات الفحص الذاتي', ok: false, detail: (e && e.message) || String(e) });
   }
