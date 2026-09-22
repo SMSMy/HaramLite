@@ -1,0 +1,160 @@
+{
+  "row": "8.2",
+  "id": "browser.youtube",
+  "title": "مشغّل يوتيوب (صفحة مُحاكاة)",
+  "evaluator": "scripts/check-browser-rows.mjs",
+  "evaluator_sha256": "858221c287d646745417097c94d0e7a13010a51aae2079733cb990918f52c86b",
+  "engine": "cdp (Chrome/153.0.8010.50)",
+  "measured": true,
+  "verdict": "pass",
+  "outputs": [
+    {
+      "key": "pickedVideo.id",
+      "value": "hl-sim-video"
+    },
+    {
+      "key": "pickedVideo.tag",
+      "value": "VIDEO"
+    },
+    {
+      "key": "pickedVideo.inPlayer",
+      "value": true
+    },
+    {
+      "key": "videoCount",
+      "value": 2
+    },
+    {
+      "key": "firstVideoId",
+      "value": "hl-decoy-video"
+    },
+    {
+      "key": "playerVideoId",
+      "value": "hl-sim-video"
+    },
+    {
+      "key": "gaps",
+      "value": 5
+    },
+    {
+      "key": "keptSum",
+      "value": 57.5
+    },
+    {
+      "key": "hist",
+      "value": [
+        1,
+        0,
+        2,
+        0,
+        2
+      ]
+    },
+    {
+      "key": "smallGaps",
+      "value": 1
+    },
+    {
+      "key": "smallSeconds",
+      "value": 0.5
+    },
+    {
+      "key": "gapSecondsScanned",
+      "value": 22.5
+    },
+    {
+      "key": "scanSamples",
+      "value": 16000
+    },
+    {
+      "key": "jumps",
+      "value": 5
+    },
+    {
+      "key": "stalled",
+      "value": false
+    },
+    {
+      "key": "monotone",
+      "value": true
+    },
+    {
+      "key": "steps",
+      "value": 1150
+    },
+    {
+      "key": "landings",
+      "value": [
+        10.5,
+        22,
+        33,
+        48,
+        69
+      ]
+    },
+    {
+      "key": "audioAfterJump",
+      "value": [
+        10,
+        19.5,
+        27.5,
+        34.5,
+        46.5
+      ]
+    },
+    {
+      "key": "landingsInKept",
+      "value": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "key": "stretches",
+      "value": [
+        {
+          "before": 10,
+          "after": 9.5
+        },
+        {
+          "before": 9.5,
+          "after": 8
+        },
+        {
+          "before": 8,
+          "after": 7
+        },
+        {
+          "before": 7,
+          "after": 12
+        },
+        {
+          "before": 12,
+          "after": 11
+        }
+      ]
+    },
+    {
+      "key": "audioFinal",
+      "value": 57.5
+    },
+    {
+      "key": "audioAtZero",
+      "value": 0
+    }
+  ],
+  "outputs_sha256": "4fae84c4b1fbf216414ec14f4b3fbd263d178f2b15b82e2d821eabb56ef5573a",
+  "surface": [
+    {
+      "path": "browser-extension/content.js",
+      "sha256": "bc79340354ee96cdd46f2ffb36e96425559a16cf1702514d483c79fa5487869f"
+    },
+    {
+      "path": "scripts/check-browser-rows.mjs",
+      "sha256": "858221c287d646745417097c94d0e7a13010a51aae2079733cb990918f52c86b"
+    }
+  ]
+}
