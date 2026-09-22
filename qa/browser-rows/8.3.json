@@ -1,0 +1,111 @@
+{
+  "row": "8.3",
+  "id": "browser.song-clip",
+  "title": "فرق song/clip (عقد الجسر + عقد الإضافة)",
+  "evaluator": "scripts/check-browser-rows.mjs",
+  "evaluator_sha256": "858221c287d646745417097c94d0e7a13010a51aae2079733cb990918f52c86b",
+  "engine": "rust-test + jsdom + مسح المصدر",
+  "measured": true,
+  "verdict": "pass",
+  "outputs": [
+    {
+      "key": "modesForwarded",
+      "value": "clip,song"
+    },
+    {
+      "key": "modesAccepted",
+      "value": 2
+    },
+    {
+      "key": "modesRejected",
+      "value": 2
+    },
+    {
+      "key": "requestsDriven",
+      "value": 4
+    },
+    {
+      "key": "pageKeptRefsInExtension",
+      "value": 0
+    },
+    {
+      "key": "lastModeRefsInExtension",
+      "value": 0
+    },
+    {
+      "key": "keptBindings",
+      "value": 1
+    },
+    {
+      "key": "keptFromLast",
+      "value": true
+    },
+    {
+      "key": "bridgeWire.modeSong",
+      "value": "song"
+    },
+    {
+      "key": "bridgeWire.modeClip",
+      "value": "clip"
+    },
+    {
+      "key": "bridgeWire.mirrors",
+      "value": "true"
+    },
+    {
+      "key": "bridgeWire.songEmpty",
+      "value": "true"
+    },
+    {
+      "key": "bridgeWire.result",
+      "value": "PASS"
+    },
+    {
+      "key": "bridgeClip.pageKept",
+      "value": 4
+    },
+    {
+      "key": "bridgeClip.kept",
+      "value": 0
+    },
+    {
+      "key": "bridgeClip.result",
+      "value": "PASS"
+    }
+  ],
+  "outputs_sha256": "558879f8007eb756f91d0e76846a2f90b49dfc9dcde21d779f3e120c84bf703b",
+  "surface": [
+    {
+      "path": "browser-extension/background.js",
+      "sha256": "be6ddc8d3bc0de5303535f679313e876c7dfc39aab738aca1bb9420d7851d1aa"
+    },
+    {
+      "path": "browser-extension/content.js",
+      "sha256": "bc79340354ee96cdd46f2ffb36e96425559a16cf1702514d483c79fa5487869f"
+    },
+    {
+      "path": "browser-extension/popup.js",
+      "sha256": "ad5bfd5fd4aa16303dbd1cea3a69193a8b80d99e9de3e5e2eea52d8675f1ae13"
+    },
+    {
+      "path": "browser-extension/popup.html",
+      "sha256": "5425ec88ab167894ba800ea4be579d18df1b3a3f54f25d42f51f2e3c7120b582"
+    },
+    {
+      "path": "scripts/check-browser-rows.mjs",
+      "sha256": "858221c287d646745417097c94d0e7a13010a51aae2079733cb990918f52c86b"
+    },
+    {
+      "path": "src-tauri/src/bridge.rs",
+      "sha256": "27828c0c61996135c1ce6567beb42ddf3b59d078ac9baef90070bd35a537f62b"
+    },
+    {
+      "path": "src-tauri/src/pipeline.rs",
+      "sha256": "2d88076d7c71cf761c5857b1fbfff1587f166dad4fd973700b765519c8d58d5f"
+    },
+    {
+      "path": "src-tauri/src/m6b_clip_guard.rs",
+      "sha256": "c71e9b60fc5b800ac20ae2f5a9bf8fb7adf1da15d10b10e1e853fdeea5cd95e5"
+    }
+  ]
+}
