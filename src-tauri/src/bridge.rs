@@ -1249,7 +1249,10 @@ fn handle_request(
                     }));
                     let _ = app.emit(
                         "bridge-done",
-                        serde_json::json!({ "name": file_label, "ok": false, "error": e.to_string() }),
+                        // حدث واجهة التطبيق أيضاً يحمل الرمز مع النصّ كما هو:
+                        // `src/integration.ts` يعرض `error` خاماً (نفس صنف العطل
+                        // في واجهة التطبيق)، والرمز هو ما يسمح بترجمته هناك.
+                        err_last(E_ENGINE, &file_label, &e.to_string()),
                     );
                 }
             }
@@ -1270,7 +1273,8 @@ fn handle_request(
             }));
             let _ = app.emit(
                 "bridge-done",
-                serde_json::json!({ "name": name_label, "ok": false, "error": e.to_string() }),
+                // كما في الفرع السابق: الرمز مع النصّ الخام نفسه.
+                err_last(E_ENGINE, &name_label, &e.to_string()),
             );
         }
     }
