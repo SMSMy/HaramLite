@@ -7,8 +7,10 @@ name: Publish CUDA runtime assets
 # can be run at any time from the Actions tab.
 #
 # The list MUST stay byte-identical to `CUDA_FILES` in
-# `src-tauri/src/cuda_runtime.rs` (the app rejects a manifest whose count or
-# names differ). Bump versions here together with the ort crate.
+# `src-tauri/src/cuda_runtime.rs` (the app rejects a manifest missing any name),
+# AND the assembled bytes MUST match `CUDA_FILE_SHA256` in the same file — which
+# is why this job now checks the repo out and compares hashes before uploading.
+# Bump versions here together with the ort crate.
 
 on:
   workflow_dispatch:
@@ -20,6 +22,13 @@ jobs:
   publish:
     runs-on: windows-latest
     steps:
+      # The repo is needed for ONE thing: the pinned hash table
+      # (`CUDA_FILE_SHA256`) that the shipped app verifies every downloaded file
+      # against. It is read from source rather than duplicated here, so it can
+      # never drift from what clients enforce.
+      - name: Checkout (for the pinned CUDA hash table)
+        uses: actions/checkout@v4
+
       - name: Assemble CUDA runtime (CUDA libs + full cuDNN + ORT bridge)
         shell: pwsh
         run: |
@@ -141,9 +150,11 @@ jobs:
             $manifest.files += [ordered]@{ name = $f.Name; sha256 = $hash }
           }
           # 4ب) Drift guard: the app requires EXACTLY these names (CUDA_FILES in
-          #     src-tauri/src/cuda_runtime.rs). This job has no checkout, so the list
-          #     is duplicated here ON PURPOSE: fail the run loudly rather than publish
-          #     a manifest that every installed app rejects ("ينقص المنفست: …").
+          #     src-tauri/src/cuda_runtime.rs). The NAME list stays duplicated here
+          #     because this step must fail before publishing a manifest the app
+          #     rejects ("ينقص المنفست: …"); `check-cuda-assets.cjs` keeps this list
+          #     and CUDA_FILES byte-identical. The HASH table is NOT duplicated —
+          #     the step below reads CUDA_FILE_SHA256 from the checked-out source.
           $EXPECTED = @(
             'cudart64_12.dll','cublas64_12.dll','cublasLt64_12.dll','cufft64_11.dll',
             'cudnn64_9.dll','cudnn_ops64_9.dll','cudnn_cnn64_9.dll','cudnn_adv64_9.dll',
@@ -164,6 +175,66 @@ jobs:
 
           Write-Host "assembled $(@($manifest.files).Count) CUDA runtime files"
           Get-Content $manifestPath
+
+      # ── حارس انحراف البصمات (pinned SHA-256 drift) ─────────────────────────
+      # لماذا وُلد: التطبيق **لا يقرأ بصمات المانيفست إطلاقاً** — المرجع عنده
+      # `CUDA_FILE_SHA256` المثبَّتة في التنفيذي، فلا يقبل إلا تلك البايتات بعينها.
+      # وإعادة التجميع من مصادر NVIDIA لا تضمنها: **NVIDIA غيّرت أرشيف cuDNN 9.12.0
+      # (‏9.12.0.46 · cuda12) فلم يبقَ يوفّر `cudnn_engines_tensor_ir64_9.dll`**، فسقط
+      # التشغيل 35671165633 في خطوة التجميع («cuDNN zip missing …»)، ورُفعت المجموعة
+      # المتحقَّق منها على الجهاز يدوياً. **والخطر الباقي أسوأ من السقوط**: مجموعة
+      # تُجمَّع من أرشيف متغيّر ثم تُرفع، فيبقى الإصدار «منشوراً» وكل عميل يرفض
+      # بايتاتها عند التحقق ⇒ زرّ CUDA معطّل بصمت بلا أن يسقط شيء.
+      # فهذا الحارس يقارن **بصمة كل ملف** بالجدول المستخرج من المصدر، ويسقط السير
+      # بصوت عالٍ **قبل الرفع** — بدل أن ينشر مجموعة لا يقبلها أي عميل.
+      # (‏والحادث موثَّق في docs/AUDIT.md — 2026-09-22. والنصّ نفسه يُقاس محلياً
+      # بنصّه المشحون عبر `node scripts/check-release-assets.cjs --selfcheck`.)
+      - name: Guard — assembled bytes must match the app's pinned SHA-256 table
+        shell: pwsh
+        run: |
+          # >>> CUDA_SHA_GUARD:BEGIN
+          # الإخراج UTF-8 صراحةً: بلا هذين السطرين ترمّز pwsh العربية إلى '؟' في السجلّ.
+          [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+          $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+          $ErrorActionPreference = 'Stop'
+
+          # المرجع: الجدول المثبَّت في التنفيذي — من المصدر، ولا نسخة ثانية هنا.
+          $rs = Join-Path $env:GITHUB_WORKSPACE 'src-tauri/src/cuda_runtime.rs'
+          if (-not (Test-Path $rs)) { throw "✗ لا $rs — بلا جدول البصمات لا مرجع أقيس به، فلا نجاح" }
+          $src = Get-Content $rs -Raw
+          $m = [regex]::Match($src, 'pub const CUDA_FILE_SHA256[^=]*=\s*&\[(?s)(.*?)\r?\n\];')
+          if (-not $m.Success) { throw '✗ لم أقرأ CUDA_FILE_SHA256 من المصدر — تغيّر اسم الثابت أو شكله؟' }
+
+          $pinned = [ordered]@{}
+          foreach ($p in [regex]::Matches($m.Groups[1].Value, '\(\s*"([^"]+)"\s*,\s*"([0-9a-fA-F]{64})"\s*,?\s*\)')) {
+            $pinned[$p.Groups[1].Value] = $p.Groups[2].Value.ToLowerInvariant()
+          }
+          if ($pinned.Count -eq 0) { throw '✗ جدول CUDA_FILE_SHA256 فارغ — لا بصمة أقيس بها، فلا نجاح' }
+
+          $bin = Join-Path (Join-Path $env:RUNNER_TEMP 'cuda-runtime') 'bin'
+          $dlls = @(Get-ChildItem $bin -Filter '*.dll' | Sort-Object Name)
+          if ($dlls.Count -eq 0) { throw "✗ لا DLL في $bin — لا شيء يُقاس، فلا نجاح" }
+
+          $bad = @()
+          foreach ($f in $dlls) {
+            $want = $pinned[$f.Name]
+            if (-not $want) { $bad += "$($f.Name): ليس في جدول البصمات المثبَّتة"; continue }
+            $got = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($got -eq $want) { Write-Host "  ✓ $($f.Name)" } else { $bad += "$($f.Name): المقروء $got ≠ المثبَّت $want" }
+          }
+          # والاتجاه الآخر: كل بصمة مثبَّتة يجب أن يكون لها ملف — وإلا فالتطبيق
+          # يطلب ملفاً لا يُرفع، وهو عطل «القناة ناقصة» نفسه من جهة أخرى.
+          $have = @($dlls | ForEach-Object { $_.Name })
+          foreach ($n in @($pinned.Keys)) {
+            if ($have -notcontains $n) { $bad += "${n}: بصمة مثبَّتة في التطبيق ولا ملف له في bin/" }
+          }
+          if ($bad.Count) {
+            Write-Host '✗ انحراف بصمات — لا يُرفع شيء:'
+            foreach ($b in $bad) { Write-Host "   - $b" }
+            throw "✗ انحراف بصمات CUDA: $($bad.Count) موضعاً — مجموعة يرفضها كل عميل لن تُنشر"
+          }
+          Write-Host "✓ بصمات CUDA مطابقة تماماً للمثبَّتة في التطبيق: $($dlls.Count) ملفاً"
+          # <<< CUDA_SHA_GUARD:END
 
       - name: Upload to assets-v1 (create if missing)
         shell: pwsh
