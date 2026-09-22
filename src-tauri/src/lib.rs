@@ -2021,6 +2021,9 @@ mod open_file_tests {
         let v = res
             .deserialize::<serde_json::Value>()
             .expect("JSON payload");
+        // **يُطبع حرفياً** ليكون دليلاً حيّاً يُقتبس (`--nocapture`): ردّ الأمر نفسه
+        // عبر طبقة IPC — أي أن المقيس مخرَج التطبيق لا نداء دالة.
+        eprintln!("cuda_status (IPC) = {v}");
         for key in ["nvidia", "cuda", "provider", "provider_known"] {
             assert!(v.get(key).is_some(), "المفتاح {key} في الردّ: {v}");
         }
