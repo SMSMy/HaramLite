@@ -56,6 +56,39 @@ const EXIT = { PASS: 0, INCOMPLETE: 1, MISUSE: 2 };
 // حذف صفٍّ منها لتخفيض الشرط **فشل بنيوي** (رمز 2) لا نجاح.
 const LAYER_A_ROWS = ['1.1', '1.4', '2.1', '2.4', '3.1', '3.2', '3.3', '3.7', '3.8', '3.9'];
 
+/**
+ * **صفوف المتصفّح (الطبقة ج من م٧ §١٠)** — القسم ٨ في المصفوفة.
+ *
+ * وُجدت هذه البوّابة لأن جاسوساً مستقلّاً أثبت (**و-٢** في
+ * `ARCHIVE/m7c-browser-spy.md`) أن `✅ · <تاريخ> · <جهاز> · <أي نصّ>` كان يمرّ في
+ * أيّ صفّ خارج `ROW_AREAS` العشري **بلا أي أثر مُعاد إنتاجه** — حتى مع الوسم
+ * `[إلزامي]` (مقيس: «21 من 21 مملوء» وexit 0، والصفوف غير الإلزامية لا تدخل
+ * `assessed` أصلاً). وهو نقض مباشر لسطر الخطة ٢١٧ لأيّ صفّ «قابل للتقييم».
+ *
+ * **والعقد الذي يناسب صفّ متصفّح** ليس عقد الطبقة (أ): لا ثنائي هنا حتى تُربَط
+ * بصمته. فالعقد هنا: أثر لكل صفّ اسمه `<رقم الصف>.json` في `qa/browser-rows/`
+ * يحمل `row` و`verdict=pass` و`outputs` غير فارغة **و`surface`**: قائمة ملفات
+ * بسطور بصماتها. والبوّابة **تعيد حساب بصمة كل ملف من الشجرة** — فتغيّر ملف من
+ * سطح الصفّ (المُقيِّم · ملفات الإضافة المقيسة · مصادر عقد الجسر) يجعل الأثر
+ * **بائتاً** فيسقط الصفّ حتى يُعاد القياس (`pnpm browser:rows`). ولا حاجة إلى git
+ * ولا إلى ثنائي — فالأثر **مُلتزَم في الشجرة** ليكون الدليل حيث يُقرأ.
+ *
+ * **والغياب هنا فشل لا تسامُل**: خلافاً للطبقة (أ) — حيث الغياب بيئيّ (لا ثنائي
+ * على عدّاء CI) — فأثر صفّ المتصفّح يُعاد إنتاجه بأمر واحد على أيّ جهاز. فصفٌّ
+ * يقول ✅ بلا أثر مطابق = ادّعاء بلا دليل، وهو عين ما مُنعت البوّابة لأجله.
+ */
+const BROWSER_ROWS = ['8.1', '8.2', '8.3'];
+/** مجلد آثار صفوف المتصفّح (نسبةً إلى جذر المستودع) — مُلتزَم لا مُتجاهَل. */
+const BROWSER_OUT = path.join('qa', 'browser-rows');
+/**
+ * **المحرّك المشترط لكل صفّ** — يُقابَل بحقل `engine` في الأثر: ٨.١ المنبثقة
+ * تُصيَّر في jsdom بحكم التصميم · ٨.٢ المشغّل **يُشترط** أن يكون قياسه في متصفّح
+ * حقيقي عبر CDP (فلا يُقبل أثر من بديل jsdom) · ٨.٣ عقد الجسر يُشترط أن يكون
+ * **مُشغَّلاً** (‏cargo test) لا مقروءاً. وهذا هو «الافتراضيّ صارم» في محلّه الذي
+ * يُقرأ: لا في نيّة العامل بل في الأثر المُلتزَم.
+ */
+const BROWSER_ENGINE_REQUIRED = { '8.1': /^jsdom/, '8.2': /^cdp/, '8.3': /^rust-test/ };
+
 const ROW_AREAS = {
   '1.1': ['src-tauri/src/main.rs', 'src-tauri/src/media.rs', 'src-tauri/src/pipeline.rs', 'src-tauri/src/slots.rs'],
   '1.4': ['src-tauri/src/media.rs', 'src-tauri/src/pipeline.rs', 'src-tauri/src/yt_dlp.rs'],
@@ -185,6 +218,88 @@ function inspectRowArtifact(row, areas, repo, evalOut, binary) {
       `exe_sha256 في الأثر (${recorded.slice(0, 12)}…) لا يطابق الثنائي المُسلَّم ` +
         `(${binary.sha256.slice(0, 12)}… في ${binary.path}) — أُعيد بناء الثنائي بعد القياس، أعد تشغيل «pwsh qa/eval/${row}.ps1»`
     );
+  }
+  return { state: 'ok', why: null };
+}
+
+/**
+ * هل أثر صفّ متصفّح صالح؟ **العقد الذي يناسب هذا القسم** (انظر `BROWSER_ROWS`):
+ *   ① الملف `<رقم>.json` موجود في مجلد الآثار
+ *   ② `row` مطابق   ③ `verdict = pass`   ④ `outputs` غير فارغة
+ *   ⑤ `surface` قائمة غير فارغة، و**كل بصمة فيها تُعاد حسابها من الشجرة** —
+ *      فملف تغيّر أو غاب ⇒ الأثر بائت ⇒ مرفوض
+ *   ⑥ `evaluator_sha256` يطابق بصمة `evaluator` في الشجرة (فحص صريح للمُقيِّم،
+ *      ولو كان ضمن `surface` — لأن الادّعاء «هذا الأثر من هذا المُقيِّم» يستحقّ
+ *      سطراً يُقرأ في المخرَج لا استنتاجاً)
+ *
+ * والغياب **مرفوض أيضاً** (لا «غياب بيئيّ»): الأثر مُلتزَم ويُعاد إنتاجه بأمر واحد.
+ *
+ * @returns {{state:'ok'|'missing'|'rejected', why:string|null}}
+ */
+function inspectBrowserRowArtifact(row, outDir, repo, cell) {
+  const file = path.join(outDir, `${row}.json`);
+  const rel = path.relative(repo, file) || file;
+  const shown = rel.startsWith('..') ? file : rel;
+  const rejected = (why) => ({ state: 'rejected', why });
+  if (!fs.existsSync(file)) {
+    return {
+      state: 'missing',
+      why: `بلا أثر: ${shown} مفقود — شغّل «pnpm browser:rows» ثم التزم الناتج`,
+    };
+  }
+  let art;
+  try {
+    art = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (err) {
+    return rejected(`الأثر ${shown} ليس JSON صالحاً — ${err.message}`);
+  }
+  if (String(art.row) !== row) return rejected(`row في الأثر «${art.row}» لا يطابق الصفّ ${row}`);
+  if (art.verdict !== 'pass') return rejected(`verdict في الأثر «${art.verdict}» وليس pass`);
+  if (art.measured !== true) return rejected('measured في الأثر ليست true — الصفّ غير مقيَّم');
+  const wantEngine = BROWSER_ENGINE_REQUIRED[row];
+  if (wantEngine && !wantEngine.test(String(art.engine || ''))) {
+    return rejected(
+      `engine في الأثر «${art.engine}» لا يطابق المشترط لهذا الصفّ (${wantEngine}) — ` +
+        'المشغّل يُقاس في متصفّح حقيقي عبر CDP، وعقد الجسر يُشغَّل لا يُقرأ'
+    );
+  }
+  if (!Array.isArray(art.outputs) || art.outputs.length === 0) return rejected('outputs فارغة في الأثر');
+  if (!Array.isArray(art.surface) || art.surface.length === 0) return rejected('surface فارغة في الأثر — لا سطح قياس فلا دليل');
+
+  // بصمة المكافأة في **خانة الصفّ** نفسها: تربط الأرقام المكتوبة بالأرقام المقيسة،
+  // فلا تمرّ أرقام مُلفَّقة ولو وُجد أثر (وهو وجه «مطابق» في «صفّ ✅ بلا أثر مطابق»).
+  const token = typeof art.outputs_sha256 === 'string' ? art.outputs_sha256.slice(0, 8).toLowerCase() : '';
+  if (!/^[0-9a-f]{8}$/.test(token)) return rejected('outputs_sha256 غائب أو ليس بصمة في الأثر');
+  const claimed = /مكافأة\s*:\s*([0-9a-fA-F]{8})/.exec(cell || '');
+  if (!claimed) {
+    return rejected(`خانة الصفّ لا تحمل بصمة المكافأة (‏مكافأة:${token}) — انسخها من مخرَج «pnpm browser:rows»`);
+  }
+  if (claimed[1].toLowerCase() !== token) {
+    return rejected(`بصمة المكافأة في الصفّ (${claimed[1].toLowerCase()}) لا تطابق الأثر (${token}) — أرقام الصفّ ليست أرقام الأثر`);
+  }
+
+  for (const entry of art.surface) {
+    const p = entry && entry.path;
+    if (typeof p !== 'string' || p.trim() === '') return rejected('مدخل surface بلا مسار');
+    const full = path.resolve(repo, p);
+    const inside = path.relative(repo, full);
+    if (inside.startsWith('..') || path.isAbsolute(inside)) return rejected(`مسار سطح خارج المستودع: ${p}`);
+    if (!fs.existsSync(full) || !fs.statSync(full).isFile()) return rejected(`ملف من سطح الصفّ لا وجود له: ${p}`);
+    const want = String(entry.sha256 || '').toUpperCase();
+    const got = sha256Of(full).toUpperCase();
+    if (want !== got) {
+      return rejected(`سطح الصفّ تغيّر بعد القياس: ${p} (الأثر ${want.slice(0, 12)}… ≠ الشجرة ${got.slice(0, 12)}…) — أعد «pnpm browser:rows»`);
+    }
+  }
+
+  const evalRel = typeof art.evaluator === 'string' ? art.evaluator : '';
+  if (!evalRel) return rejected('evaluator فارغ في الأثر');
+  const evalFull = path.resolve(repo, evalRel);
+  const evalInside = path.relative(repo, evalFull);
+  if (evalInside.startsWith('..') || path.isAbsolute(evalInside)) return rejected(`مسار المُقيِّم خارج المستودع: ${evalRel}`);
+  if (!fs.existsSync(evalFull)) return rejected(`المُقيِّم لا وجود له: ${evalRel}`);
+  if (String(art.evaluator_sha256 || '').toUpperCase() !== sha256Of(evalFull).toUpperCase()) {
+    return rejected(`المُقيِّم تغيّر بعد القياس: ${evalRel} — أعد «pnpm browser:rows»`);
   }
   return { state: 'ok', why: null };
 }
@@ -519,6 +634,7 @@ function parseArgs(argv) {
     repo: null,
     evalOut: null,
     rowAreas: null,
+    browserOut: null,
     exe: null,
     requireArtifacts: false,
   };
@@ -529,6 +645,7 @@ function parseArgs(argv) {
     else if (arg.startsWith('--file=')) opts.file = arg.slice('--file='.length);
     else if (arg.startsWith('--repo=')) opts.repo = arg.slice('--repo='.length);
     else if (arg.startsWith('--eval-out=')) opts.evalOut = arg.slice('--eval-out='.length);
+    else if (arg.startsWith('--browser-out=')) opts.browserOut = arg.slice('--browser-out='.length);
     else if (arg.startsWith('--row-areas=')) opts.rowAreas = arg.slice('--row-areas='.length);
     else if (arg.startsWith('--exe=')) opts.exe = arg.slice('--exe='.length);
     else if (!arg.startsWith('-')) opts.file = arg;
@@ -544,6 +661,7 @@ const USAGE = `الاستعمال: node scripts/matrix-check.cjs [--file=<path>]
 
   --file=<path>       مسار المصفوفة (افتراضاً qa/TEST-MATRIX.md)
   --eval-out=<dir>    مجلد آثار المُقيِّمين (افتراضاً <المستودع>/qa/eval/out)
+  --browser-out=<dir> مجلد آثار صفوف المتصفّح §٨ (افتراضاً <المستودع>/qa/browser-rows)
   --repo=<dir>        جذر المستودع لالتزام HEAD (افتراضاً: جذر المصفوفة ثم cwd)
   --exe=<path>        الثنائي المُسلَّم الذي تُربط به الآثار
                       (افتراضاً <المستودع>/src-tauri/target/release/HaramLite.exe)
@@ -640,15 +758,25 @@ function selfcheckArtifacts(workDir) {
   const headOf = (dir) => git(dir, ['rev-parse', 'HEAD']).stdout.trim();
   const branchOf = (dir) => git(dir, ['symbolic-ref', '--short', 'HEAD']).stdout.trim();
 
+  /** صفوف §٨ في البيئة المصنوعة: **بلا ادّعاء** (`—`) فلا يُطلب لها أثر — إلا في
+   *  الحالات التي تُبنى لها آثار مصنوعة صراحةً. وهي لازمة البنية: البوّابة ترفض
+   *  غياب صفوف المتصفّح (رمز 2)، فبيئة بلا §٨ ليست بيئة مصفوفة واقعية. */
+  const BROWSER_MATRIX_ROWS = BROWSER_ROWS.map(
+    (id) => `| ${id} | بيئة مصنوعة | خطوات مصنوعة | نتيجة متوقَّعة | — · 2026-09-17 · جهاز-مصنوع · لم يُقَس |`
+  );
+
   function initFixture(dir) {
     const header = ['| # | البيئة | الخطوات | النتيجة المتوقَّعة | النتيجة |', '| --- | --- | --- | --- | --- |'];
     const rows = LAYER_A_ROWS.map(
       (id) => `| ${id} **[إلزامي]** | بيئة مصنوعة | خطوات مصنوعة | نتيجة متوقَّعة | ✅ · 2026-09-17 · جهاز-مصنوع · نصّ |`
     );
-    mkIn(dir, path.join('qa', 'TEST-MATRIX.md'), `${header.join('\n')}\n${rows.join('\n')}\n`);
+    mkIn(dir, path.join('qa', 'TEST-MATRIX.md'), `${header.join('\n')}\n${[...rows, ...BROWSER_MATRIX_ROWS].join('\n')}\n`);
     for (const id of LAYER_A_ROWS) {
       for (const rel of ROW_AREAS[id]) mkIn(dir, rel, '// منطقة الصفّ المصنوعة\n');
     }
+    // سطح صفوف §٨ المصنوع: مُقيِّم مصنوع وملف مقيس مصنوع.
+    mkIn(dir, path.join('scripts', 'check-browser-rows.mjs'), BROWSER_EVAL_STUB);
+    mkIn(dir, BROWSER_SURFACE_REL, BROWSER_SURFACE_BODY);
     // ثنائي مصنوع في موضعه المُسلَّم: الأثر يشهد على بصمته، وغيابه غياب بيئيّ.
     mkIn(dir, path.join('src-tauri', 'target', 'release', 'HaramLite.exe'), 'MZ-stub-HaramLite\n');
     git(dir, ['init', '-q']);
@@ -657,6 +785,49 @@ function selfcheckArtifacts(workDir) {
     git(dir, ['add', '-A']);
     git(dir, ['commit', '-qm', 'init']);
     return headOf(dir);
+  }
+
+  const BROWSER_EVAL_STUB = '// مُقيِّم صفوف المتصفّح المصنوع (بصمته تُقابَل)\nexport const x = 1;\n';
+  const BROWSER_SURFACE_REL = path.join('browser-extension', 'content.js');
+  const BROWSER_SURFACE_BODY = '// سطح القياس المصنوع (تغيّره يُبطل الأثر)\n';
+
+  /** أثر صفّ متصفّح مصنوع بالعقد الذي تقرأه البوّابة: `row` · `verdict` ·
+   *  `outputs` · `outputs_sha256` · `surface` (بصمات تُعاد حسابها) · `evaluator`. */
+  function putBrowserArtifact(dir, row, over) {
+    const sha = (rel) => crypto.createHash('sha256').update(fsMod.readFileSync(path.join(dir, rel))).digest('hex');
+    const outputs = [{ key: 'gaps', value: 5 }, { key: 'keptSum', value: 57.5 }];
+    // محرّك مصنوع **مطابق للمشترط في كل صفّ** — وإلا رُفض الأثر قبل الفحص المقصود.
+    const engine = { '8.1': 'jsdom', '8.2': 'cdp (مصنوع)', '8.3': 'rust-test + jsdom (مصنوع)' }[row];
+    const art = {
+      row,
+      id: `browser.${row}`,
+      evaluator: path.join('scripts', 'check-browser-rows.mjs'),
+      evaluator_sha256: sha(path.join('scripts', 'check-browser-rows.mjs')),
+      engine,
+      measured: true,
+      verdict: 'pass',
+      outputs,
+      outputs_sha256: crypto.createHash('sha256').update(JSON.stringify(outputs)).digest('hex'),
+      surface: [{ path: BROWSER_SURFACE_REL, sha256: sha(BROWSER_SURFACE_REL) }],
+      ...over,
+    };
+    mkIn(dir, path.join('qa', 'browser-rows', `${row}.json`), JSON.stringify(art, null, 2));
+    return art.outputs_sha256.slice(0, 8);
+  }
+
+  /** مصفوفة موسومة فيها صفّ بمُعطى ✅ + بصمة مكافأة — أساس حالات بوابة الأثر. */
+  function browserClaimingFixture(dir, row, cell) {
+    initFixture(dir);
+    const p = path.join(dir, 'qa', 'TEST-MATRIX.md');
+    const text = fsMod.readFileSync(p, 'utf8');
+    const re = new RegExp(`^\\| ${row.replace('.', '\\.')} \\|[^\\n]*$`, 'm');
+    const replaced = text.replace(re, `| ${row} | بيئة مصنوعة | خطوات مصنوعة | نتيجة متوقَّعة | ${cell} |`);
+    if (replaced === text) throw new Error(`صفّ ${row} لم يُعثر عليه في البيئة المصنوعة`);
+    fsMod.writeFileSync(p, replaced);
+  }
+  /** بصمة المكافأة تُشتقّ من الأثر نفسه في البيئة — فلا رقم مكتوب بيد هنا. */
+  function claimedCell(dir, token, note) {
+    return `✅ · 2026-09-17 · جهاز-مصنوع · مكافأة:${token}${note ? ` · ${note}` : ''}`;
   }
 
   const FIXTURE_BIN_REL = path.join('src-tauri', 'target', 'release', 'HaramLite.exe');
@@ -828,6 +999,76 @@ function selfcheckArtifacts(workDir) {
     fsMod.writeFileSync(p, kept);
   }, null, { status: EXIT.MISUSE, text: ['غائبة عن المصفوفة', '3.7'] });
 
+  /* ── §٨ — بوابة أثر صفوف المتصفّح (ثقب و-٢ الذي أثبته الجاسوس) ─────────────
+   * الثقب المقيس: `✅ · <تاريخ> · <جهاز> · <أي نصّ>` كان يمرّ في أيّ صفّ خارج
+   * `ROW_AREAS` العشري **بلا أثر** — حتى مع `[إلزامي]` («21 من 21 مملوء»، exit 0).
+   * وهذه الحالات تُثبت أن البوّابة الجديدة ترى: ضابط يمرّ بأثر مطابق، ومُفسَدات
+   * تسقط (غياب الأثر · سطح تغيّر · verdict=fail · مُقيِّم تغيّر · صفّ مُلفَّق)،
+   * وحالتا بنية (خانة فارغة · صفّ محذوف) تفشلان بصوت عالٍ (2). */
+  caseRun('§٨-① ضابط: صفّ ٨.١ بـ✅ وبصمة مكافأة مطابقة وأثر مطابق ⇒ 0', (d) => {
+    initFixture(d);
+    const token = putBrowserArtifact(d, '8.1');
+    browserClaimingFixture(d, '8.1', claimedCell(d, token));
+  }, null, { status: EXIT.PASS, text: ['آثار المتصفّح (§٨): 1 من 1 مقبولة'] });
+
+  caseRun('§٨-② مُفسَد: صفّ ٨.٢ بـ✅ وأرقام ملفَّقة **بلا أثر** ⇒ 1 (كان exit 0 قبل الإصلاح)', (d) => {
+    browserClaimingFixture(d, '8.2', '✅ · 2026-09-17 · جهاز-وهمي · فجوات 999 · keptSum 12345');
+  }, null, {
+    status: EXIT.INCOMPLETE,
+    text: ['8.2', 'بلا أثر', 'pnpm browser:rows'],
+  });
+
+  caseRun('§٨-③ مُفسَد: أثر مطابق لكن **أرقام الصفّ ملفَّقة** (بصمة مكافأة مخالفة) ⇒ 1', (d) => {
+    initFixture(d);
+    const token = putBrowserArtifact(d, '8.1');
+    const wrong = token === '00000000' ? '11111111' : '00000000';
+    browserClaimingFixture(d, '8.1', claimedCell(d, wrong, 'فجوات 999 · keptSum 12345'));
+  }, null, { status: EXIT.INCOMPLETE, text: ['8.1', 'بصمة المكافأة في الصفّ', 'ليست أرقام الأثر'] });
+
+  caseRun('§٨-④ مُفسَد: صفّ مُلفَّق داخل القسم ٨ (٨.٩) بـ✅ بلا أثر ⇒ 1', (d) => {
+    const p = path.join(d, 'qa', 'TEST-MATRIX.md');
+    initFixture(d);
+    fsMod.writeFileSync(p, `${fsMod.readFileSync(p, 'utf8')}| 8.9 | بيئة مصنوعة | خطوات مصنوعة | نتيجة متوقَّعة | ✅ · 2026-09-17 · جهاز-مصنوع · مكافأة:deadbeef |\n`);
+  }, null, { status: EXIT.INCOMPLETE, text: ['8.9', 'بلا أثر'] });
+
+  caseRun('§٨-⑤ مُفسَد: الأثر موجود لكن سطح الصفّ تغيّر بعده ⇒ 1 (أثر بائت)', (d) => {
+    initFixture(d);
+    const token = putBrowserArtifact(d, '8.1');
+    browserClaimingFixture(d, '8.1', claimedCell(d, token));
+    mkIn(d, BROWSER_SURFACE_REL, `${BROWSER_SURFACE_BODY}// تغيير بعد القياس\n`);
+  }, null, { status: EXIT.INCOMPLETE, text: ['8.1', 'سطح الصفّ تغيّر بعد القياس'] });
+
+  caseRun('§٨-⑥ مُفسَد: أثر الصفّ بـverdict=fail ⇒ 1', (d) => {
+    initFixture(d);
+    const token = putBrowserArtifact(d, '8.1', { verdict: 'fail' });
+    browserClaimingFixture(d, '8.1', claimedCell(d, token));
+  }, null, { status: EXIT.INCOMPLETE, text: ['8.1', 'verdict في الأثر «fail»'] });
+
+  caseRun('§٨-⑦ مُفسَد: المُقيِّم تغيّر بعد القياس ⇒ 1', (d) => {
+    initFixture(d);
+    const token = putBrowserArtifact(d, '8.1');
+    browserClaimingFixture(d, '8.1', claimedCell(d, token));
+    mkIn(d, path.join('scripts', 'check-browser-rows.mjs'), `${BROWSER_EVAL_STUB}// نسخة أحدث\n`);
+  }, null, { status: EXIT.INCOMPLETE, text: ['8.1', 'المُقيِّم تغيّر بعد القياس', 'check-browser-rows.mjs'] });
+
+  caseRun('§٨-⑧ مُفسَد: صفّ ٨.٢ بأثر قِيس في بديل jsdom لا في متصفّح ⇒ 1', (d) => {
+    initFixture(d);
+    const token = putBrowserArtifact(d, '8.2', { engine: 'jsdom (بديل معلَن)' });
+    browserClaimingFixture(d, '8.2', claimedCell(d, token));
+  }, null, { status: EXIT.INCOMPLETE, text: ['8.2', 'engine في الأثر', 'لا يطابق المشترط'] });
+
+  caseRun('§٨-⑨ بنية: صفّ متصفّح بخانة نتيجة فارغة ⇒ 2', (d) => {    browserClaimingFixture(d, '8.1', '');
+  }, null, { status: EXIT.MISUSE, text: ['صفوف المتصفّح بلا سجلّ', '8.1'] });
+
+  caseRun('§٨-⑩ بنية: صفّ ٨.٣ محذوف من المصفوفة ⇒ 2', (d) => {
+    initFixture(d);
+    const p = path.join(d, 'qa', 'TEST-MATRIX.md');
+    fsMod.writeFileSync(
+      p,
+      fsMod.readFileSync(p, 'utf8').split(/\r?\n/).filter((l) => !/^\|\s*8\.3\s/.test(l)).join('\n')
+    );
+  }, null, { status: EXIT.MISUSE, text: ['صفوف المتصفّح غائبة عن المصفوفة', '8.3'] });
+
   /* ── الوضعان: التسليم (صارم) والافتراضيّ (متسامح مع الغياب وحده) ─────────── */
 
   // Ⓐ′ ضابط الوضع الصارم: الآثار العشرة موجودة ⇒ 0 في الوضعين أيضاً
@@ -961,6 +1202,12 @@ const FIXTURE_HEADER = [
   '| --- | --- | --- | --- | --- |',
 ].join('\n');
 
+/** صفوف §٨ في المصنوعات: بلا ادّعاء (`—`) فلا يُطلب لها أثر — لكنها **حاضرة**
+ *  لأن البوّابة ترفض غيابها (رمز 2)، فبيئة بلا §٨ ليست مصفوفة واقعية. */
+const BROWSER_FIXTURE_ROWS = BROWSER_ROWS.map(
+  (id) => `| ${id} | بيئة مصنوعة | خطوات مصنوعة | نتيجة متوقَّعة | — · 2026-09-17 · جهاز-مصنوع |`
+);
+
 /** صفّ مصفوفة مصنوع. `tail` = خانة النتيجة، و`close` = الأنبوب الختامي. */
 function fixtureRow(result, close) {
   const head = '| 9.9 **[إلزامي]** | بيئة مصنوعة | خطوات مصنوعة | نتيجة متوقَّعة |';
@@ -1013,7 +1260,7 @@ function selfcheck() {
        توقّعات الحالات القائمة كما هي («1 من 1 مملوء»). */
     const present = LAYER_A_ROWS.map(
       (id) => `| ${id} | بيئة مصنوعة | خطوات مصنوعة | نتيجة متوقَّعة | — · 2026-09-17 · جهاز-مصنوع |`
-    );
+    ).concat(BROWSER_FIXTURE_ROWS);
     fsMod.writeFileSync(file, `${FIXTURE_HEADER}\n${[...c.rows, ...present].join('\n')}\n`, 'utf8');
     const r = spawnSync(process.execPath, [__filename, `--file=${file}`], {
       encoding: 'utf8',
@@ -1144,6 +1391,54 @@ function main(argv) {
     return EXIT.MISUSE;
   }
 
+  // ── صفوف المتصفّح (§٨): البنية أولاً — صفٌّ غائب أو بلا سجلّ فشلٌ بصوت عالٍ ──
+  // الغياب أو الفراغ ليس إسقاطاً للشرط: صفّ يُحذف أو تُفرَّغ خانته كان يفلت من
+  // كل فحص (‏`assessed` تُبنى من الإلزامية وحدها) — فيُقاس هنا صراحةً.
+  const browserGone = BROWSER_ROWS.filter((id) => !rows.some((r) => r.id === id));  if (browserGone.length > 0) {
+    process.stderr.write(
+      `خطأ بنية: صفوف المتصفّح غائبة عن المصفوفة: ${browserGone.join(' · ')}\n` +
+        `الملف: ${file}\n` +
+        `توقّف الحارس: القسم ٨ يحمل مُقيِّماً (‏pnpm browser:rows) فلا يجوز حذف صفوفه — ` +
+        'وإسقاط الشرط بحذف الصفّ ليس تحقيقه.\n'
+    );
+    return EXIT.MISUSE;
+  }
+  const browserOut = path.resolve(opts.browserOut || path.join(repo, BROWSER_OUT));
+  // **كل صفّ في القسم ٨** — لا الثلاثة المعلَنة وحدها: صفٌّ جديد يُضاف موسوماً ✅
+  // يجب أن يحمل أثره هو أيضاً، وإلا صار القسم ٨ باباً خلفياً لادّعاء بلا دليل
+  // (وهو ما قِيس على صفّ ٨.٩ مُلفَّق: كان يمرّ بلا أثر).
+  const sectionEight = [...new Set([...BROWSER_ROWS, ...rows.filter((r) => /^8\./.test(r.id)).map((r) => r.id)])].sort();
+  const browserAssessed = sectionEight.map((id) => {
+    const r = rows.find((x) => x.id === id);
+    return { ...r, verdict: assessCell(r.resultCell) };
+  });
+  const browserEmpty = browserAssessed.filter((r) => !r.verdict.ok);
+  if (browserEmpty.length > 0) {
+    process.stderr.write(
+      `خطأ بنية: صفوف المتصفّح بلا سجلّ (تاريخ · جهاز · نتيجة): ${browserEmpty.map((r) => r.id).join(' · ')}\n` +
+        `الملف: ${file}\n` +
+        'توقّف الحارس: خانة نتيجة فارغة في صفّ متصفّح ليست «لم يُقَس» — هي صفٌّ هرب من الأثر.\n'
+    );
+    return EXIT.MISUSE;
+  }
+
+  // ── أثر صفوف المتصفّح: **الغياب فشل**، والبائت فشل (عقد `BROWSER_ROWS`) ────
+  const browserRowsOut = [];
+  const browserProblems = []; // غائب أو مرفوض ⇒ فشل في الوضعين
+  for (const r of browserAssessed) {
+    if (!claimsSuccess(r.verdict)) {
+      browserRowsOut.push({ id: r.id, state: 'بلا ادّعاء', detail: 'الخانة لا تدّعي نجاحاً (— أو ❌) فلا أثر مطلوب' });
+      continue;
+    }
+    const { state, why } = inspectBrowserRowArtifact(r.id, browserOut, repo, r.resultCell);
+    if (state === 'ok') {
+      browserRowsOut.push({ id: r.id, state: 'مقبول', detail: `سطح: ${BROWSER_OUT}\\${r.id}.json` });
+    } else {
+      browserRowsOut.push({ id: r.id, state: state === 'missing' ? 'غائب' : 'مرفوض', detail: why });
+      browserProblems.push({ id: r.id, why, missing: state === 'missing' });
+    }
+  }
+
   const gated = assessed.filter((r) => Object.prototype.hasOwnProperty.call(areas, r.id));
 
   // ── الأثر: لا يُقبل ✅/⚠️ في صفّ قابل للتقييم إلا بمسار مخرَج المُقيِّم ─────
@@ -1208,6 +1503,11 @@ function main(argv) {
       out.push(`  ${a.id.padEnd(6)} ${a.state.padEnd(9)} ${a.detail}`);
     }
     out.push('');
+    out.push(`آثار صفوف المتصفّح (§٨): ${browserOut}`);
+    for (const a of browserRowsOut) {
+      out.push(`  ${a.id.padEnd(6)} ${a.state.padEnd(9)} ${a.detail}`);
+    }
+    out.push('');
   } else if (artifactProblems.length > 0 || hasEnvGap) {
     for (const a of artifactProblems) out.push(`  ${a.id.padEnd(6)} مرفوض     ${a.why}`);
     for (const a of artifactMissing) out.push(`  ${a.id.padEnd(6)} غائب      ${a.why}`);
@@ -1226,6 +1526,12 @@ function main(argv) {
       (missingIds.length > 0 ? ` — الغائب: ${missingIds.join(' · ')}` : '') +
       (unboundIds.length > 0 ? ` — غير مربوط بالثنائي: ${unboundIds.join(' · ')}` : '')
   );
+  const browserClaiming = browserAssessed.filter((r) => claimsSuccess(r.verdict)).length;
+  out.push(
+    `آثار المتصفّح (§٨): ${browserClaiming - browserProblems.length} من ${browserClaiming} مقبولة` +
+      (browserProblems.length > 0 ? ` — المرفوض/الغائب: ${browserProblems.map((a) => a.id).join(' · ')}` : '') +
+      ` — المجلد: ${path.relative(repo, browserOut) || browserOut}`
+  );
   // سطر الثنائي يُطبع دائماً — في الوضعين وفي `--quiet`: كل تشغيل يقول على أيّ
   // مُخرَج يشهد. ولا يُطبع في السطور المختصرة وحدها لئلا يغيب عن العين.
   out.push(
@@ -1241,6 +1547,16 @@ function main(argv) {
       `\n✗ لا ائتمان بلا أثر مُعاد إنتاجه — ${artifactProblems.length} صفّاً ادّعى النجاح وأثره **موجود ومرفوض**:\n`
     );
     for (const a of artifactProblems) process.stderr.write(`   - ${a.id}: ${a.why}\n`);
+  }
+
+  // صفوف المتصفّح: **الغياب فشل** لا غيابٌ بيئيّ — الأثر مُلتزَم ويُعاد إنتاجه
+  // بأمر واحد على أيّ جهاز، فصفٌّ يقول ✅ بلا أثر مطابق ادّعاءٌ بلا دليل.
+  if (browserProblems.length > 0) {
+    process.stderr.write(
+      `\n✗ لا ائتمان بلا أثر مُعاد إنتاجه (§٨ — صفوف المتصفّح): ${browserProblems.length} صفّاً ادّعى النجاح بلا أثر مطابق:\n`
+    );
+    for (const a of browserProblems) process.stderr.write(`   - ${a.id}: ${a.why}\n`);
+    process.stderr.write('   الأمر: pnpm browser:rows — ثم التزم الآثار في qa/browser-rows/\n');
   }
 
   if (hasEnvGap) {
@@ -1267,6 +1583,7 @@ function main(argv) {
   const fails =
     incomplete.length > 0 ||
     artifactProblems.length > 0 ||
+    browserProblems.length > 0 ||
     (opts.requireArtifacts && hasEnvGap);
   return fails ? EXIT.INCOMPLETE : EXIT.PASS;
 }
@@ -1288,6 +1605,7 @@ module.exports = {
   selfcheckArtifacts,
   validateRowAreas,
   inspectRowArtifact,
+  inspectBrowserRowArtifact,
   claimsSuccess,
   resolveBinary,
   defaultBinaryPath,
@@ -1296,4 +1614,6 @@ module.exports = {
   ENV_NOTICE_CALL_REMOVED,
   ROW_AREAS,
   LAYER_A_ROWS,
+  BROWSER_ROWS,
+  BROWSER_OUT,
 };
