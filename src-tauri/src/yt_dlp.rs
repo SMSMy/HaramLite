@@ -413,6 +413,16 @@ pub enum YtError {
     /// و-٨: الرابط نفسه مرفوض قبل أي اتصال (مخطّط غير مدعوم، مضيف محلي/خاص،
     /// أو اسم مضيف غير صالح). نصّه عربي جاهز للعرض كما هو.
     Rejected(String),
+    /// **فشل عمليّة التنزيل نفسها** — لا قراءة/كتابة ملف: خروج yt-dlp برمز
+    /// غير صفر، جمود، انقطاع أنبوبه، إلغاء، أو «نجح دون ملف ناتج».
+    ///
+    /// **ولماذا وُجد (بلاغ المالك 2026-09-23)**: كان كل هذا يُمرَّر من باب
+    /// `YtError::Io` فيُعرَض **«ملفات: yt-dlp خرج بـexit code: 1»** على فشل
+    /// شبكي/موقعي — تسميةٌ خاطئة حيّرت المالك (بحث عن عطل ملفات ولا ملفَّ هنا).
+    /// ورسائله **تصف نفسها** (تسمّي yt-dlp أو التنزيل)، فلا تُسبَق بوسمٍ عام
+    /// يُكرّر «فشل التنزيل:» الذي يضيفه كل مستدعٍ (‏`cli.rs` · `telegram.rs`) —
+    /// وهذا هو الفرق الوحيد في العرض عن `Io`، ولا يُغيَّر به أي رمز `E_*`.
+    Process(String),
 }
 
 impl std::fmt::Display for YtError {
@@ -423,6 +433,7 @@ impl std::fmt::Display for YtError {
             Self::Verify(e) => write!(f, "فشل التحقق: {e}"),
             Self::Io(e) => write!(f, "ملفات: {e}"),
             Self::Rejected(e) => write!(f, "{e}"),
+            Self::Process(e) => write!(f, "{e}"),
         }
     }
 }
@@ -1037,9 +1048,10 @@ fn fetch_meta(
     )
     .map_err(|e| {
         // الإلغاء ليس فشل شبكة: نصّه العربي يصل كما هو (والمستدعي يختار نصّ
-        // «🛑 أُلغيت» بعلم الإلغاء لا بنصّ الخطأ).
+        // «🛑 أُلغيت» بعلم الإلغاء لا بنصّ الخطأ) — وليس فشل **ملفات** أيضاً
+        // (كان `Io` فيُعرَض «ملفات: أُلغي التنزيل…»).
         if e == crate::proc::CANCELLED {
-            YtError::Io(e)
+            YtError::Process(e)
         } else {
             YtError::Net(e)
         }
@@ -1330,7 +1342,7 @@ fn download_media_inner(
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-            .map_err(|e| YtError::Io(e.to_string()))?;
+            .map_err(|e| YtError::Process(format!("تعذّر تشغيل yt-dlp: {e}")))?;
 
         // ── **التسجيل + القاتل: عطل م٣/إصلاح٢** ────────────────────────────────
         //
@@ -1474,7 +1486,9 @@ fn download_media_inner(
                     kill_now();
                     let _ = c.wait();
                 }
-                return Err(YtError::Io("stdout غير موصول — راجع stdio في spawn".into()));
+                return Err(YtError::Process(
+                    "stdout غير موصول — راجع stdio في spawn".into(),
+                ));
             }
         };
         let mut reader = std::io::BufReader::new(stdout);
@@ -1498,8 +1512,8 @@ fn download_media_inner(
                     }
                     // القناة الثانية تُرفَق هنا أيضاً: انكسار أنبوب stdout ليس سبباً
                     // في ذاته، وسببُ yt-dlp يكون مكتوباً على stderr.
-                    return Err(YtError::Io(format!(
-                        "{e}\n{}",
+                    return Err(YtError::Process(format!(
+                        "انقطع أنبوب مخرجات yt-dlp: {e}\n{}",
                         failure_tail(&tail, &mut stderr_tail, 12)
                     )));
                 }
@@ -1536,7 +1550,7 @@ fn download_media_inner(
                             kill_now();
                             let _ = c.wait();
                         }
-                        return Err(YtError::Io("أُلغي التنزيل من قبل المستخدم".into()));
+                        return Err(YtError::Process("أُلغي التنزيل من قبل المستخدم".into()));
                     }
                 }
             }
@@ -1544,13 +1558,13 @@ fn download_media_inner(
 
         let status = child
             .lock()
-            .map_err(|e| YtError::Io(e.to_string()))?
+            .map_err(|e| YtError::Process(format!("فشل انتظار yt-dlp: {e}")))?
             .wait()
-            .map_err(|e| YtError::Io(e.to_string()))?;
+            .map_err(|e| YtError::Process(format!("فشل انتظار yt-dlp: {e}")))?;
         if stalled.load(Ordering::SeqCst) {
             let tail_txt = failure_tail(&tail, &mut stderr_tail, 30);
             tracing::warn!(target: "ytdlp", "توقف التنزيل لانقطاع التقدم ({url}) — ذيل المخرجات:\n{tail_txt}");
-            return Err(YtError::Io(format!(
+            return Err(YtError::Process(format!(
                 "توقف التنزيل: لا تقدم منذ {} دقيقة — قد يكون الاتصال متجمداً\n{}",
                 STALL_SECS / 60,
                 failure_tail(&tail, &mut stderr_tail, 12)
@@ -1571,7 +1585,7 @@ fn download_media_inner(
             }
             let tail_txt = failure_tail(&tail, &mut stderr_tail, 30);
             tracing::warn!(target: "ytdlp", "yt-dlp خرج بـ{status} لـ {url} — ذيل المخرجات:\n{tail_txt}");
-            return Err(YtError::Io(format!(
+            return Err(YtError::Process(format!(
                 "yt-dlp خرج بـ{status}\n{}",
                 failure_tail(&tail, &mut stderr_tail, 12)
             )));
@@ -1593,7 +1607,7 @@ fn download_media_inner(
         }
         let tail_txt = failure_tail(&tail, &mut stderr_tail, 30);
         tracing::warn!(target: "ytdlp", "نجح yt-dlp دون ملف صالح في الخانة ({url}) — ذيل المخرجات:\n{tail_txt}");
-        return Err(YtError::Io(format!(
+        return Err(YtError::Process(format!(
             "yt-dlp نجح دون ملف ناتج صالح — أعد المحاولة\n{}",
             failure_tail(&tail, &mut stderr_tail, 12)
         )));
@@ -3051,6 +3065,75 @@ fn main() {
             out.display()
         );
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// **حارس (١٠): فشل التنزيل لا يُوسَم «ملفات:» — ولا يفقد اسمه.**
+    ///
+    /// **العطب الميداني**: نصّ الفشل الذي وصل المالك في تلغرام كان
+    /// `✗ فشل التنزيل: ملفات: yt-dlp خرج بـexit code: 1` — و«ملفات:» تسمية
+    /// **خاطئة** لعطل شبكي/موقعي (‏403 مقيس)، فبحث المالك عن عطل ملفات ولا
+    /// ملفَّ هنا. والسبب: فرع خروج العمليّة كان يُمرَّر من باب `YtError::Io`
+    /// (‏`:424` في ذلك الوقت) الذي يُعرض «ملفات: {e}».
+    ///
+    /// **والمزيّف نفسه** (صورة `stderr_fail`) يخرج بـ1 بعد كتابة السبب على
+    /// stderr ⇒ فالنصّ المقيس هنا هو نصّ المستخدم بعينه.
+    /// (مُفسَد محروس: إعادة الفرع إلى `YtError::Io` ⇒ يسقط — مُنفَّذ.)
+    #[cfg(windows)]
+    #[test]
+    fn a_download_exit_failure_names_the_download_not_a_file_error() {
+        let _reg = crate::slots::registry_test_lock();
+        let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
+        let fake = fake_variant(&root, "stderr_fail");
+        let tmp = std::env::temp_dir().join(format!("hl_label_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("مجلد القياس");
+
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(fake);
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let r = download_media(
+            "https://www.youtube.com/watch?v=AJOOve4s0_8",
+            &tmp,
+            &|_p| true,
+            &cancel,
+        );
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = None;
+
+        let err = match r {
+            Ok(p) => panic!(
+                "المزيّف خرج بـ1 فيجب أن تفشل المهمّة، ونجحت بـ{}",
+                p.display()
+            ),
+            Err(e) => format!("{e}"),
+        };
+        eprintln!("x2-dl/وسم الفشل — نصّ المستخدم:\n✗ فشل التنزيل: {err}");
+        assert!(
+            !err.starts_with("ملفات:"),
+            "فشل التنزيل وُسم «ملفات:» — تسمية خاطئة لعطل شبكي/موقعي:\n{err}"
+        );
+        assert!(
+            err.contains("yt-dlp خرج بـexit code: 1"),
+            "النصّ لا يسمّي ما جرى (خروج yt-dlp برمز):\n{err}"
+        );
+        assert!(
+            err.contains(MEASURED_403),
+            "ونصّ السبب المقيس يجب أن يبقى:\n{err}"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// **ووسم `Io` يبقى لما هو ملفّي حقاً** — فلا يُفرَّغ الباب الآخر بالغلط.
+    #[test]
+    fn only_real_file_failures_are_labelled_as_file_errors() {
+        let process = YtError::Process("yt-dlp خرج بـexit code: 1".into());
+        assert_eq!(format!("{process}"), "yt-dlp خرج بـexit code: 1");
+        let cancel = YtError::Process("أُلغي التنزيل من قبل المستخدم".into());
+        assert_eq!(format!("{cancel}"), "أُلغي التنزيل من قبل المستخدم");
+        let io = YtError::Io("تعذر إنشاء مجلد النتائج".into());
+        assert_eq!(format!("{io}"), "ملفات: تعذر إنشاء مجلد النتائج");
     }
 
     /// أبناء `yt-dlp.exe` الأحياء الآن (بالاسم — جرد حقيقي لا استنتاج).
