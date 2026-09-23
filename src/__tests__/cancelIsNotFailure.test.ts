@@ -23,7 +23,28 @@
  * **ما لا يقيسه**: لا يشغّل التطبيق ولا Rust — النداءات وكلاء، والرسالة تُحاكى
  * بالحرف الذي قِيس في سجلّ المالك. ولا لقطة بصرية: «غير أحمر» = غياب صنف
  * `text-error`/`border-error`، لا حكم على اللون المعروض.
+ *
+ * ── مصدر العيّنة: **مربوطة بالكود، لا محفوظة من سجلّ** (ط-٤) ─────────────────
+ * الجملة أعلاه كانت مثبَّتة كـ«مقيسة في سجلّ المالك (2026-09-21)» — أي **مرجع
+ * تاريخي**: لو تغيّر نصّ الخلف لبقي الاختبار أخضر وهو يقيس نصّاً لم يعد يُصدَر.
+ * فصارت العيّنة مربوطة بمصدرها بقياس (كتلة «العيّنة مطابقة لما يبنيه الرست»):
+ *
+ * | الحدّ | الموضع | ما يبنيه |
+ * |---|---|---|
+ * | جملة الإلغاء | `src-tauri/src/separator.rs:642-645` | `SepError::Inference("تم إلغاء المعالجة من قبل المستخدم.")` |
+ * | بادئة العرض | `src-tauri/src/separator.rs:44` | `Self::Inference(e) => write!(f, "خطأ استدلال النموذج: {e}")` |
+ *
+ * والمُركَّب منهما هو `CANCEL_MSG` **حرفياً** (تحقّق: `ada7b2c`). فالحارس يسقط
+ * **باسم الموضع** إن غُيّر أحد الحدّين، بدل أن يشيخ بصمت.
+ *
+ * **وحدّ معلَن**: كتلة الربط تقرأ **نصّ** الملف لا سلوكه — تحويلٌ ملتوٍ (اسم
+ * مستعار، أو بناء الجملة في دالّة وسيطة) لا تراه، وهو موكول إلى المراجعة.
+ * وتغييرٌ **معلوم** قادم: `agent/x4-cancel@1ca3b0d` («fix(sep): type the stop in
+ * demix») يُبدّل `SepError::Inference` بـ`SepError::Cancelled` ويجعل الجملة
+ * ثابتاً واحداً (`pipeline::CANCELLED_BY_USER`) ⇒ **يسقط هذا الحارس حين يُدمج**،
+ * وهو المقصود: من يدمجه يُعيد القياس ويحدّث `CANCEL_MSG` (والبادئة تزول معه).
  */
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import indexHtml from '../../index.html?raw';
 
@@ -42,7 +63,10 @@ import * as session from '../session';
 const A = 'C:\\Music\\Album\\uitest_long.wav';
 const B = 'C:\\Music\\Album\\uitest_next.wav';
 
-/** رسالة الخلف **بالحرف المقيس** في سجلّ المالك (2026-09-21). */
+/** رسالة الخلف **كما هي اليوم** — لا «كما قيست في سجلّ المالك 2026-09-21» فقط:
+ *  مُشتقّة من `src-tauri/src/separator.rs` (الجملة `:642-645` + بادئة `Display`
+ *  `:44`)، وكتلة «العيّنة مطابقة لما يبنيه الرست» أسفل هذا الملف تُثبت التطابق
+ *  عند **كل تشغيل** — فالعيّنة لا تشيخ بصمت. */
 const CANCEL_MSG = 'خطأ استدلال النموذج: تم إلغاء المعالجة من قبل المستخدم.';
 const REAL_MSG = 'ffmpeg exited with code 1';
 
@@ -205,5 +229,74 @@ describe('الاستعادة: الملغى لا يُستأنَف (قرار صر�
     expect(session.getBatchQueue(), 'الفاشل وحده').toEqual([B]);
     expect(localStorage.getItem('hl.batch')).toContain('"s":"fail"');
     expect(localStorage.getItem('hl.batch')).not.toContain('cancelled');
+  });
+});
+
+/* ── ٤) العيّنة مطابقة لما يبنيه الرست (ط-٤): لا تشيخ بصمت ────────────────────
+ *
+ * **المُفسَد**: غيّر جملة الإلغاء في `src-tauri/src/separator.rs:644` (أو بادئة
+ * `Display` في `:44`) بحرف واحد ⇒ تسقط الحالتان أدناه، الأولى باسم الموضع
+ * والثانية بأن `isCancellation` لم تعد تعرف النصّ المُشتقّ.
+ *
+ * **ولماذا كتلة اختبار لا ثابت**: الثابت المكتوب بيد يشيخ بصمت — وهذا هو العطل
+ * نفسه (النصّ تغيّر والتعليق بقي تاريخياً). فالاشتقاق من الملف هو ما يجعل
+ * «كما هي اليوم» **دعوى مقيسة** لا جملة في تعليق.
+ */
+describe('العيّنة «كما هي اليوم» مُشتقّة من كود الرست', () => {
+  /** النصف الإنتاجي من `separator.rs` — كتلة `mod tests` تتكلّم عن الإلغاء
+   *  بالضرورة (وفيها النصّ المُفسَد)، فلا تُقرأ معه. */
+  const SEPARATOR_RS = 'src-tauri/src/separator.rs';
+  const src = readFileSync(new URL('../../' + SEPARATOR_RS, import.meta.url), 'utf8');
+  const cut = src.indexOf('\nmod tests {');
+  const production = cut < 0 ? src : src.slice(0, cut);
+
+  /** **النصّ الذي يبنيه الرست اليوم** — مُشتقّاً من الملف لا مكتوباً بيد.
+   *
+   * الحدّان المربوطان (ولا ثالث):
+   *   ① **موضع الإلغاء في `demix`**: البناء الذي يقول «نداء التقدّم قال توقّف»
+   *      — `if !progress(…) { return Err(SepError::<البديل>("<الجملة>".into())) }`.
+   *      والربط **بالبناء لا بالجملة**: لولا `!progress` لطابقنا أول
+   *      `SepError::Inference` في الملف (وهو «تعذر إنشاء جلسة الاستدلال على
+   *      CPU» — قِيس بالمُفسَد الأول: الاشتقاق أعطى الجملة الخطأ).
+   *   ② **ذراع العرض للبديل نفسه**: `Self::<البديل>(e) => write!(f, "<بادئة>{e}")`
+   *      — فلو تغيّر البديل تغيّرت البادئة معه تلقائياً.
+   *
+   * وتُرجع `null` إن لم يعد البناء قائماً (مثل `SepError::Cancelled` بلا نصّ في
+   * `agent/x4-cancel@1ca3b0d`) — فيسقط الاختبار **برسالة تُسمّي ما يُعاد قياسه**
+   * بدل نجاح فارغ. */
+  function deriveCancelMessage(): { variant: string; inner: string; prefix: string } | null {
+    const built = /if\s*!progress\([^)]*\)\s*\{\s*return Err\(SepError::([A-Za-z]+)\(\s*"([^"]+)"\.into\(\)/
+      .exec(production);
+    if (!built) return null;
+    const [, variant, inner] = built;
+    const arm = new RegExp(`Self::${variant}\\(e\\)\\s*=>\\s*write!\\(f,\\s*"([^"]*)\\{e\\}"`)
+      .exec(production);
+    if (!arm) return null;
+    return { variant, inner, prefix: arm[1] };
+  }
+
+  it('النصّ المُشتقّ من separator.rs هو CANCEL_MSG نفسه (وإلا فقد شيخ)', () => {
+    const r = deriveCancelMessage();
+    expect(
+      r,
+      `لم يُشتقّ نصّ الإلغاء من ${SEPARATOR_RS} — تغيّر بناء الخطأ عند حدّ الإلغاء ` +
+        'في `demix` (أو ذراع `Display` لبديله). أعِد قراءة الملف وحدّث CANCEL_MSG ' +
+        'واشتقاق هذا الاختبار معه. (السبب المتوقَّع: agent/x4-cancel@1ca3b0d ' +
+        'يُبدّل `SepError::Inference("<الجملة>")` بـ`SepError::Cancelled` وبادئةٍ ' +
+        'تزول معه.)',
+    ).not.toBeNull();
+    expect(
+      `${r!.prefix}${r!.inner}`,
+      `النصّ الذي يبنيه الرست اليوم (${SEPARATOR_RS} · SepError::${r!.variant})`,
+    ).toBe(CANCEL_MSG);
+  });
+
+  it('و`isCancellation` تعرف النصّ المُشتقّ — عقد الواجهة مع الخلف', () => {
+    const r = deriveCancelMessage();
+    expect(r, `الاشتقاق من ${SEPARATOR_RS} (انظر الحالة السابقة)`).not.toBeNull();
+    // نصّ الخلف (ببادئته) ونصّه المجرّد: كلاهما يجب أن يُعرف إلغاءً — فمسار
+    // `pipeline` يُصدر الجملة وحدها بلا بادئة (`pipeline.rs:828`).
+    expect(isCancellation(`${r!.prefix}${r!.inner}`), 'النصّ ببادئته').toBe(true);
+    expect(isCancellation(r!.inner), 'نصّ pipeline بلا بادئة').toBe(true);
   });
 });
