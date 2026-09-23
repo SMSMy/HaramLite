@@ -4,7 +4,7 @@
   "title": "مشغّل يوتيوب (صفحة مُحاكاة)",
   "evaluator": "scripts/check-browser-rows.mjs",
   "evaluator_sha256": "858221c287d646745417097c94d0e7a13010a51aae2079733cb990918f52c86b",
-  "engine": "cdp (Chrome/153.0.8010.50)",
+  "engine": "cdp (Chrome/153.0.8010.53)",
   "measured": true,
   "verdict": "pass",
   "outputs": [
@@ -150,7 +150,7 @@
   "surface": [
     {
       "path": "browser-extension/content.js",
-      "sha256": "e8265cfe8018ae58b714aa52e1d9af2d320a0f2b84ccc0f44ca1cad3c8e3a494"
+      "sha256": "12ac1a5b37d801c61e41147e96a721e4c2eaafe068d503c1718204d9f5ee38cc"
     },
     {
       "path": "scripts/check-browser-rows.mjs",
