@@ -12,6 +12,9 @@
  *   ① **تحذيرات clippy**: تُعدّ **المواضع الفريدة** (`--message-format=json`: رمز التشخيص + ملف + سطر)
  *      — لا أسطر المخرَج، لأن cargo تطبع سطرَي ملخّص يبدآن بـ`warning:` أيضاً (خطأ قِسته على نفسي).
  *   ② **اختبارات Rust**: تُجمَع نتائج كل الأهداف، ويُشترط **صفر فاشل** و**ألّا يقلّ الناجح عن الأساس**.
+ *   ③ **والاختبارات المُهمَلة** (`tests_ignored`): كان الرقم يُكتَب ويُطبَع **ولا يُقارَن** ⇒ حارسٌ يُنزَع
+ *      بـ`#[ignore]` واختبارٌ تافه يُضاف مكانه يعطي العدد نفسه و«٠ فاشل» فيمرّ **أخضر وحارسُه لا يعمل**
+ *      (الثقب قِيس في بيئة مصنوعة، وكشفه جاسوس مستقلّ). فيُسقط الآن **زيادةُ** المُهمَل عن الأساس.
  *
  * `--update` يكتب خطّ الأساس من التشغيل الحالي (تعديل واعٍ يُراجَع في الالتزام، لا صمت).
  * و`--baseline=<path>` للاختبار (فيُقاس الحارس نفسه على خطّ أساس مُصطنع).
@@ -147,7 +150,7 @@ let base;
 try { base = JSON.parse(fs.readFileSync(baselinePath, 'utf8')); } catch (e) {
   console.error('✗ صفر مدخل: خطّ الأساس غير مقروء: ' + e.message); process.exit(2);
 }
-for (const k of ['clippy_unique_warnings', 'tests_passed']) {
+for (const k of ['clippy_unique_warnings', 'tests_passed', 'tests_ignored']) {
   if (typeof base[k] !== 'number') { console.error('✗ صفر مدخل: حقل «' + k + '» مفقود من خطّ الأساس'); process.exit(2); }
 }
 
@@ -158,6 +161,13 @@ if (clippy.unique > base.clippy_unique_warnings) {
 if (tests.failed > 0) reasons.push(`اختبارات فاشلة: ${tests.failed} (يجب صفر)`);
 if (tests.passed < base.tests_passed) {
   reasons.push(`اختبارات ناجحة: ${tests.passed} < الأساس ${base.tests_passed} — نقصٌ لا يُقبل بلا تفسير (اختبارات حُذفت أو أُهملت؟)`);
+}
+/* **والاختبارات المُهمَلة تُقارَن أيضاً** (ثقب قائم قبل هذا العمل، كشفه جاسوس مستقلّ):
+ * البوّابة كانت تكتب `tests_ignored` و**تطبعه** ولا **تقارنه** ⇒ حارسٌ يُنزَع بـ`#[ignore]`
+ * واختبارٌ تافه يُضاف مكانه يعطي العدد نفسه و«٠ فاشل» ⇒ **أخضر مع حارسٍ لا يعمل**.
+ * والمقارنة هنا **بالزيادة فقط**: نقصُ المُهمَل (تشغيلُ اختبار كان مُهمَلاً) تحسّنٌ لا خرق. */
+if (tests.ignored > base.tests_ignored) {
+  reasons.push(`اختبارات مُهمَلة: ${tests.ignored} > الأساس ${base.tests_ignored} — حارسٌ نُزع بـ#[ignore] بلا مراجعة (العدد الكلي يبقى سليماً فيمرّ صامتاً)`);
 }
 
 if (reasons.length) {
@@ -171,12 +181,13 @@ if (reasons.length) {
 }
 if (!quiet) {
   console.log(`✓ خطّ أساس بوّابات Rust سليم: clippy ${clippy.unique}/${base.clippy_unique_warnings} موضعاً فريداً · ` +
-    `اختبارات ${tests.passed} ناجح (الأساس ${base.tests_passed}) · ${tests.failed} فاشل · ${tests.ignored} مُهمَل`);
+    `اختبارات ${tests.passed} ناجح (الأساس ${base.tests_passed}) · ${tests.failed} فاشل · ` +
+    `${tests.ignored} مُهمَل (الأساس ${base.tests_ignored})`);
   if (base.toolchain?.clippy && base.toolchain.clippy !== toolchain.clippy) {
     console.log(`  ⚠ الأداة مختلفة عن التي قِيس عليها الأساس:\n     الأساس: ${base.toolchain.clippy}\n     الآن  : ${toolchain.clippy}` +
       '\n     ⇒ رقم أعلى قد يكون **لينتاً جديداً في الأداة** لا عطلاً في الشيفرة: راجع الفرق ثم حدِّث بـ--update.');
   }
-  if (clippy.unique < base.clippy_unique_warnings || tests.passed > base.tests_passed) {
+  if (clippy.unique < base.clippy_unique_warnings || tests.passed > base.tests_passed || tests.ignored < base.tests_ignored) {
     console.log('  (تحسّن عن الأساس — حدِّثه بـ--update ليصير الوضع الجديد هو المرجع)');
   }
 }

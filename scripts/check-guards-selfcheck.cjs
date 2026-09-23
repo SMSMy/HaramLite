@@ -940,6 +940,11 @@ CASES.push({
     { label: 'نقص اختبارات عن الأساس (حُذفت) ⇒ يسقط ولا يمرّ صامتاً',
       apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 340 }); },
       mustMatch: /اختبارات ناجحة: 340 < الأساس 349/ },
+    /* الثقب المقيس: حارسٌ يُنزَع بـ`#[ignore]` واختبارٌ تافه يُضاف مكانه ⇒ العدد الكلي
+       و«٠ فاشل» كما هما، والزيادة في `tests_ignored` وحدها — وكانت **غير مقارَنة**. */
+    { label: 'حارس صار #[ignore] (واختبار تافه مكانه) ⇒ يسقط بالزيادة في المُهمَل',
+      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 349, ignored: 5 }); },
+      mustMatch: /اختبارات مُهمَلة: 5 > الأساس 4/ },
     { label: 'صفر تشخيص (لا JSON) ⇒ صفر مدخل لا نجاح فارغ',
       apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 349, silent: true }); },
       mustMatch: /صفر مدخل/ },
