@@ -1523,6 +1523,7 @@ fn download_cloud_file(
     dest: &Path,
     cap: u64,
     cancel: &std::sync::Arc<AtomicBool>,
+    progress: &dyn Fn(u64),
 ) -> Result<u64, String> {
     let url = format!(
         "{}/file/bot{}/{}",
@@ -1561,6 +1562,9 @@ fn download_cloud_file(
         };
         out.write_all(&buf[..n]).map_err(|e| e.to_string())?;
         written += n as u64;
+        // **العدّاد من البايتات المستلمة** لا من تقدير — والمستدعي يعرف الحجم
+        // الكلّي ويحسب النسبة ([`report_receive_progress`]).
+        progress(written);
     }
     if written > cap {
         drop(out);
@@ -5445,6 +5449,38 @@ fn process_status_text(pct: f64) -> String {
     process_stage_status_text("separate", pct)
 }
 
+/// نصّ حالة **الاستلام** (ملف أرسله المستخدم) — من الشريط نفسه أيضاً.
+fn receive_status_text(pct: f64) -> String {
+    format!("📥 جارٍ استلام الملف… {}", progress_bar_text(pct))
+}
+
+/// **النصّ الوحيد المسموح بلا عدّاد في مرحلة غير منتهية** — لحظةَ مخاطبة
+/// `getFile` **قبل** أن يُعرَف الحجم، فلا رقم موجود ليُعرض.
+///
+/// و`file_size` قد يغيب من ردّ `getFile` (اختيّ في الـAPI) فتبقى الحالة هذه
+/// بلا عدّاد **مُعلَنةً**، ولا يُختلق لها رقم من السقف (٢٠ م.ب): نسبةٌ من سقفٍ لا
+/// من حجم تعني أن ملفاً صغيراً يبدأ عند ٥٪ ثم يقفز — رقمٌ كاذب.
+const RECEIVING_TEXT: &str = "📥 جارٍ استلام الملف…";
+
+/// **تقرير استلام الملف**: النسبة من **البايتات المستلمة ÷ الحجم المعلوم**.
+///
+/// وحجمٌ مجهول (`total == 0`) ⇒ **لا كتابة**: يُترك [`RECEIVING_TEXT`] كما هو
+/// بدل نسبةٍ مُختلقة.
+fn report_receive_progress(
+    cfg: &TgConfig,
+    status: &std::cell::RefCell<StatusMsg>,
+    total: u64,
+    written: u64,
+) {
+    if total == 0 {
+        return;
+    }
+    let pct = written as f64 / total as f64 * 100.0;
+    status
+        .borrow_mut()
+        .set(cfg, receive_status_text(pct), false);
+}
+
 /// **تقرير التقدّم الكلّي** — موضع واحد، ومنه يمرّ **مسار الرابط ومسار الملف
 /// معاً** (المغلقتان في `run_job` تُبنيان من هنا، فلا مسار بلا تقرير).
 ///
@@ -5859,8 +5895,8 @@ fn run_job(
             }
             status
                 .borrow_mut()
-                .set(cfg, "📥 جارٍ استلام الملف…".into(), true);
-            let (remote, _sz) = match get_file(cfg, file_id) {
+                .set(cfg, RECEIVING_TEXT.to_string(), true);
+            let (remote, size) = match get_file(cfg, file_id) {
                 Ok(v) => v,
                 Err(e) => {
                     status
@@ -5869,6 +5905,10 @@ fn run_job(
                     return;
                 }
             };
+            // الحجم صار معلوماً ⇒ **يظهر العدّاد فوراً**، ولا يُنتظر أوّل كتلة.
+            if size > 0 {
+                status.borrow_mut().set(cfg, receive_status_text(0.0), true);
+            }
             let safe = sanitize_name(name);
             let dest = scratch.join(format!("{}_{}", nanos(), safe));
             if cfg.is_local() {
@@ -5894,7 +5934,14 @@ fn run_job(
                     return;
                 }
             } else {
-                match download_cloud_file(cfg, &remote, &dest, CLOUD_DOWNLOAD_MAX_BYTES, &cancel) {
+                match download_cloud_file(
+                    cfg,
+                    &remote,
+                    &dest,
+                    CLOUD_DOWNLOAD_MAX_BYTES,
+                    &cancel,
+                    &|written| report_receive_progress(cfg, &status, size, written),
+                ) {
                     Ok(_) => {
                         scratch_files.track(&dest);
                         dest
@@ -12054,22 +12101,27 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════════════
 
     /// **حارس المسار**: لا يقيس أنّ بانيَ نصّ المرحلة **موجود** (وهذا صنف «حارس
-    /// على ورق»)، بل أنّ **نداءَي المسار** — وهما بعينهما ما يُمرَّر إلى المحرّك
-    /// من `run_job`، ولمسار الرابط ومسار الملف معاً — **يكتبان شريطاً على السلك**.
+    /// على ورق»)، بل أنّ **نداءات المسار** — وهي بعينها ما يُمرَّر إلى المحرّك من
+    /// `run_job`، ولمسار الرابط ومسار الملف معاً — **تكتب شريطاً على السلك**،
+    /// **لكل مرحلة**: التنزيل · التجهيز · الفصل · التنقية والتحسين · الترميز ·
+    /// ومرحلة مجهولة.
     ///
-    /// **والعطل المقيس**: `pipeline.rs:798-801` ينادي `stage` **قبل** `progress`
-    /// في اللحظة نفسها، و`StatusMsg::push` يمنح نافذة [`EDIT_MIN_GAP`] للكاتب
-    /// **الأول** ويسقط الثاني. فكان نصّ المرحلة (بلا رقم) هو ما يصل دائماً، ونصّ
-    /// العدّاد يُسقَط ⇒ «فصل الصوت بدون عداد». ولذلك **الترتيب هنا يحاكي
-    /// الإنتاج** (`stage` ثم `progress`) ولو قُلب لمَرَّ الفحص كذباً.
+    /// **والعطل المقيس** (بلاغ المالك على البناء المؤقّت): `pipeline.rs:798-801`
+    /// ينادي `stage` **قبل** `progress` في اللحظة نفسها، و`StatusMsg::push` يمنح
+    /// نافذة [`EDIT_MIN_GAP`] للكاتب **الأول** ويسقط الثاني. وكانت كتلة `stage`
+    /// تكتب **سبعة نصوص موازية بلا رقم** (`"separate" => "فصل الموسيقى عن
+    /// الصوت…"` · `"effects" => "تنقية وتحسين…"`) — وهي بعينها ما رآه المالك —
+    /// فكان نصّ العدّاد يُسقَط دائماً. ولذلك **الترتيب هنا يحاكي الإنتاج**
+    /// (`stage` ثم `progress`) ولو قُلب لمَرَّ الفحص كذباً.
     ///
     /// **والقياس على السلك**: يُقرأ نصّ `editMessageText` الذي استقبله الخادم
-    /// الوهمي، فلا يُكتفى بأن الدالّة «تُنتج» شريطاً.
+    /// الوهمي، فلا يُكتفى بأن الدالّة «تُنتج» شريطاً. **ولكل مرحلة ضابطان**:
+    /// ① وسمُها ظهر فعلاً في نصّ وصل، ② وكل نصّ وصل يحمل شريطاً بعرضه ونسبةً.
     ///
-    /// (المُفسَد ①: إعادة نصّ المرحلة الموازي بلا رقم ⇒ يسقط. ②: فصل مغلقة
-    /// `run_job` عن هذين التقريرين ⇒ يسقط فحص الوصلة أدناه.)
+    /// (المُفسَد ①: إعادة نصّ مرحلة موازٍ بلا رقم ⇒ يسقط. ②: فصل مغلقة `run_job`
+    /// عن التقريرين ⇒ يسقط فحص الوصلة أدناه.)
     #[test]
-    fn the_separation_stage_reaches_the_wire_with_the_counter() {
+    fn every_stage_reaches_the_wire_with_the_counter() {
         let _g = state_lock();
         reset_counters();
         let bot = FakeBot::start();
@@ -12083,24 +12135,41 @@ mod tests {
         // ما يسبق المحرّك: «▶ بدأت المعالجة — الوضع: …» (كما في `run_job`).
         status.borrow_mut().set(&cfg, running_text("أغنية"), true);
 
-        // نداءات المحرّك إبّان الفصل، **بترتيب الإنتاج حرفاً**: stage ثم progress.
-        for p in [0.05f32, 0.2, 0.45, 0.7, 0.95] {
+        // ① **التنزيل**: الباني نفسه، ويُكتب نداءً نداءً كما يفعل `dl`.
+        for p in [0.0f32, 0.3, 1.0] {
             status.borrow_mut().allow_now();
-            report_process_stage(&cfg, &status, &overall, "separate");
+            status
+                .borrow_mut()
+                .set(&cfg, download_status_text(f64::from(p) * 100.0), false);
+        }
+
+        // ② **المعالجة**: كل مرحلة معروضة، بترتيب الإنتاج حرفاً: stage ثم progress.
+        let stages = ["normalize", "separate", "effects", "encode", "مجهولة"];
+        for name in stages {
+            for p in [0.05f32, 0.45, 0.95] {
+                status.borrow_mut().allow_now();
+                report_process_stage(&cfg, &status, &overall, name);
+                status.borrow_mut().allow_now();
+                assert!(
+                    report_process_progress(&cfg, &status, 1, &overall, &stop, p),
+                    "التقدّم طُلب إلغاؤه بلا سبب"
+                );
+            }
+        }
+
+        // ③ **الاستلام** (ملف أرسله المستخدم): العدّاد من بايتاتٍ ÷ حجم معلوم.
+        for written in [0u64, 128 * 1024, 512 * 1024] {
             status.borrow_mut().allow_now();
-            assert!(
-                report_process_progress(&cfg, &status, 1, &overall, &stop, p),
-                "التقدّم طُلب إلغاؤه بلا سبب"
-            );
+            report_receive_progress(&cfg, &status, 1024 * 1024, written);
         }
 
         let texts = edit_texts_on(&bot, msg);
         assert!(
-            texts.len() >= 11,
-            "لم تُكتب تحديثات كافية لقياس المرحلة ({} نصّاً): {texts:?}",
+            texts.len() >= 20,
+            "لم تُكتب تحديثات كافية لقياس المراحل ({} نصّاً): {texts:?}",
             texts.len()
         );
-        // **كل** كتابة بعد نصّ البداية — أيًّا كان الكاتب الذي سبق النافذة —
+        // ②′ وكل كتابة بعد نصّ البداية — أيًّا كان الكاتب الذي سبق النافذة —
         // تحمل الشريط بعرضه المعلَن ونسبةً منتهية بعلامتها.
         for t in texts.iter().skip(1) {
             let cells = t
@@ -12112,6 +12181,23 @@ mod tests {
                 "نصّ مرحلة وصل بلا شريط بعرضه — وهو العطل الأصلي: {t:?}"
             );
             assert!(t.ends_with('%'), "نصّ مرحلة وصل بلا نسبة: {t:?}");
+        }
+        // ①′ **وضابط لكل مرحلة على حِدة**: وسمها ظهر في نصّ بلغ السلك. فحارسٌ
+        // يمرّ لأن مرحلةً واحدة تحمل الشريط لا يقول شيئاً عن البقية.
+        assert!(
+            texts.iter().any(|t| t.contains("جارٍ التنزيل")),
+            "نصّ التنزيل لم يظهر في السلك: {texts:?}"
+        );
+        assert!(
+            texts.iter().any(|t| t.contains("استلام الملف")),
+            "نصّ الاستلام لم يظهر في السلك: {texts:?}"
+        );
+        for name in stages {
+            let label = stage_label(name);
+            assert!(
+                texts.iter().any(|t| t.contains(label)),
+                "المرحلة «{name}» (وسمها «{label}») لم تظهر في أيّ نصّ وصل: {texts:?}"
+            );
         }
         // وضابط: النصّ ليس نصّ البداية المُعاد (فالقياس على تحديثٍ حقيقيّ).
         assert!(
@@ -12131,6 +12217,18 @@ mod tests {
         assert!(
             prod.contains("|name: &str, _p: f32| report_process_stage("),
             "نداء المرحلة في `run_job` ليس من تقرير المسار — نصٌّ موازٍ عاد"
+        );
+        assert!(
+            prod.contains("download_status_text(f64::from(p) * 100.0)"),
+            "نداء التنزيل في `run_job` ليس من باني الشريط — نصٌّ موازٍ عاد"
+        );
+        assert!(
+            prod.contains("&|written| report_receive_progress(cfg, &status, size, written)"),
+            "نداء الاستلام ليس من تقرير المسار — نصٌّ موازٍ عاد"
+        );
+        assert!(
+            prod.contains("RECEIVING_TEXT.to_string()"),
+            "نصّ الاستلام مكتوب حرفاً في موضعه بدل الثابت المعلَن"
         );
     }
 }
