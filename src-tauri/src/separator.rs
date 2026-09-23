@@ -654,9 +654,11 @@ fn demix(
 
         done += 1;
         if !progress(done as f32 / total_steps as f32) {
-            return Err(SepError::Inference(
-                "تم إلغاء المعالجة من قبل المستخدم.".into(),
-            ));
+            // **نداء التقدّم قال «توقّف» ⇒ إلغاء المستخدم، لا عطل استدلال.**
+            // وكان هنا `SepError::Inference("تم إلغاء المعالجة…")`: نصٌّ يصف
+            // الإلغاء فيُقرأ عطباً (العطل المقيس · سجلّ المالك 2026-09-23)،
+            // و`pipeline` لا سبيل له لتمييزه إلا بمطابقة النصّ.
+            return Err(SepError::Cancelled);
         }
         i += step;
     }
@@ -1673,5 +1675,42 @@ mod tests {
             Some("  CPU  ".into())
         );
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// **حارس عدم-الفراغ: الإلغاء يُبنى في مسار الإنتاج** — عطل وقع في هذه
+    /// الجولة نفسها.
+    ///
+    /// أُضيف `SepError::Cancelled` وصُنِّف في `pipeline::sep_err` وحُرِس باختبار
+    /// يبنيه **بيده** — **ولم يُحوَّل `demix` إليه**. فكان ذلك الحارس يقيس نوعاً
+    /// لا ينشئه المنتج أبداً: حارسٌ على ورق. والذي كشفه **`clippy`** لا اختبار:
+    /// `variant 'Cancelled' is never constructed` في هدف المكتبة (وبوّابة
+    /// `pnpm rust:gates` تعدّ مواضع التحذيرات الفريدة فأسقطت الزيادة ١٤⇒١٧).
+    ///
+    /// **حدّه (معلَن)**: حارس **نصّي** لا برهان — يقرأ النصف الإنتاجي من هذا
+    /// الملف (`include_str!`) ويحكم على نصّه؛ وتحويلٌ ملتوٍ (اسم مستعار، أو بناءٌ
+    /// في دالة وسيطة) لا يراه، وهو موكول إلى المراجعة. ونظيره **السلوكي الحيّ**
+    /// يقتضي تشغيل نداء استدلال حقيقي مع إلغاء فوري، والنموذج (63.7MB) غير
+    /// متتبَّع ⇒ موضعه `pnpm e2e:release` لا هنا.
+    ///
+    /// **مُفسَده**: إعادة `demix` إلى `SepError::Inference("تم إلغاء المعالجة…")`
+    /// ⇒ يسقط الادّعاءان معاً: لا `Cancelled` يُبنى في الإنتاج، وتعود جملة
+    /// الإلغاء مكتوبةً في هذا الملف.
+    #[test]
+    fn the_cancel_stop_is_typed_in_the_production_path() {
+        let src = include_str!("separator.rs");
+        // النصف الإنتاجي وحده: كتلة الاختبارات تتكلّم عن الإلغاء بالضرورة.
+        let cut = src.rfind("\nmod tests {").unwrap_or(src.len());
+        let production = &src[..cut];
+
+        assert!(
+            production.contains("return Err(SepError::Cancelled);"),
+            "`demix` لا يُرجع البديل الموسوم بالإلغاء — فحارس `pipeline::sep_err` \
+             يقيس نوعاً لا ينشئه المنتج أبداً"
+        );
+        assert!(
+            !production.contains(crate::pipeline::CANCELLED_BY_USER),
+            "جملة الإلغاء ما زالت مكتوبةً في مسار الإنتاج: بدل أن يحملها ثابت واحد \
+             (`pipeline::CANCELLED_BY_USER`) صارت نسخةً تُطابق نصّاً"
+        );
     }
 }

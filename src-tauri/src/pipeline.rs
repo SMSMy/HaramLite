@@ -75,48 +75,28 @@ pub enum OutKind {
 /// في نصّ الخطأ ليميّز الملغى من الفاشل، وهذه الجملة تحمله.
 pub const CANCELLED_BY_USER: &str = "تم إلغاء المعالجة من قبل المستخدم.";
 
-/// خطأ خطّ الأنابيب — **ومعه تصنيفه**.
+/// خطأ خطّ الأنابيب — **نصٌّ مغلَّف، والتصنيف في مصدره لا فيه**.
 ///
-/// **والحقل `cancelled` هو المطلوب البنيوي في هذه الجولة**: كان التمييز بين
-/// «إلغاء المستخدم» و«الفشل» **مفقوداً في النوع أصلاً** — `PipelineError` نصٌّ
-/// مغلَّف، و`SepError` بلا بديل إلغاء، و`media::MediaError::Cancelled` وحده كان
-/// يحمل الإلغاء **فيُطمس** عند حدّ خطّ الأنابيب. فكان كل إلغاء يمرّ بـ[`err`]
-/// ويُسجَّل `ERROR` **كتلةً واحدة** مع الفشل الحقيقي — وهو العطل المقيس في سجلّ
-/// المالك (2026-09-23 · إلغاء من الواجهة):
+/// **ولماذا لا يحمل راية «إلغاء»**: العطل المقيس (2026-09-23 · إلغاء من الواجهة)
+/// كان أن التمييز بين الإلغاء والفشل **مفقود في النوع عند المصدر** — `SepError`
+/// بلا بديل إلغاء و`media::MediaError::Cancelled` **يُطمس** عند حدّ خطّ الأنابيب
+/// — فكان كل إلغاء يمرّ بـ[`err`] ويُسجَّل `ERROR` كتلةً واحدة مع الفشل:
 /// `INFO slots: … أُلغيت: true` ثم `ERROR pipe: خطأ استدلال النموذج: تم إلغاء
 /// المعالجة من قبل المستخدم.`
+///
+/// **فالتصنيف صار في نوع الخطأ الوارد** ([`sep_err`] · [`media_err`] ·
+/// [`dsp_err`])، وهو الموضع الذي كان ناقصاً. ورايةٌ على هذا النوع **لم تُضَف**:
+/// لا قارئ لها في الإنتاج (المستدعي `slots.rs` يحوّله إلى نصّ)، وإضافتها كانت
+/// ستُنتج `dead_code` في هدف المكتبة — **وقِيس ذلك**: `field cancelled is never
+/// read` + `method is_cancelled is never used` رفعتا تحذيرات clippy الفريدة من
+/// ١٤ إلى ١٧ (وهذه البوّابة تعدّها). فالمطلوب البنيوي هنا هو **النوع عند
+/// المصدر**، لا حقلٌ بلا قارئ.
 #[derive(Debug)]
-pub struct PipelineError {
-    message: String,
-    cancelled: bool,
-}
-
-impl PipelineError {
-    /// فشل حقيقي (لا إلغاء).
-    fn failure(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-            cancelled: false,
-        }
-    }
-
-    /// إلغاء المستخدم.
-    fn cancelled(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-            cancelled: true,
-        }
-    }
-
-    /// **هل هو إلغاءُ المستخدم؟** — يُقرأ من النوع لا من مطابقة نصّ.
-    pub fn is_cancelled(&self) -> bool {
-        self.cancelled
-    }
-}
+pub struct PipelineError(String);
 
 impl std::fmt::Display for PipelineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
+        write!(f, "{}", self.0)
     }
 }
 
@@ -125,7 +105,7 @@ impl std::error::Error for PipelineError {}
 /// **فشل حقيقي**: يُسجَّل `ERROR` بنصّه — ولا يُسكَت عن فشل أبداً.
 fn err<E: std::fmt::Display>(e: E) -> PipelineError {
     tracing::error!(target: "pipe", "{e}");
-    PipelineError::failure(e.to_string())
+    PipelineError(e.to_string())
 }
 
 /// **موضع الإلغاء** — سببٌ مسمّى يُطبع في السطر، فيُعرف **أين** وقع الإلغاء بلا
@@ -169,6 +149,10 @@ impl CancelSite {
 /// والسطر الوسط كان `ERROR` وحده.
 ///
 /// **ولا يُطمس السبب**: الموضع مسمّى، ومتن الخطأ يُطبع كما هو.
+///
+/// **والمتن هو [`CANCELLED_BY_USER`] في كل مسارات الإلغاء**: ثابتٌ واحد يحمل
+/// «إلغاء» فيراه `isCancellation` في الواجهة — وهذا محروسٌ باختبار يقيس الجملة
+/// الواحدة على المصنّفات الثلاثة (`every_cancel_message_carries_the_ui_contract`).
 fn cancel_err(site: CancelSite, message: impl Into<String>) -> PipelineError {
     let message = message.into();
     tracing::info!(
@@ -176,13 +160,13 @@ fn cancel_err(site: CancelSite, message: impl Into<String>) -> PipelineError {
         "أُلغيت المهمة بطلب المستخدم ({}) — لا فشل: {message}",
         site.as_str()
     );
-    PipelineError::cancelled(message)
+    PipelineError(message)
 }
 
 /// خطأ **المحرّك**: **النوع** يقول أإلغاءٌ هو أم فشل — لا النصّ.
 fn sep_err(e: separator::SepError) -> PipelineError {
     if matches!(e, separator::SepError::Cancelled) {
-        cancel_err(CancelSite::Engine, e.to_string())
+        cancel_err(CancelSite::Engine, CANCELLED_BY_USER)
     } else {
         err(e)
     }
@@ -190,9 +174,16 @@ fn sep_err(e: separator::SepError) -> PipelineError {
 
 /// خطأ **الوسائط**: `MediaError::Cancelled` هو نوع الإلغاء **القائم** في هذا
 /// المستودع (`media.rs`)، وكان يُطمس هنا بالتحويل إلى [`err`] العمياء.
+///
+/// **ومتنه هو جملة الإلغاء الواحدة لا نصّ الأداة** (`proc::CANCELLED` =
+/// «أُلغيت المعالجة»): **وهذا مقيس**: `String('أُلغيت المعالجة').includes('إلغاء')`
+/// = **false** (‏«أُلغيت» بألف مضمومة لا «إلغاء»)، فتمرير نصّ الأداة كما هو كان
+/// يجعل الواجهة (`src/queue.ts` · `isCancellation`) تقرأ إلغاء الأداة **فشلاً**
+/// وتعرض `✗ فشل` وتُسجّله `ERROR`. فالرسالة هنا هي الجملة الواحدة، وسببُ الإلغاء
+/// (‏«نداء أداة») يبقى مسمّى في سطر السجلّ.
 fn media_err(e: media::MediaError) -> PipelineError {
     if matches!(e, media::MediaError::Cancelled(_)) {
-        cancel_err(CancelSite::Tool, e.to_string())
+        cancel_err(CancelSite::Tool, CANCELLED_BY_USER)
     } else {
         err(e)
     }
@@ -526,8 +517,7 @@ fn claim_processing_in(
     owner_is_dead: impl Fn(&Path) -> bool,
     hooks: ClaimHooks,
 ) -> Result<ProcessingClaim, PipelineError> {
-    std::fs::create_dir_all(dir)
-        .map_err(|e| PipelineError::failure(format!("تعذر مجلد الأقفال: {e}")))?;
+    std::fs::create_dir_all(dir).map_err(|e| PipelineError(format!("تعذر مجلد الأقفال: {e}")))?;
     let lock = lock_name_in(dir, input);
     for attempt in 0..RECLAIM_ATTEMPTS {
         match create_lock(&lock) {
@@ -551,7 +541,7 @@ fn claim_processing_in(
                         .map(|age| age > std::time::Duration::from_secs(STALE_LOCK_SECS))
                         .unwrap_or(false);
                 if !stale {
-                    return Err(PipelineError::failure(LOCK_BUSY));
+                    return Err(PipelineError(LOCK_BUSY.into()));
                 }
                 (hooks.before_reclaim)(attempt);
                 if !reclaim_dead_lock(&lock) {
@@ -562,7 +552,7 @@ fn claim_processing_in(
             }
         }
     }
-    Err(PipelineError::failure(LOCK_BUSY))
+    Err(PipelineError(LOCK_BUSY.into()))
 }
 
 /// **الاسترجاع الذرّي — الحكم والفعل على كائن ملف واحد**.
@@ -1939,11 +1929,10 @@ mod tests {
     #[test]
     fn an_engine_cancel_writes_no_error_line_on_pipe() {
         let (e, lines) = capture_events(|| sep_err(separator::SepError::Cancelled));
-        assert!(e.is_cancelled(), "الخطأ موسوم إلغاءً **من نوعه**");
         assert_eq!(
             e.to_string(),
             CANCELLED_BY_USER,
-            "ونصّه جملة الإلغاء الواحدة (لا «خطأ استدلال النموذج»)"
+            "نصّ الإلغاء هو جملة الإلغاء الواحدة (لا «خطأ استدلال النموذج»)"
         );
         assert_eq!(
             pipe_errors(&lines),
@@ -1966,7 +1955,11 @@ mod tests {
         // **الضابط الموجب**: فشل المحرّك الحقيقي من **المسار نفسه** يُسجَّل
         // `ERROR` بنصّه — فالمستمع يرى الفشل حين يكون هناك فشل.
         let (f, fail_lines) = capture_events(|| sep_err(separator::SepError::ModelMissing));
-        assert!(!f.is_cancelled(), "الفشل الحقيقي ليس إلغاءً");
+        assert_ne!(
+            f.to_string(),
+            CANCELLED_BY_USER,
+            "الفشل الحقيقي لا يحمل نصّ الإلغاء"
+        );
         let errs = pipe_errors(&fail_lines);
         assert_eq!(
             errs.len(),
@@ -2016,7 +2009,7 @@ mod tests {
         token.set();
         let (cancelled, lines) = capture_events(|| run(&token));
         let e = expect_error(cancelled);
-        assert!(e.is_cancelled(), "موسوم إلغاءً");
+        assert_eq!(e.to_string(), CANCELLED_BY_USER, "ونصّه جملة الإلغاء الواحدة");
         assert_eq!(
             pipe_errors(&lines),
             Vec::<String>::new(),
@@ -2034,7 +2027,11 @@ mod tests {
         let fresh = CancelToken::new();
         let (failed, fail_lines) = capture_events(|| run(&fresh));
         let f = expect_error(failed);
-        assert!(!f.is_cancelled(), "الملف المفقود فشل لا إلغاء");
+        assert_ne!(
+            f.to_string(),
+            CANCELLED_BY_USER,
+            "الملف المفقود فشلٌ حقيقي لا إلغاء"
+        );
         assert!(
             !pipe_errors(&fail_lines).is_empty(),
             "الفشل الحقيقي يجب أن يُسجَّل ERROR: {fail_lines:?}"
@@ -2055,8 +2052,9 @@ mod tests {
         token.set();
 
         let (f, lines) = capture_events(|| dsp_err(&token, "خطأ ملفات: القرص ممتلئ".to_string()));
-        assert!(
-            !f.is_cancelled(),
+        assert_ne!(
+            f.to_string(),
+            CANCELLED_BY_USER,
             "فشلٌ حقيقي لا يُوسم إلغاءً ولو كان رمز الإلغاء مضبوطاً"
         );
         assert_eq!(pipe_errors(&lines).len(), 1, "ويُسجَّل ERROR بنصّه: {lines:?}");
@@ -2064,11 +2062,66 @@ mod tests {
         // والضابط: الرسالة هي جملة الإلغاء والرمز مضبوط ⇒ إلغاء بلا ERROR.
         let (cancelled, cancel_lines) =
             capture_events(|| dsp_err(&token, CANCELLED_BY_USER.to_string()));
-        assert!(cancelled.is_cancelled());
+        assert_eq!(cancelled.to_string(), CANCELLED_BY_USER);
         assert_eq!(
             pipe_errors(&cancel_lines),
             Vec::<String>::new(),
             "إلغاء DSP كتب سطر ERROR على pipe: {cancel_lines:?}"
+        );
+    }
+
+    /// **عقد الواجهة — كل رسالة إلغاء تُرجعها هذه الوحدة يحمل نصُّها «إلغاء»**.
+    ///
+    /// `src/queue.ts` (`isCancellation`) يقرأ وجود «إلغاء» في نصّ الخطأ ليميّز
+    /// الملغى من الفاشل (`result.textContent = cancelled ? t('sep_cancelled') : …`
+    /// و`level: cancelled ? 'info' : 'error'`) — فجملةُ إلغاء لا تحمل الكلمة
+    /// **تُعرض فشلاً وتُسجَّل `ERROR` في اللوحة** ولو كان الخلف مصنَّفاً صحيحاً.
+    ///
+    /// **وهذا مقيس لا مفترض**: `String('أُلغيت المعالجة').includes('إلغاء')`
+    /// = **false** (‏«أُلغيت» بألف مضمومة، والواجهة تسأل عن «إلغاء») — فمسار
+    /// إلغاء الأداة كان يُقرأ فشلاً في الواجهة، ولهذا [`media_err`] يُرجع الجملة
+    /// الواحدة لا نصّ الأداة.
+    ///
+    /// **مُفسَده**: تمرير نصّ `proc::CANCELLED` من [`media_err`] ⇒ يسقط الادّعاء
+    /// الثالث (`'أُلغيت المعالجة'` لا يحمل «إلغاء»).
+    #[test]
+    fn every_cancel_message_carries_the_ui_contract() {
+        let msgs = [
+            (
+                "المحرّك",
+                sep_err(separator::SepError::Cancelled).to_string(),
+            ),
+            (
+                "الأداة",
+                media_err(media::MediaError::Cancelled(crate::proc::CANCELLED.into())).to_string(),
+            ),
+            (
+                "DSP",
+                dsp_err(
+                    &{
+                        let t = CancelToken::new();
+                        t.set();
+                        t
+                    },
+                    CANCELLED_BY_USER.to_string(),
+                )
+                .to_string(),
+            ),
+        ];
+        for (site, m) in &msgs {
+            assert!(
+                m.contains("إلغاء"),
+                "رسالة إلغاء مسار «{site}» لا يحمل نصُّها «إلغاء» ⇒ الواجهة تقرؤه فشلاً: {m:?}"
+            );
+            assert_eq!(*m, CANCELLED_BY_USER, "وكلها الجملة الواحدة: {site}");
+        }
+
+        // والضابط السالب: النصّ الذي كان يمرّ من الأداة **لا** يحمل «إلغاء» —
+        // فالادّعاء أعلاه ليس تحصيلاً حاصلاً.
+        assert!(
+            !crate::proc::CANCELLED.contains("إلغاء"),
+            "لولا هذا لما كان في التوحيد فائدة: {:?}",
+            crate::proc::CANCELLED
         );
     }
 
