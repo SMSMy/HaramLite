@@ -63,20 +63,153 @@ pub enum OutKind {
     Audio { fmt: OutFormat },
 }
 
+/// **جملة الإلغاء الواحدة** في خطّ الأنابيب: هي ما يعرضه المستدعي (الواجهة ·
+/// الـCLI · البوت) وما يُسجَّل في اللوحة.
+///
+/// **ولماذا ثابت صريح**: كانت الجملة مكتوبة **بالنسخ** في أربعة مواضع — ثلاثة
+/// هنا وواحد في `effects.rs` — والمحرّك كان يكتبها **ببادئة كاذبة**
+/// («خطأ استدلال النموذج:») فيُقرأ إلغاءُ المستخدم عطبَ محرّك. وهذه البادئة
+/// أُزيلت في هذه الجولة، وهذا الثابت هو المرجع الواحد للجملة.
+///
+/// **وعقد الواجهة محفوظ**: `src/queue.ts` (`isCancellation`) يقرأ وجود «إلغاء»
+/// في نصّ الخطأ ليميّز الملغى من الفاشل، وهذه الجملة تحمله.
+pub const CANCELLED_BY_USER: &str = "تم إلغاء المعالجة من قبل المستخدم.";
+
+/// خطأ خطّ الأنابيب — **ومعه تصنيفه**.
+///
+/// **والحقل `cancelled` هو المطلوب البنيوي في هذه الجولة**: كان التمييز بين
+/// «إلغاء المستخدم» و«الفشل» **مفقوداً في النوع أصلاً** — `PipelineError` نصٌّ
+/// مغلَّف، و`SepError` بلا بديل إلغاء، و`media::MediaError::Cancelled` وحده كان
+/// يحمل الإلغاء **فيُطمس** عند حدّ خطّ الأنابيب. فكان كل إلغاء يمرّ بـ[`err`]
+/// ويُسجَّل `ERROR` **كتلةً واحدة** مع الفشل الحقيقي — وهو العطل المقيس في سجلّ
+/// المالك (2026-09-23 · إلغاء من الواجهة):
+/// `INFO slots: … أُلغيت: true` ثم `ERROR pipe: خطأ استدلال النموذج: تم إلغاء
+/// المعالجة من قبل المستخدم.`
 #[derive(Debug)]
-pub struct PipelineError(String);
+pub struct PipelineError {
+    message: String,
+    cancelled: bool,
+}
+
+impl PipelineError {
+    /// فشل حقيقي (لا إلغاء).
+    fn failure(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            cancelled: false,
+        }
+    }
+
+    /// إلغاء المستخدم.
+    fn cancelled(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            cancelled: true,
+        }
+    }
+
+    /// **هل هو إلغاءُ المستخدم؟** — يُقرأ من النوع لا من مطابقة نصّ.
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled
+    }
+}
 
 impl std::fmt::Display for PipelineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.message)
     }
 }
 
 impl std::error::Error for PipelineError {}
 
+/// **فشل حقيقي**: يُسجَّل `ERROR` بنصّه — ولا يُسكَت عن فشل أبداً.
 fn err<E: std::fmt::Display>(e: E) -> PipelineError {
     tracing::error!(target: "pipe", "{e}");
-    PipelineError(e.to_string())
+    PipelineError::failure(e.to_string())
+}
+
+/// **موضع الإلغاء** — سببٌ مسمّى يُطبع في السطر، فيُعرف **أين** وقع الإلغاء بلا
+/// أن يُقرأ من نصّ الخطأ ولا يُخمَّن.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CancelSite {
+    /// حدّ مرحلة بين مراحل الخطّ (`checkpoint`).
+    Checkpoint,
+    /// حدّ الانتهاء بعد الترميز (`finish_run`).
+    Finish,
+    /// نداء المحرّك (ONNX): لا نقطة إلغاء داخله، فالإلغاء يُهجر عند أول حدّ بعده.
+    Engine,
+    /// نداء أداة خارجية (ffmpeg وما شابه) — تُقتل شجرتها فوراً.
+    Tool,
+    /// سلسلة مؤثرات الأغنية (DSP).
+    Dsp,
+}
+
+impl CancelSite {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Checkpoint => "حدّ مرحلة",
+            Self::Finish => "حدّ الانتهاء",
+            Self::Engine => "نداء المحرّك",
+            Self::Tool => "نداء أداة",
+            Self::Dsp => "مؤثرات الأغنية",
+        }
+    }
+}
+
+/// **إلغاء المستخدم — ليس فشلاً، ولا يُسجَّل `ERROR`**.
+///
+/// وهو الإصلاح المقيس: كانت كل مسارات الإلغاء تنتهي إلى [`err`] فتُكتب
+/// `ERROR pipe` مع الفشل الحقيقي، فيرى المستخدم **عطباً** في لوحة السجلّ وهو
+/// فعلٌ طلبه هو. وهو نفس صنف العطل الذي أُصلح في طابور الواجهة (`docs/AUDIT.md`
+/// 2026-09-21) وفي مسار البوت (م٣) — وبقي في مسار المحرّك.
+///
+/// **والمستوى `INFO` مُعلَن لا اعتباطي**: السطران المحيطان بالعطل نفسه في سجلّ
+/// المالك هما `INFO slots: انتهت المهمة … أُلغيت: true` و`INFO frontend:
+/// separate cancelled by user` — فالإلغاء **ينتهي** عند `INFO` في الطرفين،
+/// والسطر الوسط كان `ERROR` وحده.
+///
+/// **ولا يُطمس السبب**: الموضع مسمّى، ومتن الخطأ يُطبع كما هو.
+fn cancel_err(site: CancelSite, message: impl Into<String>) -> PipelineError {
+    let message = message.into();
+    tracing::info!(
+        target: "pipe",
+        "أُلغيت المهمة بطلب المستخدم ({}) — لا فشل: {message}",
+        site.as_str()
+    );
+    PipelineError::cancelled(message)
+}
+
+/// خطأ **المحرّك**: **النوع** يقول أإلغاءٌ هو أم فشل — لا النصّ.
+fn sep_err(e: separator::SepError) -> PipelineError {
+    if matches!(e, separator::SepError::Cancelled) {
+        cancel_err(CancelSite::Engine, e.to_string())
+    } else {
+        err(e)
+    }
+}
+
+/// خطأ **الوسائط**: `MediaError::Cancelled` هو نوع الإلغاء **القائم** في هذا
+/// المستودع (`media.rs`)، وكان يُطمس هنا بالتحويل إلى [`err`] العمياء.
+fn media_err(e: media::MediaError) -> PipelineError {
+    if matches!(e, media::MediaError::Cancelled(_)) {
+        cancel_err(CancelSite::Tool, e.to_string())
+    } else {
+        err(e)
+    }
+}
+
+/// خطأ **سلسلة المؤثرات**: نوعه `String` (‏`effects.rs` خارج نطاق هذه الجولة)،
+/// فالإشارة البنيوية المتاحة هنا هي **رمز الإلغاء**.
+///
+/// **وشرطان لا شرط**: الرمز مضبوط **و**الرسالة هي جملة الإلغاء الواحدة بعينها.
+/// فلو كان الرمز مضبوطاً ورسالةٌ أخرى (فشلُ ملفاتٍ في السلسلة نفسها بعد إلغاءٍ
+/// سبق) فهي **فشل حقيقي يبقى `ERROR`** — فلا يُخفى عطل وراء إلغاء.
+fn dsp_err(cancel: &CancelToken, e: String) -> PipelineError {
+    if cancel.is_cancelled() && e == CANCELLED_BY_USER {
+        cancel_err(CancelSite::Dsp, e)
+    } else {
+        err(e)
+    }
 }
 
 /// Cross-path mutual exclusion (functional gap H-1): GUI single/batch,
@@ -393,7 +526,8 @@ fn claim_processing_in(
     owner_is_dead: impl Fn(&Path) -> bool,
     hooks: ClaimHooks,
 ) -> Result<ProcessingClaim, PipelineError> {
-    std::fs::create_dir_all(dir).map_err(|e| PipelineError(format!("تعذر مجلد الأقفال: {e}")))?;
+    std::fs::create_dir_all(dir)
+        .map_err(|e| PipelineError::failure(format!("تعذر مجلد الأقفال: {e}")))?;
     let lock = lock_name_in(dir, input);
     for attempt in 0..RECLAIM_ATTEMPTS {
         match create_lock(&lock) {
@@ -417,7 +551,7 @@ fn claim_processing_in(
                         .map(|age| age > std::time::Duration::from_secs(STALE_LOCK_SECS))
                         .unwrap_or(false);
                 if !stale {
-                    return Err(PipelineError(LOCK_BUSY.into()));
+                    return Err(PipelineError::failure(LOCK_BUSY));
                 }
                 (hooks.before_reclaim)(attempt);
                 if !reclaim_dead_lock(&lock) {
@@ -428,7 +562,7 @@ fn claim_processing_in(
             }
         }
     }
-    Err(PipelineError(LOCK_BUSY.into()))
+    Err(PipelineError::failure(LOCK_BUSY))
 }
 
 /// **الاسترجاع الذرّي — الحكم والفعل على كائن ملف واحد**.
@@ -629,6 +763,9 @@ pub struct PipelineOutput {
 /// overwritten those paths, so removing them destroys nothing that was still
 /// intact. Before the encode starts they may still hold a previous successful
 /// run's output, and cancelling must not destroy it.
+///
+/// **ومستواه الصادق (2026-09-23)**: هذا **إلغاءُ المستخدم** لا فشل، فيُسجَّل
+/// `INFO` بسببٍ مسمّى ([`cancel_err`]) — كان يُسجَّل `ERROR` فيبدو عطباً.
 fn finish_run(
     progress: &dyn Fn(f32) -> bool,
     outputs: [Option<&Path>; 3],
@@ -639,7 +776,7 @@ fn finish_run(
     for p in outputs.into_iter().flatten() {
         let _ = std::fs::remove_file(p);
     }
-    Err(err("تم إلغاء المعالجة من قبل المستخدم."))
+    Err(cancel_err(CancelSite::Finish, CANCELLED_BY_USER))
 }
 
 /// **الرقم الواحد الصادق لسقف نداء المحرّك** — يقرؤه تلغرام (رسالة `/kill`)
@@ -696,12 +833,15 @@ pub fn process_file(
     // تنظيف مجلد العمل: الإلغاء لا يترك سكراتش (وإلا صار الإلغاء عقوبة على
     // القرص أيضاً). قبل الترميز النهائي لا نحذف ناتجاً سابقاً ناجحاً (التعليل
     // في `finish_run`).
+    //
+    // **والإلغاء هنا إلغاءٌ لا فشل (2026-09-23)**: أيّهما قال «توقّف» — الرمز
+    // أو المستدعي — فهو قرار المستخدم ⇒ `INFO` بسببٍ مسمّى لا `ERROR`.
     let checkpoint = |p: f32| -> Result<(), PipelineError> {
         if progress(p) && !cancel.is_cancelled() {
             return Ok(());
         }
         let _ = std::fs::remove_dir_all(out_dir.join("_haramlite_work"));
-        Err(err("تم إلغاء المعالجة من قبل المستخدم."))
+        Err(cancel_err(CancelSite::Checkpoint, CANCELLED_BY_USER))
     };
     // P1 autopsy: time every stage transition. The wrapper shadows the
     // caller's callback — zero changes at the dozen call sites below, and
@@ -736,7 +876,7 @@ pub fn process_file(
     let normalized = media::normalize_for_engine_limited(input, &work_dir, preview_seconds)
         .map_err(|e| {
             let _ = std::fs::remove_dir_all(&work_dir);
-            err(e)
+            media_err(e)
         })?;
     stage("normalize", 1.0);
     tracing::info!(target: "pipe", "normalized: {}", normalized.display());
@@ -754,7 +894,7 @@ pub fn process_file(
     if matches!(mode, Mode::Clip) {
         let (dl, dr, dsr) = separator::read_wav_stereo(&normalized).map_err(|e| {
             let _ = std::fs::remove_dir_all(&work_dir);
-            err(e)
+            sep_err(e)
         })?;
         let analysis = separator::analyze_mix(&dl, &dr, dsr);
         tracing::info!(
@@ -784,7 +924,7 @@ pub fn process_file(
             let direct_path = out_dir.join(format!("{stem_name}_(Vocals)_haramlite.wav"));
             separator::write_wav_stereo_f32_pub(&direct_path, &ml, &mr, dsr).map_err(|e| {
                 let _ = std::fs::remove_dir_all(&work_dir);
-                err(e)
+                sep_err(e)
             })?;
             stage("separate", 1.0);
             checkpoint(0.90)?;
@@ -816,16 +956,20 @@ pub fn process_file(
         )
         .map_err(|e| {
             let _ = std::fs::remove_dir_all(&work_dir);
-            err(e)
+            sep_err(e)
         })?;
         (stems.vocals, Some(stems.instrumental))
     };
     stage("separate", 1.0);
     // **أول حدّ بعد نداء الاستدلال** (م٢): نداء ONNX غير قابل للقطع داخل
     // العملية، فالإلغاء الذي وصل أثناءه يسقط العمل **هنا** بلا إنتاج ناتج.
+    //
+    // **وهذا هو الموضع المقيس في سجلّ المالك (2026-09-23)**: الإلغاء وصل أثناء
+    // الاستدلال، فسقط العمل هنا — وكان يُسجَّل `ERROR pipe` فيبدو عطباً. وهو
+    // **إلغاءٌ لا فشل**: الرمز مضبوط بقرار المستخدم.
     if cancel.is_cancelled() {
         let _ = std::fs::remove_dir_all(&work_dir);
-        return Err(err("تم إلغاء المعالجة من قبل المستخدم."));
+        return Err(cancel_err(CancelSite::Engine, CANCELLED_BY_USER));
     }
     let _ = std::fs::remove_dir_all(&work_dir);
 
@@ -849,7 +993,7 @@ pub fn process_file(
             &Default::default(),
             &dsp_progress,
         )
-        .map_err(err)?;
+        .map_err(|e| dsp_err(cancel, e))?;
         // replace raw vocals with the enhanced version
         std::fs::rename(&tmp_enhanced, &vocals_path).map_err(err)?;
         stage("effects", 1.0);
@@ -868,7 +1012,8 @@ pub fn process_file(
     // (`compute_kept_ranges` — نوافذ 50ms)، **ولا نداء محرّك ثانياً**.
     // (زمنها **لم يُقَس**: قياسه يقتضي تشغيل هذا المسار كاملاً بمحرّك ونموذج.)
     let page_kept: Vec<(f64, f64)> = if matches!(mode, Mode::Clip) {
-        let (clip_l, clip_r, clip_sr) = separator::read_wav_stereo(&vocals_path).map_err(err)?;
+        let (clip_l, clip_r, clip_sr) =
+            separator::read_wav_stereo(&vocals_path).map_err(sep_err)?;
         let map = silence::kept_ranges_sec(
             &clip_l,
             &clip_r,
@@ -959,7 +1104,7 @@ pub fn process_file(
                 max_height,
                 &vid_target,
             )
-            .map_err(err)?;
+            .map_err(media_err)?;
             let _ = std::fs::remove_file(&vocals_path);
             stage("encode", 1.0);
             tracing::info!(target: "pipe", "video output: {}", vid_target.display());
@@ -971,7 +1116,8 @@ pub fn process_file(
                 checkpoint(0.96)?;
                 stage("encode", 0.0);
                 let encode_one = |p: &mut PathBuf| -> Result<(), PipelineError> {
-                    let encoded = media::extract_audio(p, fmt.as_str(), out_dir).map_err(err)?;
+                    let encoded =
+                        media::extract_audio(p, fmt.as_str(), out_dir).map_err(media_err)?;
                     let _ = std::fs::remove_file(&*p);
                     let clean = p.with_extension(fmt.as_str());
                     if encoded != clean {
@@ -1673,6 +1819,257 @@ mod tests {
         let r = finish_run(&|_| false, [Some(gone.as_path()), None, None]);
         assert!(r.is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── **حارس 2026-09-23: إلغاءُ المستخدم لا يُخرج `ERROR` من `pipe`** ──────
+    //
+    // العطل المقيس (سجلّ المالك · إلغاء من الواجهة · المهمّة #4):
+    // ```
+    // 10:48:26.207 WARN slots: طُلب إلغاء المهمة #4 (gui) …
+    // 10:48:26.410 ERROR pipe: خطأ استدلال النموذج: تم إلغاء المعالجة من قبل المستخدم.
+    // 10:48:26.410 INFO slots: انتهت المهمة #4 (gui) … أُلغيت: true
+    // ```
+    // ⇒ الإلغاء صحيح في الطابور والحالة، لكن **مسار المحرّك يكتبه `ERROR`**
+    // فيبدو عطباً وهو فعلٌ طلبه المستخدم. والسبب البنيوي: التمييز بين الإلغاء
+    // والفشل كان **مفقوداً في النوع** (`SepError` بلا بديل إلغاء، و`PipelineError`
+    // نصٌّ مغلَّف) فكان كل شيء يمرّ بـ[`err`].
+    //
+    // **ولا يُكتفى بغياب `ERROR`**: كل ادّعاء سالب هنا مقرون بضابط موجب من
+    // **المسار نفسه** يُثبت أن المستمع يرى `ERROR` حين يكون هناك فشل حقيقي —
+    // وإلا كان «لا ERROR» صمتاً عن كل شيء لا تصنيفاً.
+
+    /// سطر سجلّ ملتقط: (المستوى · الهدف · النصّ) — نفس الحقول التي يحملها
+    /// `logging::LogLine` إلى لوحة السجلّ.
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct CapturedLine {
+        level: String,
+        target: String,
+        message: String,
+    }
+
+    /// طبقة تجمع الأحداث في متجه مشترك — **النمط القائم في هذا المستودع**
+    /// (`separator.rs` · `EpWatchLayer` + `watch_ep_errors`): مستمع **محلّي
+    /// بالخيط** (`tracing::dispatcher::set_default`) لا مستمع عامّ، فلا سباق مع
+    /// `logging::init` الذي ينصّبه اختبار آخر في هذه الحزمة.
+    struct CaptureLayer(std::sync::Arc<std::sync::Mutex<Vec<CapturedLine>>>);
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let mut text = MessageText::default();
+            event.record(&mut text);
+            if let Ok(mut lines) = self.0.lock() {
+                lines.push(CapturedLine {
+                    level: event.metadata().level().to_string(),
+                    target: event.metadata().target().to_string(),
+                    message: text.0,
+                });
+            }
+        }
+    }
+
+    /// استخراج متن الحدث — **بالشكل نفسه الذي يقرؤه `logging::MemoryLayer`**
+    /// (‏`record_str` وإلا `record_debug`)، فلا يكون القياس على قراءة مختلفة عن
+    /// قراءة اللوحة.
+    #[derive(Default)]
+    struct MessageText(String);
+
+    impl tracing::field::Visit for MessageText {
+        fn record_debug(&mut self, _field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            if !self.0.is_empty() {
+                self.0.push(' ');
+            }
+            self.0.push_str(&format!("{value:?}"));
+        }
+
+        fn record_str(&mut self, _field: &tracing::field::Field, value: &str) {
+            if !self.0.is_empty() {
+                self.0.push(' ');
+            }
+            self.0.push_str(value);
+        }
+    }
+
+    /// يشغّل `f` تحت مستمع محلّي، ويعيد (نتيجته · كل ما رُصد من الأحداث).
+    fn capture_events<T>(f: impl FnOnce() -> T) -> (T, Vec<CapturedLine>) {
+        use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
+        let sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::<CapturedLine>::new()));
+        let sub = tracing_subscriber::registry().with(CaptureLayer(sink.clone()));
+        let dispatch = tracing::dispatcher::Dispatch::new(sub);
+        let result = {
+            let _guard = tracing::dispatcher::set_default(&dispatch);
+            f()
+        };
+        let lines = sink.lock().map(|l| l.clone()).unwrap_or_default();
+        (result, lines)
+    }
+
+    /// أسطر `ERROR` المكتوبة على `pipe` — **وهي ما يراه المستخدم «عطباً»** في
+    /// لوحة السجلّ.
+    fn pipe_errors(lines: &[CapturedLine]) -> Vec<String> {
+        lines
+            .iter()
+            .filter(|l| l.target == "pipe" && l.level == "ERROR")
+            .map(|l| l.message.clone())
+            .collect()
+    }
+
+    /// خطأ `process_file` بلا اشتراط `Debug` على `PipelineOutput`: `expect_err`
+    /// يشترطه، وذلك النوع ليس `Debug` — **ولا نضيف اشتقاقاً إلى الإنتاج من أجل
+    /// اختبار**.
+    fn expect_error(r: Result<PipelineOutput, PipelineError>) -> PipelineError {
+        match r {
+            Ok(_) => panic!("المتوقّع خطأ لا نجاح"),
+            Err(e) => e,
+        }
+    }
+
+    /// **حارس (أ) — المسار المقيس بعينه: إلغاء المحرّك**.
+    ///
+    /// `demix` يقول نداء التقدّم «توقّف» ⇒ `SepError::Cancelled` ⇒ `sep_err`.
+    /// والمطلوب: **صفر `ERROR` على `pipe`**، وسطر إلغاء معلَن، ونصٌّ لا يدّعي
+    /// خطأ استدلال.
+    ///
+    /// **مُفسَده**: `sep_err` تُعيد `err(e)` لكل الأنواع (أي طمس النوع) ⇒ يسقط
+    /// الادّعاء الأول. وإعادة `SepError::Cancelled` إلى `Inference` تُسقطه أيضاً
+    /// لأن النصّ يعود ببادئة «خطأ استدلال النموذج».
+    #[test]
+    fn an_engine_cancel_writes_no_error_line_on_pipe() {
+        let (e, lines) = capture_events(|| sep_err(separator::SepError::Cancelled));
+        assert!(e.is_cancelled(), "الخطأ موسوم إلغاءً **من نوعه**");
+        assert_eq!(
+            e.to_string(),
+            CANCELLED_BY_USER,
+            "ونصّه جملة الإلغاء الواحدة (لا «خطأ استدلال النموذج»)"
+        );
+        assert_eq!(
+            pipe_errors(&lines),
+            Vec::<String>::new(),
+            "إلغاء المستخدم كتب سطر ERROR على pipe: {lines:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.target == "pipe" && l.level == "INFO" && l.message.contains("لا فشل")),
+            "ولا بدّ أن يُكتب سطر الإلغاء بمستواه الصادق — وإلا كان الغياب صمتاً لا تصنيفاً: {lines:?}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.message.contains("خطأ استدلال النموذج")),
+            "الإلغاء لا يُوصف بخطأ استدلال في أي سطر: {lines:?}"
+        );
+
+        // **الضابط الموجب**: فشل المحرّك الحقيقي من **المسار نفسه** يُسجَّل
+        // `ERROR` بنصّه — فالمستمع يرى الفشل حين يكون هناك فشل.
+        let (f, fail_lines) = capture_events(|| sep_err(separator::SepError::ModelMissing));
+        assert!(!f.is_cancelled(), "الفشل الحقيقي ليس إلغاءً");
+        let errs = pipe_errors(&fail_lines);
+        assert_eq!(
+            errs.len(),
+            1,
+            "فشل المحرّك يكتب سطر ERROR واحداً على pipe: {fail_lines:?}"
+        );
+        assert!(
+            errs[0].contains(separator::MODEL_FILENAME),
+            "ونصّ الفشل يسمّي سببه: {}",
+            errs[0]
+        );
+    }
+
+    /// **حارس (ب) — المسار الكامل `process_file`**، لا المصنّف وحده: إلغاءٌ
+    /// مضبوط قبل البدء يسقط عند أول حدّ مرحلة، وملفٌّ مفقود يفشل فعلاً.
+    #[test]
+    fn process_file_logs_a_cancel_at_info_and_a_missing_input_at_error() {
+        // `process_file` يأخذ قفل المعالجة، وملف القفل يسكن مجلد بيانات
+        // التطبيق المشترك ⇒ نفس قفل `paths.rs` الذي يستعمله
+        // `failed_run_leaves_no_work_dir`.
+        let _guard = crate::paths::serial_guard();
+        let tmp = std::env::temp_dir().join(format!("hl_cancel_level_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let out = tmp.join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let missing = tmp.join("no_such_file.mp3");
+        let run = |cancel: &CancelToken| {
+            process_file(
+                &missing,
+                &out,
+                Mode::Clip,
+                OutKind::Audio {
+                    fmt: OutFormat::Wav,
+                },
+                false,
+                true,
+                false,
+                None,
+                cancel,
+                &|_| true,
+                &|_, _| {},
+            )
+        };
+
+        // (أ) **إلغاء**: الرمز مضبوط قبل أول حدّ مرحلة.
+        let token = CancelToken::new();
+        token.set();
+        let (cancelled, lines) = capture_events(|| run(&token));
+        let e = expect_error(cancelled);
+        assert!(e.is_cancelled(), "موسوم إلغاءً");
+        assert_eq!(
+            pipe_errors(&lines),
+            Vec::<String>::new(),
+            "إلغاء المستخدم كتب سطر ERROR على pipe: {lines:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.target == "pipe" && l.message.contains("أُلغيت المهمة بطلب المستخدم")),
+            "وسطر الإلغاء مكتوب بسببٍ مسمّى: {lines:?}"
+        );
+
+        // (ب) **ضابط موجب من المسار نفسه**: بلا إلغاء وعلى ملفّ غير موجود ⇒
+        // فشل حقيقي يُسجَّل `ERROR` (وإلا كان الحارس أعمى عن الفشل كله).
+        let fresh = CancelToken::new();
+        let (failed, fail_lines) = capture_events(|| run(&fresh));
+        let f = expect_error(failed);
+        assert!(!f.is_cancelled(), "الملف المفقود فشل لا إلغاء");
+        assert!(
+            !pipe_errors(&fail_lines).is_empty(),
+            "الفشل الحقيقي يجب أن يُسجَّل ERROR: {fail_lines:?}"
+        );
+        assert!(
+            !out.join("_haramlite_work").exists(),
+            "ولا سكراتش متروكاً (السلوك القائم محفوظ)"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// **حارس (ج) — الإلغاء لا يُخفي فشلاً**: تصنيف مسار DSP **بشرطين**
+    /// (الرمز مضبوط **و**الرسالة جملة الإلغاء بعينها)، ففشلٌ حقيقي بعد إلغاءٍ
+    /// سبق يبقى `ERROR` بنصّه.
+    #[test]
+    fn a_real_failure_after_a_cancel_request_stays_an_error() {
+        let token = CancelToken::new();
+        token.set();
+
+        let (f, lines) = capture_events(|| dsp_err(&token, "خطأ ملفات: القرص ممتلئ".to_string()));
+        assert!(
+            !f.is_cancelled(),
+            "فشلٌ حقيقي لا يُوسم إلغاءً ولو كان رمز الإلغاء مضبوطاً"
+        );
+        assert_eq!(pipe_errors(&lines).len(), 1, "ويُسجَّل ERROR بنصّه: {lines:?}");
+
+        // والضابط: الرسالة هي جملة الإلغاء والرمز مضبوط ⇒ إلغاء بلا ERROR.
+        let (cancelled, cancel_lines) =
+            capture_events(|| dsp_err(&token, CANCELLED_BY_USER.to_string()));
+        assert!(cancelled.is_cancelled());
+        assert_eq!(
+            pipe_errors(&cancel_lines),
+            Vec::<String>::new(),
+            "إلغاء DSP كتب سطر ERROR على pipe: {cancel_lines:?}"
+        );
     }
 
     /// **ب٥ — الفخّ الدلالي، بنيوياً**: خريطة صوت الصفحة لا تصل إلى

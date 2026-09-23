@@ -32,6 +32,19 @@ pub enum SepError {
     Io(String),
     Inference(String),
     InvalidInput(String),
+    /// **إلغاء المستخدم — ليس فشلاً** (`demix` يبنيه حين يقول نداء التقدّم
+    /// «توقّف»).
+    ///
+    /// **ولماذا بديلٌ صريح** (عطل مقيس في سجلّ المالك 2026-09-23): الإلغاء كان
+    /// يُبنى `Inference(String)` بنصّ الإلغاء، فيصل خطّ الأنابيب **عطبَ محرّك**
+    /// ويُسجَّل `ERROR pipe: خطأ استدلال النموذج: تم إلغاء المعالجة…` بعد أن
+    /// قال الطابور `أُلغيت: true` — أي أن التمييز بين الإلغاء والفشل كان
+    /// **مفقوداً في النوع**، فلا سبيل لتمييزه إلا بمطابقة نصّ. والبديل هنا هو
+    /// **النوع** الذي يقرؤه `pipeline::sep_err`.
+    ///
+    /// ونصّه هو [جملة الإلغاء الواحدة](crate::pipeline::CANCELLED_BY_USER) —
+    /// لا بادئة «خطأ استدلال النموذج» على فعلٍ طلبه المستخدم.
+    Cancelled,
 }
 
 impl std::fmt::Display for SepError {
@@ -43,6 +56,7 @@ impl std::fmt::Display for SepError {
             Self::Io(e) => write!(f, "خطأ ملفات: {e}"),
             Self::Inference(e) => write!(f, "خطأ استدلال النموذج: {e}"),
             Self::InvalidInput(e) => write!(f, "مدخل غير صالح: {e}"),
+            Self::Cancelled => write!(f, "{}", crate::pipeline::CANCELLED_BY_USER),
         }
     }
 }
