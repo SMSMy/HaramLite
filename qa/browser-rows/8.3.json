@@ -77,15 +77,15 @@
   "surface": [
     {
       "path": "browser-extension/background.js",
-      "sha256": "b68f1b2e1d7fcf29f6f917dc134a41441a69276f7362e9b0eb3e6ac10df6c511"
+      "sha256": "8ac5b58c6f4cc4fd119119a1f6e2ed156f3dc7913eb1ba0d934280c571b6250d"
     },
     {
       "path": "browser-extension/content.js",
-      "sha256": "846367c1cb510708e43711432f0c8e12a568a065a5e533c2b08a257477453594"
+      "sha256": "910f4be9e3135105d2728e63a9069a874b4de3b047872b625b05ca93bab96ad9"
     },
     {
       "path": "browser-extension/popup.js",
-      "sha256": "248786d6ed5d37c0a6a7a60ac5379efdb7fd493893a8175f93a273e722cf9016"
+      "sha256": "72e32cf09f517fe05a88c333b5c450420019122879b2636e7c91cfae47127725"
     },
     {
       "path": "browser-extension/popup.html",

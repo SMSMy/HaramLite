@@ -39,8 +39,8 @@ const I18N = {
     'menu.link': 'Send the link to HaramLite',
     'menu.page': 'Send this page to HaramLite',
     'menu.video': 'Send the video to HaramLite',
-    'menu.song': 'HaramLite — song (full separation + silence trimming)',
-    'menu.clip': 'HaramLite — clip (remove the music only)',
+    'menu.song': 'HaramLite — Song (full separation + silence trimming)',
+    'menu.clip': 'HaramLite — Clip (remove the music only)',
   },
 };
 

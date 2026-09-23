@@ -1382,6 +1382,79 @@ function auditAll(texts) {
     }
   }
   res.storeHits = storeHits;
+
+  /* ══ ⑲ قاعدة اللغة الواحدة (قرار المالك 2026-09-23) ════════════════════════
+   * **القاعدة نصّاً**: «فرضاً أن المتحدّث وضع العربية: اجعل [الأسماء/المصطلحات
+   * التقنية] بالإنجليزية سواء بالعربي أو الإنجليزي، والعربية كذلك تبقى بالعربي،
+   * والإنجليزية (بالعربية)» ⇒ ① في الواجهة **العربية** تبقى الأسماء والعلامات
+   * والمصطلحات اللاتينية لاتينية ولا تُعرَّب · ② والواجهة **الإنجليزية** إنجليزية
+   * سليمة · ③ **ولا خلط**: لا عربية في نصّ إنجليزي، ولا لاتينية في نصّ عربي إلا ما
+   * أبقاه القرار (اسم/مسار).
+   *
+   * **والجرد المقيس قبل هذه القاعدة**: ٢١٦ قيمة في الجداول الثلاثة و`_locales`؛
+   * المختلط (عربي+لاتيني في نصّ واحد) **٢٣**، كلّه في `ar`، والرموز اللاتينية
+   * المتميّزة فيه **ثلاثة فقط**: `HaramLite` (٢٣ موضعاً) · `HaramLite Bridge`
+   * (اسم المتجر) · `chrome://extensions` (مسار يكتبه المستخدم) — وعربية في `en`
+   * **صفر**. فالقائمة البيضاء **بالاسم لا بالنمط**، ومُرتَّبة بالأطول أولاً فلا يبقى
+   * «Bridge» وحده مسموحاً في جملة عربية.
+   *
+   * والعناصر النائبة (`{s}` · `{pct}` …) تُنزع قبل الحكم: هي رموز عقد لا نثر —
+   * وتكافؤها بين اللغتين محروس في الفحص ⑫. */
+  const ALLOWED_LATIN = [
+    { text: 'HaramLite Bridge', why: 'اسم المتجر الذي يعرضه المتصفّح لهوية الإضافة (_locales/ar/appName)' },
+    { text: 'HaramLite', why: 'اسم البرنامج — لا يُعرَّب، ويُذكر في ٢٣ نصّاً عربياً' },
+    { text: 'chrome://extensions', why: 'مسار حرفيّ يكتبه المستخدم في شريط العنوان' },
+  ];
+  const ALLOWED_SORTED = [...ALLOWED_LATIN].sort((a, b) => b.text.length - a.text.length);
+  const oneLangBad = [];
+  const oneLangN = { ar: 0, en: 0 };
+  const checkOneLang = (where, lang, key, value) => {
+    oneLangN[lang]++;
+    const raw = String(value);
+    // ② الواجهة الإنجليزية: صفر محرف عربي (ولا قائمة بيضاء هنا — الاسم لاتينيّ أصلاً).
+    if (lang === 'en') {
+      if ([...raw].some((c) => AR.test(c))) {
+        oneLangBad.push(`${where} · en.${key}: عربية في واجهة إنجليزية — «${raw.slice(0, 44)}»`);
+      }
+      return;
+    }
+    // ① الواجهة العربية: لا رمز لاتيني إلّا ما أُعلن، ويُنزع بالأطول أولاً.
+    let body = raw.replace(/\{\w+\}/g, '');
+    for (const a of ALLOWED_SORTED) body = body.split(a.text).join(' ');
+    if (/[A-Za-z]/.test(body)) {
+      oneLangBad.push(`${where} · ar.${key}: رمز لاتيني غير مُعلَن — «${raw.slice(0, 44)}»`);
+    }
+  };
+  for (const t of TARGETS) {
+    if (t.kind !== 'js') continue;
+    const tbl = findTable(texts[t.rel]);
+    if (!tbl) continue;
+    let I18N = null;
+    try { I18N = new Function(tbl.literal + '\nreturn I18N;')(); } catch (e) { I18N = null; }
+    if (!I18N) continue;
+    for (const lang of ['ar', 'en']) {
+      for (const [k, v] of Object.entries(I18N[lang] || {})) checkOneLang(t.label, lang, k, v);
+    }
+  }
+  for (const t of TARGETS) {
+    for (const l of t.locales || []) {
+      const short = l.rel.replace('browser-extension/_locales/', '_locales/');
+      let j = null;
+      try { j = JSON.parse(texts[l.rel]); } catch (e) { j = null; }
+      if (!j) { oneLangBad.push(`${short}: رسالة غير مقروءة (JSON)`); continue; }
+      for (const [k, o] of Object.entries(j)) checkOneLang(short, l.locale, k, (o && o.message) || '');
+    }
+  }
+  res.checks++;
+  if (oneLangBad.length) {
+    res.failures.push('✗ قاعدة اللغة الواحدة (⑲): ' + oneLangBad.length + ' مخالفة — ' + oneLangBad.join(' · ') +
+      ' — والمُعلَن [' + ALLOWED_LATIN.map((a) => a.text).join(' · ') + '].');
+  }
+  if (oneLangN.ar === 0 || oneLangN.en === 0) {
+    res.checks++;
+    res.failures.push('✗ صفر مدخل: القاعدة ⑲ لم تقرأ قيماً في الاتجاهين (ar=' + oneLangN.ar + ' · en=' + oneLangN.en + ').');
+  }
+  res.oneLang = { ar: oneLangN.ar, en: oneLangN.en, allowed: ALLOWED_LATIN.length };
   return res;
 }
 

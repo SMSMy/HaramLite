@@ -413,6 +413,16 @@ const CASES2 = [
     withFile(K.M, (s) => sub(s, /"permissions": \[([^\]]*)\]/, (m, g) => '"permissions": [' + g.replace(/,\s*"storage"/, '') + ']')), 'fall'],
   ['⑪ popup.js: مفتاح مربوط في الصفحة حُذف من الجدول (اللغتين)',
     withFile(K.P, (s) => sub(s, /'footer\.install': '[^']*',\n/g, '')), 'fall'],
+  /* ⑪أ–⑪ج — قاعدة اللغة الواحدة ⑲ (قرار المالك 2026-09-23، والجرد في الحارس). */
+  ['⑪أ popup.js: عربية داخل قيمة إنجليزية (خلط يُصلَح)',
+    withFile(K.P, (s) => sub(s, /'send\.button': 'Send this page to HaramLite'/,
+      "'send.button': 'Send this page " + AR_SUB + "'")), 'fall'],
+  ['⑪ب popup.js: رمز لاتيني غير مُعلَن داخل قيمة عربية (خلط يُصلَح)',
+    withFile(K.P, (s) => sub(s, /'send\.button': '[^']*'/,
+      "'send.button': 'أرسل هذه الصفحة إلى HaramLite (Send page)'")), 'fall'],
+  ['⑪ج ضابط: مصطلحات القائمة البيضاء داخل نصّ عربي — يجب ألّا تُسقط',
+    withFile(K.P, (s) => sub(s, /'send\.button': '[^']*'/,
+      "'send.button': 'أرسل هذه الصفحة إلى HaramLite — HaramLite Bridge — chrome://extensions'")), 'pass'],
   ['ض٢ popup.js: تعليق يحمل عربية — يجب ألّا يُسقط',
     withFile(K.P, (s) => sub(s, /applyI18n\(\);/, (m) => '// ' + AR_SUB + '\n' + m)), 'pass'],
 
