@@ -510,6 +510,131 @@ fn tail_text(tail: &VecDeque<String>, n: usize) -> String {
         .join("\n")
 }
 
+/// **كم سطراً من `stderr` نحفظه للفشل — معلن لا ضمنيّ** (ونظير stdout: ٤٠ سطراً).
+///
+/// **ولماذا وُجد (عطل ميداني، بلاغ المالك 2026-09-23)**: `yt-dlp` يكتب التقدّم
+/// على **stdout** ويكتب `ERROR: …` على **stderr**. وكان stderr يُصرَّف في خيط
+/// **إلى بالوعة تُرمى** (`while let Ok(n) = r.read(&mut sink)`)، وذيل الفشل
+/// يُبنى من stdout وحده ⇒ فشلٌ يصل المستخدم والسجلّ **بلا سببه إطلاقاً**:
+/// «التنزيل بلغ ١٠٠٪ ثم `exit code: 1`» ولا سطر خطأ واحد. فصار stderr يُجمَع
+/// في **نفس خيط التصريف** (لا خيط ثانٍ لأنبوب واحد) وبحدّ سطور صريح.
+const STDERR_TAIL_LINES: usize = 40;
+
+/// سقف بايتات **السطر الواحد** من stderr: سطرٌ ضخم (تفريغ صفحة أو تتبّع طويل)
+/// لا يبتلع الذاكرة بلا حدّ. الزائد يُقصّ ويُوسَم في نصّ السطر نفسه.
+const STDERR_LINE_CAP: usize = 4096;
+
+/// **مهلة انتظار انتهاء تصريف stderr** قبل بناء نصّ الفشل: بايتات yt-dlp تكون
+/// في الأنبوب عند خروجه، ويقرؤها خيط التصريف بعد أن يُجدوَل — فالانتظار يجعل
+/// نصّ الفشل يحمل السبب المكتوب **قبل** الخروج لا ما وصل منه صدفةً.
+///
+/// **وهي محدودة عن قصد**: `yt-dlp.exe` عمليّتان (مُشغّل ← عامل، مقيس)، وعاملٌ
+/// ناجٍ قد يمسك الأنبوب الموروث مفتوحاً بعد موت مُشغّله — فلا نُعلّق تقرير
+/// الفشل لأجله (يُبنى النصّ بما قُرئ حتى تلك اللحظة).
+const STDERR_DRAIN_GRACE: std::time::Duration = std::time::Duration::from_millis(1000);
+
+/// **ذيل stderr المحدود**: يملؤه خيط التصريف، ويُقرأ عند الفشل.
+struct StderrTail {
+    lines: Arc<Mutex<VecDeque<String>>>,
+    /// إشارة انتهاء خيط التصريف — تُؤخذ **مرّة واحدة** في [`StderrTail::text`]
+    /// فلا يُنتظر مرّتين في المسار نفسه.
+    done: Option<std::sync::mpsc::Receiver<()>>,
+}
+
+impl StderrTail {
+    /// آخر `n` سطراً من stderr — و`"(فارغ)"` إن لم يكتب yt-dlp شيئاً عليها
+    /// (نصٌّ صريح خير من خانة بيضاء تُقرأ كأنها لم تُفحَص).
+    fn text(&mut self, n: usize) -> String {
+        if let Some(rx) = self.done.take() {
+            let _ = rx.recv_timeout(STDERR_DRAIN_GRACE);
+        }
+        let g = self.lines.lock().unwrap_or_else(|p| p.into_inner());
+        if g.is_empty() {
+            "(فارغ)".to_string()
+        } else {
+            tail_text(&g, n)
+        }
+    }
+}
+
+/// يُضيف سطراً إلى ذيل stderr بحدّيه المعلنين: [`STDERR_TAIL_LINES`] سطراً
+/// و[`STDERR_LINE_CAP`] بايتاً للسطر الواحد.
+fn push_stderr_line(lines: &Mutex<VecDeque<String>>, raw: &[u8], cut: bool) {
+    // السقف يُفرض **هنا أيضاً** لا على القارئ وحده: أي مستدعٍ يمرّر سطراً أطول
+    // من [`STDERR_LINE_CAP`] يُقصّ ويُوسَم — فالحدّ معلن في مكان واحد.
+    let over = raw.len() > STDERR_LINE_CAP;
+    let raw = if over { &raw[..STDERR_LINE_CAP] } else { raw };
+    let mut line = String::from_utf8_lossy(raw).trim().to_string();
+    if line.is_empty() {
+        return; // سطر فارغ لا يحمل سبباً ولا يستحقّ خانةً في الذيل
+    }
+    if cut || over {
+        line.push_str(&format!(" …[قُصَّ: تجاوز سطرٌ واحد {STDERR_LINE_CAP} بايت]"));
+    }
+    if let Ok(mut g) = lines.lock() {
+        g.push_back(line);
+        while g.len() > STDERR_TAIL_LINES {
+            g.pop_front();
+        }
+    }
+}
+
+/// **تصريف stderr + حفظ ذيله المحدود — في خيط واحد** (لا خيطان لأنبوب واحد).
+///
+/// التصريف ليس ترفاً: أنبوب stderr غير المقروء يمتلئ (~64KB) فيُوقف الطفل في
+/// منتصف التنزيل. والحفظ هو ما كان مفقوداً: كان هذا الخيط `while let Ok(n) =
+/// r.read(&mut sink)` — يقرأ **ليرمي**، فيضيع `ERROR: …` كاملاً.
+fn drain_stderr<R: std::io::Read>(
+    mut r: R,
+    lines: Arc<Mutex<VecDeque<String>>>,
+    done: std::sync::mpsc::Sender<()>,
+) {
+    let mut chunk = [0u8; 8192];
+    // السطر الجاري: الأنبوب يُقرأ قطعاً، والسطر قد يمتدّ على قطع كثيرة.
+    let mut partial: Vec<u8> = Vec::new();
+    let mut cut = false;
+    loop {
+        match r.read(&mut chunk) {
+            // Err كذلك نهاية الطريق: الأنبوب كُسر ⇒ لا مزيد من الأسطر.
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                for &b in &chunk[..n] {
+                    if b == b'\n' {
+                        push_stderr_line(&lines, &partial, cut);
+                        partial.clear();
+                        cut = false;
+                    } else if partial.len() < STDERR_LINE_CAP {
+                        partial.push(b);
+                    } else {
+                        cut = true; // أطول من السقف ⇒ يُقصّ ويُوسَم
+                    }
+                }
+            }
+        }
+    }
+    // سطر أخير بلا `\n` (yt-dlp قد يختم بلا سطر جديد، وقصُّ الخروج يفقد آخره).
+    if !partial.is_empty() || cut {
+        push_stderr_line(&lines, &partial, cut);
+    }
+    let _ = done.send(());
+}
+
+/// **ذيل الفشل بوسم صريح يفصل القناتين**: `stdout` تقدّمٌ و`stderr` هو السبب.
+/// وهو **نصّ واحد** يذهب إلى السجلّ وإلى رسالة المستخدم معاً، فلا يعرف أحدهما
+/// ما يجهله الآخر (وهو ما وقع: المستخدم رأى «exit code: 1» بلا سبب).
+fn failure_tail(stdout_tail: &VecDeque<String>, stderr_tail: &mut StderrTail, n: usize) -> String {
+    let so = tail_text(stdout_tail, n);
+    let so = if so.is_empty() {
+        "(فارغ)".to_string()
+    } else {
+        so
+    };
+    format!(
+        "— stdout (آخر {n} سطراً):\n{so}\n— stderr (آخر {n} سطراً):\n{}",
+        stderr_tail.text(n)
+    )
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
 pub struct UpdateState {
     pub checked_at: u64,
@@ -1264,18 +1389,28 @@ fn download_media_inner(
 
     // Drain stderr on a side thread: an undrained pipe fills (~64KB) and
     // deadlocks the child mid-download.
-    let stderr = child.lock().ok().and_then(|mut c| c.stderr.take());
-    if let Some(stderr) = stderr {
-        std::thread::spawn(move || {
-            use std::io::Read;
-            let mut r = stderr;
-            let mut sink = [0u8; 8192];
-            while let Ok(n) = r.read(&mut sink) {
-                if n == 0 {
-                    break;
-                }
-            }
-        });
+    //
+    // **ولماذا لم يبقَ بالوعةً (عطل ميداني — بلاغ المالك 2026-09-23)**: كان
+    // هذا الخيط يقرأ **ليرمي** (`while let Ok(n) = r.read(&mut sink)`)، وذيل
+    // الفشل يُبنى من stdout وحده. وyt-dlp يكتب `[download]` على stdout ويكتب
+    // `ERROR: …` على stderr ⇒ فشلٌ يبلغ فيه التنزيل ١٠٠٪ ثم `exit code: 1`
+    // **بلا سطر خطأ واحد** في السجلّ ولا في واجهة المستخدم. والمقيس على هذه
+    // الآلة (نفس الأمر ونفس الرابط): المحاولة الفاشلة كتبت على stderr
+    // `ERROR: unable to download video data: HTTP Error 403: Forbidden` —
+    // فصار **التصريف والحفظ في الخيط نفسه** ([`drain_stderr`]).
+    let stderr_lines: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
+    let (stderr_done_tx, stderr_done_rx) = std::sync::mpsc::channel::<()>();
+    let mut stderr_tail = StderrTail {
+        lines: stderr_lines.clone(),
+        done: Some(stderr_done_rx),
+    };
+    match child.lock().ok().and_then(|mut c| c.stderr.take()) {
+        Some(stderr) => {
+            let lines = stderr_lines.clone();
+            std::thread::spawn(move || drain_stderr(stderr, lines, stderr_done_tx));
+        }
+        // لا أنبوب ⇒ لا انتظار: إسقاط الطرف يُرجع `recv_timeout` فوراً.
+        None => drop(stderr_done_tx),
     }
 
     use std::io::BufRead;
@@ -1312,7 +1447,12 @@ fn download_media_inner(
                     kill_now();
                     let _ = c.wait();
                 }
-                return Err(YtError::Io(e.to_string()));
+                // القناة الثانية تُرفَق هنا أيضاً: انكسار أنبوب stdout ليس سبباً
+                // في ذاته، وسببُ yt-dlp يكون مكتوباً على stderr.
+                return Err(YtError::Io(format!(
+                    "{e}\n{}",
+                    failure_tail(&tail, &mut stderr_tail, 12)
+                )));
             }
         }
         let line = String::from_utf8_lossy(&raw);
@@ -1359,18 +1499,20 @@ fn download_media_inner(
         .wait()
         .map_err(|e| YtError::Io(e.to_string()))?;
     if stalled.load(Ordering::SeqCst) {
-        tracing::warn!(target: "ytdlp", "توقف التنزيل لانقطاع التقدم ({url}) — ذيل المخرجات:\n{}", tail_text(&tail, 30));
+        let tail_txt = failure_tail(&tail, &mut stderr_tail, 30);
+        tracing::warn!(target: "ytdlp", "توقف التنزيل لانقطاع التقدم ({url}) — ذيل المخرجات:\n{tail_txt}");
         return Err(YtError::Io(format!(
             "توقف التنزيل: لا تقدم منذ {} دقيقة — قد يكون الاتصال متجمداً\n{}",
             STALL_SECS / 60,
-            tail_text(&tail, 12)
+            failure_tail(&tail, &mut stderr_tail, 12)
         )));
     }
     if !status.success() {
-        tracing::warn!(target: "ytdlp", "yt-dlp خرج بـ{status} لـ {url} — ذيل المخرجات:\n{}", tail_text(&tail, 30));
+        let tail_txt = failure_tail(&tail, &mut stderr_tail, 30);
+        tracing::warn!(target: "ytdlp", "yt-dlp خرج بـ{status} لـ {url} — ذيل المخرجات:\n{tail_txt}");
         return Err(YtError::Io(format!(
             "yt-dlp خرج بـ{status}\n{}",
-            tail_text(&tail, 12)
+            failure_tail(&tail, &mut stderr_tail, 12)
         )));
     }
 
@@ -1382,10 +1524,11 @@ fn download_media_inner(
         .find(|p| slot_usable(p))
         .map(|slot| promote_slot(&slot, out_dir, &meta))
         .unwrap_or_else(|| {
-            tracing::warn!(target: "ytdlp", "نجح yt-dlp دون ملف صالح في الخانة ({url}) — ذيل المخرجات:\n{}", tail_text(&tail, 30));
+            let tail_txt = failure_tail(&tail, &mut stderr_tail, 30);
+            tracing::warn!(target: "ytdlp", "نجح yt-dlp دون ملف صالح في الخانة ({url}) — ذيل المخرجات:\n{tail_txt}");
             Err(YtError::Io(format!(
                 "yt-dlp نجح دون ملف ناتج صالح — أعد المحاولة\n{}",
-                tail_text(&tail, 12)
+                failure_tail(&tail, &mut stderr_tail, 12)
             )))
         })
 }
@@ -1529,6 +1672,93 @@ pub(crate) mod tests {
         assert_eq!(tail_text(&tail, 2), "line3\nline4");
         assert_eq!(tail_text(&tail, 99).lines().count(), 5);
         assert_eq!(tail_text(&VecDeque::new(), 12), "");
+    }
+
+    /// **ذيل stderr محدود بحدّيه المعلنين**، ويحفظ سطراً أخيراً بلا `\n`،
+    /// ويوسم السطر المقصوص — فحفظٌ بلا حدّ عطلٌ آخر لا إصلاح.
+    #[test]
+    fn stderr_tail_is_bounded_and_keeps_a_last_line_without_newline() {
+        // ① التصريف: سطر أخير بلا `\n` يُحفظ، والإشارة تُرسَل عند الانتهاء.
+        let lines = Arc::new(Mutex::new(VecDeque::new()));
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        drain_stderr(
+            std::io::Cursor::new(b"WARNING: no JS runtime\nERROR: boom".to_vec()),
+            lines.clone(),
+            tx,
+        );
+        assert!(rx.try_recv().is_ok(), "خيط التصريف لم يُشِر بالانتهاء");
+        {
+            let g = lines.lock().unwrap_or_else(|p| p.into_inner());
+            assert_eq!(g.len(), 2);
+            assert_eq!(g[1], "ERROR: boom");
+        }
+
+        // ② عدد السطور: لا يُحفظ إلا آخر `STDERR_TAIL_LINES` سطراً.
+        let lines = Arc::new(Mutex::new(VecDeque::new()));
+        for i in 0..(STDERR_TAIL_LINES + 5) {
+            push_stderr_line(&lines, format!("ERROR: سطر {i}").as_bytes(), false);
+        }
+        {
+            let g = lines.lock().unwrap_or_else(|p| p.into_inner());
+            assert_eq!(g.len(), STDERR_TAIL_LINES);
+            let first = "ERROR: سطر 5";
+            let last = format!("ERROR: سطر {}", STDERR_TAIL_LINES + 4);
+            assert_eq!(g.front().map(String::as_str), Some(first));
+            assert_eq!(g.back().map(String::as_str), Some(last.as_str()));
+        }
+
+        // ③ سطر أطول من السقف يُقصّ ويُوسَم، والسطر الفارغ لا يأخذ خانة.
+        let lines = Arc::new(Mutex::new(VecDeque::new()));
+        let long = vec![b'x'; STDERR_LINE_CAP * 3];
+        push_stderr_line(&lines, &long, true);
+        push_stderr_line(&lines, b"   ", false);
+        let g = lines.lock().unwrap_or_else(|p| p.into_inner());
+        assert_eq!(g.len(), 1, "سطر فارغ أخذ خانة في الذيل");
+        let only = g.front().cloned().unwrap_or_default();
+        assert!(only.contains("قُصَّ"), "القصّ غير موسوم: {only}");
+        assert!(
+            only.len() < STDERR_LINE_CAP + 80,
+            "السطر المحفوظ تجاوز السقف المعلن: {} بايت",
+            only.len()
+        );
+    }
+
+    /// **وسم القناتين**: نصّ الفشل يفصل stdout عن stderr، ويسمّي الفارغ فارغاً —
+    /// فلا يُقرأ غياب السبب كأنه سبب.
+    #[test]
+    fn failure_tail_labels_both_channels() {
+        let mut stdout_tail: VecDeque<String> = VecDeque::new();
+        stdout_tail.push_back("[download] 100% of 129.03MiB".into());
+        let lines = Arc::new(Mutex::new(VecDeque::new()));
+        push_stderr_line(
+            &lines,
+            b"ERROR: unable to download video data: HTTP Error 403: Forbidden",
+            false,
+        );
+        let mut stderr_tail = StderrTail {
+            lines: lines.clone(),
+            done: None,
+        };
+        let text = failure_tail(&stdout_tail, &mut stderr_tail, 12);
+        assert!(text.contains("stdout"), "لا وسم stdout: {text}");
+        assert!(text.contains("stderr"), "لا وسم stderr: {text}");
+        assert!(text.contains("[download] 100%"), "ذيل stdout ضاع: {text}");
+        assert!(
+            text.contains("HTTP Error 403: Forbidden"),
+            "ذيل stderr ضاع: {text}"
+        );
+
+        // الذيل الفارغ يُسمّى «(فارغ)» بدل خانة بيضاء.
+        let mut empty = StderrTail {
+            lines: Arc::new(Mutex::new(VecDeque::new())),
+            done: None,
+        };
+        let text = failure_tail(&VecDeque::new(), &mut empty, 12);
+        assert_eq!(
+            text.matches("(فارغ)").count(),
+            2,
+            "الفارغ لم يُسمَّ في القناتين: {text}"
+        );
     }
 
     /// و-٨ سلبي (الجدول المطلوب حرفياً): **كل** مضيف محلي/خاص يُرفض.
@@ -1692,6 +1922,42 @@ pub(crate) mod tests {
     const FAKE_YTDLP_SRC: &str = r#"
 use std::io::Write;
 
+/// عدّاد النداءات في مجلد الخرج: يميّز المحاولة الأولى من التي بعدها (فيقيس
+/// الحارس «محاولةً إضافية واحدة» لا حلقة إعادة).
+fn bump_calls(dir: Option<&std::path::Path>) -> u32 {
+    let Some(d) = dir else { return 1 };
+    let p = d.join("calls.txt");
+    let n = std::fs::read_to_string(&p)
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .unwrap_or(0)
+        + 1;
+    let _ = std::fs::write(&p, n.to_string());
+    n
+}
+
+/// ملف وسائط **حقيقي** (‏WAV PCM بسيط): الخانة لا تُقبل إلا بوسائط يقرؤها
+/// ffprobe (صوت + مدة موجبة)، فنجاحٌ مزعوم بملف فارغ لا يمرّ من `slot_usable`.
+fn write_wav(path: &std::path::Path) {
+    let rate: u32 = 8000;
+    let data_len: u32 = (rate / 5) * 2; // ٠.٢ ثانية · أحادي · ١٦ بت
+    let mut v: Vec<u8> = Vec::new();
+    v.extend_from_slice(b"RIFF");
+    v.extend_from_slice(&(36 + data_len).to_le_bytes());
+    v.extend_from_slice(b"WAVEfmt ");
+    v.extend_from_slice(&16u32.to_le_bytes());
+    v.extend_from_slice(&1u16.to_le_bytes());
+    v.extend_from_slice(&1u16.to_le_bytes());
+    v.extend_from_slice(&rate.to_le_bytes());
+    v.extend_from_slice(&(rate * 2).to_le_bytes());
+    v.extend_from_slice(&2u16.to_le_bytes());
+    v.extend_from_slice(&16u16.to_le_bytes());
+    v.extend_from_slice(b"data");
+    v.extend_from_slice(&data_len.to_le_bytes());
+    v.resize(v.len() + data_len as usize, 0);
+    let _ = std::fs::write(path, v);
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let has = |needle: &str| args.iter().any(|a| a == needle);
@@ -1726,12 +1992,17 @@ fn main() {
         }
     };
 
-    // اسم مجلد الثنائي يقرّر الصورة: عملية واحدة أم مُشغّل+عامل.
-    let two_proc = std::env::current_exe()
+    // اسم مجلد الثنائي يقرّر الصورة: عملية واحدة · مُشغّل+عامل · فشلٌ يحمل سببه.
+    let dir_name = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-        .and_then(|d| d.file_name().map(|n| n.to_string_lossy().contains("twoproc")))
-        .unwrap_or(false);
+        .and_then(|d| d.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_default();
+    let two_proc = dir_name.contains("twoproc");
+    let stderr_fail = dir_name.contains("stderr_fail");
+    let retry_always = dir_name.contains("retry_always");
+    let retry_mode = retry_always || dir_name.contains("retry_once");
+    let permanent_fail = dir_name.contains("permanent_fail");
 
     // ② **العامل** في الصورة ذات العمليتين: يسجّل معرّفه وينام (يمسك الأنبوب
     //    الموروث من مُشغّله — ولهذا تبقى المهمّة معلّقة إن نجا).
@@ -1763,6 +2034,69 @@ fn main() {
             let _ = c.spawn();
         }
         return;
+    }
+
+    // ③.ب **صورة «الفشل الذي يحمل سببه»** — العطل الميداني المقيس (بلاغ المالك
+    //    2026-09-23): التقدّم كله على stdout، و`ERROR:` وحده على stderr. والمزيّف
+    //    يكتب النصّ الحرفي المقيس على هذه الآلة، ولا يكتب السبب على stdout أبداً
+    //    — فظهوره في رسالة الفشل دليلٌ على أن stderr قُرئ لا على أنه طُبع.
+    if stderr_fail {
+        for i in 1..=3 {
+            progress(&format!("step {i}"));
+        }
+        eprintln!("WARNING: [youtube] No supported JavaScript runtime could be found. Only deno is enabled by default");
+        eprintln!("ERROR: unable to download video data: HTTP Error 403: Forbidden");
+        let _ = std::io::stderr().flush();
+        let _ = std::io::stdout().flush();
+        std::process::exit(1);
+    }
+
+    // ③.ج **إعادة المحاولة**: المحاولة الأولى تفشل بـ403 (فشل **عابر** مقيس)،
+    //    والثانية تنجح وتكتب خانةً صالحة (‏WAV حقيقي يقرؤه ffprobe) — أو تفشل
+    //    دائماً في صورة `retry_always` (لقياس «محاولة واحدة لا حلقة»).
+    if retry_mode {
+        let n = bump_calls(dir.as_deref());
+        if n == 1 {
+            // نصفُ ملفٍ في الخانة، كما يترك 403 الحقيقي (`…​.f616.mp4`): يقيس
+            // الحارس أن الإعادة **تكنس الخانة** قبل المحاولة الثانية.
+            if let Some(t) = tmpl.as_deref() {
+                let _ = std::fs::write(t.replace("%(ext)s", "f616.mp4"), b"partial-fragment");
+            }
+            for i in 1..=2 {
+                progress(&format!("step {i}"));
+            }
+            eprintln!("ERROR: unable to download video data: HTTP Error 403: Forbidden");
+            let _ = std::io::stderr().flush();
+            let _ = std::io::stdout().flush();
+            std::process::exit(1);
+        }
+        if retry_always {
+            eprintln!("ERROR: unable to download video data: HTTP Error 403: Forbidden");
+            let _ = std::io::stderr().flush();
+            let _ = std::io::stdout().flush();
+            std::process::exit(1);
+        }
+        for i in 1..=3 {
+            progress(&format!("step {i}"));
+        }
+        if let Some(t) = tmpl.as_deref() {
+            let out = t.replace("%(ext)s", "wav");
+            write_wav(std::path::Path::new(&out));
+            println!("HARAMLITE_OUT:{out}");
+        }
+        let _ = std::io::stdout().flush();
+        return;
+    }
+
+    // ③.د **فشل دائم بنصّه**: لا إعادة عليه إطلاقاً.
+    if permanent_fail {
+        for i in 1..=2 {
+            progress(&format!("step {i}"));
+        }
+        eprintln!("ERROR: [youtube] AJOOve4s0_8: Video unavailable");
+        let _ = std::io::stderr().flush();
+        let _ = std::io::stdout().flush();
+        std::process::exit(1);
     }
 
     // ④ الصورة المبسّطة: العملية نفسها هي التي تنزّل.
@@ -2019,6 +2353,65 @@ fn main() {
         (out[0].clone(), out[1].clone())
     }
 
+    /// **صورة ثالثة فأكثر للمزيّف** — تُبنى بنفس المصدر وتُنسخ إلى مجلد **اسمه
+    /// يختار الصورة** (نمط `twoproc` القائم: لا وسيط اختبار في المنتج أبداً).
+    #[cfg(windows)]
+    fn fake_variant(root: &Path, name: &str) -> PathBuf {
+        let (single, _two) = build_fake_ytdlp(root);
+        let dir = root.join(name);
+        std::fs::create_dir_all(&dir).expect("مجلد الصورة");
+        let dest = dir.join(ASSET_NAME);
+        std::fs::copy(&single, &dest).expect("نسخ الثنائي المزيّف");
+        dest
+    }
+
+    /// **مصيدة السجلّ**: طبقة تُخزّن كل حدث `tracing` في ذاكرة مشتركة — فيُقاس
+    /// **ما كُتب في السجلّ فعلًا** (لا ما نوينا كتابته). وهي لازمة هنا لأن نصّ
+    /// الفشل يذهب إلى مكانين: رسالة المستخدم وسطر `warn!` — والمقيس في بلاغ
+    /// المالك أن **الاثنين** كانا بلا سبب.
+    #[cfg(windows)]
+    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+
+    #[cfg(windows)]
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            struct Msg(String);
+            impl tracing::field::Visit for Msg {
+                fn record_debug(
+                    &mut self,
+                    field: &tracing::field::Field,
+                    value: &dyn std::fmt::Debug,
+                ) {
+                    if field.name() == "message" {
+                        self.0 = format!("{value:?}");
+                    }
+                }
+            }
+            let mut m = Msg(String::new());
+            event.record(&mut m);
+            if !m.0.is_empty() {
+                if let Ok(mut g) = self.0.lock() {
+                    g.push(m.0);
+                }
+            }
+        }
+    }
+
+    /// يُشغّل `f` ويردّ `(نتيجته, كل سطور السجلّ المُلتقَطة)`.
+    #[cfg(windows)]
+    fn with_captured_log<T>(f: impl FnOnce() -> T) -> (T, Vec<String>) {
+        use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let sub = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let out = tracing::subscriber::with_default(sub, f);
+        let lines = logs.lock().map(|g| g.clone()).unwrap_or_default();
+        (out, lines)
+    }
+
     /// **قياس زمن الإلغاء في مسار التنزيل الإنتاجي** — بالثواني.
     ///
     /// **لمن**: حارس نصّ الإلغاء في `telegram.rs`
@@ -2175,6 +2568,114 @@ fn main() {
             probe.ended
         );
         assert!(probe.failed, "الإلغاء عاد نجاحاً كاذباً");
+    }
+
+    /// النصّ **الحرفي** المقيس على هذه الآلة في محاولة فاشلة حقيقية (٣ محاولات
+    /// بنفس أمر التطبيق: ٢ نجحت و١ فشلت بهذا السطر على stderr).
+    #[cfg(windows)]
+    const MEASURED_403: &str = "ERROR: unable to download video data: HTTP Error 403: Forbidden";
+
+    /// **حارس (٤): الفشل يحمل سببه — ذيل `stderr` لا يُرمى.**
+    ///
+    /// **العطل الميداني (بلاغ المالك 2026-09-23)**: التنزيل يبلغ ١٠٠٪ ثم
+    /// `✗ فشل التنزيل: ملفات: yt-dlp خرج بـexit code: 1` **بلا أي سطر خطأ** —
+    /// لأن stderr كان يُصرَّف **إلى بالوعة تُرمى** وذيل الفشل يُبنى من stdout
+    /// وحده، و`ERROR: …` في yt-dlp **على stderr**. فالمستخدم والسجلّ كلاهما
+    /// كان أعمى عن السبب.
+    ///
+    /// **والمزيّف** (صورة `stderr_fail`) يكتب التقدّم على stdout والسطر الحرفي
+    /// أعلاه على stderr ثم يخرج بـ1. فالحارس يشترط ظهور ذلك النصّ **في رسالة
+    /// الفشل وفي سطر السجلّ معاً**، ووسمَ القناتين — وهو **يسقط بإعادة البالوعة**
+    /// (المُفسَد المُنفَّذ، انظر التقرير).
+    #[cfg(windows)]
+    #[test]
+    fn a_failed_download_carries_the_stderr_reason() {
+        let _reg = crate::slots::registry_test_lock();
+        let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
+        let fake = fake_variant(&root, "stderr_fail");
+        let tmp = std::env::temp_dir().join(format!("hl_stderr_reason_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("مجلد القياس");
+
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(fake);
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (r, logs) = with_captured_log(|| {
+            download_media(
+                "https://www.youtube.com/watch?v=AJOOve4s0_8",
+                &tmp,
+                &|_p| true,
+                &cancel,
+            )
+        });
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = None;
+
+        let err = match r {
+            Ok(p) => panic!(
+                "المزيّف خرج بـ1 فيجب أن تفشل المهمّة، ونجحت بـ{}",
+                p.display()
+            ),
+            Err(e) => format!("{e}"),
+        };
+        assert!(
+            err.contains(MEASURED_403),
+            "رسالة الفشل لا تحمل سطر السبب الحقيقي:\n{err}"
+        );
+        assert!(
+            err.contains("stdout") && err.contains("stderr"),
+            "وسم القناتين (stdout/stderr) مفقود من رسالة الفشل:\n{err}"
+        );
+        let log = logs.join("\n");
+        eprintln!("x2-dl/حارس stderr — رسالة الفشل:\n{err}\n— وسطر السجلّ المكتوب:\n{log}");
+        assert!(
+            log.contains(MEASURED_403),
+            "سطر `tracing::warn!` لا يحمل سبب الفشل — وهو ما رآه المالك في السجلّ:\n{log}"
+        );
+        assert!(
+            log.contains("yt-dlp خرج بـ"),
+            "لم يُكتب سطر فشل الخروج في السجلّ أصلاً:\n{log}"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// **حارس (٥): `clear_slots` يكنس مخلفاتنا ولا يلمس ملف المستخدم.**
+    ///
+    /// **لماذا يُقاس**: الفشل العابر (‏403) يترك نصفَ ملفٍ في مجلد نتائج
+    /// المستخدم — قِيس على هذه الآلة **135,300,271 بايت** (`slot.f616.mp4`)
+    /// باقيةً بعد الخروج بـ1. والسؤال: هل تُكنَس في المحاولة التالية لنفس
+    /// الفيديو؟ الجواب في هذه الدالة، وهي **شرط مُسبق** لإعادة المحاولة
+    /// (بند ٢: لا يتراكم نصف ملف).
+    #[test]
+    fn clear_slots_sweeps_our_junk_and_spares_user_files() {
+        let dir = std::env::temp_dir().join(format!("hl_clear_slots_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("مجلد القياس");
+        let ours = [
+            "hl_abc123_999_0.f616.mp4",
+            "hl_abc123_999_0.f251.webm",
+            "hl_abc123_999_0.mp4.part",
+        ];
+        for n in ours {
+            std::fs::write(dir.join(n), b"junk").expect("كتابة مخلفاتنا");
+        }
+        // ملف المستخدم وملفُ فيديو آخر: لا يُمسّان.
+        let keep = ["My Song.mp4", "hl_OTHERID_1_0.f616.mp4"];
+        for n in keep {
+            std::fs::write(dir.join(n), b"user").expect("كتابة ملف المستخدم");
+        }
+
+        clear_slots(&dir, "abc123");
+
+        for n in ours {
+            assert!(!dir.join(n).exists(), "مخلّفنا لم يُكنَس: {n}");
+        }
+        for n in keep {
+            assert!(dir.join(n).exists(), "مُسَّ ملفٌ ليس لنا: {n}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// أبناء `yt-dlp.exe` الأحياء الآن (بالاسم — جرد حقيقي لا استنتاج).
