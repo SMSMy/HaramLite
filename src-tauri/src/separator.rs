@@ -1677,6 +1677,83 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    /// **تجريد التعليقات والسلاسل النصّية** — فلا يُشبَع شرطُ حارسٍ بتعليقٍ يحمل
+    /// النصّ المطلوب، ولا بتجزئة جملةٍ إلى نصّين يُجاور أحدهما الآخر.
+    ///
+    /// **ولماذا لزم (ثقب مؤكَّد رصده جاسوس مستقلّ على `1ca3b0d`)**: كان الشرط
+    /// `production.contains("return Err(SepError::Cancelled);")` **يُشبَع بتعليق**،
+    /// والشرط `!production.contains(CANCELLED_BY_USER)` **يُشبَع بتجزئة الحرف**:
+    /// ```text
+    /// // return Err(SepError::Cancelled);
+    /// return Err(SepError::Inference(format!("{}{}", "تم إلغاء المعالجة ", "من قبل المستخدم.")));
+    /// ```
+    /// ⇒ يعود **سطر سجلّ المالك حرفياً** (`ERROR pipe: خطأ استدلال النموذج: …`)
+    /// والحرّاس كلها خضراء. فصار الحكم على **نصّ الشيفرة** لا على الملف كما هو.
+    ///
+    /// **حدّه (معلَن)**: لا يُجرَّد `r#"…"#` ولا محارف `'…'` (ولا هي مستعملة في
+    /// النصف الإنتاجي من هذا الملف)؛ وتحويلٌ عبر وسيط (متغيّر يُبنى منه النصّ)
+    /// لا يراه حارسٌ نصّي — ولذلك معه **حارس سلوكي** لا يعتمد على نصّ أصلاً
+    /// (`a_cancelled_engine_call_returns_the_typed_cancel`).
+    fn code_only(src: &str) -> String {
+        let mut out = String::with_capacity(src.len());
+        let mut it = src.chars().peekable();
+        while let Some(c) = it.next() {
+            match c {
+                // تعليق سطر: يُبتلع حتى نهاية السطر (والسطر يبقى فاصلاً).
+                '/' if it.peek() == Some(&'/') => {
+                    for n in it.by_ref() {
+                        if n == '\n' {
+                            out.push('\n');
+                            break;
+                        }
+                    }
+                }
+                // تعليق كتلة (ويتداخل في Rust) — يُبتلع كاملاً.
+                '/' if it.peek() == Some(&'*') => {
+                    it.next();
+                    let mut depth = 1usize;
+                    let mut prev = '\0';
+                    for n in it.by_ref() {
+                        if prev == '/' && n == '*' {
+                            depth += 1;
+                        }
+                        if prev == '*' && n == '/' {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        prev = n;
+                    }
+                    out.push(' ');
+                }
+                // سلسلة نصّية: يُستبدل متنها بعلامة فارغة (فلا يبقى منها حرف).
+                '"' => {
+                    let mut escaped = false;
+                    for n in it.by_ref() {
+                        if escaped {
+                            escaped = false;
+                        } else if n == '\\' {
+                            escaped = true;
+                        } else if n == '"' {
+                            break;
+                        }
+                    }
+                    out.push_str("\"\"");
+                }
+                _ => out.push(c),
+            }
+        }
+        out
+    }
+
+    /// كل فراغات (وأسطر) الشيفرة تُطوى إلى فراغ واحد — فيصير الحكم على **بنية
+    /// الجملة** لا على تنسيقها (و`cargo fmt` يعيد ترتيب الأسطر ولا يجوز أن
+    /// يُسقِط حارساً).
+    fn collapsed(src: &str) -> String {
+        src.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
     /// **حارس عدم-الفراغ: الإلغاء يُبنى في مسار الإنتاج** — عطل وقع في هذه
     /// الجولة نفسها.
     ///
@@ -1686,15 +1763,18 @@ mod tests {
     /// `variant 'Cancelled' is never constructed` في هدف المكتبة (وبوّابة
     /// `pnpm rust:gates` تعدّ مواضع التحذيرات الفريدة فأسقطت الزيادة ١٤⇒١٧).
     ///
-    /// **حدّه (معلَن)**: حارس **نصّي** لا برهان — يقرأ النصف الإنتاجي من هذا
-    /// الملف (`include_str!`) ويحكم على نصّه؛ وتحويلٌ ملتوٍ (اسم مستعار، أو بناءٌ
-    /// في دالة وسيطة) لا يراه، وهو موكول إلى المراجعة. ونظيره **السلوكي الحيّ**
-    /// يقتضي تشغيل نداء استدلال حقيقي مع إلغاء فوري، والنموذج (63.7MB) غير
-    /// متتبَّع ⇒ موضعه `pnpm e2e:release` لا هنا.
+    /// **والادّعاء المركزي هنا محصور على فرع التوقّف** (`if !progress(…)` داخل
+    /// `demix`) بعد تجريد التعليقات والسلاسل: أي أن **متن الفرع نفسه** هو
+    /// `return Err(SepError::Cancelled);`. وهذا ما يُبطل التفافَين مقيسَين:
+    /// تعليقٌ يحمل النصّ، وتجزئةُ جملةٍ إلى نصّين.
     ///
-    /// **مُفسَده**: إعادة `demix` إلى `SepError::Inference("تم إلغاء المعالجة…")`
-    /// ⇒ يسقط الادّعاءان معاً: لا `Cancelled` يُبنى في الإنتاج، وتعود جملة
-    /// الإلغاء مكتوبةً في هذا الملف.
+    /// **حدّه (معلَن)**: حارس **نصّي** لا برهان — تحويلٌ ملتوٍ عبر وسيط (اسم
+    /// مستعار أو نصّ يُبنى في دالة وسيطة) لا يراه، ولذلك معه الحارس السلوكي
+    /// [`a_cancelled_engine_call_returns_the_typed_cancel`] الذي لا يقرأ نصّاً.
+    ///
+    /// **مُفسَده**: (١) إعادة `demix` إلى `SepError::Inference("تم إلغاء المعالجة…")`
+    /// ⇒ يسقط الادّعاءان معاً؛ (٢) **هجوم الجاسوس** (تعليق + تجزئة الحرف) ⇒ يسقط
+    /// الادّعاء الثالث وحده — وهو الثقب الذي أُغلق بهذا الادّعاء.
     #[test]
     fn the_cancel_stop_is_typed_in_the_production_path() {
         let src = include_str!("separator.rs");
@@ -1712,5 +1792,65 @@ mod tests {
             "جملة الإلغاء ما زالت مكتوبةً في مسار الإنتاج: بدل أن يحملها ثابت واحد \
              (`pipeline::CANCELLED_BY_USER`) صارت نسخةً تُطابق نصّاً"
         );
+
+        // **الادّعاء الذي لا يُشبَع بتعليق ولا بتجزئة نصّ**: على **نصّ الشيفرة**
+        // (تعليقات وسلاسل مجرَّدة) وفراغات مطويّة.
+        let code = collapsed(&code_only(production));
+        assert!(
+            code.contains(
+                "if !progress(done as f32 / total_steps as f32) { return Err(SepError::Cancelled); }"
+            ),
+            "فرع التوقّف في `demix` لم يبق يُرجع `SepError::Cancelled` بعينه — \
+             والشرط على **نصّ الشيفرة** بعد تجريد التعليقات والسلاسل، فلا يُشبَع \
+             بتعليقٍ يحمل الجملة ولا بتجزئة نصٍّ إليها"
+        );
+    }
+
+    /// **الحارس السلوكي (الأقوى): نداء محرّك حقيقي يُلغى ⇒ النوع الموسوم.**
+    ///
+    /// لا يقرأ نصّاً ولا يعتمد على بنية ملف: يشغّل `separator::separate` على مزيج
+    /// مُصنَّع برمز «توقّف» فيُقاس **ما يُرجع فعلاً**. وهذا هو الفرق بين حارس
+    /// يقرأ الشيفرة وحارس يشغّلها.
+    ///
+    /// **ولماذا يقع في مسار `demix` بالبناء**: `SepError::Cancelled` لا يُبنى إلا
+    /// **بعد** مقطع استدلال كامل (`session.run_model` ثم فحص التقدّم)، فالقياس
+    /// استدلالٌ حقيقي لا سقوطٌ مبكّر.
+    ///
+    /// **حدّه (معلَن)**: يقتضي النموذج (63.7MB **غير متتبَّع**) ⇒ على شجرة بلا
+    /// نموذج **يتخطّى بصوتٍ عالٍ** على نمط `e2e_full_pipeline_through_ffmpeg`
+    /// (‏`eprintln` ثم عودة)، فلا يُدَّعى قياسٌ لم يقع. والقياس عليه: **2.84 ث**
+    /// على هذه الآلة (مزيج ٢ ث).
+    ///
+    /// **مُفسَده**: إعادة `demix` إلى `SepError::Inference(…)` ⇒ يسقط: النوع
+    /// المُعاد ليس `Cancelled`.
+    #[test]
+    fn a_cancelled_engine_call_returns_the_typed_cancel() {
+        if resolve_model().is_err() {
+            eprintln!("تخطّي الحارس السلوكي للإلغاء: نموذج الفصل {MODEL_FILENAME} غير موجود");
+            return;
+        }
+        let (l, r) = e2e_synthetic_mix(E2E_SR, 2.0);
+        let tmp = std::env::temp_dir().join(format!("hl_cancel_live_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let mix = tmp.join("mix.wav");
+        write_wav_stereo_f32(&mix, &l, &r, E2E_SR).unwrap();
+
+        // «توقّف» من أول نداء تقدّم — وهو ما يقع حين يُلغى المستخدم المهمّة.
+        let res = separate(&mix, &tmp.join("out"), false, &|_| false, None);
+        let e = match res {
+            Ok(_) => panic!("نداء محرّك مُلغى لا يجوز أن ينجح"),
+            Err(e) => e,
+        };
+        assert!(
+            matches!(e, SepError::Cancelled),
+            "إلغاء نداء المحرّك يُرجع نوعاً غير موسوم بالإلغاء: {e:?} · نصّه «{e}»"
+        );
+        assert_eq!(
+            e.to_string(),
+            crate::pipeline::CANCELLED_BY_USER,
+            "ونصّه جملة الإلغاء الواحدة"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

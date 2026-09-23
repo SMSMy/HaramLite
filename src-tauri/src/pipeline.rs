@@ -2070,6 +2070,96 @@ mod tests {
         );
     }
 
+    /// **حارس (د) — الحالة الخَطِرة على مسارَي المحرّك والأداة**: راية الإلغاء
+    /// **مضبوطة** وعطلٌ **حقيقي** من دالة إنتاج ⇒ يبقى `ERROR` بنصّه ولا يُوسم
+    /// إلغاءً.
+    ///
+    /// **ولماذا لزم**: كان حارس التسليم يقيس `dsp_err` وحده (حارس «ج»)، فبقي
+    /// مسارا المحرّك والأداة بلا حارس لهذه الحالة. والصحيح أن الإصلاح **يحميه
+    /// التوقيع** — [`sep_err`] و[`media_err`] لا يستقبلان رمز الإلغاء أصلاً،
+    /// فلا مدخل لرايةٍ تُبتلع الفشل — لكن «محميٌّ بالتوقيع» **دعوى بلا حارس**
+    /// حتى تُقاس.
+    ///
+    /// **والقياس سلوكي ورخيص**: `separator::separate` على مدخل غير موجود يفشل
+    /// **قبل** بناء الجلسة (`read_wav_stereo` أول سطر)، و`media::resolve_tool`
+    /// لأداة غير موجودة يفشل فوراً — فلا نموذج ولا ffmpeg.
+    ///
+    /// **مُفسَده**: جعل الراية تُبتلع الفشل الحقيقي (تصنيف بـ`cancel.is_cancelled()`
+    /// بدل النوع) ⇒ يسقط: يُوسم إلغاءً ويُسجَّل `INFO`.
+    #[test]
+    fn a_real_failure_with_the_cancel_flag_set_stays_an_error() {
+        let token = CancelToken::new();
+        token.set();
+        // **الراية في الشكلين الذين قد يقرؤهما كودٌ مستقبلي**: محليّة، **وفي سياق
+        // المهمّة الجارية** (`proc::current_cancel()` — وهو ما تقرؤه نداءات
+        // الأدوات في الإنتاج). بدون الثاني يصير مُفسَد «رايةٌ تُبتلع الفشل»
+        // **غير مرئيّ** لهذا الحارس: مصنِّفٌ يقرأ السياق الجاري لا يجد رايةً
+        // مضبوطة فيمرّ. فالضابط الموجب هنا: السياق يحمل الراية فعلاً.
+        let ctx = crate::proc::JobCtx {
+            cancel: Some(token.clone()),
+            ..Default::default()
+        };
+        let _ctx = crate::proc::enter(&ctx);
+        assert_eq!(
+            crate::proc::current_cancel().map(|c| c.is_cancelled()),
+            Some(true),
+            "سياق المهمّة الجاري يحمل إلغاءً مضبوطاً — وإلا لم يُقَس الشكل الثاني للراية"
+        );
+
+        let dir = std::env::temp_dir().join(format!("hl_cancel_flag_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let missing = dir.join("no_such_mix.wav");
+
+        // (١) **المحرّك**: فشلٌ حقيقي من `separate` والراية مضبوطة ⇒ `ERROR`.
+        let (engine_failure, engine_lines) = capture_events(|| {
+            let e = match separator::separate(&missing, &dir.join("out"), false, &|_| true, None) {
+                Ok(_) => panic!("مدخل غير موجود لا يجوز أن ينجح"),
+                Err(e) => e,
+            };
+            sep_err(e)
+        });
+        assert!(
+            token.is_cancelled(),
+            "الراية مضبوطة فعلاً — وإلا فالقياس عن حالة غير خطِرة"
+        );
+        assert_ne!(
+            engine_failure.to_string(),
+            CANCELLED_BY_USER,
+            "فشل المحرّك الحقيقي لا يُوسم إلغاءً ولو كان رمز الإلغاء مضبوطاً"
+        );
+        let errs = pipe_errors(&engine_lines);
+        assert_eq!(errs.len(), 1, "ويُسجَّل ERROR بنصّه: {engine_lines:?}");
+        assert!(
+            errs[0].contains("مدخل غير صالح"),
+            "ونصّه يسمّي سببه: {}",
+            errs[0]
+        );
+
+        // (٢) **الأداة**: فشلٌ حقيقي من `resolve_tool` والراية مضبوطة ⇒ `ERROR`.
+        let (tool_failure, tool_lines) = capture_events(|| {
+            let e = match media::resolve_tool("hl_no_such_tool") {
+                Ok(_) => panic!("أداة غير موجودة لا يجوز أن تُحلّ"),
+                Err(e) => e,
+            };
+            media_err(e)
+        });
+        assert_ne!(
+            tool_failure.to_string(),
+            CANCELLED_BY_USER,
+            "فشل الأداة الحقيقي لا يُوسم إلغاءً"
+        );
+        let errs = pipe_errors(&tool_lines);
+        assert_eq!(errs.len(), 1, "ويُسجَّل ERROR بنصّه: {tool_lines:?}");
+        assert!(
+            errs[0].contains("أداة مفقودة"),
+            "ونصّه يسمّي سببه: {}",
+            errs[0]
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// **عقد الواجهة — كل رسالة إلغاء تُرجعها هذه الوحدة يحمل نصُّها «إلغاء»**.
     ///
     /// `src/queue.ts` (`isCancellation`) يقرأ وجود «إلغاء» في نصّ الخطأ ليميّز
