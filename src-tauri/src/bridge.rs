@@ -2098,6 +2098,13 @@ mod tests {
                 !ALL_ENGINE_SUBCODES.contains(&raw.as_str()),
                 "نصٌّ خام دخل مجموعة الرموز المعلَنة: {raw}"
             );
+            // **والأهمّ**: المصنّف نفسه لا يُرجع نصّاً خاماً رمزاً — فلو أُعيد
+            // النصّ في الحقل (مُفسَد «النصّ الخام رمزاً») سقط هذا السطر.
+            let got = engine_subcode(&raw);
+            assert!(
+                ALL_ENGINE_SUBCODES.contains(&got),
+                "المصنّف أرجع ما ليس من الكتلة المعلَنة على مدخل خام: {got:?}"
+            );
         }
         assert!(
             ALL_ENGINE_SUBCODES.iter().all(|c| c.starts_with("engine_")),
