@@ -81,7 +81,7 @@
     },
     {
       "path": "browser-extension/content.js",
-      "sha256": "d3dda2ee4d656f903f0ee869aa30dc0dcf5e42a128596f6d12560cd4258e108c"
+      "sha256": "846367c1cb510708e43711432f0c8e12a568a065a5e533c2b08a257477453594"
     },
     {
       "path": "browser-extension/popup.js",

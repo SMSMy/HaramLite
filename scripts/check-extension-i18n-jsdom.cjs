@@ -511,8 +511,44 @@ async function contentModePick(jsSrc, languages, which, entry) {
   item.click();
   await sleep(120);
   out.sentModes = w.__sent.filter((m) => m && m.type === 'link').map((m) => m.mode);
+  out.payloads = w.__sent.filter((m) => m && m.type === 'link');
   out.persisted = w.__store['hl.popup.mode'] || null;
   return out;
+}
+
+/** يقود **زرّ المعالجة/المشاهدة** (`makeProcBtn`) ويُعيد حمولة الطلب — العقد الذي
+ *  يعيد المسار المؤقّت (`watch:true` بلا `mode`، قرار المالك 2026-09-23). */
+async function contentWatchStart(jsSrc, languages) {
+  let w = null;
+  try { w = renderContent(jsSrc, languages, REPLY_START); } catch (e) { return { why: 'تنفيذ content.js رمى: ' + (e && e.message ? e.message : e) }; }
+  w.dispatchEvent(new w.Event('yt-navigate-finish'));
+  await sleep(320);
+  const btn = w.document.getElementById('haramlite-yt-proc');
+  if (!btn) return { why: 'زرّ المعالجة غير مُحقَن' };
+  btn.click();
+  await sleep(150);
+  const links = w.__sent.filter((m) => m && m.type === 'link');
+  if (!links.length) return { why: 'لا طلب أُرسل' };
+  return { payload: links[0], count: links.length };
+}
+
+/** يقود «معالجة كاملة» من **قائمة النقر الأيمن** ويُعيد حمولة الطلب. */
+async function contentReprocess(jsSrc, languages) {
+  let w = null;
+  try { w = renderContent(jsSrc, languages, REPLY_START); } catch (e) { return { why: 'تنفيذ content.js رمى: ' + (e && e.message ? e.message : e) }; }
+  w.dispatchEvent(new w.Event('yt-navigate-finish'));
+  await sleep(320);
+  const watch = w.document.getElementById('haramlite-yt-watch');
+  if (!watch) return { why: 'زرّ المشاهدة غير مُحقَن' };
+  watch.dispatchEvent(new w.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await sleep(40);
+  const entry = w.document.getElementById('hl-ext-reprocess');
+  if (!entry) return { why: 'مدخل «معالجة كاملة» لم يظهر' };
+  entry.click();
+  await sleep(150);
+  const links = w.__sent.filter((m) => m && m.type === 'link');
+  if (!links.length) return { why: 'لا طلب أُرسل' };
+  return { payload: links[0] };
 }
 
 /** يقود مسار جلب الصوت: يردّ `status` بمهمّة ناجحة ثم يردّ `result_file` بالردّ المُمرَّر. */
@@ -658,6 +694,39 @@ async function measureX1(src, report) {
         'before=' + wm.before + ' text=' + JSON.stringify(wm.text));
       report(`[watchmenu/${L.lang}] واتجاه القائمة اتجاه اللغة (${L.lang === 'ar' ? 'rtl' : 'ltr'})`,
         wm.dir === (L.lang === 'ar' ? 'rtl' : 'ltr'), 'وُجد ' + JSON.stringify(wm.dir));
+    }
+  }
+
+  /* (ز) **عقدا المدخلين** (قرار المالك 2026-09-23): المشاهدة بعلمها بلا `mode`،
+     والحفظ باختيار الوضع بلا علم مشاهدة — وهو ما يعيد المسار المؤقّت (`page-audio`)
+     فلا تتراكم ملفات في `~/Videos/HaramLite` من زرّ المشاهدة. */
+  {
+    const ws = await contentWatchStart(contentJs, ['en-US', 'ar']);
+    if (!ws.payload) {
+      report('[watch] صفر مدخل: زرّ المعالجة/المشاهدة أرسل طلباً', false, ws.why || 'لا طلب');
+    } else {
+      report('[watch] يرسل `watch:true` — فيأخذ التطبيق المسار المؤقّت (`page_audio_dir`)',
+        ws.payload.watch === true, 'الحمولة=' + JSON.stringify(ws.payload));
+      report('[watch] و**بلا `mode`** (العلم منفصل عن الوضع، والعقد القديم `mode:"watch"` لا يعود)',
+        !('mode' in ws.payload), 'الحمولة=' + JSON.stringify(ws.payload));
+      report('[watch] وطلب واحد لا أكثر من نقرة واحدة', ws.count === 1, 'عدد الطلبات=' + ws.count);
+    }
+    for (const which of ['youtube', 'music']) {
+      for (const entry of ['song', 'clip']) {
+        const r = await contentModePick(contentJs, ['en-US', 'ar'], which, entry);
+        const p = (r.payloads || [])[0];
+        if (!p) { report(`[save/${which}/${entry}] صفر مدخل: طلب وضع أُرسل`, false, r.why || 'لا طلب'); continue; }
+        report(`[save/${which}/${entry}] يرسل \`mode:"${entry}"\``, p.mode === entry, 'الحمولة=' + JSON.stringify(p));
+        report(`[save/${which}/${entry}] و**بلا علم مشاهدة** ⇒ مسار الحفظ الكامل في مجلد المستخدم`,
+          !('watch' in p), 'الحمولة=' + JSON.stringify(p));
+      }
+    }
+    const rp = await contentReprocess(contentJs, ['en-US', 'ar']);
+    if (!rp.payload) {
+      report('[save/reprocess] صفر مدخل: «معالجة كاملة» أرسلت طلباً', false, rp.why || 'لا طلب');
+    } else {
+      report('[save/reprocess] «معالجة كاملة» ⇒ `mode` بلا علم مشاهدة (مسار الحفظ)',
+        typeof rp.payload.mode === 'string' && !('watch' in rp.payload), 'الحمولة=' + JSON.stringify(rp.payload));
     }
   }
 
@@ -853,9 +922,16 @@ async function main() {
     ['⑫ مدخل «أغنية» يرسل `clip` دائماً ⇒ الوضع المُرسل لا يطابق المختار',
       { content: sub(CONTENT.js, /function chooseMode\(next\) \{\n    MODE = next === 'song' \? 'song' : 'clip';/,
         "function chooseMode(next) {\n    MODE = 'clip';") }, 'fall'],
-    /* ⑬ الحمولة عادت تحمل `'watch'` بدل اختيار المستخدم. */
-    ['⑬ الطلب يعود بـ`mode: \'watch\'` بدل الوضع المختار',
-      { content: sub(CONTENT.js, /mode: MODE \}\);/, "mode: 'watch' });") }, 'fall'],
+    /* ⑬ الحمولة عادت تحمل `'watch'` بدل اختيار المستخدم في **مسار الحفظ**. */
+    ['⑬ مسار الحفظ يعود بـ`mode: \'watch\'` بدل الوضع المختار',
+      { content: sub(CONTENT.js, /mode: MODE \}/, "mode: 'watch' }") }, 'fall'],
+    /* ㉕/㉖ عقدا المدخلين (قرار المالك): العلم لا يُنزع من المشاهدة ولا يُضاف إلى الحفظ. */
+    ['㉕ زرّ المشاهدة فقد علمه ⇒ يعود مسار الحفظ وتتراكم ملفات في مجلد المستخدم',
+      { content: sub(CONTENT.js, /: \{ type: 'link', url: location\.href, watch: true \};/,
+        ": { type: 'link', url: location.href };") }, 'fall'],
+    ['㉖ مسار الحفظ اكتسب علم مشاهدة ⇒ ناتج الوضع لا يُحفظ',
+      { content: sub(CONTENT.js, /\? \{ type: 'link', url: location\.href, mode: MODE \}/,
+        "? { type: 'link', url: location.href, mode: MODE, watch: true }") }, 'fall'],
     /* ⑭ زرّ الوضع لم يُحقن ⇒ لا سبيل لاختيار الوضع من الصفحة. */
     ['⑭ زرّ الوضع لم يُحقن (#haramlite-yt-mode مفقود)',
       { content: sub(CONTENT.js, /    controls\.prepend\(mb\);\n/, '') }, 'fall'],

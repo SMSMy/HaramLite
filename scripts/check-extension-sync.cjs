@@ -2192,36 +2192,79 @@ console.log('\n=== ٣٣) صفر مصرف HTML خام: يوتيوب يفرض Trus
  * فالعدّ الآن **بالأنماط**: كل صيغة تُسند HTML خاماً — حرفيّةً أو محسوبةً أو بمعالج
  * `set*HTML*` — مع خمسة مصارف كلاسيكية. والفحص السلوكي الموازي في
  * `check-extension-i18n-jsdom.cjs` (محاكاة Trusted Types + فتح القائمتين) يمسك
- * الصيغ نفسها في DOM، والمُفسَدان مقيَّسان في الموضعين. */
+ * الصيغ نفسها في DOM، والمُفسَدان مقيَّسان في الموضعين.
+ *
+ * **وحكم ثانٍ للجاسوس على `f2d99df` ضبط القاعدة**: كانت **تُفرط** فتُحمرّ أربع حالات
+ * سليمة (قراءة `menu.innerHTML` · قراءة محسوبة `T['myHTML']` · `_m['xHTMLish']` ·
+ * ونصّ رسالة `'do not use .innerHTML'` — فالتعليقات تُجرَّد **والسلاسل لا**)، ومرّ
+ * منها ثقب ثالث: `document['write'](…)` (المفتاح المحسوب كان يشترط انتهاءه بـ`HTML`).
+ * فالضبط بثلاث قواعد: ① **الإسناد شرط** في `.innerHTML`/`.outerHTML`/الوصول المحسوب
+ * (فالقراءة ليست مصرفاً) · ② **السلاسل تُجرَّد** (`stripLiterals`) قبل مطابقة أنماط
+ * الأعضاء والنداءات · ③ الوصول المحسوب يُطابق على نصّ بسلاسله **مع شرط الإسناد**.
+ * وللقاعدة **ضوابط ومصارف** مُعلَنة أدناه: صفر مدخل في القاعدة نفسها فشل. */
 const HTML_SINKS = [
-  { label: 'إسناد `.innerHTML`', re: /\.\s*innerHTML\b/ },
-  { label: 'إسناد `.outerHTML`', re: /\.\s*outerHTML\b/ },
+  { label: 'إسناد `.innerHTML`', re: /\.\s*innerHTML\s*(?:[+\-*/%|&^]|<<|>>|\?\?|\|\||&&)?=(?!=)/ },
+  { label: 'إسناد `.outerHTML`', re: /\.\s*outerHTML\s*(?:[+\-*/%|&^]|<<|>>|\?\?|\|\||&&)?=(?!=)/ },
+  { label: 'وصول محسوب **مُسنَد** إلى خاصيّة HTML', re: /\[\s*(['"`])[A-Za-z_$]*HTML[A-Za-z_$]*\1\s*\]\s*(?:[+\-*/%|&^]|<<|>>|\?\?|\|\||&&)?=(?!=)/ },
   { label: 'نداء `insertAdjacentHTML(`', re: /\.\s*insertAdjacentHTML\s*\(/ },
-  { label: 'نداء `document.write(`', re: /\bdocument\s*\.\s*write(?:ln)?\s*\(/ },
   { label: 'نداء `createContextualFragment(`', re: /\.\s*createContextualFragment\s*\(/ },
-  { label: 'وصول محسوب إلى خاصيّة HTML', re: /\[\s*(['"`])[A-Za-z_$]*HTML[A-Za-z_$]*\1\s*\]/ },
-  { label: 'معالج `set*HTML*()`', re: /\.\s*set[A-Za-z_$]*HTML[A-Za-z_$]*\s*\(/ },
+  { label: 'نداء `set*HTML*()`', re: /\.\s*set[A-Za-z_$]*HTML[A-Za-z_$]*\s*\(/ },
+  { label: 'نداء `document.write`/`writeln` (حرفيّاً أو محسوباً)',
+    re: /document\s*(?:\.\s*write(?:ln)?|\[\s*(['"`])write(?:ln)?\1\s*\])\s*\(/ },
+];
+/* الضوابط: كود سليم **يجب أن يمرّ** — كلٌّ إعادة تمثيل لحالةٍ أحمرّت زوراً عند الجاسوس. */
+const HTML_CLEAN = [
+  ['قراءة `menu.innerHTML` (لا إسناد)', 'const html = menu.innerHTML;'],
+  ['قراءة محسوبة `T[\'myHTML\']`', "const v = T['myHTML'];"],
+  ['قراءة محسوبة `_m[\'xHTMLish\']`', "const v = _m['xHTMLish'];"],
+  ['نصّ رسالة يذكر `.innerHTML`', "toast('do not use .innerHTML');"],
+  ['مقارنة على `outerHTML` بلا إسناد', 'if (a.outerHTML === b.outerHTML) return;'],
+];
+/* والمصارف الحقيقية **يجب أن تُطابق** — وإلا فالقاعدة تقيس الفراغ. */
+const HTML_MUST_HIT = [
+  ['إسناد `.innerHTML`', "menu.innerHTML = '<b>x</b>';", 'إسناد `.innerHTML`'],
+  ['وصول محسوب مُسنَد', "menu['innerHTML'] = '<b>x</b>';", 'وصول محسوب **مُسنَد** إلى خاصيّة HTML'],
+  ['معالج `set*HTML*()`', "menu.setHTMLUnsafe('<b>x</b>');", 'نداء `set*HTML*()`'],
+  ['`document[\'write\']` المحسوب', "document['write']('<b>x</b>');", 'نداء `document.write`/`writeln` (حرفيّاً أو محسوباً)'],
+  ['`insertAdjacentHTML`', "el.insertAdjacentHTML('beforeend', msg);", 'نداء `insertAdjacentHTML(`'],
 ];
 const sinkScan = (text) => {
   const noCom = stripComments(text);
-  return HTML_SINKS.filter((s) => s.re.test(noCom)).map((s) => s.label);
+  const noLit = stripLiterals(noCom);
+  const hit = new Set();
+  for (const s of HTML_SINKS) {
+    // ② أنماط الأعضاء/النداءات على نصّ **بلا سلاسل**؛ ③ والمحسوب على نصّ **بسلاسله**
+    // (فالمفتاح بين اقتباسين) **مع شرط الإسناد** الذي يحميه من القراءة.
+    if (s.re.test(noLit) || s.re.test(noCom)) hit.add(s.label);
+  }
+  return HTML_SINKS.filter((s) => hit.has(s.label)).map((s) => s.label);
 };
 const sinksNow = sinkScan(src);
-ok(`صفر مصرف HTML خام في content.js (${HTML_SINKS.length} نمطاً: حرفيّ · محسوب · set*HTML*)`,
+ok(`صفر مصرف HTML خام في content.js (${HTML_SINKS.length} نمطاً مضبوطاً بالإسناد وبلا سلاسل)`,
   sinksNow.length === 0, 'وُجد: ' + (sinksNow.join(' · ') || '—'));
+for (const [label, code] of HTML_CLEAN) {
+  const seen = sinkScan(code);
+  ok(`ضابط سليم يجب ألّا يُطابق: ${label}`, seen.length === 0, 'طابق: ' + seen.join(' · '));
+}
+for (const [label, code, want] of HTML_MUST_HIT) {
+  const seen = sinkScan(code);
+  ok(`ومصرف حقيقي يُطابق: ${label}`, seen.includes(want), 'طابق: ' + (seen.join(' · ') || 'لا شيء'));
+}
 const OPEN_HTML = "    const reprocess = mkNode('button', null, t('menu.reprocess'));";
 const sinkMuts = [
   ['هـ١: قائمة النقر الأيمن عادت تُبنى بـ`innerHTML` (العطل الميداني نفسه)',
     src.replace(OPEN_HTML, "    menu.innerHTML = t('menu.reprocess');\n" + OPEN_HTML)],
   ['هـ٢: إدراج HTML عبر `insertAdjacentHTML` في التوست',
     src.replace('    el.textContent = msg;', "    el.insertAdjacentHTML('beforeend', msg);")],
-  ['هـ٣: قراءة HTML عبر `outerHTML` في بناءٍ ما',
-    src.replace('  function mkNode(tag, css, text) {', '  function mkNode(tag, css, text) {\n    void document.body.outerHTML;')],
-  // الثقبان المقيسان على 2b1d8c2:
+  ['هـ٣: **إسناد** إلى `outerHTML` (والإسناد وحده مصرف؛ القراءة سليمة)',
+    src.replace('  function mkNode(tag, css, text) {', "  function mkNode(tag, css, text) {\n    if (!css) document.body.outerHTML = '';")],
+  // الثقوب الثلاثة المقيسة على 2b1d8c2 وf2d99df:
   ['هـ٤ (ثقب الجاسوس): `menu[\'innerHTML\'] = …` — وصول محسوب بمفتاح حرفيّ',
     src.replace(OPEN_HTML, "    menu['innerHTML'] = t('menu.reprocess');\n" + OPEN_HTML)],
   ['هـ٥ (ثقب الجاسوس): `menu.setHTMLUnsafe(…)` — معالج كروم ١٢٤+',
     src.replace(OPEN_HTML, "    menu.setHTMLUnsafe(t('menu.reprocess'));\n" + OPEN_HTML)],
+  ['هـ٦ (ثقب الجاسوس): `document[\'write\'](…)` — مفتاح محسوب لا ينتهي بـHTML',
+    src.replace(OPEN_HTML, "    document['write'](t('menu.reprocess'));\n" + OPEN_HTML)],
 ];
 for (const [label, mutant] of sinkMuts) {
   const fell = mutant !== src ? sinkScan(mutant) : [];

@@ -471,7 +471,8 @@
       ev.stopPropagation();
       ev.preventDefault();
       if (BUSY) doCancel();
-      else void startFull();
+      // زرّ المعالجة/المشاهدة ⇒ **مسار مؤقّت** بعلم مشاهدة (لا `mode`).
+      else void startFull('watch');
     });
     return btn;
   }
@@ -561,7 +562,8 @@
         chrome.storage.local.set({ 'hl.popup.mode': MODE });
       }
     } catch (e) { /* بلا تخزين: يبقى الوضع للجلسة الحالية */ }
-    if (!BUSY) void startFull();
+    // الوضع المختار صراحةً ⇒ **مسار الحفظ** (ناتج في مجلد المستخدم).
+    if (!BUSY) void startFull('save');
   }
   function makeWatchBtn() {
     const btn = document.createElement('button');
@@ -694,7 +696,8 @@
       // نُبقي الإنهاء الصريح هنا: startFull() ينصرف فوراً إن كان BUSY، فلا تبقى مشاهدة قائمة.
       stopWatch(true);
       resetBar();
-      void startFull();
+      // «معالجة كاملة» ⇒ **مسار الحفظ** (من طلب ناتجاً يجده في مجلده).
+      void startFull('save');
     });
     setTimeout(() => {
       if (!menu.isConnected) return;
@@ -707,7 +710,24 @@
   let pollTimer = null;
   function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
-  async function startFull() {
+  /* **مدخلان للمعالجة بعقدين مختلفين** (قرار المالك 2026-09-23، بعد إفصاح
+   * «لا كنس للنواتج · وناتج لكل ضغطة يتراكم»):
+   *
+   *   • `'watch'` — **زرّ المعالجة/المشاهدة** (‏`makeProcBtn`، وهو المدخل الذي
+   *     يليه زرّ «شاهد بعد إزالة الموسيقى»): يرسل **علم مشاهدة صريحاً**
+   *     `{type:'link', url, watch:true}` **بلا `mode`** ⇒ التطبيق يأخذ
+   *     **المسار المؤقّت** (`bridge.rs:1067-1071`: `page_audio_dir()` — صوتي فقط،
+   *     ولا شيء في مجلد المستخدم) ويقع على `s.watch_mode` لإعداد الوضع كما كان
+   *     قبل 1.1.9. فلا تتراكم ملفات في `~/Videos/HaramLite` من زرّ المشاهدة.
+   *   • `'save'` — **مدخلَا الوضع** («🎵 أغنية»/«🎬 مقطع») و**«معالجة كاملة»**:
+   *     `mode:'song'|'clip'` **بلا علم مشاهدة** ⇒ مسار الحفظ الكامل (من يطلب
+   *     ناتجاً يجده في مجلده).
+   *
+   * **والعلم منفصل عن `mode`**: لا يُعاد العقد القديم `mode:'watch'` (التطبيق
+   * يقبل `watch:true` مع `mode` أو بلا — والشقّ الآخر في الرست يقرأ العلم).
+   * و`watch` و`mode` **لا يجتمعان في طلب واحد من هذا الملف**: كل مدخل يرسل ما
+   * يعنيه وحده، ويحرسه القياس الحيّ في الاتجاهين. */
+  async function startFull(kind) {
     /* **قفل البدء** (نظير قفل الإلغاء، وبنفس صنف العطل): `BUSY` يُسند **بعد**
      * `await` (أسفل: `BUSY = true;` بعد ردّ الجرس)، فبين النقرة وردّ الجرس **لا
      * شيء يمنع طلباً ثانياً**. قِيس بجاسوس مستقلّ على `2b1d8c2`: نقرتان بفرق
@@ -732,9 +752,13 @@
     SENT_URL = location.href;
     let r = null;
     try {
-      // `mode` يحمل **اختيار المستخدم** (`song`/`clip`) كما يرسله المنبثق اليوم،
-      // وهو الحقل الذي يقرأه التطبيق (`bridge.rs:826-832` — `job_mode_of`).
-      r = await native({ type: 'link', url: location.href, mode: MODE });
+      // **العقدان** (التعليل في تعليق `startFull`): المشاهدة بعلمها بلا `mode`،
+      // والحفظ باختيار الوضع بلا علم. و`mode` هو الحقل الذي يقرأه التطبيق
+      // (`bridge.rs:826-832` — `job_mode_of`)، و`watch` علمه المستقلّ.
+      const req = (kind === 'save')
+        ? { type: 'link', url: location.href, mode: MODE }
+        : { type: 'link', url: location.href, watch: true };
+      r = await native(req);
     } catch (e) {
       toast('⚠ ' + errText(e, t('start.sendFailed')), 4000);
       return;
