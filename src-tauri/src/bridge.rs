@@ -814,10 +814,32 @@ struct Job {
     mode: Option<Mode>,
 }
 
-/// Pure mode parse (unit-tested): only an explicit `"watch"` opts into the
-/// temp path — old clients send no mode and stay full-save.
+/// Pure watch parse (unit-tested). **الوجهة المؤقّتة تُؤخذ من طريقين لا من
+/// الوضع وحده**:
+/// * `mode: "watch"` — العميل القديم (عقد قائم، يُحفظ كما هو)،
+/// * `watch: true` — **علم صريح لزرّ المشاهدة** (قرار المالك 2026-09-23: «يُعاد
+///   المسار المؤقّت لزرّ المشاهدة، ويبقى الحفظ للأوضاع الصريحة») — لأن جعل
+///   `mode` وحدها تحمل الأمر جعل **ناتجاً يتراكم لكل مشاهدة** في
+///   `~/Videos/HaramLite` بلا كنس.
+///
+/// **والعلم لا يُخلط بـ`mode`**: `mode` يبقى لاختيار `song|clip` (‏[`job_mode_of`])،
+/// وهذا العلم للوجهة وحدها — فطلب `{mode:"song", watch:true}` مشاهدةٌ بوضع أغنية.
+/// والغياب/الفُساد/`false` ⇒ حفظٌ كامل (فالاتجاهان متوافقان).
 fn job_watch_of(msg: &serde_json::Value) -> bool {
     msg.get("mode").and_then(|v| v.as_str()) == Some("watch")
+        || msg.get("watch").and_then(|v| v.as_bool()) == Some(true)
+}
+
+/// **وجهة ناتج الطلب** — دالّة صريحة لتُقاس **الوجهة** لا العلم وحده (كانت
+/// `if watch { … } else { … }` مدفونةً داخل `handle_request` فلا سبيل لقياسها):
+/// المشاهدة ⇒ مجلد الصوت المؤقّت المُدار (`page-audio`، يُكنس عند كل اكتمال فلا
+/// يتراكم شيء في مجلد المستخدم)، وغيرها ⇒ مجلد الحفظ.
+fn job_out_dir(watch: bool) -> PathBuf {
+    if watch {
+        page_audio_dir()
+    } else {
+        dirs::video_dir().unwrap_or_default().join("HaramLite")
+    }
 }
 
 /// Pure per-request mode (unit-tested): the popup sends `song` or `clip`;
@@ -1064,11 +1086,8 @@ fn handle_request(
     // Field #3: temp watch-listens process audio-only inside the managed
     // page-audio dir — nothing is ever saved to the user folder, and each
     // completion sweeps the previous temp (deleted when no longer wanted).
-    let out_dir = if watch {
-        page_audio_dir()
-    } else {
-        dirs::video_dir().unwrap_or_default().join("HaramLite")
-    };
+    // الوجهة في دالّة صريحة (`job_out_dir`) لتُقاس بالاختبار لا بالقراءة.
+    let out_dir = job_out_dir(watch);
     let url_label = url.to_string();
     let name_label = url_label.clone();
     let queued = pending.load(Ordering::SeqCst).saturating_sub(1);
@@ -1835,8 +1854,8 @@ mod tests {
         teardown(&base);
     }
 
-    /// Field #3: only an explicit `"watch"` mode takes the temp path —
-    /// missing/garbage modes stay full-save (both directions compatible).
+    /// العميل **القديم**: `mode:"watch"` وحدها كانت تأخذ المسار المؤقّت —
+    /// مسطرةٌ قائمة تُحفظ كما هي (والعلم الصريح أُضيف **فوقها** لا بدلاً منها).
     #[test]
     fn watch_mode_parses_explicit_only() {
         use serde_json::json;
@@ -1846,6 +1865,72 @@ mod tests {
         assert!(!job_watch_of(&json!({ "type": "link", "mode": "" })));
         assert!(!job_watch_of(&json!({ "type": "link", "mode": 7 })));
         assert!(!job_watch_of(&json!({})));
+    }
+
+    /// **قرار المالك (2026-09-23)**: «يُعاد المسار المؤقّت لزرّ المشاهدة، ويبقى
+    /// الحفظ للأوضاع الصريحة» — لأن المسار السابق (‏`mode` وحدها) جعل **ناتجاً
+    /// يتراكم لكل مشاهدة** في `~/Videos/HaramLite` بلا كنس.
+    ///
+    /// ويقيس **الوجهة** لا العلم وحده: العلم الصريح ⇒ مجلد الصوت المؤقّت (يُكنس
+    /// عند كل اكتمال)، والوضع الصريح ⇒ مجلد الحفظ. والعلم **لا يُخلط بـ`mode`**.
+    ///
+    /// **مُفسَده**: إزالة فرع `watch:true` من `job_watch_of` ⇒ يسقط الادّعاءان
+    /// الأول والثاني (والثالث في اختبار الوضع القديم).
+    #[test]
+    fn the_watch_flag_takes_the_temp_dir_and_explicit_modes_keep_saving() {
+        use serde_json::json;
+        // `page_audio_dir` تحلّ مجلد بيانات التطبيق ⇒ نفس قفل `paths.rs` الذي
+        // تستعمله الاختبارات التي تبدّل `HARAMLITE_DATA_DIR` (فلا يُقاس مسار
+        // على بيئة يبدّلها غيرنا في اللحظة نفسها).
+        let _serial = crate::paths::serial_guard();
+        let temp = page_audio_dir();
+        let save = dirs::video_dir().unwrap_or_default().join("HaramLite");
+        assert_ne!(temp, save, "المساران مختلفان — وإلا فالقياس بلا معنى");
+
+        // (١) **العلم الصريح ⇒ مشاهدة ⇒ الوجهة المؤقّتة** (لا تراكم في مجلد المستخدم).
+        let by_flag = json!({ "type": "link", "watch": true });
+        assert!(job_watch_of(&by_flag), "`watch:true` يُقرأ مشاهدة");
+        assert_eq!(
+            job_out_dir(job_watch_of(&by_flag)),
+            temp,
+            "زرّ المشاهدة يجب أن يكتب في مجلد الصوت المؤقّت"
+        );
+
+        // (٢) **والوضع الصريح ليس مشاهدة ⇒ وجهة الحفظ**.
+        let by_clip = json!({ "type": "link", "mode": "clip" });
+        assert!(!job_watch_of(&by_clip), "`mode:\"clip\"` ليس مشاهدة");
+        assert_eq!(
+            job_out_dir(job_watch_of(&by_clip)),
+            save,
+            "الوضع الصريح يبقى على مسار الحفظ"
+        );
+
+        // (٣) **والعلم لا يُخلط بالوضع**: الاثنان معاً ⇒ مشاهدةٌ (وجهة مؤقّتة)
+        //     **و**`mode` يبقى لاختيار أغنية/مقطوعة كما هو.
+        let both = json!({ "type": "link", "mode": "song", "watch": true });
+        assert!(job_watch_of(&both), "العلم يحكم الوجهة ولو مع وضع صريح");
+        assert_eq!(
+            job_mode_of(&both),
+            Some(Mode::Song),
+            "و`mode` لم يُلمس: العلم للوجهة والوضع للاختيار"
+        );
+        assert_eq!(job_out_dir(job_watch_of(&both)), temp);
+
+        // (٤) **ولا يُصدَّق غير المنطقي**: `as_bool` لا تُحوّل نصّاً ولا عدداً
+        //     (وإلا صار `watch:"false"` مشاهدةً — وهو عكس المقصود).
+        for bad in [
+            json!({ "type": "link", "watch": "true" }),
+            json!({ "type": "link", "watch": false }),
+            json!({ "type": "link", "watch": 1 }),
+            json!({ "type": "link", "watch": null }),
+        ] {
+            assert!(!job_watch_of(&bad), "علمٌ غير منطقي لا يُقرأ مشاهدة: {bad}");
+        }
+
+        // (٥) **والقديم يبقى**: `mode:"watch"` ⇒ الوجهة المؤقّتة (عقد الإضافة).
+        let legacy = json!({ "type": "link", "mode": "watch" });
+        assert!(job_watch_of(&legacy));
+        assert_eq!(job_out_dir(job_watch_of(&legacy)), temp);
     }
 
     /// A stale "last call" record must never be read as "the extension is here":
