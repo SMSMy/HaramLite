@@ -17,7 +17,7 @@
 
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import { currentLang, t } from './i18n';
+import { currentLang, errText, t } from './i18n';
 import { pushSettings, setAutostartAsked, setTelegramApiHash, setTelegramToken } from './settings';
 import { playDing, showToast, trapFocus } from './util';
 import * as session from './session';
@@ -438,7 +438,7 @@ export function wireTelegram(): void {
       switch (v.state) {
         case 'error':
           box.checked = !!id?.applied;
-          setNote(t('tg_identity_failed', { err: String(id?.error ?? '').slice(0, 120) }), true);
+          setNote(t('tg_identity_failed', { err: errText(id).slice(0, 120) }), true);
           return;
         case 'mismatch':
           // الاسم على الخادم ليس هدفنا: **لا ندّعي التطبيق** حتى لو رُفعت رايتنا.
@@ -484,7 +484,7 @@ export function wireTelegram(): void {
         } catch (e) {
           // تفاؤل كاذب ممنوع: يُعاد المربّع إلى حالته السابقة ويُعلن السبب.
           box.checked = before;
-          setNote(t('tg_identity_failed', { err: String(e).slice(0, 120) }), true);
+          setNote(t('tg_identity_failed', { err: errText(e).slice(0, 120) }), true);
         } finally {
           box.disabled = false;
         }
@@ -502,7 +502,7 @@ export function wireTelegram(): void {
           }
         } catch (e) {
           if (cmdNote) {
-            cmdNote.textContent = t('tg_commands_failed', { err: String(e).slice(0, 120) });
+            cmdNote.textContent = t('tg_commands_failed', { err: errText(e).slice(0, 120) });
             cmdNote.className = 'font-label-sm text-label-sm text-error leading-relaxed';
           }
         }
@@ -668,7 +668,7 @@ export function wireBridge(): void {
         const st = await invoke<{ enabled: boolean }>('bridge_status');
         if (cb) cb.checked = st.enabled;
       } catch { /* dev builds — leave as-is */ }
-      showToast(`✗ ${String(e).slice(0, 120)}`);
+      showToast(`✗ ${errText(e).slice(0, 120)}`);
       invoke('push_log', { level: 'error', message: `bridge toggle failed: ${e}` });
     }
   }
@@ -688,11 +688,11 @@ export function wireBridge(): void {
       }
     } catch { /* dev/portable builds — leave unchecked */ }
   })();
-  void listen<{ name: string; ok: boolean; seconds?: number; error?: string }>('bridge-done', (ev) => {
+  void listen<{ name: string; ok: boolean; seconds?: number; error?: string; code?: string }>('bridge-done', (ev) => {
     const p = ev.payload;
     showToast(p.ok
       ? `✓ ${p.name} (${p.seconds?.toFixed(1)}s)`
-      : `✗ ${p.name}: ${String(p.error ?? '').slice(0, 80)}`);
+      : `✗ ${p.name}: ${errText(p).slice(0, 80)}`);
     // completion sound for browser-initiated jobs (notification setting)
     if (localStorage.getItem('hl.notify') === '1') playDing();
     // completion card with a quick "open results folder" action
@@ -701,7 +701,7 @@ export function wireBridge(): void {
     if (card && cardText) {
       cardText.textContent = p.ok
         ? `${p.name} — ${t('bridge_done_in', { secs: p.seconds?.toFixed(1) ?? '0' })}`
-        : `${p.name} — ${String(p.error ?? '').slice(0, 120)}`;
+        : `${p.name} — ${errText(p).slice(0, 120)}`;
       cardText.className = p.ok
         ? 'font-body-sm text-sm text-cream-text'
         : 'font-body-sm text-sm text-error';
@@ -788,7 +788,7 @@ async function applyAutostart(on: boolean): Promise<void> {
     // in sync so a later unrelated push cannot resurrect the question.
     setAutostartAsked(true);
   } catch (e) {
-    showToast(`${t('autostart_failed')} ${String(e)}`);
+    showToast(`${t('autostart_failed')} ${errText(e)}`);
     await refreshAutostart();
   }
 }
