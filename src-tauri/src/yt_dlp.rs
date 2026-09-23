@@ -2085,6 +2085,7 @@ fn main() {
     let retry_mode = retry_always || dir_name.contains("retry_once");
     let permanent_fail = dir_name.contains("permanent_fail");
     let valid_leftover = dir_name.contains("valid_leftover");
+    let transient_after_valid = dir_name.contains("transient_after_valid");
 
     // ② **العامل** في الصورة ذات العمليتين: يسجّل معرّفه وينام (يمسك الأنبوب
     //    الموروث من مُشغّله — ولهذا تبقى المهمّة معلّقة إن نجا).
@@ -2192,6 +2193,24 @@ fn main() {
                 write_wav(std::path::Path::new(&t.replace("%(ext)s", "wav")));
             }
             eprintln!("ERROR: [youtube] AJOOve4s0_8: Video unavailable");
+            let _ = std::io::stderr().flush();
+            let _ = std::io::stdout().flush();
+            std::process::exit(1);
+        }
+        let _ = std::io::stdout().flush();
+        return;
+    }
+
+    // ③.و **خانةٌ صالحة ثم فشلٌ عابر**: يقيس **ثمن** تنظيف الخانة قبل الإعادة —
+    //    ملفٌّ كامل تركه الفشل الأول يُكنَس، والثانية تخرج بـ0 بلا كتابة ⇒
+    //    لا خانة ⇒ فشلٌ بنصّ «نجح دون ملف ناتج صالح». (قياسٌ لا حكم.)
+    if transient_after_valid {
+        let n = bump_calls(dir.as_deref());
+        if n == 1 {
+            if let Some(t) = tmpl.as_deref() {
+                write_wav(std::path::Path::new(&t.replace("%(ext)s", "wav")));
+            }
+            eprintln!("ERROR: unable to download video data: HTTP Error 403: Forbidden");
             let _ = std::io::stderr().flush();
             let _ = std::io::stdout().flush();
             std::process::exit(1);
@@ -2952,6 +2971,67 @@ fn main() {
             "أُعيد على فشل **دائم** (Video unavailable) — لا إعادة على الدائم (نداءات: {calls})\n{err}"
         );
         assert!(err.contains("Video unavailable"), "النصّ الدائم ضاع:\n{err}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// **قياس (١١): ثمن تنظيف الخانة قبل الإعادة — بالأرقام لا بالرأي.**
+    ///
+    /// شرطُ الإعادة المُلزِم («نظّف خانة الفشل كي لا يتراكم نصف ملف») له ثمن
+    /// مقيس هنا: لو ترك الفشلُ العابر **ملفاً كاملاً صالحاً** في الخانة، فإن
+    /// `clear_slots` في رأس المحاولة الثانية **يكنسه**، فتخرج الثانية بـ0 دون
+    /// كتابة ⇒ لا خانة ⇒ فشل «نجح دون ملف ناتج صالح» — أي أن ملفاً كان صالحاً
+    /// يُهدَر مقابل ضمان ألّا يتراكم نصفُ ملف.
+    ///
+    /// **ولا يُغيَّر السلوك بهذا القياس**: البديل (تشجيع الملف الصالح قبل الإعادة)
+    /// تغييرُ سياسة «الخانة هي الدليل الوحيد» ولا يُنفَّذ بلا إذن المالك.
+    #[cfg(windows)]
+    #[test]
+    fn the_retry_sweeps_a_valid_leftover_from_the_failed_attempt() {
+        let _reg = crate::slots::registry_test_lock();
+        let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
+        let fake = fake_variant(&root, "transient_after_valid");
+        let tmp = std::env::temp_dir().join(format!("hl_retry_sweep_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("مجلد القياس");
+
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(fake);
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let r = download_media(
+            "https://www.youtube.com/watch?v=AJOOve4s0_8",
+            &tmp,
+            &|_p| true,
+            &cancel,
+        );
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = None;
+
+        let calls = fake_calls(&tmp);
+        let slots: Vec<String> = std::fs::read_dir(&tmp)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|n| n.starts_with("hl_faketest1_"))
+            .collect();
+        let err = match r {
+            Ok(p) => panic!("الثانية خرجت بـ0 بلا خانة فيجب أن تفشل: {}", p.display()),
+            Err(e) => format!("{e}"),
+        };
+        eprintln!(
+            "x2-dl/قياس كنس الخانة — نداءات: {calls} · ملفات الخانة بعدها: {slots:?} · نتيجة المهمّة: {err}"
+        );
+        assert_eq!(calls, 2, "الإعادة وقعت مرّة (نداءات: {calls})");
+        assert!(
+            slots.is_empty(),
+            "الملف الصالح من المحاولة الفاشلة بقي في الخانة — القياس باطل: {slots:?}"
+        );
+        assert!(
+            err.contains("نجح دون ملف ناتج صالح"),
+            "النتيجة ليست نصّ «نجح دون ملف ناتج صالح»: {err}"
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
