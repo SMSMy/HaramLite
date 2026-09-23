@@ -533,6 +533,10 @@ const STDERR_LINE_CAP: usize = 4096;
 /// الفشل لأجله (يُبنى النصّ بما قُرئ حتى تلك اللحظة).
 const STDERR_DRAIN_GRACE: std::time::Duration = std::time::Duration::from_millis(1000);
 
+/// ما يُكتب مكان ذيلٍ فارغ: **معلن** لأن [`is_transient_failure`] يميّز به
+/// «سببٌ مكتوب» من «لا سبب» — فلا يُقرأ الفراغ سبباً عابراً.
+const EMPTY_STDERR: &str = "(فارغ)";
+
 /// **ذيل stderr المحدود**: يملؤه خيط التصريف، ويُقرأ عند الفشل.
 struct StderrTail {
     lines: Arc<Mutex<VecDeque<String>>>,
@@ -550,7 +554,7 @@ impl StderrTail {
         }
         let g = self.lines.lock().unwrap_or_else(|p| p.into_inner());
         if g.is_empty() {
-            "(فارغ)".to_string()
+            EMPTY_STDERR.to_string()
         } else {
             tail_text(&g, n)
         }
@@ -633,6 +637,36 @@ fn failure_tail(stdout_tail: &VecDeque<String>, stderr_tail: &mut StderrTail, n:
         "— stdout (آخر {n} سطراً):\n{so}\n— stderr (آخر {n} سطراً):\n{}",
         stderr_tail.text(n)
     )
+}
+
+/// **سقف المحاولات**: محاولة واحدة + **إعادة واحدة** — لا حلقة إعادة.
+/// والرقم مقيس: الفشل الميداني (‏403) عابر (١ من ٣ محاولات)، وإعادةٌ واحدة
+/// كانت تُنجحها؛ وما بعدها إعادةٌ على فشلٍ يتكرّر ⇒ انتظارٌ وباندويث بلا سبب.
+const DOWNLOAD_ATTEMPTS: u32 = 2;
+
+/// **نصوص الفشل الدائم** كما تكتبها yt-dlp على stderr — لا إعادة عليها مهما
+/// كان الشكل: الإعادة على «Video unavailable» انتظارٌ مقابل نتيجةٍ محتومة.
+const PERMANENT_FAILURES: &[&str] = &[
+    "Video unavailable",
+    "Private video",
+    "Sign in to confirm",
+    "This video is not available",
+    "requested format is not available",
+];
+
+/// **هل يُعاد على هذا الفشل؟** شرطان معاً:
+/// ① **سببٌ مكتوب** على stderr (`"(فارغ)"` ليس سبباً — فلا إعادة على عمى)،
+/// ② **ولا نصَّ فشل دائم** من [`PERMANENT_FAILURES`].
+///
+/// **وحدّ الصدق فيه**: ما لم يُذكر في القائمة يُعدّ عابراً ⇒ يُعاد عليه مرّة.
+/// والمقيس أن الفشل الميداني (‏403) ليس في القائمة، وأن نصوص yt-dlp الدائمة
+/// المعروفة فيها.
+fn is_transient_failure(stderr_text: &str) -> bool {
+    let t = stderr_text.trim();
+    if t.is_empty() || t == EMPTY_STDERR {
+        return false;
+    }
+    !PERMANENT_FAILURES.iter().any(|p| t.contains(p))
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
@@ -1235,103 +1269,118 @@ fn download_media_inner(
         return Ok(legacy);
     }
 
-    // 3) fresh unique slot; stale crash leftovers of ours go first.
-    clear_slots(out_dir, &meta.id);
-    let stem = slot_stem(&meta.id);
-    let tmpl = out_dir.join(format!("{stem}.%(ext)s"));
-    let mut cmd = make_cmd(&exe);
-    // NOTE: no `--windows-filenames` and no title in `-o` anymore — the slot
-    // is id-safe by construction, so yt-dlp's sanitizer has nothing to mangle.
-    let args: Vec<String> = vec![
-        "--newline".into(),
-        // **`--no-quiet` ليس تزييناً — وهو عطل مقيس (م٣/إصلاح٢)**:
-        // `--print` في yt-dlp **يعني `--quiet`**، فكان stdout فارغاً تماماً
-        // طوال التنزيل. قِيس على هذه الآلة بنفس الأمر ونفس الرابط ونفس المدة
-        // (٤٥ ث): **٠ سطراً** بالأمر الإنتاجي مقابل **٢٥٨ سطراً** بـ`--no-quiet`،
-        // ومنها ١٩٨ سطر `[download]  x%` في ٤٠ ث. وأثره ثلاثة:
-        //   (أ) رسالة الحالة تبقى «📥 جارٍ التنزيل… 0%» **طوال التنزيل** (وهو
-        //       بعينه ما رصده المدقّق)، والواجهة لا يصلها `dl-progress`؛
-        //   (ب) فرع الإلغاء داخل قراءة التقدّم (`if !progress(p)`) لا يُنفَّذ أبداً؛
-        //   (ج) حارس الجمود يقيس «آخر مخرج» ⇒ لا يرى مخرجاً **إطلاقاً** فيقتل
-        //       تنزيلاً سليماً بعد `STALL_SECS` (١٥ دقيقة) كجمود كاذب —
-        //       وذيل الفشل الذي من أجله أُضيف `--print` يصير فارغاً أيضاً.
-        "--no-quiet".into(),
-        "--no-playlist".into(),
-        "-f".into(),
-        format_selector(audio_only).into(),
-        "--merge-output-format".into(),
-        "mp4".into(),
-        "--socket-timeout".into(),
-        "20".into(),
-        "-o".into(),
-        tmpl.to_string_lossy().into_owned(),
-        // forensics only: what yt-dlp THINKS it wrote (unsanitized — feeds
-        // the failure tail, never trusted for identification).
-        "--print".into(),
-        "after_move:HARAMLITE_OUT:%(filepath)s".into(),
-        url.to_string(),
-    ];
-    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    cmd.args(&arg_refs);
-    // Arabic titles: force yt-dlp's stdout to UTF-8 instead of the Windows
-    // console codepage (cp1256 on this machine) — keeps logs exact.
-    cmd.env("PYTHONIOENCODING", "utf-8");
+    // ── **إعادة محاولة واحدة على فشل عابر — مقيسة لا مُفترَضة** ──────────────
+    //
+    // **القياس الذي برّرها**: نفس أمر التطبيق ونفس الرابط (٣ محاولات في عمليّات
+    // مستقلّة على هذه الآلة) ⇒ **١ فشل من ٣** خرج بـ1 بعد بلوغ ١٠٠٪ بسبب
+    // `ERROR: unable to download video data: HTTP Error 403: Forbidden` على
+    // stderr — وهو فشل **عابر من موقع يوتيوب** لا من عندنا (نفس الأمر نجح في
+    // المحاولتين الأخريين، وفي ٨ محاولات أخرى لي: ٨/٨ نجاح). والمحاولة
+    // الإضافية الواحدة كانت ستُنجح تلك المحاولة.
+    //
+    // **وحدودها المعلنة**: محاولة **واحدة** إضافية لا حلقة (`DOWNLOAD_ATTEMPTS`)،
+    // ولا إعادة على فشل دائم ([`is_transient_failure`])، والإعادة **تُسجَّل**،
+    // والخانة تُكنَس قبلها (‏`clear_slots` في رأس الحلقة)، والإلغاء يبقى نافذاً.
+    let mut attempt: u32 = 0;
+    loop {
+        attempt += 1;
+        // 3) fresh unique slot; stale crash leftovers of ours go first.
+        clear_slots(out_dir, &meta.id);
+        let stem = slot_stem(&meta.id);
+        let tmpl = out_dir.join(format!("{stem}.%(ext)s"));
+        let mut cmd = make_cmd(&exe);
+        // NOTE: no `--windows-filenames` and no title in `-o` anymore — the slot
+        // is id-safe by construction, so yt-dlp's sanitizer has nothing to mangle.
+        let args: Vec<String> = vec![
+            "--newline".into(),
+            // **`--no-quiet` ليس تزييناً — وهو عطل مقيس (م٣/إصلاح٢)**:
+            // `--print` في yt-dlp **يعني `--quiet`**، فكان stdout فارغاً تماماً
+            // طوال التنزيل. قِيس على هذه الآلة بنفس الأمر ونفس الرابط ونفس المدة
+            // (٤٥ ث): **٠ سطراً** بالأمر الإنتاجي مقابل **٢٥٨ سطراً** بـ`--no-quiet`،
+            // ومنها ١٩٨ سطر `[download]  x%` في ٤٠ ث. وأثره ثلاثة:
+            //   (أ) رسالة الحالة تبقى «📥 جارٍ التنزيل… 0%» **طوال التنزيل** (وهو
+            //       بعينه ما رصده المدقّق)، والواجهة لا يصلها `dl-progress`؛
+            //   (ب) فرع الإلغاء داخل قراءة التقدّم (`if !progress(p)`) لا يُنفَّذ أبداً؛
+            //   (ج) حارس الجمود يقيس «آخر مخرج» ⇒ لا يرى مخرجاً **إطلاقاً** فيقتل
+            //       تنزيلاً سليماً بعد `STALL_SECS` (١٥ دقيقة) كجمود كاذب —
+            //       وذيل الفشل الذي من أجله أُضيف `--print` يصير فارغاً أيضاً.
+            "--no-quiet".into(),
+            "--no-playlist".into(),
+            "-f".into(),
+            format_selector(audio_only).into(),
+            "--merge-output-format".into(),
+            "mp4".into(),
+            "--socket-timeout".into(),
+            "20".into(),
+            "-o".into(),
+            tmpl.to_string_lossy().into_owned(),
+            // forensics only: what yt-dlp THINKS it wrote (unsanitized — feeds
+            // the failure tail, never trusted for identification).
+            "--print".into(),
+            "after_move:HARAMLITE_OUT:%(filepath)s".into(),
+            url.to_string(),
+        ];
+        let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        cmd.args(&arg_refs);
+        // Arabic titles: force yt-dlp's stdout to UTF-8 instead of the Windows
+        // console codepage (cp1256 on this machine) — keeps logs exact.
+        cmd.env("PYTHONIOENCODING", "utf-8");
 
-    let child = cmd
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| YtError::Io(e.to_string()))?;
+        let child = cmd
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| YtError::Io(e.to_string()))?;
 
-    // ── **التسجيل + القاتل: عطل م٣/إصلاح٢** ────────────────────────────────
-    //
-    // كان هنا `spawn()` مباشر **بلا تسجيل**: فالطفل خارج `ctx.children`،
-    // فيجد `proc::kill_children` صفراً ويعود `/kill` بـ«قُتلت 0 عملية فرعية
-    // حيّة» — والحارس الداخلي وحده يحمل عبء القتل.
-    //
-    // **والقاتل [`proc::ChildHandle`] يحمل معه مهمّة نواة** تحيط بشجرة yt-dlp،
-    // وهذا هو ما يغلق العطل الميداني: `yt-dlp.exe` **عمليّتان** (مُشغّل + عامل،
-    // مقيس)، و`taskkill /T /F /PID <المُشغّل>` قد يقتل المُشغّل وحده إن وقع في
-    // لحظة إنشاء العامل (قِيس: ١ من ٤ تشغيلات عند ٢٠٠ مللي) — والعامل الناجي
-    // يبقي الأنبوب مفتوحاً فتبقى المهمّة معلّقة بلا نهاية. والـJob تقتل **كل
-    // أعضاءها** ولو مات المُشغّل.
-    let child_pid = child.id();
-    let killer = crate::proc::prepare_child(&child);
-    let registered = match killer.as_ref() {
-        Some(k) => crate::proc::register_child(k),
-        None => 0,
-    };
-    // **متى ينصرف الحارس: عند انتهاء هذه الدالة** — لا عند خروج الطفل المباشر.
-    //
-    // **ولماذا (م٣/إصلاح٢)**: `yt-dlp.exe` عمليّتان، والمُشغّل يخرج أحياناً قبل
-    // عامله (أو يُقتل وحده في نافذة سباق مقيسة) — فانصرافُ الحارس عند موت
-    // المُشغّل يترك **عاملاً حيّاً بلا حارس** يمسك الأنبوب، فتبقى المهمّة معلّقة
-    // والإلغاء بعدها لا يجده أحد. وهذا هو مسار الواجهة بعينه: `download_media_cmd`
-    // ينادي `download_media` على خيط `spawn_blocking` **بلا سياق مهمّة**، فلا
-    // يسجّل مقبضاً ولا يجد `cancel_job` ما يقتله — فالحارس وحده هو القاتل هناك.
-    let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let _unregister = UnregisterOnDrop(registered, finished.clone());
-    // **القاتل الواحد** لكل أبواب هذه الدالة: مهمّة النواة (تقتل الشجرة
-    // والأحفاد)، وإلا `taskkill /T /F` — لا نسختان تفترقان.
-    let kill_now = || match killer.as_ref() {
-        Some(k) => k.kill(),
-        None => crate::proc::kill_tree(child_pid),
-    };
-    let child = Arc::new(Mutex::new(child));
-    // Last stdout line instant — the stall watchdog below kills a download
-    // that goes silent for STALL_SECS (no output at all, not even slow
-    // progress), so one hung subprocess can never wedge the bridge queue.
-    let activity = Arc::new(Mutex::new(std::time::Instant::now()));
-    let stalled = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    {
-        // the monitor holds its OWN Arc — the flag stays alive for as long
-        // as the watcher runs, whatever the caller does afterwards
-        let cancel_flag = cancel.clone();
-        let watch_killer = killer.clone();
-        let watch_activity = activity.clone();
-        let watch_stalled = stalled.clone();
-        let watch_finished = finished.clone();
-        std::thread::Builder::new()
+        // ── **التسجيل + القاتل: عطل م٣/إصلاح٢** ────────────────────────────────
+        //
+        // كان هنا `spawn()` مباشر **بلا تسجيل**: فالطفل خارج `ctx.children`،
+        // فيجد `proc::kill_children` صفراً ويعود `/kill` بـ«قُتلت 0 عملية فرعية
+        // حيّة» — والحارس الداخلي وحده يحمل عبء القتل.
+        //
+        // **والقاتل [`proc::ChildHandle`] يحمل معه مهمّة نواة** تحيط بشجرة yt-dlp،
+        // وهذا هو ما يغلق العطل الميداني: `yt-dlp.exe` **عمليّتان** (مُشغّل + عامل،
+        // مقيس)، و`taskkill /T /F /PID <المُشغّل>` قد يقتل المُشغّل وحده إن وقع في
+        // لحظة إنشاء العامل (قِيس: ١ من ٤ تشغيلات عند ٢٠٠ مللي) — والعامل الناجي
+        // يبقي الأنبوب مفتوحاً فتبقى المهمّة معلّقة بلا نهاية. والـJob تقتل **كل
+        // أعضاءها** ولو مات المُشغّل.
+        let child_pid = child.id();
+        let killer = crate::proc::prepare_child(&child);
+        let registered = match killer.as_ref() {
+            Some(k) => crate::proc::register_child(k),
+            None => 0,
+        };
+        // **متى ينصرف الحارس: عند انتهاء هذه الدالة** — لا عند خروج الطفل المباشر.
+        //
+        // **ولماذا (م٣/إصلاح٢)**: `yt-dlp.exe` عمليّتان، والمُشغّل يخرج أحياناً قبل
+        // عامله (أو يُقتل وحده في نافذة سباق مقيسة) — فانصرافُ الحارس عند موت
+        // المُشغّل يترك **عاملاً حيّاً بلا حارس** يمسك الأنبوب، فتبقى المهمّة معلّقة
+        // والإلغاء بعدها لا يجده أحد. وهذا هو مسار الواجهة بعينه: `download_media_cmd`
+        // ينادي `download_media` على خيط `spawn_blocking` **بلا سياق مهمّة**، فلا
+        // يسجّل مقبضاً ولا يجد `cancel_job` ما يقتله — فالحارس وحده هو القاتل هناك.
+        let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let _unregister = UnregisterOnDrop(registered, finished.clone());
+        // **القاتل الواحد** لكل أبواب هذه الدالة: مهمّة النواة (تقتل الشجرة
+        // والأحفاد)، وإلا `taskkill /T /F` — لا نسختان تفترقان.
+        let kill_now = || match killer.as_ref() {
+            Some(k) => k.kill(),
+            None => crate::proc::kill_tree(child_pid),
+        };
+        let child = Arc::new(Mutex::new(child));
+        // Last stdout line instant — the stall watchdog below kills a download
+        // that goes silent for STALL_SECS (no output at all, not even slow
+        // progress), so one hung subprocess can never wedge the bridge queue.
+        let activity = Arc::new(Mutex::new(std::time::Instant::now()));
+        let stalled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        {
+            // the monitor holds its OWN Arc — the flag stays alive for as long
+            // as the watcher runs, whatever the caller does afterwards
+            let cancel_flag = cancel.clone();
+            let watch_killer = killer.clone();
+            let watch_activity = activity.clone();
+            let watch_stalled = stalled.clone();
+            let watch_finished = finished.clone();
+            std::thread::Builder::new()
             .name("ytdlp-cancel-watch".into())
             .spawn(move || {
                 // **سبب واحد يُثبَّت مرّة** (وإلا تكرّر السطر كل ٢٠٠ مللي)،
@@ -1385,152 +1434,170 @@ fn download_media_inner(
                 }
             })
             .ok();
-    }
-
-    // Drain stderr on a side thread: an undrained pipe fills (~64KB) and
-    // deadlocks the child mid-download.
-    //
-    // **ولماذا لم يبقَ بالوعةً (عطل ميداني — بلاغ المالك 2026-09-23)**: كان
-    // هذا الخيط يقرأ **ليرمي** (`while let Ok(n) = r.read(&mut sink)`)، وذيل
-    // الفشل يُبنى من stdout وحده. وyt-dlp يكتب `[download]` على stdout ويكتب
-    // `ERROR: …` على stderr ⇒ فشلٌ يبلغ فيه التنزيل ١٠٠٪ ثم `exit code: 1`
-    // **بلا سطر خطأ واحد** في السجلّ ولا في واجهة المستخدم. والمقيس على هذه
-    // الآلة (نفس الأمر ونفس الرابط): المحاولة الفاشلة كتبت على stderr
-    // `ERROR: unable to download video data: HTTP Error 403: Forbidden` —
-    // فصار **التصريف والحفظ في الخيط نفسه** ([`drain_stderr`]).
-    let stderr_lines: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
-    let (stderr_done_tx, stderr_done_rx) = std::sync::mpsc::channel::<()>();
-    let mut stderr_tail = StderrTail {
-        lines: stderr_lines.clone(),
-        done: Some(stderr_done_rx),
-    };
-    match child.lock().ok().and_then(|mut c| c.stderr.take()) {
-        Some(stderr) => {
-            let lines = stderr_lines.clone();
-            std::thread::spawn(move || drain_stderr(stderr, lines, stderr_done_tx));
         }
-        // لا أنبوب ⇒ لا انتظار: إسقاط الطرف يُرجع `recv_timeout` فوراً.
-        None => drop(stderr_done_tx),
-    }
 
-    use std::io::BufRead;
-    // Audit 2026-09-15 (٢.أ): كان `.expect("stdout piped")` في مسار الإنتاج —
-    // أي تغيير لاحق في `spawn` (إسقاط `.stdout(Stdio::piped())` مثلاً) يحوّل
-    // خطأً معالَجاً إلى panic في واجهة المستخدم. صار خطأً نظيفاً، ومع قتل
-    // الشجرة أولاً بنفس قاعدة مسار خطأ القراءة أدناه: لا نُيتّم yt-dlp أبداً.
-    let stdout = match child.lock().ok().and_then(|mut c| c.stdout.take()) {
-        Some(s) => s,
-        None => {
-            if let Ok(mut c) = child.lock() {
-                kill_now();
-                let _ = c.wait();
+        // Drain stderr on a side thread: an undrained pipe fills (~64KB) and
+        // deadlocks the child mid-download.
+        //
+        // **ولماذا لم يبقَ بالوعةً (عطل ميداني — بلاغ المالك 2026-09-23)**: كان
+        // هذا الخيط يقرأ **ليرمي** (`while let Ok(n) = r.read(&mut sink)`)، وذيل
+        // الفشل يُبنى من stdout وحده. وyt-dlp يكتب `[download]` على stdout ويكتب
+        // `ERROR: …` على stderr ⇒ فشلٌ يبلغ فيه التنزيل ١٠٠٪ ثم `exit code: 1`
+        // **بلا سطر خطأ واحد** في السجلّ ولا في واجهة المستخدم. والمقيس على هذه
+        // الآلة (نفس الأمر ونفس الرابط): المحاولة الفاشلة كتبت على stderr
+        // `ERROR: unable to download video data: HTTP Error 403: Forbidden` —
+        // فصار **التصريف والحفظ في الخيط نفسه** ([`drain_stderr`]).
+        let stderr_lines: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
+        let (stderr_done_tx, stderr_done_rx) = std::sync::mpsc::channel::<()>();
+        let mut stderr_tail = StderrTail {
+            lines: stderr_lines.clone(),
+            done: Some(stderr_done_rx),
+        };
+        match child.lock().ok().and_then(|mut c| c.stderr.take()) {
+            Some(stderr) => {
+                let lines = stderr_lines.clone();
+                std::thread::spawn(move || drain_stderr(stderr, lines, stderr_done_tx));
             }
-            return Err(YtError::Io("stdout غير موصول — راجع stdio في spawn".into()));
+            // لا أنبوب ⇒ لا انتظار: إسقاط الطرف يُرجع `recv_timeout` فوراً.
+            None => drop(stderr_done_tx),
         }
-    };
-    let mut reader = std::io::BufReader::new(stdout);
 
-    // Raw byte lines + lossy decode: YouTube titles / console codepages break
-    // strict UTF-8 readers.
-    let mut raw: Vec<u8> = Vec::with_capacity(256);
-    // Retain a tail of stdout so failures carry evidence.
-    let mut tail: VecDeque<String> = VecDeque::with_capacity(41);
-    loop {
-        raw.clear();
-        match reader.read_until(b'\n', &mut raw) {
-            Ok(0) => break,
-            Ok(_) => {}
-            Err(e) => {
-                // Never orphan the child (yt-dlp + its ffmpeg merger) —
-                // the old code returned here and leaked both burning CPU.
+        use std::io::BufRead;
+        // Audit 2026-09-15 (٢.أ): كان `.expect("stdout piped")` في مسار الإنتاج —
+        // أي تغيير لاحق في `spawn` (إسقاط `.stdout(Stdio::piped())` مثلاً) يحوّل
+        // خطأً معالَجاً إلى panic في واجهة المستخدم. صار خطأً نظيفاً، ومع قتل
+        // الشجرة أولاً بنفس قاعدة مسار خطأ القراءة أدناه: لا نُيتّم yt-dlp أبداً.
+        let stdout = match child.lock().ok().and_then(|mut c| c.stdout.take()) {
+            Some(s) => s,
+            None => {
                 if let Ok(mut c) = child.lock() {
                     kill_now();
                     let _ = c.wait();
                 }
-                // القناة الثانية تُرفَق هنا أيضاً: انكسار أنبوب stdout ليس سبباً
-                // في ذاته، وسببُ yt-dlp يكون مكتوباً على stderr.
-                return Err(YtError::Io(format!(
-                    "{e}\n{}",
-                    failure_tail(&tail, &mut stderr_tail, 12)
-                )));
+                return Err(YtError::Io("stdout غير موصول — راجع stdio في spawn".into()));
             }
-        }
-        let line = String::from_utf8_lossy(&raw);
-        let trimmed = line.trim();
-        tail.push_back(trimmed.to_string());
-        while tail.len() > 40 {
-            tail.pop_front();
-        }
-        // P1: feed the span guard (line count + first/last progress instants).
-        span.lines += 1;
-        let now_line = std::time::Instant::now();
-        if span.first_progress.is_none() {
-            span.first_progress = Some(now_line);
-        }
-        span.last_progress = now_line;
-        // Any output at all resets the stall watchdog.
-        if let Ok(mut t) = activity.lock() {
-            *t = std::time::Instant::now();
-        }
-        // Identification no longer reads filenames from stdout AT ALL (the
-        // sanitization drift made every printed name untrustworthy) — only
-        // percentage progress is parsed here; the slot file below is proof.
-        if let Some(rest) = line.strip_prefix("[download]") {
-            let pct_txt = rest
-                .split_whitespace()
-                .find(|t| t.ends_with('%'))
-                .unwrap_or("");
-            if let Ok(p) = pct_txt.trim_end_matches('%').parse::<f32>() {
-                let p = (p / 100.0).clamp(0.0, 1.0);
-                if !progress(p) {
+        };
+        let mut reader = std::io::BufReader::new(stdout);
+
+        // Raw byte lines + lossy decode: YouTube titles / console codepages break
+        // strict UTF-8 readers.
+        let mut raw: Vec<u8> = Vec::with_capacity(256);
+        // Retain a tail of stdout so failures carry evidence.
+        let mut tail: VecDeque<String> = VecDeque::with_capacity(41);
+        loop {
+            raw.clear();
+            match reader.read_until(b'\n', &mut raw) {
+                Ok(0) => break,
+                Ok(_) => {}
+                Err(e) => {
+                    // Never orphan the child (yt-dlp + its ffmpeg merger) —
+                    // the old code returned here and leaked both burning CPU.
                     if let Ok(mut c) = child.lock() {
                         kill_now();
                         let _ = c.wait();
                     }
-                    return Err(YtError::Io("أُلغي التنزيل من قبل المستخدم".into()));
+                    // القناة الثانية تُرفَق هنا أيضاً: انكسار أنبوب stdout ليس سبباً
+                    // في ذاته، وسببُ yt-dlp يكون مكتوباً على stderr.
+                    return Err(YtError::Io(format!(
+                        "{e}\n{}",
+                        failure_tail(&tail, &mut stderr_tail, 12)
+                    )));
+                }
+            }
+            let line = String::from_utf8_lossy(&raw);
+            let trimmed = line.trim();
+            tail.push_back(trimmed.to_string());
+            while tail.len() > 40 {
+                tail.pop_front();
+            }
+            // P1: feed the span guard (line count + first/last progress instants).
+            span.lines += 1;
+            let now_line = std::time::Instant::now();
+            if span.first_progress.is_none() {
+                span.first_progress = Some(now_line);
+            }
+            span.last_progress = now_line;
+            // Any output at all resets the stall watchdog.
+            if let Ok(mut t) = activity.lock() {
+                *t = std::time::Instant::now();
+            }
+            // Identification no longer reads filenames from stdout AT ALL (the
+            // sanitization drift made every printed name untrustworthy) — only
+            // percentage progress is parsed here; the slot file below is proof.
+            if let Some(rest) = line.strip_prefix("[download]") {
+                let pct_txt = rest
+                    .split_whitespace()
+                    .find(|t| t.ends_with('%'))
+                    .unwrap_or("");
+                if let Ok(p) = pct_txt.trim_end_matches('%').parse::<f32>() {
+                    let p = (p / 100.0).clamp(0.0, 1.0);
+                    if !progress(p) {
+                        if let Ok(mut c) = child.lock() {
+                            kill_now();
+                            let _ = c.wait();
+                        }
+                        return Err(YtError::Io("أُلغي التنزيل من قبل المستخدم".into()));
+                    }
                 }
             }
         }
-    }
 
-    let status = child
-        .lock()
-        .map_err(|e| YtError::Io(e.to_string()))?
-        .wait()
-        .map_err(|e| YtError::Io(e.to_string()))?;
-    if stalled.load(Ordering::SeqCst) {
-        let tail_txt = failure_tail(&tail, &mut stderr_tail, 30);
-        tracing::warn!(target: "ytdlp", "توقف التنزيل لانقطاع التقدم ({url}) — ذيل المخرجات:\n{tail_txt}");
-        return Err(YtError::Io(format!(
-            "توقف التنزيل: لا تقدم منذ {} دقيقة — قد يكون الاتصال متجمداً\n{}",
-            STALL_SECS / 60,
-            failure_tail(&tail, &mut stderr_tail, 12)
-        )));
-    }
-    if !status.success() {
-        let tail_txt = failure_tail(&tail, &mut stderr_tail, 30);
-        tracing::warn!(target: "ytdlp", "yt-dlp خرج بـ{status} لـ {url} — ذيل المخرجات:\n{tail_txt}");
-        return Err(YtError::Io(format!(
-            "yt-dlp خرج بـ{status}\n{}",
-            failure_tail(&tail, &mut stderr_tail, 12)
-        )));
-    }
-
-    // The slot file is the ONLY proof of success — no printed name, no
-    // merger line, no folder guessing. It must exist and be a real media
-    // file; anything else is a genuine failure with the tail attached.
-    find_slots(out_dir, &meta.id)
-        .into_iter()
-        .find(|p| slot_usable(p))
-        .map(|slot| promote_slot(&slot, out_dir, &meta))
-        .unwrap_or_else(|| {
+        let status = child
+            .lock()
+            .map_err(|e| YtError::Io(e.to_string()))?
+            .wait()
+            .map_err(|e| YtError::Io(e.to_string()))?;
+        if stalled.load(Ordering::SeqCst) {
             let tail_txt = failure_tail(&tail, &mut stderr_tail, 30);
-            tracing::warn!(target: "ytdlp", "نجح yt-dlp دون ملف صالح في الخانة ({url}) — ذيل المخرجات:\n{tail_txt}");
-            Err(YtError::Io(format!(
-                "yt-dlp نجح دون ملف ناتج صالح — أعد المحاولة\n{}",
+            tracing::warn!(target: "ytdlp", "توقف التنزيل لانقطاع التقدم ({url}) — ذيل المخرجات:\n{tail_txt}");
+            return Err(YtError::Io(format!(
+                "توقف التنزيل: لا تقدم منذ {} دقيقة — قد يكون الاتصال متجمداً\n{}",
+                STALL_SECS / 60,
                 failure_tail(&tail, &mut stderr_tail, 12)
-            )))
-        })
+            )));
+        }
+        if !status.success() {
+            // نصّ stderr **بلا وسم** للتصنيف (فالتصنيف يبحث عن نصوص yt-dlp
+            // الحرفية)، والوسم للعرض على المستخدم وفي السجلّ.
+            let reason = stderr_tail.text(30);
+            let cancelled = cancel.load(Ordering::SeqCst);
+            if attempt < DOWNLOAD_ATTEMPTS && !cancelled && is_transient_failure(&reason) {
+                tracing::warn!(
+                    target: "ytdlp",
+                    "المحاولة {attempt} فشلت بخطأ **عابر** ({url}) — أُعيدت مرّة واحدة بعد تنظيف الخانة. نصّ stderr:\n{}",
+                    stderr_tail.text(3)
+                );
+                continue;
+            }
+            let tail_txt = failure_tail(&tail, &mut stderr_tail, 30);
+            tracing::warn!(target: "ytdlp", "yt-dlp خرج بـ{status} لـ {url} — ذيل المخرجات:\n{tail_txt}");
+            return Err(YtError::Io(format!(
+                "yt-dlp خرج بـ{status}\n{}",
+                failure_tail(&tail, &mut stderr_tail, 12)
+            )));
+        }
+
+        // The slot file is the ONLY proof of success — no printed name, no
+        // merger line, no folder guessing. It must exist and be a real media
+        // file; anything else is a genuine failure with the tail attached.
+        //
+        // **ولا يُقبَل ملفٌ في الخانة حين يخرج yt-dlp بخطأ**: السياسة («الخانة هي
+        // الدليل الوحيد») تُطبَّق على **الخروج الناجح** وحده — وهو ما يجعل الملف
+        // الناقص من 403 لا يُسلَّم للمستخدم (وهو الصواب)، وثمنه أن ملفاً كاملاً
+        // لو تركه فشلٌ بعد اكتماله لا يُقبَل في تلك المحاولة (انظر التقرير).
+        if let Some(slot) = find_slots(out_dir, &meta.id)
+            .into_iter()
+            .find(|p| slot_usable(p))
+        {
+            return promote_slot(&slot, out_dir, &meta);
+        }
+        let tail_txt = failure_tail(&tail, &mut stderr_tail, 30);
+        tracing::warn!(target: "ytdlp", "نجح yt-dlp دون ملف صالح في الخانة ({url}) — ذيل المخرجات:\n{tail_txt}");
+        return Err(YtError::Io(format!(
+            "yt-dlp نجح دون ملف ناتج صالح — أعد المحاولة\n{}",
+            failure_tail(&tail, &mut stderr_tail, 12)
+        )));
+    }
 }
 
 /// **حارس نهاية التنزيل**: يُخرج مقبض التنزيل من سِجلّ المهمّة ويُعلن انتهاء
@@ -2003,6 +2070,7 @@ fn main() {
     let retry_always = dir_name.contains("retry_always");
     let retry_mode = retry_always || dir_name.contains("retry_once");
     let permanent_fail = dir_name.contains("permanent_fail");
+    let valid_leftover = dir_name.contains("valid_leftover");
 
     // ② **العامل** في الصورة ذات العمليتين: يسجّل معرّفه وينام (يمسك الأنبوب
     //    الموروث من مُشغّله — ولهذا تبقى المهمّة معلّقة إن نجا).
@@ -2090,6 +2158,7 @@ fn main() {
 
     // ③.د **فشل دائم بنصّه**: لا إعادة عليه إطلاقاً.
     if permanent_fail {
+        let _ = bump_calls(dir.as_deref());
         for i in 1..=2 {
             progress(&format!("step {i}"));
         }
@@ -2097,6 +2166,24 @@ fn main() {
         let _ = std::io::stderr().flush();
         let _ = std::io::stdout().flush();
         std::process::exit(1);
+    }
+
+    // ③.هـ **ملفٌ صالح في الخانة ثم خروجٌ بخطأ دائم**: لقياس السياسة — هل
+    //    يُسلَّم ما تركه فشلٌ في الخانة؟ والنداء الثاني يخرج بـ0 **بلا كتابة
+    //    شيء**، فيميّز عدّادُ النداءات المسارَ السريع (بلا تشغيل) من تنزيل جديد.
+    if valid_leftover {
+        let n = bump_calls(dir.as_deref());
+        if n == 1 {
+            if let Some(t) = tmpl.as_deref() {
+                write_wav(std::path::Path::new(&t.replace("%(ext)s", "wav")));
+            }
+            eprintln!("ERROR: [youtube] AJOOve4s0_8: Video unavailable");
+            let _ = std::io::stderr().flush();
+            let _ = std::io::stdout().flush();
+            std::process::exit(1);
+        }
+        let _ = std::io::stdout().flush();
+        return;
     }
 
     // ④ الصورة المبسّطة: العملية نفسها هي التي تنزّل.
@@ -2676,6 +2763,294 @@ fn main() {
             assert!(dir.join(n).exists(), "مُسَّ ملفٌ ليس لنا: {n}");
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// نداءات المزيّف في هذه المحاولة (`calls.txt` — عدّادٌ يكتبه المزيّف).
+    #[cfg(windows)]
+    fn fake_calls(out_dir: &Path) -> u32 {
+        std::fs::read_to_string(out_dir.join("calls.txt"))
+            .unwrap_or_default()
+            .trim()
+            .parse()
+            .unwrap_or(0)
+    }
+
+    /// **حارس (٦): الفشل العابر يُعاد عليه مرّة واحدة — وينجح.**
+    ///
+    /// **القياس الذي برّره**: ٣ محاولات بنفس أمر التطبيق ونفس الرابط ⇒ ١ فشل
+    /// من ٣ بـ`ERROR: unable to download video data: HTTP Error 403: Forbidden`
+    /// **بعد بلوغ ١٠٠٪** (فشل موقعي عابر لا علاقة له بنا)، والمحاولة الإضافية
+    /// الواحدة كانت ستُنجحه. والمزيّف (صورة `retry_once`): النداء الأول يفشل
+    /// بـ403 **ويترك نصفَ ملفٍ في الخانة**، والثاني ينجح ويكتب خانةً صالحة
+    /// (‏WAV حقيقي يقرؤه ffprobe — فلا نجاح مزعوم بملف فارغ).
+    ///
+    /// **ويشترط**: نجاح المهمّة · **ونداءين بالضبط** (إعادة واحدة لا حلقة) ·
+    /// **وخانةً منظّفة** من نصف ملف المحاولة الأولى (شرط الإعادة) · **وسطر
+    /// إعادة صادقاً** في السجلّ يحمل نصّ stderr.
+    /// (مُفسَد محروس: إسقاط الإعادة ⇒ يسقط — مُنفَّذ، انظر التقرير.)
+    #[cfg(windows)]
+    #[test]
+    fn a_transient_failure_is_retried_once_and_succeeds() {
+        let _reg = crate::slots::registry_test_lock();
+        let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
+        let fake = fake_variant(&root, "retry_once");
+        let tmp = std::env::temp_dir().join(format!("hl_retry_ok_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("مجلد القياس");
+
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(fake);
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (r, logs) = with_captured_log(|| {
+            download_media(
+                "https://www.youtube.com/watch?v=AJOOve4s0_8",
+                &tmp,
+                &|_p| true,
+                &cancel,
+            )
+        });
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = None;
+
+        let calls = fake_calls(&tmp);
+        eprintln!(
+            "x2-dl/حارس الإعادة — نداءات yt-dlp المزيّف: {calls} · النتيجة: {}",
+            match &r {
+                Ok(p) => format!("نجاح: {}", p.display()),
+                Err(e) => format!("فشل: {e}"),
+            }
+        );
+        assert_eq!(
+            calls, 2,
+            "الإعادة يجب أن تكون **مرّة واحدة** (نداءات: {calls})"
+        );
+        let out = match r {
+            Ok(p) => p,
+            Err(e) => panic!("المحاولة الثانية نجحت في المزيّف فيجب أن تنجح المهمّة: {e}"),
+        };
+        assert!(
+            out.is_file(),
+            "الملف المُعاد ليس على القرص: {}",
+            out.display()
+        );
+        let leftovers: Vec<String> = std::fs::read_dir(&tmp)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|n| n.contains("f616"))
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "نصف الملف من المحاولة الفاشلة بقي في المجلد (الإعادة لم تُنظّف الخانة): {leftovers:?}"
+        );
+        let log = logs.join("\n");
+        assert!(
+            log.contains("أُعيدت مرّة واحدة"),
+            "الإعادة لم تُسجَّل بصدق في السجلّ:\n{log}"
+        );
+        assert!(
+            log.contains(MEASURED_403),
+            "سطر الإعادة لا يحمل نصّ سبب الفشل:\n{log}"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// **حارس (٧): «محاولة إضافية واحدة» — لا حلقة إعادة.**
+    ///
+    /// المزيّف (صورة `retry_always`) يفشل بـ403 في **كل** نداء: فيجب أن يتوقّف
+    /// عند نداءين اثنين ويعود بخطأ يحمل السبب — لا أن يُعيد إلى ما لا نهاية.
+    #[cfg(windows)]
+    #[test]
+    fn a_transient_failure_that_keeps_failing_is_retried_only_once() {
+        let _reg = crate::slots::registry_test_lock();
+        let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
+        let fake = fake_variant(&root, "retry_always");
+        let tmp = std::env::temp_dir().join(format!("hl_retry_still_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("مجلد القياس");
+
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(fake);
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let r = download_media(
+            "https://www.youtube.com/watch?v=AJOOve4s0_8",
+            &tmp,
+            &|_p| true,
+            &cancel,
+        );
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = None;
+
+        let calls = fake_calls(&tmp);
+        assert_eq!(
+            calls, 2,
+            "فشلٌ عابر متكرّر يجب أن يُعيد **مرّة واحدة** لا حلقة (نداءات: {calls})"
+        );
+        let err = match r {
+            Ok(p) => panic!("فشلان متتاليان لا يجوز أن يعودا نجاحاً: {}", p.display()),
+            Err(e) => format!("{e}"),
+        };
+        assert!(err.contains(MEASURED_403), "الخطأ النهائي بلا سببه:\n{err}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// **حارس (٨): الفشل الدائم لا يُعاد عليه — بنصّه.**
+    ///
+    /// المزيّف (صورة `permanent_fail`) يكتب `ERROR: [youtube] … Video unavailable`
+    /// ويخرج بـ1 ⇒ **نداء واحد** لا اثنان، والخطأ يعود بنصّه.
+    /// (مُفسَد محروس: إسقاط شرط الفشل الدائم ⇒ يسقط — مُنفَّذ، انظر التقرير.)
+    #[cfg(windows)]
+    #[test]
+    fn a_permanent_failure_is_never_retried() {
+        let _reg = crate::slots::registry_test_lock();
+        let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
+        let fake = fake_variant(&root, "permanent_fail");
+        let tmp = std::env::temp_dir().join(format!("hl_retry_perm_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("مجلد القياس");
+
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(fake);
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let r = download_media(
+            "https://www.youtube.com/watch?v=AJOOve4s0_8",
+            &tmp,
+            &|_p| true,
+            &cancel,
+        );
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = None;
+
+        let calls = fake_calls(&tmp);
+        let err = match r {
+            Ok(p) => panic!("فشلٌ دائم لا يجوز أن يعود نجاحاً: {}", p.display()),
+            Err(e) => format!("{e}"),
+        };
+        assert_eq!(
+            calls, 1,
+            "أُعيد على فشل **دائم** (Video unavailable) — لا إعادة على الدائم (نداءات: {calls})\n{err}"
+        );
+        assert!(err.contains("Video unavailable"), "النصّ الدائم ضاع:\n{err}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// **تصنيف العابر من الدائم — بلا شبكة وبلا عمليّة.**
+    #[test]
+    fn permanent_failures_are_never_retried_but_a_written_cause_is() {
+        assert!(!is_transient_failure(EMPTY_STDERR), "«(فارغ)» ليس سبباً");
+        assert!(!is_transient_failure("   "), "الفراغ ليس سبباً");
+        assert!(
+            is_transient_failure("ERROR: unable to download video data: HTTP Error 403: Forbidden"),
+            "الفشل المقيس (403) عابر فيجب أن يُعاد عليه"
+        );
+        for p in PERMANENT_FAILURES {
+            let text = format!("ERROR: [youtube] {p}");
+            assert!(!is_transient_failure(&text), "يُعاد على فشل دائم: {p}");
+        }
+        // **والقائمة نفسها محروسة**: إفراغها **مُفسَد** مرّ من هذا الاختبار أوّلاً
+        // (حلقةٌ على قائمة فارغة «تنجح» بلا فحص — مُفسَد باطل يُعطي نجاحاً كاذباً)،
+        // فصار النصّ المتوقّع مكتوباً هنا: حذفُ نصٍّ أو إضافةُ نصٍّ يسقط.
+        let expected = [
+            "Video unavailable",
+            "Private video",
+            "Sign in to confirm",
+            "This video is not available",
+            "requested format is not available",
+        ];
+        assert_eq!(
+            PERMANENT_FAILURES, expected,
+            "قائمة الفشل الدائم تغيّرت — كل نصّ فيها حدٌّ على إعادة المحاولة"
+        );
+    }
+
+    /// **قياس (٩) — لا تغيير سياسة: ماذا لو ترك فشلٌ ملفاً *صالحاً* في الخانة؟**
+    ///
+    /// السؤال المطروح على المالك: هل يُقبَل الملف الذي يبقى في الخانة بعد خروج
+    /// yt-dlp بـ1؟ والقياس هنا بثلاثة أرقام: (أ) المحاولة الفاشلة **لا** تُسلِّم
+    /// الملف (السياسة: الخانة دليلٌ على **النجاح**)، (ب) الملف **يبقى** في الخانة،
+    /// (ج) المحاولة التالية تقبله من **المسار السريع بلا تشغيل yt-dlp إطلاقاً**
+    /// (‏عدّاد النداءات يبقى 1 — وهو ما يميّز المسار السريع من تنزيلٍ جديد).
+    #[cfg(windows)]
+    #[test]
+    fn a_valid_file_left_by_a_failed_run_is_not_delivered_now_but_reused_next_time() {
+        let _reg = crate::slots::registry_test_lock();
+        let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
+        let fake = fake_variant(&root, "valid_leftover");
+        let tmp = std::env::temp_dir().join(format!("hl_valid_left_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("مجلد القياس");
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        // ① خروج بـ1 مع ملفٍ صالح في الخانة.
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(fake.clone());
+        let r1 = download_media(
+            "https://www.youtube.com/watch?v=AJOOve4s0_8",
+            &tmp,
+            &|_p| true,
+            &cancel,
+        );
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = None;
+        assert!(
+            r1.is_err(),
+            "خروجٌ بـ1 مع ملفٍ صالح في الخانة عاد **نجاحاً** — السياسة تغيّرت بلا إذن: {:?}",
+            r1.map(|p| p.display().to_string())
+        );
+        let slot: Vec<String> = std::fs::read_dir(&tmp)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|n| n.starts_with("hl_faketest1_"))
+            .collect();
+        assert_eq!(
+            slot.len(),
+            1,
+            "الملف الصالح الذي تركه الفشل ليس في الخانة — القياس باطل: {slot:?}"
+        );
+
+        // ② المحاولة التالية: المسار السريع.
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(fake);
+        let r2 = download_media(
+            "https://www.youtube.com/watch?v=AJOOve4s0_8",
+            &tmp,
+            &|_p| true,
+            &cancel,
+        );
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = None;
+        let calls = fake_calls(&tmp);
+        eprintln!(
+            "x2-dl/قياس الخانة بعد فشل — نداءات yt-dlp: {calls} · نتيجة المحاولة التالية: {}",
+            match &r2 {
+                Ok(p) => format!("نجاح: {}", p.display()),
+                Err(e) => format!("فشل: {e}"),
+            }
+        );
+        assert_eq!(
+            calls, 1,
+            "المحاولة التالية شغّلت yt-dlp (نداءات: {calls}) — القياس عن المسار السريع باطل"
+        );
+        let out = r2.expect("المسار السريع كان يجب أن يقبل الملف الصالح المتروك");
+        assert!(
+            out.is_file(),
+            "الملف المُسلَّم ليس على القرص: {}",
+            out.display()
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     /// أبناء `yt-dlp.exe` الأحياء الآن (بالاسم — جرد حقيقي لا استنتاج).
