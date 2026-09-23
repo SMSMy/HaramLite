@@ -651,33 +651,49 @@ fn failure_tail(stdout_tail: &VecDeque<String>, stderr_tail: &mut StderrTail, n:
 }
 
 /// **سقف المحاولات**: محاولة واحدة + **إعادة واحدة** — لا حلقة إعادة.
-/// والرقم مقيس: الفشل الميداني (‏403) عابر (١ من ٣ محاولات)، وإعادةٌ واحدة
-/// كانت تُنجحها؛ وما بعدها إعادةٌ على فشلٍ يتكرّر ⇒ انتظارٌ وباندويث بلا سبب.
+/// **سقف المحاولات**: محاولة واحدة + **إعادة واحدة** — لا حلقة إعادة.
+///
+/// **وحدّ الصدق في الرقم**: المقيس **حدثُ فشلٍ واحد في ١٩ محاولة** بنفس أمر
+/// التطبيق (٥٫٣٪: ١ من ٥ عند المشرف و٠ من ١٤ عندي)، وهو فشل **عابر** (نفس
+/// الأمر نجح في المحاولات الأخرى). **ولم يُقَس أن إعادةً كانت ستُنجح تلك
+/// المحاولة بعينها** (لم يتكرّر الفشل لأقيسه) — فالإعادة هنا **تخمين مُعلن**
+/// لا حقيقة مثبتة، وقيمته أن كلفته محاولةٌ واحدة عند فشلٍ نادر. وما بعد
+/// المحاولة الثانية إعادةٌ على فشلٍ يتكرّر ⇒ انتظارٌ وباندويث بلا سبب.
 const DOWNLOAD_ATTEMPTS: u32 = 2;
 
-/// **نصوص الفشل الدائم** كما تكتبها yt-dlp على stderr — لا إعادة عليها مهما
-/// كان الشكل: الإعادة على «Video unavailable» انتظارٌ مقابل نتيجةٍ محتومة.
+/// **نصوص الفشل الدائم — بحروف صغيرة، والمطابقة تُطبّع الحالتين.**
+///
+/// **ولماذا التطبيع (ثقب مقيس)**: كانت المطابقة `contains` **حسّاسة لحالة
+/// الأحرف** وفي القائمة `"This video is not available"` و`"requested format is
+/// not available"` (‏r صغير)، بينما yt-dlp الحقيقي (‏2026.08.19 · sha256
+/// `66674953…`) ينطق `ERROR: [youtube] …: This video is unavailable` و
+/// `ERROR: [generic] …: Requested format is not available. Use --list-formats…`
+/// ⇒ **كان يُعاد على فشلٍ دائم** (نداءا تنزيل والمطلوب واحد). فصار القياس
+/// بحروف صغيرة على الطرفين، ولا يُقبل في هذه القائمة نصّ بحرف كبير.
 const PERMANENT_FAILURES: &[&str] = &[
-    "Video unavailable",
-    "Private video",
-    "Sign in to confirm",
-    "This video is not available",
+    "video unavailable",
+    "this video is unavailable",
+    "this video is not available",
+    "private video",
+    "sign in to confirm",
     "requested format is not available",
 ];
 
 /// **هل يُعاد على هذا الفشل؟** شرطان معاً:
 /// ① **سببٌ مكتوب** على stderr (`"(فارغ)"` ليس سبباً — فلا إعادة على عمى)،
-/// ② **ولا نصَّ فشل دائم** من [`PERMANENT_FAILURES`].
+/// ② **ولا نصَّ فشل دائم** من [`PERMANENT_FAILURES`] — **بمطابقة غير حسّاسة
+///    لحالة الأحرف** (‏yt-dlp يكتب `This video is unavailable` و`Requested
+///    format…` بحالات لا تطابق القائمة حرفياً؛ والمقيس أن المطابقة الحسّاسة
+///    كانت تُعيد على فشل دائم).
 ///
 /// **وحدّ الصدق فيه**: ما لم يُذكر في القائمة يُعدّ عابراً ⇒ يُعاد عليه مرّة.
-/// والمقيس أن الفشل الميداني (‏403) ليس في القائمة، وأن نصوص yt-dlp الدائمة
-/// المعروفة فيها.
 fn is_transient_failure(stderr_text: &str) -> bool {
     let t = stderr_text.trim();
     if t.is_empty() || t == EMPTY_STDERR {
         return false;
     }
-    !PERMANENT_FAILURES.iter().any(|p| t.contains(p))
+    let lower = t.to_lowercase();
+    !PERMANENT_FAILURES.iter().any(|p| lower.contains(p))
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
@@ -1283,15 +1299,17 @@ fn download_media_inner(
 
     // ── **إعادة محاولة واحدة على فشل عابر — مقيسة لا مُفترَضة** ──────────────
     //
-    // **القياس الذي برّرها**: نفس أمر التطبيق ونفس الرابط (٣ محاولات في عمليّات
-    // مستقلّة على هذه الآلة) ⇒ **١ فشل من ٣** خرج بـ1 بعد بلوغ ١٠٠٪ بسبب
+    // **القياس الذي برّرها**: بنفس أمر التطبيق ونفس الرابط، **حدث فشل واحد في
+    // ١٩ محاولة** (٥٫٣٪): خرج بـ1 بعد بلوغ ١٠٠٪ بسبب
     // `ERROR: unable to download video data: HTTP Error 403: Forbidden` على
     // stderr — وهو فشل **عابر من موقع يوتيوب** لا من عندنا (نفس الأمر نجح في
-    // المحاولتين الأخريين، وفي ٨ محاولات أخرى لي: ٨/٨ نجاح). والمحاولة
-    // الإضافية الواحدة كانت ستُنجح تلك المحاولة.
+    // ١٨ محاولة أخرى). **ولم يُقَس أن إعادةً كانت ستُنجح تلك المحاولة** — الفشل
+    // لم يتكرّر لأقيسه، فالإعادة **تخمين مُعلن** لا حقيقة (وقد قِيس أن الحالة
+    // الوحيدة التي نعرفها تُنجحها: ١٨ من ١٩ نجاحاً).
     //
     // **وحدودها المعلنة**: محاولة **واحدة** إضافية لا حلقة (`DOWNLOAD_ATTEMPTS`)،
-    // ولا إعادة على فشل دائم ([`is_transient_failure`])، والإعادة **تُسجَّل**،
+    // ولا إعادة على فشل دائم ([`is_transient_failure`])، و**لا إعادة إن كانت
+    // الخانة تحمل ملفاً صالحاً** (فهو النجاح بنفس دليله)، والإعادة **تُسجَّل**،
     // والخانة تُكنَس قبلها (‏`clear_slots` في رأس الحلقة)، والإلغاء يبقى نافذاً.
     let mut attempt: u32 = 0;
     loop {
@@ -1571,6 +1589,21 @@ fn download_media_inner(
             )));
         }
         if !status.success() {
+            // **الخانة الصالحة = نجاح، وتُستشار قبل أي إعادة** — بنفس الدليل
+            // الذي يُحكم به بعد الخروج الناجح (أدناه). والثقب المقيس: مزيّف
+            // كتب خانةً يقرؤها ffprobe ثم خرج بـ1 ⇒ الإعادة **كنستها** وانتهت
+            // المهمّة بـ«نجح دون ملف ناتج صالح» (`نداءات: 2 · ملفات الخانة: []`)
+            // — أي أن إعادةً **أنفقت نتيجةً صالحة**.
+            if let Some(slot) = find_slots(out_dir, &meta.id)
+                .into_iter()
+                .find(|p| slot_usable(p))
+            {
+                tracing::warn!(
+                    target: "ytdlp",
+                    "خرج yt-dlp بـ{status} لكن الخانة تحمل ملفاً صالحاً ({url}) — يُسلَّم بلا إعادة"
+                );
+                return promote_slot(&slot, out_dir, &meta);
+            }
             // نصّ stderr **بلا وسم** للتصنيف (فالتصنيف يبحث عن نصوص yt-dlp
             // الحرفية)، والوسم للعرض على المستخدم وفي السجلّ.
             let reason = stderr_tail.text(30);
@@ -2087,6 +2120,7 @@ fn main() {
     let valid_leftover = dir_name.contains("valid_leftover");
     let transient_after_valid = dir_name.contains("transient_after_valid");
     let transient_then_wait = dir_name.contains("transient_then_wait");
+    let speak_fail = dir_name.contains("speak_fail");
 
     // ② **العامل** في الصورة ذات العمليتين: يسجّل معرّفه وينام (يمسك الأنبوب
     //    الموروث من مُشغّله — ولهذا تبقى المهمّة معلّقة إن نجا).
@@ -2179,6 +2213,27 @@ fn main() {
             progress(&format!("step {i}"));
         }
         eprintln!("ERROR: [youtube] AJOOve4s0_8: Video unavailable");
+        let _ = std::io::stderr().flush();
+        let _ = std::io::stdout().flush();
+        std::process::exit(1);
+    }
+
+    // ③.ح **ناطقٌ للنصّ**: يقرأ `stderr_text.txt` من مجلد الخرج ويكتبه على stderr
+    //    ثم يخرج بـ1 — فيقيس الحارس **سلوك القائمة** بنصوص yt-dlp الحقيقية
+    //    (بحالات أحرفها الحقيقية) بدل تثبيت القائمة نصّاً في اختبار.
+    if speak_fail {
+        let _ = bump_calls(dir.as_deref());
+        for i in 1..=2 {
+            progress(&format!("step {i}"));
+        }
+        let text = dir
+            .as_ref()
+            .and_then(|d| std::fs::read_to_string(d.join("stderr_text.txt")).ok())
+            .unwrap_or_else(|| "ERROR: (لا نصّ في stderr_text.txt)".to_string());
+        eprint!("{text}");
+        if !text.ends_with('\n') {
+            eprintln!();
+        }
         let _ = std::io::stderr().flush();
         let _ = std::io::stdout().flush();
         std::process::exit(1);
@@ -2989,19 +3044,17 @@ fn main() {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    /// **قياس (١١): ثمن تنظيف الخانة قبل الإعادة — بالأرقام لا بالرأي.**
+    /// **حارس (١٠): فشلٌ عابر مع خانةٍ صالحة ⇒ لا إعادة تُنفق النتيجة.**
     ///
-    /// شرطُ الإعادة المُلزِم («نظّف خانة الفشل كي لا يتراكم نصف ملف») له ثمن
-    /// مقيس هنا: لو ترك الفشلُ العابر **ملفاً كاملاً صالحاً** في الخانة، فإن
-    /// `clear_slots` في رأس المحاولة الثانية **يكنسه**، فتخرج الثانية بـ0 دون
-    /// كتابة ⇒ لا خانة ⇒ فشل «نجح دون ملف ناتج صالح» — أي أن ملفاً كان صالحاً
-    /// يُهدَر مقابل ضمان ألّا يتراكم نصفُ ملف.
-    ///
-    /// **ولا يُغيَّر السلوك بهذا القياس**: البديل (تشجيع الملف الصالح قبل الإعادة)
-    /// تغييرُ سياسة «الخانة هي الدليل الوحيد» ولا يُنفَّذ بلا إذن المالك.
+    /// الصورة المقيسة (ثقب حكم به جاسوس مستقلّ): المحاولة الأولى كتبت خانةً
+    /// صالحة (‏WAV يقرؤه ffprobe) ثم خرجت بـ1 بسبب عابر (‏403) — وكانت الإعادة
+    /// **تكنسها** فتنتهي المهمّة بـ«نجح دون ملف ناتج صالح» (`نداءات: 2 · ملفات
+    /// الخانة: []`). فصارت الخانة **تُستشار قبل قرار الإعادة**: هي النجاح، وتُسلَّم
+    /// **بنداء تنزيل واحد**.
+    /// (مُفسَد محروس: تجاهل الخانة قبل الإعادة ⇒ يسقط — مُنفَّذ.)
     #[cfg(windows)]
     #[test]
-    fn the_retry_sweeps_a_valid_leftover_from_the_failed_attempt() {
+    fn a_transient_failure_with_a_valid_slot_spends_no_retry() {
         let _reg = crate::slots::registry_test_lock();
         let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
         let fake = fake_variant(&root, "transient_after_valid");
@@ -3024,28 +3077,25 @@ fn main() {
             .unwrap_or_else(|p| p.into_inner()) = None;
 
         let calls = fake_calls(&tmp);
-        let slots: Vec<String> = std::fs::read_dir(&tmp)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter_map(|e| e.file_name().into_string().ok())
-            .filter(|n| n.starts_with("hl_faketest1_"))
-            .collect();
-        let err = match r {
-            Ok(p) => panic!("الثانية خرجت بـ0 بلا خانة فيجب أن تفشل: {}", p.display()),
-            Err(e) => format!("{e}"),
-        };
         eprintln!(
-            "x2-dl/قياس كنس الخانة — نداءات: {calls} · ملفات الخانة بعدها: {slots:?} · نتيجة المهمّة: {err}"
+            "x2-dl/حارس الخانة قبل الإعادة — نداءات: {calls} · النتيجة: {}",
+            match &r {
+                Ok(p) => format!("نجاح: {}", p.display()),
+                Err(e) => format!("فشل: {e}"),
+            }
         );
-        assert_eq!(calls, 2, "الإعادة وقعت مرّة (نداءات: {calls})");
-        assert!(
-            slots.is_empty(),
-            "الملف الصالح من المحاولة الفاشلة بقي في الخانة — القياس باطل: {slots:?}"
+        assert_eq!(
+            calls, 1,
+            "خانةٌ صالحة بعد فشل عابر يجب أن تُسلَّم بنداء واحد — الإعادة تُنفقها (نداءات: {calls})"
         );
+        let out = match r {
+            Ok(p) => p,
+            Err(e) => panic!("خانةٌ صالحة بعد فشل عابر يجب أن تكون نجاحاً: {e}"),
+        };
         assert!(
-            err.contains("نجح دون ملف ناتج صالح"),
-            "النتيجة ليست نصّ «نجح دون ملف ناتج صالح»: {err}"
+            out.is_file(),
+            "الملف المُسلَّم ليس على القرص: {}",
+            out.display()
         );
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -3105,45 +3155,56 @@ fn main() {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    /// **تصنيف العابر من الدائم — بلا شبكة وبلا عمليّة.**
+    /// **آليّة التصنيف — بلا شبكة وبلا عمليّة وبلا تثبيت نصّي للقائمة.**
+    ///
+    /// **ولماذا لا تُثبَّت القائمة بـ`assert_eq!`** (نقض جاسوس مستقلّ): كان الحارس
+    /// السابق يثبّتها حرفياً، فأي إصلاح للقائمة **يُحمّر الحارس** — أي حارسٌ
+    /// **يقاوم الإصلاح**. وهنا تُقاس **الآليّة**: كل عضو يُصنَّف دائماً، وأعضاؤها
+    /// بحروف صغيرة (وإلا كان العضو ميتاً لا يُطابَق بعد التطبيع)، والعابر يمرّ.
     #[test]
-    fn permanent_failures_are_never_retried_but_a_written_cause_is() {
+    fn the_permanent_failure_mechanism_works_for_every_member() {
         assert!(!is_transient_failure(EMPTY_STDERR), "«(فارغ)» ليس سبباً");
         assert!(!is_transient_failure("   "), "الفراغ ليس سبباً");
         assert!(
             is_transient_failure("ERROR: unable to download video data: HTTP Error 403: Forbidden"),
             "الفشل المقيس (403) عابر فيجب أن يُعاد عليه"
         );
-        for p in PERMANENT_FAILURES {
-            let text = format!("ERROR: [youtube] {p}");
-            assert!(!is_transient_failure(&text), "يُعاد على فشل دائم: {p}");
-        }
-        // **والقائمة نفسها محروسة**: إفراغها **مُفسَد** مرّ من هذا الاختبار أوّلاً
-        // (حلقةٌ على قائمة فارغة «تنجح» بلا فحص — مُفسَد باطل يُعطي نجاحاً كاذباً)،
-        // فصار النصّ المتوقّع مكتوباً هنا: حذفُ نصٍّ أو إضافةُ نصٍّ يسقط.
-        let expected = [
-            "Video unavailable",
-            "Private video",
-            "Sign in to confirm",
-            "This video is not available",
-            "requested format is not available",
-        ];
-        assert_eq!(
-            PERMANENT_FAILURES, expected,
-            "قائمة الفشل الدائم تغيّرت — كل نصّ فيها حدٌّ على إعادة المحاولة"
+        // حلقةٌ على قائمة فارغة «تنجح» بلا فحص ⇒ نمنع الفراغ صراحةً.
+        assert!(
+            !PERMANENT_FAILURES.is_empty(),
+            "قائمة الفشل الدائم فارغة — لا شيء يُقاس"
         );
+        for p in PERMANENT_FAILURES {
+            // **والعضو نفسه بحروف صغيرة** (وإلا لا يُطابَق أبداً بعد التطبيع).
+            assert_eq!(
+                *p,
+                p.to_lowercase(),
+                "عضو القائمة «{p}» بحروف كبيرة — عضوٌ ميتٌ بعد التطبيع"
+            );
+            let upper = format!("ERROR: [youtube] {}", p.to_uppercase());
+            assert!(
+                !is_transient_failure(&upper),
+                "يُعاد على فشل دائم مكتوب بحروف كبيرة: {p}"
+            );
+            let plain = format!("ERROR: [youtube] {p}");
+            assert!(!is_transient_failure(&plain), "يُعاد على فشل دائم: {p}");
+        }
     }
 
-    /// **قياس (٩) — لا تغيير سياسة: ماذا لو ترك فشلٌ ملفاً *صالحاً* في الخانة؟**
+    /// **حارس (٩): الخانة الصالحة = نجاح — حتى لو خرج yt-dlp بـ1.**
     ///
-    /// السؤال المطروح على المالك: هل يُقبَل الملف الذي يبقى في الخانة بعد خروج
-    /// yt-dlp بـ1؟ والقياس هنا بثلاثة أرقام: (أ) المحاولة الفاشلة **لا** تُسلِّم
-    /// الملف (السياسة: الخانة دليلٌ على **النجاح**)، (ب) الملف **يبقى** في الخانة،
-    /// (ج) المحاولة التالية تقبله من **المسار السريع بلا تشغيل yt-dlp إطلاقاً**
-    /// (‏عدّاد النداءات يبقى 1 — وهو ما يميّز المسار السريع من تنزيلٍ جديد).
+    /// **الثقب المقيس (حكم جاسوس مستقلّ)**: مزيّف كتب خانةً صالحة (‏WAV يقرؤه
+    /// ffprobe) ثم خرج بـ1 ⇒ الإعادة **كنستها** وانتهت المهمّة بـ«yt-dlp نجح دون
+    /// ملف ناتج صالح» (`نداءات: 2 · ملفات الخانة بعدها: []`) — أي أن الإعادة
+    /// **أنفقت نتيجةً صالحة**، والدالة تعرف في مسارها السريع أن الخانة الصالحة
+    /// نجاح ولا تستشيرها قبل الإعادة.
+    ///
+    /// **فصار القرار**: تُستشار `find_slots`+`slot_usable` **قبل** قرار الإعادة؛
+    /// فإن وُجدت خانة صالحة فهي النجاح: **نداء تنزيل واحد** وملفٌّ مُسلَّم.
+    /// (مُفسَد محروس: تجاهل الخانة ⇒ يسقط — مُنفَّذ.)
     #[cfg(windows)]
     #[test]
-    fn a_valid_file_left_by_a_failed_run_is_not_delivered_now_but_reused_next_time() {
+    fn a_valid_slot_is_success_even_when_ytdlp_exits_nonzero() {
         let _reg = crate::slots::registry_test_lock();
         let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
         let fake = fake_variant(&root, "valid_leftover");
@@ -3152,42 +3213,10 @@ fn main() {
         std::fs::create_dir_all(&tmp).expect("مجلد القياس");
         let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-        // ① خروج بـ1 مع ملفٍ صالح في الخانة.
-        *ytdlp_test_override()
-            .lock()
-            .unwrap_or_else(|p| p.into_inner()) = Some(fake.clone());
-        let r1 = download_media(
-            "https://www.youtube.com/watch?v=AJOOve4s0_8",
-            &tmp,
-            &|_p| true,
-            &cancel,
-        );
-        *ytdlp_test_override()
-            .lock()
-            .unwrap_or_else(|p| p.into_inner()) = None;
-        assert!(
-            r1.is_err(),
-            "خروجٌ بـ1 مع ملفٍ صالح في الخانة عاد **نجاحاً** — السياسة تغيّرت بلا إذن: {:?}",
-            r1.map(|p| p.display().to_string())
-        );
-        let slot: Vec<String> = std::fs::read_dir(&tmp)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter_map(|e| e.file_name().into_string().ok())
-            .filter(|n| n.starts_with("hl_faketest1_"))
-            .collect();
-        assert_eq!(
-            slot.len(),
-            1,
-            "الملف الصالح الذي تركه الفشل ليس في الخانة — القياس باطل: {slot:?}"
-        );
-
-        // ② المحاولة التالية: المسار السريع.
         *ytdlp_test_override()
             .lock()
             .unwrap_or_else(|p| p.into_inner()) = Some(fake);
-        let r2 = download_media(
+        let r = download_media(
             "https://www.youtube.com/watch?v=AJOOve4s0_8",
             &tmp,
             &|_p| true,
@@ -3196,19 +3225,23 @@ fn main() {
         *ytdlp_test_override()
             .lock()
             .unwrap_or_else(|p| p.into_inner()) = None;
+
         let calls = fake_calls(&tmp);
         eprintln!(
-            "x2-dl/قياس الخانة بعد فشل — نداءات yt-dlp: {calls} · نتيجة المحاولة التالية: {}",
-            match &r2 {
+            "x2-dl/حارس الخانة — نداءات yt-dlp: {calls} · النتيجة: {}",
+            match &r {
                 Ok(p) => format!("نجاح: {}", p.display()),
                 Err(e) => format!("فشل: {e}"),
             }
         );
         assert_eq!(
             calls, 1,
-            "المحاولة التالية شغّلت yt-dlp (نداءات: {calls}) — القياس عن المسار السريع باطل"
+            "الخانة الصالحة يجب أن تُسلَّم بنداء واحد — لا إعادة تُنفقها (نداءات: {calls})"
         );
-        let out = r2.expect("المسار السريع كان يجب أن يقبل الملف الصالح المتروك");
+        let out = match r {
+            Ok(p) => p,
+            Err(e) => panic!("خانةٌ صالحة بعد خروج yt-dlp بـ1 يجب أن تكون نجاحاً: {e}"),
+        };
         assert!(
             out.is_file(),
             "الملف المُسلَّم ليس على القرص: {}",
@@ -3217,7 +3250,72 @@ fn main() {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    /// **حارس (١٠): فشل التنزيل لا يُوسَم «ملفات:» — ولا يفقد اسمه.**
+    /// **حارس (١٠): قائمة الفشل الدائم تعمل على النصوص الحقيقية — سلوكاً لا نصّاً.**
+    ///
+    /// **الثقب المقيس (حكم جاسوس مستقلّ)**: القائمة كانت تُطابَق **حسّاسة لحالة
+    /// الأحرف** وفيها `"This video is not available"` و`"requested format is not
+    /// available"` (‏r صغير)، بينما yt-dlp الحقيقي (‏2026.08.19 · sha256
+    /// `66674953…`) ينطق `ERROR: [youtube] …: This video is unavailable` و
+    /// `ERROR: [generic] …: Requested format is not available. Use --list-formats…`
+    /// ⇒ **كان يُعاد على فشل دائم** (نداءا تنزيل والمطلوب واحد).
+    ///
+    /// **والحارس سلوكيّ**: مزيّف (صورة `speak_fail`) **ينطق النصّ المكتوب في
+    /// ملف** ثم يخرج بـ1 ⇒ **نداء تنزيل واحد** لكل نصّ. فتغيير القائمة مستقبلاً
+    /// لا يُحمّر الحارس، بل يُقاس أثره.
+    /// (مُفسَد محروس: إعادة المطابقة الحسّاسة ⇒ يسقط — مُنفَّذ.)
+    #[cfg(windows)]
+    #[test]
+    fn real_permanent_failure_texts_are_never_retried() {
+        let _reg = crate::slots::registry_test_lock();
+        let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
+        let fake = fake_variant(&root, "speak_fail");
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let url = "https://www.youtube.com/watch?v=AJOOve4s0_8";
+
+        // ① النصّان الحقيقيان المقيسان **بحالة أحرفهما الحقيقية** — وهما اللذان
+        //    كانا يفلتان من المطابقة الحسّاسة.
+        let measured = [
+            "ERROR: [youtube] AJOOve4s0_8: This video is unavailable",
+            "ERROR: [generic] Requested format is not available. Use --list-formats to see available formats",
+            "ERROR: [youtube] Sign in to confirm you're not a bot. Use --cookies-from-browser",
+            "ERROR: Private video. Sign in if you've been granted access to this video",
+        ];
+        // ② وكل عضو في القائمة نفسها (بحروف كبيرة) — فلا عضو ميت.
+        let mut samples: Vec<String> = measured.iter().map(|s| s.to_string()).collect();
+        for p in PERMANENT_FAILURES {
+            samples.push(format!("ERROR: [youtube] {}", p.to_uppercase()));
+        }
+        assert!(
+            !PERMANENT_FAILURES.is_empty(),
+            "قائمة الفشل الدائم فارغة — لا شيء يُقاس"
+        );
+
+        for (i, text) in samples.iter().enumerate() {
+            let tmp = std::env::temp_dir().join(format!("hl_speak_{}_{i}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&tmp);
+            std::fs::create_dir_all(&tmp).expect("مجلد القياس");
+            std::fs::write(tmp.join("stderr_text.txt"), format!("{text}\n"))
+                .expect("كتابة النصّ المَنطوق");
+
+            *ytdlp_test_override()
+                .lock()
+                .unwrap_or_else(|p| p.into_inner()) = Some(fake.clone());
+            let r = download_media(url, &tmp, &|_p| true, &cancel);
+            *ytdlp_test_override()
+                .lock()
+                .unwrap_or_else(|p| p.into_inner()) = None;
+
+            let calls = fake_calls(&tmp);
+            assert_eq!(
+                calls, 1,
+                "أُعيد على فشل دائم حقيقي: «{text}» (نداءات: {calls} والمطلوب ١)"
+            );
+            assert!(r.is_err(), "فشلٌ دائم عاد نجاحاً: «{text}»");
+            let _ = std::fs::remove_dir_all(&tmp);
+        }
+    }
+
+    /// **حارس (١١): فشل التنزيل لا يُوسَم «ملفات:» — ولا يفقد اسمه.**
     ///
     /// **العطب الميداني**: نصّ الفشل الذي وصل المالك في تلغرام كان
     /// `✗ فشل التنزيل: ملفات: yt-dlp خرج بـexit code: 1` — و«ملفات:» تسمية
