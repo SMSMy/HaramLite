@@ -251,6 +251,69 @@ describe('ط-٤ · لا قراءة `.error`/`.message` خامّة خارج `errT
     const reads = [...i18nSrc.slice(span!.start, span!.end).matchAll(RAW_READ_RE)].length;
     expect(reads, 'قراءات `.error`/`.message` داخل `errText`').toBe(1);
   });
+
+  /* ── القاعدة الثانية: **الصورة الثانية للعطل** — `String(e)` في سطح عرض ────
+   *
+   * **لماذا لزمت — بمُفسَد لا بتخمين**: أُعيدت `src/repair.ts:68` إلى
+   * `` `✗ ${String(e).slice(0, 200)}` `` (وهي صورتها قبل الإصلاح) ⇒ **مرّت
+   * القاعدة الأولى**: `String(e)` **ليس قراءة حقل**، فلا يمسّه عدّ
+   * `.error`/`.message`. والحارس الذي لا يرى صورة العطل التي وقع بها الإصلاح
+   * حارسٌ ناقص. (وهذه الصورة مذكورة صراحةً في جرد المهمّة: `String(e)`.)
+   *
+   * **القاعدة**: سطرٌ فيه **سطح عرض** ويرجع إلى **اسمٍ ربطه `catch`** يجب أن
+   * يمرّره بـ`errText(…)` — وإلا فهو نصّ خام معروض.
+   *
+   * **وحدّها المعلَن**: حكمٌ على **نصّ السطر** لا على شجرة نحوية؛ فاسمٌ مُستعار
+   * أو قيمةٌ نُقلت عبر وسيط (`const m = String(e); el.textContent = m;`) لا
+   * تُرى. وهو حدّ مقصود: القاعدة تمنع **تكرار العطل بالطريقة التي وقع بها**،
+   * والصور الملتوية موكولة إلى المراجعة. */
+  const SINKS = [/\.textContent\s*=/, /\bshowToast\s*\(/, /\bsetVerdict(?:Html)?\s*\(/,
+    /\bsetUpdRow\s*\(/, /\bshowCudaHint\s*\(/, /\bsetNote\s*\(/, /\bnotify\s*\(/];
+  const CATCH_BINDING_RE = /catch\s*\(\s*([A-Za-z_$][\w$]*)\s*\)/g;
+
+  /** مواضع نداءات `errText(` في سطر: `[بداية, نهاية]` — بموازنة الأقواس. */
+  function errTextSpans(line: string): Array<[number, number]> {
+    const spans: Array<[number, number]> = [];
+    for (const m of line.matchAll(/\berrText\s*\(/g)) {
+      let depth = 0;
+      let i = m.index + m[0].length - 1;
+      for (; i < line.length; i++) {
+        if (line[i] === '(') depth++;
+        else if (line[i] === ')') { depth--; if (depth === 0) break; }
+      }
+      spans.push([m.index, i]);
+    }
+    return spans;
+  }
+
+  /** أسطر تخالف القاعدة الثانية، بموضعها. */
+  function rawDisplayLines(file: string, src: string): string[] {
+    const bindings = new Set([...stripComments(src).matchAll(CATCH_BINDING_RE)].map((m) => m[1]));
+    if (!bindings.size) return [];
+    const out: string[] = [];
+    src.split('\n').forEach((line, i) => {
+      if (!SINKS.some((s) => s.test(line))) return;
+      const spans = errTextSpans(line);
+      for (const b of bindings) {
+        const re = new RegExp(`(?<![\\w$.])${b.replace(/\$/g, '\\$')}(?![\\w$])`, 'g');
+        for (const m of line.matchAll(re)) {
+          if (spans.some(([a, z]) => m.index > a && m.index < z)) continue;
+          out.push(`${file}:${i + 1} — «…${line.trim().slice(0, 90)}…»`);
+          return;
+        }
+      }
+    });
+    return out;
+  }
+
+  it('ولا `String(e)`/`${e}` خامّ في سطح عرض — الاسم المربوط بـ`catch` يمرّ بـ`errText`', () => {
+    const filesWithCatch = files.filter((f) => CATCH_BINDING_RE.test(readSrc('src/' + f)));
+    // صفر مدخل: لولا `catch` واحد لمرّت القاعدة لأنها لم تنظر.
+    expect(filesWithCatch.length, 'ملفات فيها `catch` مربوط').toBeGreaterThanOrEqual(5);
+    const offenders: string[] = [];
+    for (const f of files) offenders.push(...rawDisplayLines(f, readSrc('src/' + f)));
+    expect(offenders, 'أسطر عرض تُصيغ الخطأ خامّاً بدل `errText`').toEqual([]);
+  });
 });
 
 /* ══ ④ تقابل الرموز: الرست ⇄ جدول الواجهة (الاتجاهان) ═══════════════════════ */
