@@ -1,7 +1,7 @@
 {
   "why": "خطّ أساس مقيس لبوّابات Rust — يُحدَّث بـ--update بعد مراجعة السبب، ولا يُخفَّض لتُمرَّر بوّابة.",
   "clippy_unique_warnings": 14,
-  "tests_passed": 405,
+  "tests_passed": 406,
   "tests_ignored": 5,
   "toolchain": {
     "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
