@@ -5360,6 +5360,69 @@ fn keyboard_is_empty(keyboard: &Value) -> bool {
         .unwrap_or(false)
 }
 
+// ── شريط التقدّم النصّي (بند ز-٨/١) ─────────────────────────────────────────
+
+/// **عرض الشريط بالخلايا** — رقم واحد معلَن. تغييره يغيّر الشكل وحده ولا يمسّ
+/// حساب النسبة؛ وحارسٌ يمنع أن يتباعد عمّا هو معلَن.
+pub const PROGRESS_BAR_CELLS: usize = 10;
+/// الخليّة الممتلئة والفارغة — الزوج الذي يطلبه البند (`▰▰▰▰▱▱ 62%`).
+const BAR_FULL: char = '▰';
+const BAR_EMPTY: char = '▱';
+
+/// يُقصّ النسبة إلى `0.0..=100.0`: `NaN` صفر، واللانهاية إلى حدّها. **وموضعها
+/// هنا وحده**، فالشريط والرقم يُحسبان من القيمة نفسها ولا يفترقان أبداً.
+fn bar_pct(pct: f64) -> f64 {
+    if pct.is_nan() {
+        0.0
+    } else {
+        pct.clamp(0.0, 100.0)
+    }
+}
+
+/// **دالّة الحساب النقيّة**: عدد الخلايا الممتلئة لنسبة وعرض.
+///
+/// وحدودها مقصودة ومقيسة: نسبة سالبة ⇒ صفر، وفوق ١٠٠ ⇒ العرض كاملاً، و`NaN`
+/// ⇒ صفر، و`cells = 0` ⇒ صفر (لا قسمة على صفر)، و`cells` ضخم ⇒ لا انفجار (تحويل
+/// `f64` إلى `usize` **يشبع** ولا يلتفّ منذ Rust 1.45). والناتج دائماً `0..=cells`.
+fn bar_filled(pct: f64, cells: usize) -> usize {
+    let filled = (bar_pct(pct) / 100.0 * cells as f64).round() as usize;
+    filled.min(cells)
+}
+
+/// `▰▰▰▰▰▰▱▱▱▱ 62%` — العرض ثابت [`PROGRESS_BAR_CELLS`]، **والرقم من النسبة نفسها
+/// التي حُسب منها الشريط**، فلا يفترق الشكل عن الرقم.
+///
+/// **ولا `%` في قالبٍ نصّيّ هنا**: تُكتب محرفاً (`push('%')`) لأن حارساً بنيوياً
+/// يمنع `%` في أي نصٍّ حرفيّ في هذا الملف. والسبب مقيس: كان `"… {}%"` مكتوباً
+/// بيدٍ في ثلاثة مواضع، وهو بعينه عطل «الشريط لا يظهر». فالقاعدة الآن **لا يمكن
+/// كتابة نسبةٍ بلا شريط**، بدل قاعدةٍ تقول «تذكّر الشريط».
+fn progress_bar_text(pct: f64) -> String {
+    let pct = bar_pct(pct);
+    let filled = bar_filled(pct, PROGRESS_BAR_CELLS);
+    let mut s = String::with_capacity(PROGRESS_BAR_CELLS * 3 + 8);
+    for i in 0..PROGRESS_BAR_CELLS {
+        s.push(if i < filled { BAR_FULL } else { BAR_EMPTY });
+    }
+    s.push(' ');
+    s.push_str(&(pct.round() as i64).to_string());
+    s.push('%');
+    s
+}
+
+/// نصّ حالة **التنزيل** — موضع واحد لبنائه، فلا يفترق موضعان بنصّين.
+///
+/// والعتبة القائمة لم تُمسّ: التحديث **في مكانه** (`edit`) عبر [`StatusMsg`]،
+/// بفجوة [`EDIT_MIN_GAP`] (٣ ث) وبسقف المجموعة ([`GROUP_MSG_PER_MINUTE`]) —
+/// فلا رسالة جديدة لكل نسبة.
+fn download_status_text(pct: f64) -> String {
+    format!("📥 جارٍ التنزيل… {}", progress_bar_text(pct))
+}
+
+/// ونصّ حالة **المعالجة** كذلك — النسبة الواحدة تُعرض بالشكل الواحد.
+fn process_status_text(pct: f64) -> String {
+    format!("🎛️ فصل الصوت… {}", progress_bar_text(pct))
+}
+
 /// Throttled status message: Telegram rate-limits edits, and progress is
 /// cosmetic — 3s granularity is plenty.
 ///
@@ -5674,15 +5737,13 @@ fn run_job(
         Source::Link(url) => {
             status
                 .borrow_mut()
-                .set(cfg, "📥 جارٍ التنزيل… 0%".into(), true);
+                .set(cfg, download_status_text(0.0), true);
             let dir = out_dir();
             let _ = std::fs::create_dir_all(&dir);
             let dl = |p: f32| {
-                status.borrow_mut().set(
-                    cfg,
-                    format!("📥 جارٍ التنزيل… {}%", (p * 100.0).round()),
-                    false,
-                );
+                status
+                    .borrow_mut()
+                    .set(cfg, download_status_text(f64::from(p) * 100.0), false);
                 !stop.load(Ordering::SeqCst)
             };
             match crate::yt_dlp::download_media(url, &dir, &dl, &cancel) {
@@ -5810,11 +5871,9 @@ fn run_job(
     let prog = |p: f32| {
         // تقدّم حقيقي ⇒ بثٌّ حقيقي (`telegram-jobs`)، لا استطلاعاً دورياً.
         jobs_progress(row_id, f64::from(p) * 100.0);
-        status.borrow_mut().set(
-            cfg,
-            format!("🎛️ فصل الصوت… {}%", (p * 100.0).round()),
-            false,
-        );
+        status
+            .borrow_mut()
+            .set(cfg, process_status_text(f64::from(p) * 100.0), false);
         !stop.load(Ordering::SeqCst)
     };
     let stage = |name: &str, _p: f32| {
@@ -8833,7 +8892,7 @@ mod tests {
         let status = std::cell::RefCell::new(StatusMsg::new(7, 7, msg, cancel.clone()));
         status
             .borrow_mut()
-            .set(&cfg, "🎛️ فصل الصوت… 50%".into(), true);
+            .set(&cfg, process_status_text(50.0), true);
         // الزرّ أو `/kill` يضبطان الرمز، ثم يخرج المسار بخطأ المحرّك نفسه.
         cancel.store(true, Ordering::SeqCst);
         status
@@ -9177,7 +9236,7 @@ mod tests {
         let status = std::cell::RefCell::new(StatusMsg::new(7, 7, msg, cancel));
         status
             .borrow_mut()
-            .set(&cfg, "🎛️ فصل الصوت… 10%".into(), true);
+            .set(&cfg, process_status_text(10.0), true);
         assert_eq!(bot.count("editMessageText"), 1, "لم تُكتب الحالة أصلاً");
 
         // خروجٌ **بلا `end`** (وهو الذعر في الإنتاج): الحارس وحده يُزيل الزرّ.
@@ -9195,7 +9254,7 @@ mod tests {
         );
         assert_eq!(
             edits[1].get("text").and_then(Value::as_str),
-            Some("🎛️ فصل الصوت… 10%"),
+            Some(process_status_text(10.0).as_str()),
             "الحارس غيّر النصّ بدل أن يُزيل الزرّ وحده"
         );
 
@@ -9205,7 +9264,7 @@ mod tests {
         let status2 = std::cell::RefCell::new(StatusMsg::new(7, 7, msg2, cancel2));
         status2
             .borrow_mut()
-            .set(&cfg, "🎛️ فصل الصوت… 20%".into(), true);
+            .set(&cfg, process_status_text(20.0), true);
         status2.borrow_mut().end(&cfg, "✅ تم".into());
         let before = edit_texts_on(&bot, msg2).len();
         assert_eq!(before, 2, "بدءٌ ثم نهاية: {before}");
@@ -9243,7 +9302,7 @@ mod tests {
             std::cell::RefCell::new(StatusMsg::new(7, 7, msg, Arc::new(AtomicBool::new(false))));
         status
             .borrow_mut()
-            .set(&cfg, "🎛️ فصل الصوت… 40%".into(), true);
+            .set(&cfg, process_status_text(40.0), true);
         status.borrow_mut().end(&cfg, "✅ تم".into());
 
         let edits = bot.edited_messages();
@@ -11377,6 +11436,155 @@ mod tests {
         assert!(
             bad.is_empty(),
             "نجمتا Markdown حرفيّتان في {} نصّاً يصل إلى تلغرام: {bad:?}",
+            bad.len()
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  ش-٢ · شريط التقدّم (بند ز-٨/١): حدودُ الدالّة النقيّة، والشريط في النصّ
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// **ما دون `mod tests` وحده** — والبيان مقيس في الحارس أدناه، لا مُدَّعى.
+    ///
+    /// **ولماذا الشريط يُقاس على الإنتاج وحده**: نصوص الاختبارات لا تصل إلى
+    /// تلغرام، وفيها **متوقَّعُ** النسبة (`"… 62%"`) وهو مشروع فيها. أما نصوص
+    /// الإنتاج فلا يجوز أن تحمل `%` بيدٍ إطلاقاً — فالشريط هو الطريق الوحيد.
+    fn production_source(src: &str) -> &str {
+        src.find("mod tests {").map_or(src, |p| &src[..p])
+    }
+
+    /// (خلايا ممتلئة، خلايا فارغة) من نصّ الشريط.
+    fn bar_cells(text: &str) -> (usize, usize) {
+        let bar = text.split(' ').next().unwrap_or("");
+        (
+            bar.chars().filter(|c| *c == BAR_FULL).count(),
+            bar.chars().filter(|c| *c == BAR_EMPTY).count(),
+        )
+    }
+
+    /// **حدود الدالّة النقيّة**: الصفر والعامّ الكامل والوسطى، ثم مدخلات لا تقع
+    /// في الإنتاج اليوم — تُقاس هنا لئلا تنفجر غداً.
+    ///
+    /// (المُفسَد ①: `PROGRESS_BAR_CELLS = 9` ⇒ يسقط عرض الـ١٠. ②: قلب العدّ
+    /// إلى `i >= PROGRESS_BAR_CELLS - filled` ⇒ يسقط النصّ المتوقَّع `…62%`.)
+    #[test]
+    fn the_progress_bar_is_a_declared_width_and_holds_its_boundaries() {
+        assert_eq!(PROGRESS_BAR_CELLS, 10, "العرض المعلَن تغيّر بلا تصريح");
+        // ① الطرفان — ومعها مثال البند المعلَن `▰▰▰▰▰▰▱▱▱▱ 62%`.
+        assert_eq!(progress_bar_text(0.0), "▱▱▱▱▱▱▱▱▱▱ 0%");
+        assert_eq!(progress_bar_text(100.0), "▰▰▰▰▰▰▰▰▰▰ 100%");
+        assert_eq!(progress_bar_text(50.0), "▰▰▰▰▰▱▱▱▱▱ 50%");
+        assert_eq!(progress_bar_text(62.0), "▰▰▰▰▰▰▱▱▱▱ 62%");
+        // ② العرض ثابت، والعدّ لا يرجع للخلف، والحساب هو المعروض.
+        let mut prev = 0usize;
+        for step in 0..=100 {
+            let (full, empty) = bar_cells(&progress_bar_text(f64::from(step)));
+            assert_eq!(full + empty, PROGRESS_BAR_CELLS, "عرض غير ثابت عند {step}%");
+            assert_eq!(full, bar_filled(f64::from(step), PROGRESS_BAR_CELLS));
+            assert!(full >= prev, "العدّ رجع للخلف عند {step}%");
+            prev = full;
+        }
+        // ③ مدخلات فاسدة: قصٌّ إلى الحدّ — لا ذعر ولا التفاف.
+        for (bad, want) in [
+            (f64::NAN, "▱▱▱▱▱▱▱▱▱▱ 0%"),
+            (-1.0, "▱▱▱▱▱▱▱▱▱▱ 0%"),
+            (-1.0e300, "▱▱▱▱▱▱▱▱▱▱ 0%"),
+            (f64::NEG_INFINITY, "▱▱▱▱▱▱▱▱▱▱ 0%"),
+            (100.0001, "▰▰▰▰▰▰▰▰▰▰ 100%"),
+            (1.0e300, "▰▰▰▰▰▰▰▰▰▰ 100%"),
+            (f64::INFINITY, "▰▰▰▰▰▰▰▰▰▰ 100%"),
+        ] {
+            assert_eq!(progress_bar_text(bad), want, "مدخل فاسد: {bad}");
+        }
+        // ④ والناتج لا يتجاوز العرض أبداً — ولا مع عرضٍ صفر أو ضخم.
+        for cells in [0usize, 1, 7, 10, 1000, usize::MAX] {
+            for pct in [
+                f64::NAN,
+                -1.0,
+                0.0,
+                33.3,
+                99.9,
+                100.0,
+                1.0e300,
+                f64::INFINITY,
+            ] {
+                assert!(
+                    bar_filled(pct, cells) <= cells,
+                    "تجاوز العرض عند {pct} في {cells} خليّة"
+                );
+            }
+        }
+        assert_eq!(bar_filled(50.0, 0), 0, "عرض صفر ⇒ صفر خلايا");
+    }
+
+    /// **الشريط في نصّ الحالة نفسه** — لا دالّةً معزولة يُدَّعى أنها تُستعمل.
+    #[test]
+    fn the_download_and_processing_status_texts_carry_the_bar() {
+        assert_eq!(download_status_text(0.0), "📥 جارٍ التنزيل… ▱▱▱▱▱▱▱▱▱▱ 0%");
+        assert_eq!(download_status_text(62.0), "📥 جارٍ التنزيل… ▰▰▰▰▰▰▱▱▱▱ 62%");
+        assert_eq!(
+            download_status_text(100.0),
+            "📥 جارٍ التنزيل… ▰▰▰▰▰▰▰▰▰▰ 100%"
+        );
+        assert_eq!(process_status_text(0.0), "🎛️ فصل الصوت… ▱▱▱▱▱▱▱▱▱▱ 0%");
+        assert_eq!(process_status_text(62.0), "🎛️ فصل الصوت… ▰▰▰▰▰▰▱▱▱▱ 62%");
+    }
+
+    /// و**الشريط يصل السلك**: يُقرأ من جسم `editMessageText` الذي استقبله الخادم
+    /// الوهمي — فمحرف `▰` (U+25B0) يمرّ بـJSON ثم UTF-8، ولا يُفترض أنه يمرّ.
+    #[test]
+    fn the_progress_bar_reaches_the_wire_on_the_status_message() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let msg = 6201;
+        let status =
+            std::cell::RefCell::new(StatusMsg::new(7, 7, msg, Arc::new(AtomicBool::new(false))));
+        status
+            .borrow_mut()
+            .set(&cfg, download_status_text(62.0), true);
+        assert_eq!(
+            edit_texts_on(&bot, msg),
+            vec!["📥 جارٍ التنزيل… ▰▰▰▰▰▰▱▱▱▱ 62%".to_string()],
+            "الشريط لم يصل على رسالة الحالة"
+        );
+    }
+
+    /// **الحارس (بند ز-٨/١)**: لا `%` مكتوبة بيدٍ في أي نصٍّ حرفيّ **في
+    /// الإنتاج** ⇒ عرض النسبة **مُرغَم** أن يمرّ بـ[`progress_bar_text`].
+    ///
+    /// وقاعدةٌ تقول «تذكّر الشريط» تُنسى؛ وهذه تقول «لا يمكن كتابة نسبةٍ بلا
+    /// شريط»، لأن النسبة الوحيدة المسموح بها تُبنى هناك بمحرف `push('%')` لا
+    /// بنصٍّ حرفيّ.
+    ///
+    /// (المُفسَد: إعادة `format!("📥 جارٍ التنزيل… {}%", …)` ⇒ يسقط هذا الفحص
+    /// **و**فحص الشريط أعلاه.)
+    #[test]
+    fn no_bot_text_writes_a_percent_by_hand() {
+        let prod = production_source(SELF_SOURCE);
+        assert!(
+            prod.len() < SELF_SOURCE.len(),
+            "حدّ `mod tests` لم يُقرأ — فالحارس يقيس الملف كله بلا تمييز"
+        );
+        assert!(
+            prod.contains("fn download_status_text"),
+            "الشريط تُرك خارج الإنتاج — القياس في غير موضعه"
+        );
+        assert!(
+            !prod.contains("the_fake_bot_actually_records_what_it_receives"),
+            "الحدّ في غير موضعه: قِيسَت نصوص الاختبارات كأنها إنتاج"
+        );
+        let lits = string_literals(prod);
+        assert!(
+            lits.len() > 500,
+            "الماسح لم يقرأ الإنتاج ({} نصّاً حرفيّاً) — حارسٌ على مدخلٍ فارغ يمرّ كذباً",
+            lits.len()
+        );
+        let bad: Vec<&String> = lits.iter().filter(|l| l.contains('%')).collect();
+        assert!(
+            bad.is_empty(),
+            "`%` مكتوبة بيدٍ في {} نصّاً من الإنتاج — النسبة تُعرض بالشريط: {bad:?}",
             bad.len()
         );
     }
