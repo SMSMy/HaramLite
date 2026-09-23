@@ -11281,8 +11281,85 @@ mod tests {
     /// قائمةً مكتوبةً بيدٍ تتقادم بصمت.
     const SELF_SOURCE: &str = include_str!("telegram.rs");
 
+    /// يفكّ هروب النصّ الحرفيّ إلى **القيمة** التي يُنتجها Rust: `\n` · `\t` ·
+    /// `\r` · `\0` · `\\` · `\"` · `\'` · `\xNN` · `\u{…}` · ووصل السطر
+    /// (`\` + سطر جديد + إزاحة السطر التالي).
+    ///
+    /// **ولماذا الفكّ — وبه انكشف ثقب مُثبَت**: حارسٌ يقرأ **الحرف المكتوب**
+    /// يُخترق بصورة مكافئة. مُفسَد الجاسوس: `"\u{2a}\u{2a}"` بدل `"**"` — لا
+    /// تحمل النجمة في **المصدر** فتمرّ، وهي `**` في **القيمة** فتصل المستخدم.
+    /// ومثله `"\u{25}"` لـ`%` و`"\u{60}"` لعلامة الشيفرة. فالحكم على القيمة
+    /// (وهو نصّ قاعدة AGENT.md §٧: «احكم على القيمة لا على النصّ»).
+    fn unescape_rust_literal(raw: &str) -> String {
+        let cs: Vec<char> = raw.chars().collect();
+        let mut out = String::with_capacity(cs.len());
+        let mut i = 0usize;
+        while i < cs.len() {
+            let c = cs[i];
+            if c != '\\' {
+                out.push(c);
+                i += 1;
+                continue;
+            }
+            i += 1;
+            let Some(&e) = cs.get(i) else {
+                out.push('\\');
+                break;
+            };
+            i += 1;
+            match e {
+                'n' => out.push('\n'),
+                'r' => out.push('\r'),
+                't' => out.push('\t'),
+                '0' => out.push('\0'),
+                '\\' => out.push('\\'),
+                '\'' => out.push('\''),
+                '"' => out.push('"'),
+                'x' => {
+                    let hex: String = cs
+                        .get(i..i.saturating_add(2))
+                        .unwrap_or(&[])
+                        .iter()
+                        .collect();
+                    i = i.saturating_add(2);
+                    if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                        out.push(char::from(byte));
+                    }
+                }
+                'u' => {
+                    if cs.get(i) == Some(&'{') {
+                        let mut j = i + 1;
+                        let mut hex = String::new();
+                        while j < cs.len() && cs[j] != '}' {
+                            hex.push(cs[j]);
+                            j += 1;
+                        }
+                        i = j + 1;
+                        if let Some(ch) =
+                            u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32)
+                        {
+                            out.push(ch);
+                        }
+                    }
+                }
+                // وصل السطر: السطر الجديد وإزاحة ما بعده لا قيمة لهما.
+                '\n' | '\r' => {
+                    if e == '\r' && cs.get(i) == Some(&'\n') {
+                        i += 1;
+                    }
+                    while cs.get(i).is_some_and(|c| c.is_whitespace()) {
+                        i += 1;
+                    }
+                }
+                other => out.push(other),
+            }
+        }
+        out
+    }
+
     /// يستخرج **النصوص الحرفيّة** من مصدر Rust: يتخطّى التعليقات (`//`،
-    /// و`/* */` المتداخلة)، والنصوص الخام (`r"…"` · `r#"…"#`)، **ومحارف `'…'`**.
+    /// و`/* */` المتداخلة)، والنصوص الخام (`r"…"` · `r#"…"#`)، **ومحارف `'…'`**
+    /// — **ويعيد القيمة لا التمثيل** (انظر [`unescape_rust_literal`]).
     ///
     /// **والفخّ مسمّى**: ماسحٌ لا يميّز `'"'` يظنّه فاتحَ نصّ ⇒ **ينقلب التكافؤ**
     /// ⇒ يقرأ الكود نصّاً والنصّ كوداً، ويمرّ التشخيص **كذباً**. ولهذا يقيس
@@ -11357,7 +11434,9 @@ mod tests {
                         j += 1;
                     }
                     let end = close.unwrap_or(n);
-                    out.push(String::from_utf8_lossy(&b[i + 1..end]).into_owned());
+                    out.push(unescape_rust_literal(&String::from_utf8_lossy(
+                        &b[i + 1..end],
+                    )));
                     i = end + 1;
                 }
                 _ => i += 1,
@@ -11417,6 +11496,86 @@ mod tests {
         "{}_{}",
         "tg_{}_small.mp4",
     ];
+
+    /// **كل نصّ يبنيه الإنتاج بدالّة مسمّاة** — يُنادى هنا ويُفحَص **مخرَجُه**.
+    ///
+    /// وهذا هو **الحاكم** في حارس التنسيق، وماسحُ المصدر **مساعد**: مُفسَد الجاسوس
+    /// كتب النجمة `"\u{2a}"` والعلامة `"\u{60}"`، فلا يراها ماسحُ المصدر لو قرأ
+    /// الحرف المكتوب — ويراها هذا الفحص لأن الدالّة **أنتجت** المحرف فعلاً.
+    ///
+    /// **وحدّه المعلَن**: ما لا دالّة له (نصوص تُبنى داخل موضع النداء، مثل بطاقة
+    /// السماح ونصوص أخطاء الهوية) يبقى على ماسح المصدر وحده — وهو مذكور في
+    /// التقرير §١١-٤.
+    fn built_user_texts() -> Vec<(&'static str, String)> {
+        let plan_yes = OversizePlan {
+            shrink_kbps: 700,
+            audio_kbps: 96,
+        };
+        let plan_no = OversizePlan {
+            shrink_kbps: 0,
+            audio_kbps: 0,
+        };
+        let named = BotIdentity {
+            id: 7,
+            username: "MyBot".into(),
+        };
+        let anon = BotIdentity::default();
+        let card = Approval {
+            chat_id: -101,
+            user_id: 55,
+            user: "عضو".into(),
+            source: Source::Link("https://example.test/x".into()),
+            src_msg_id: 12,
+            file: "clip.mp4".into(),
+            card_msg_id: 77,
+        };
+        vec![
+            ("mode_question_text", mode_question_text("📎 song.mp4", 0)),
+            (
+                "mode_question_text+wait",
+                mode_question_text("🔗 https://example.test/x", 3),
+            ),
+            ("waiting_text", waiting_text("أغنية", 2)),
+            ("running_text", running_text("مقطع عادي")),
+            ("pending_full_text", pending_full_text()),
+            (
+                "cancel_reply(cancelled)",
+                cancel_reply(true, slots::JobPhase::Preparing),
+            ),
+            (
+                "cancel_reply(preparing)",
+                cancel_reply(false, slots::JobPhase::Preparing),
+            ),
+            (
+                "cancel_reply(processing)",
+                cancel_reply(false, slots::JobPhase::Processing),
+            ),
+            ("cancelled_text", CANCELLED_TEXT.to_string()),
+            ("pairing_hint", pairing_hint(4242)),
+            ("intro_text(anon)", intro_text(&anon, None)),
+            ("intro_text(named)", intro_text(&named, None)),
+            (
+                "intro_text+advice",
+                intro_text(&named, cpu_advice_line(Some("CPU"))),
+            ),
+            ("help_text_for(owner)", help_text_for(true)),
+            ("help_text_for(member)", help_text_for(false)),
+            ("lang_text(none)", lang_text(None)),
+            ("lang_text(ar)", lang_text(Some("ar"))),
+            ("approval_text", approval_text(&card)),
+            (
+                "oversize_text(can-shrink)",
+                oversize_text(60 * 1024 * 1024, "big.mp4", &plan_yes),
+            ),
+            (
+                "oversize_text(no-option)",
+                oversize_text(60 * 1024 * 1024, "big.mp4", &plan_no),
+            ),
+            ("oversize_guide_text", oversize_guide_text()),
+            ("download_status_text", download_status_text(62.0)),
+            ("process_status_text", process_status_text(62.0)),
+        ]
+    }
 
     /// عدد مواضع `_` التي **بشكل مُعلِّم المائل**: ما قبلها ليس محرف كلمة (وإلا
     /// فهي داخل مُعرِّف مثل `chat_id`)، وما بعدها ليس فراغاً (وإلا فهي شرطة سُفلى
@@ -11497,14 +11656,28 @@ mod tests {
         );
 
         // ② الإنتاج: محارف التنسيق المعلَنة.
+        let starts = tests_module_starts(SELF_SOURCE);
+        assert_eq!(
+            starts.len(),
+            1,
+            "حدّ وحدة الاختبارات ليس فريداً ({} موضعاً) — القياس بلا مرجع",
+            starts.len()
+        );
+        let boundary = line_of(SELF_SOURCE, starts[0]);
+        println!("حدّ وحدة الاختبارات: السطر {boundary}");
         let prod = production_source(SELF_SOURCE);
         assert!(
             prod.len() < SELF_SOURCE.len(),
-            "حدّ `mod tests` لم يُقرأ — فالحارس يقيس الملف كله بلا تمييز"
+            "حدّ الوحدة (السطر {boundary}) لم يُقرأ — فالحارس يقيس الملف كله بلا تمييز"
         );
         assert!(
             !prod.contains("the_fake_bot_actually_records_what_it_receives"),
-            "الحدّ في غير موضعه: قِيسَت نصوص الاختبارات كأنها إنتاج"
+            "الحدّ (السطر {boundary}) في غير موضعه: قِيسَت نصوص الاختبارات كأنها إنتاج"
+        );
+        assert!(
+            !prod.contains(["mod tests", " {"].concat().as_str()),
+            "الإنتاج يذكر عبارة حدّ وحدة الاختبارات (السطر {boundary}) — وهي بعينها ما \
+             يُخدع به ماسحٌ نصّيّ لنقل موضع القطع؛ احذفها من التعليق"
         );
         let plits = string_literals(prod);
         assert!(
@@ -11537,19 +11710,81 @@ mod tests {
             got, want,
             "مواضع `_` بشكل مُعلِّم تغيّرت — راجع: هل أُضيف مائل حقيقيّ إلى نصّ مستخدم؟"
         );
+
+        // ④ **القيمة المُنتَجة لا الحرف المكتوب** — وهذا هو الحاكم، وماسحُ المصدر
+        //    مساعد. مُفسَد الجاسوس كتب `"\u{2a}"` و`"\u{60}"`: لا نجمةَ في المصدر،
+        //    والنجمة في **القيمة** تصل المستخدم. فالفحص هنا على مخرَج الدالّة.
+        for (name, text) in built_user_texts() {
+            for ch in ['`', '*', '[', ']'] {
+                assert!(
+                    !text.contains(ch),
+                    "«{name}» يُنتج المحرف {ch:?} — يصل المستخدم حرفيّاً: {text:?}"
+                );
+            }
+        }
+        // وضابط على الضابط: القائمة ليست فارغة، وفيها النصوص التي قِيس عليها العطل.
+        let built = built_user_texts();
+        assert!(
+            built.len() >= 20,
+            "قائمة النصوص المُنتَجة قصيرة ({} عنصراً) — ضابطٌ فارغ لا يقيس",
+            built.len()
+        );
+        assert!(
+            built
+                .iter()
+                .any(|(n, _)| *n == "pairing_hint" && n.contains("pairing")),
+            "نصّ الاقتران ليس في القائمة — وهو أحد ثلاثة مواضع قِيس فيها المحرف"
+        );
     }
 
     // ═══════════════════════════════════════════════════════════════════════
     //  ش-٢ · شريط التقدّم (بند ز-٨/١): حدودُ الدالّة النقيّة، والشريط في النصّ
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// **ما دون `mod tests` وحده** — والبيان مقيس في الحارس أدناه، لا مُدَّعى.
+    /// **ما دون وحدة الاختبارات وحده** — والبيان مقيس في الحارس أدناه، لا مُدَّعى.
     ///
     /// **ولماذا الشريط يُقاس على الإنتاج وحده**: نصوص الاختبارات لا تصل إلى
     /// تلغرام، وفيها **متوقَّعُ** النسبة (`"… 62%"`) وهو مشروع فيها. أما نصوص
     /// الإنتاج فلا يجوز أن تحمل `%` بيدٍ إطلاقاً — فالشريط هو الطريق الوحيد.
+    ///
+    /// **وبيانه ليس مطابقةً نصّية** (ثقب مُثبَت أغلقه الجاسوس): كان
+    /// `src.find("mod tests {")`، فتعليقٌ إنتاجيّ بريء **يذكر هذه العبارة** ينقل
+    /// موضع القطع ⇒ يُقاس نصف الملف على أنه إنتاج ⇒ تسقط ثلاثة فحوص **بصمت**
+    /// (حارس `%` ومحارف ② وجرد `_` ③). والحدّ الآن **بنيويّ**: لا يطابق إلا سطراً
+    /// قائماً بذاته نصُّه `mod tests {` **والسطرُ الذي قبله `#[cfg(test)]`** —
+    /// فذكرُ العبارة داخل جملة لا يحرّكه. ويُشترط أن يكون **فريداً**، ويُعلَن
+    /// رقمه في رسائل الحارس.
+    fn tests_module_starts(src: &str) -> Vec<usize> {
+        let marker = ["mod tests", " {"].concat();
+        let mut out = Vec::new();
+        let mut from = 0usize;
+        while let Some(rel) = src[from..].find(&marker) {
+            let at = from + rel;
+            let line_start = src[..at].rfind('\n').map_or(0, |n| n + 1);
+            let alone_on_its_line = src[line_start..at].trim().is_empty();
+            let after_unit_attr = src[..line_start].trim_end().ends_with("#[cfg(test)]");
+            if alone_on_its_line && after_unit_attr {
+                out.push(line_start);
+            }
+            from = at + 1;
+        }
+        out
+    }
+
+    /// موضع القطع **بعدد أسطره** (1-based) — يُعلَن في رسائل الحارس.
+    fn line_of(src: &str, byte: usize) -> usize {
+        src[..byte].matches('\n').count() + 1
+    }
+
     fn production_source(src: &str) -> &str {
-        src.find("mod tests {").map_or(src, |p| &src[..p])
+        let starts = tests_module_starts(src);
+        assert_eq!(
+            starts.len(),
+            1,
+            "حدّ وحدة الاختبارات ليس فريداً ({} موضعاً) — فأيّها الإنتاج؟",
+            starts.len()
+        );
+        &src[..starts[0]]
     }
 
     /// (خلايا ممتلئة، خلايا فارغة) من نصّ الشريط.
@@ -11650,21 +11885,23 @@ mod tests {
         );
     }
 
-    /// **الحارس (بند ز-٨/١)**: لا `%` مكتوبة بيدٍ في أي نصٍّ حرفيّ **في
-    /// الإنتاج** ⇒ عرض النسبة **مُرغَم** أن يمرّ بـ[`progress_bar_text`].
+    /// **الحارس (بند ز-٨/١)**: لا `%` مكتوبة بيدٍ — لا في نصٍّ حرفيّ **في
+    /// الإنتاج** ولا في **قيمة يُنتجها** الإنتاج ⇒ عرض النسبة **مُرغَم** أن يمرّ
+    /// بـ[`progress_bar_text`].
     ///
     /// وقاعدةٌ تقول «تذكّر الشريط» تُنسى؛ وهذه تقول «لا يمكن كتابة نسبةٍ بلا
     /// شريط»، لأن النسبة الوحيدة المسموح بها تُبنى هناك بمحرف `push('%')` لا
     /// بنصٍّ حرفيّ.
     ///
     /// (المُفسَد: إعادة `format!("📥 جارٍ التنزيل… {}%", …)` ⇒ يسقط هذا الفحص
-    /// **و**فحص الشريط أعلاه.)
+    /// **و**فحص الشريط أعلاه. ومُفسَد الجاسوس `"\u{25}"` — كتابة `%` بصورة
+    /// مكافئة — يسقط بالقسم الثاني لأن الفحص على **القيمة المُنتَجة**.)
     #[test]
     fn no_bot_text_writes_a_percent_by_hand() {
         let prod = production_source(SELF_SOURCE);
         assert!(
             prod.len() < SELF_SOURCE.len(),
-            "حدّ `mod tests` لم يُقرأ — فالحارس يقيس الملف كله بلا تمييز"
+            "حدّ وحدة الاختبارات لم يُقرأ — فالحارس يقيس الملف كله بلا تمييز"
         );
         assert!(
             prod.contains("fn download_status_text"),
@@ -11686,5 +11923,47 @@ mod tests {
             "`%` مكتوبة بيدٍ في {} نصّاً من الإنتاج — النسبة تُعرض بالشريط: {bad:?}",
             bad.len()
         );
+
+        // **والقيمة المُنتَجة أيضاً** (ثقب الجاسوس `"\u{25}"`): نصٌّ يبنيه الإنتاج
+        // بدالّة مسمّاة لا يجوز أن يحمل `%` — إلا الشريطَين، ويُقابَلان بشكلٍ معلَن
+        // يجعل `%` **موضعَ الشريط وحده** لا موضعاً آخر.
+        for (name, text) in built_user_texts() {
+            if name.ends_with("_status_text") {
+                continue;
+            }
+            assert!(
+                !text.contains('%'),
+                "«{name}» يُنتج `%` في نصّه — النسبة تُعرض بالشريط وحده: {text:?}"
+            );
+        }
+        for (name, f) in [
+            (
+                "download_status_text",
+                download_status_text as fn(f64) -> String,
+            ),
+            (
+                "process_status_text",
+                process_status_text as fn(f64) -> String,
+            ),
+        ] {
+            for pct in [0.0, 62.0, 100.0] {
+                let text = f(pct);
+                let tail = text.rsplit(' ').next().unwrap_or("");
+                assert!(
+                    tail.ends_with('%')
+                        && !tail.trim_end_matches('%').is_empty()
+                        && tail
+                            .trim_end_matches('%')
+                            .chars()
+                            .all(|c| c.is_ascii_digit()),
+                    "«{name}»: `%` خارج موضع الشريط في {text:?}"
+                );
+                assert_eq!(
+                    text.matches('%').count(),
+                    1,
+                    "«{name}» يحمل `%` أكثر من مرّة: {text:?}"
+                );
+            }
+        }
     }
 }
