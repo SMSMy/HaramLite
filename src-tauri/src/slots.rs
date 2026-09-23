@@ -247,11 +247,93 @@ fn timeout_message(timeout: Duration) -> String {
 }
 
 /// الاسم الفعلي: تجاوز البيئة إن وُجد نصّ غير فارغ، وإلا الافتراضي.
-fn slot_name() -> String {
+///
+/// **`pub` لأن القياس يحتاجه**: من يقيس خرق السقف يجب أن يسأل عن **الاسم نفسه**
+/// الذي تأخذه المهامّ (`telegram::tests::t3_…`)، وإلا قاس اسماً آخر.
+pub fn slot_name() -> String {
     match std::env::var(ENV_NAME) {
         Ok(v) if !v.trim().is_empty() => v,
         _ => DEFAULT_NAME.to_string(),
     }
+}
+
+// ─────────────────────── **الإشغال: من يحمل فتحة الآن؟** ───────────────────────
+//
+// **العطل الذي وُلد هذا العدّاد منه (مقيس بجاسوس مستقلّ)**: `JobInfo`
+// (`slots.rs:343-354`) لا يحمل فتحة ولا مرحلة، و`JobEntry.phase` تجعل
+// `Processing` تشمل **من ينتظر فتحة**، و`JobInfo.cancelled` حالة إلغاء — فلا
+// موصِّل واحد يقيس **حائزي الفتحة**. فمقياس `t3` في `telegram.rs` كان يقيس
+// **حجم السِجلّ العام** (`active_jobs`) ويسمّيه «السقف»، و`slots` **تُسجّل قبل
+// انتظار الفتحة عن قصد** (`run_body_in`: «التسجيل قبل الانتظار») ⇒ ``peak > cap`
+// يقع **بلا خرق** (قِيس: ٥ فشل في ١٢ تشغيلاً على شجرة، وصفر على أخرى — تنازعٌ
+// لا عطل)، ويومها كان الحكم على «مسجَّل» لا على «يعمل».
+//
+// **وما يقيسه هذا العدّاد**: **حائزٌ واحد لكل إجارة** (لا رمز لكل مهمّة): رمزا
+// السقف ١ ورمز السقف ٢ **إجارة** في الحالتين، والسقف معناه «عدد الفتحات
+// المتزامنة» (`tokens_required`) ⇒ فالعدّ **بالإجارات** هو الإشغال بعينه.
+//
+// **حدّه (معلَن)**: العدّاد **داخل هذه العملية وحدها** — والسقف نفسه **عبر
+// العمليات** (كائن نواة مسمّى). فقياسٌ يقارن عدّاده بسقفٍ مشترك بين عمليتين
+// يقيس **حصة هذه العملية** (وهو ما تعنيه «‏هل تجاوزت المهامّ سقفها؟»)، لا
+// الإشغال الكلي على الجهاز.
+static HELD_SLOTS: Mutex<Vec<(String, usize)>> = Mutex::new(Vec::new());
+
+/// إجارة فتحة: تُبقي **الاسم المطلوب**، وتُبطل العدّاد في `Drop` (ولو بالذعر).
+///
+/// **والترتيب مقصود**: الفتحة تُحرَّر أولاً (سقوط الحارس) **ثم** يُنقص العدّاد ⇒
+/// لا تُحتسب فتحةٌ صارت حرّة مشغولةً في نافذة القياس، والعكس في الاكتساب.
+struct SlotLease {
+    /// الاسم **المطلوب من المستدعي** — لا الاسم المحلي عند السقوط
+    /// (`session_local`): القياس على الفتحة التي طلبها المنتج.
+    name: String,
+    /// `Option` لتُحرَّر الفتحة قبل إنقاص العدّاد (انظر التعليل أعلاه).
+    guard: Option<SlotGuard>,
+}
+
+impl SlotLease {
+    fn take_lease(name: &str, guard: SlotGuard) -> Self {
+        let mut held = HELD_SLOTS.lock().unwrap_or_else(|p| p.into_inner());
+        match held.iter_mut().find(|(n, _)| n == name) {
+            Some((_, c)) => *c += 1,
+            None => held.push((name.to_string(), 1)),
+        }
+        drop(held);
+        Self {
+            name: name.to_string(),
+            guard: Some(guard),
+        }
+    }
+}
+
+impl Drop for SlotLease {
+    fn drop(&mut self) {
+        self.guard.take(); // تحرير الفتحة فعلاً
+        let mut held = HELD_SLOTS.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((_, c)) = held.iter_mut().find(|(n, _)| n == &self.name) {
+            *c = c.saturating_sub(1);
+            if *c == 0 {
+                held.retain(|(n, _)| n != &self.name);
+            }
+        }
+    }
+}
+
+/// **حائزو فتحة الآن لهذا الاسم** — الإشغال الحقيقي (لا السِجلّ).
+///
+/// وهو الموصِّل الذي يمنع قياس «السقف» من `active_jobs`، كما في
+/// `telegram::tests::t3_two_users_run_in_parallel_up_to_the_global_cap`.
+pub fn held_slots_of(name: &str) -> usize {
+    let held = HELD_SLOTS.lock().unwrap_or_else(|p| p.into_inner());
+    held.iter()
+        .find(|(n, _)| n == name)
+        .map(|(_, c)| *c)
+        .unwrap_or(0)
+}
+
+/// **مجموع حائزي الفتحات في هذه العملية** (كل الأسماء) — للتشخيص والجرد.
+pub fn held_slots() -> usize {
+    let held = HELD_SLOTS.lock().unwrap_or_else(|p| p.into_inner());
+    held.iter().map(|(_, c)| *c).sum()
 }
 
 /// سقف هذه العملية (يضبطه `set_limit` من الإعدادات). الافتراضي `DEFAULT_LIMIT`.
@@ -1138,10 +1220,15 @@ fn session_local(name: &str) -> Option<String> {
 /// العملية نفسها، وCLI في الجلسة نفسها). فلا يتحوّل رفضُ الصلاحية إلى تعطيل
 /// الفصل كله. واللواحق تُضاف **بعد** نزع البادئة، فالرمزين هما الرمزان في
 /// النطاقين.
-fn acquire_named(name: &str, limit: u32, timeout: Duration) -> Result<SlotGuard, String> {
+/// [`acquire_named`] بإجارة تُحصى: **كل نجاح يُسجَّل إشغالاً** والاسم المطلوب
+/// محفوظ في الإجارة، فيُقرأ بـ[`held_slots_of`].
+///
+/// **ولا يُنادى `platform_acquire` من موضع آخر**: لو أُضيف مسار يكتسب مباشرةً
+/// لَما حُسب إشغاله — ولذلك العدّ في هذه الدالّة **وحدها** (نقطة الاختناق).
+fn acquire_named(name: &str, limit: u32, timeout: Duration) -> Result<SlotLease, String> {
     let tokens = tokens_required(limit);
     match platform_acquire(name, tokens, timeout) {
-        Ok(guard) => Ok(guard),
+        Ok(guard) => Ok(SlotLease::take_lease(name, guard)),
         Err((retry_local, why)) => {
             if !retry_local {
                 return Err(why);
@@ -1152,7 +1239,11 @@ fn acquire_named(name: &str, limit: u32, timeout: Duration) -> Result<SlotGuard,
                         target: "slots",
                         "{why} — السقوط إلى نطاق الجلسة «{local}»"
                     );
-                    platform_acquire(&local, tokens, timeout).map_err(|(_, e)| e)
+                    // **الاسم المطلوب هو المحسوب** لا اسم النطاق المحلي: القياس
+                    // على الفتحة التي طلبها المنتج (وانظر حدّ العدّاد).
+                    platform_acquire(&local, tokens, timeout)
+                        .map(|g| SlotLease::take_lease(name, g))
+                        .map_err(|(_, e)| e)
                 }
                 None => Err(why),
             }
@@ -1187,8 +1278,8 @@ fn platform_acquire(
 /// **433ms** وطُبع السطران، والحالة الحرّة **9.8ms** مقابل المحجوزة **18.618s**.
 /// فالآن يُحاول **فوراً** أولاً، ولا يُعلَن انتظار **إلا إذا وقع**.
 struct Acquired {
-    /// الحارس — يُحرَّر عند سقوطه.
-    _guard: SlotGuard,
+    /// الإجارة — تُحرَّر عند سقوطها، **وتُحصى إشغالاً** ما دامت حيّة.
+    _guard: SlotLease,
     /// هل انتُظر؟ (كاذب = أُخذ الرمز من المحاولة الفورية.)
     waited: bool,
     /// زمن الانتظار المقيس (صفر إن لم يقع انتظار فعلًا).
@@ -1289,10 +1380,18 @@ fn run_body_in<T>(
     // المقيس** بعد الاكتساب — لا تخميناً. (سطران لا سطر: «بانتظار» أثناء
     // الانتظار، و«انتظرت ٥١.٠ ث» بعده — وكلاهما صادق في لحظته.)
     let got = acquire_now_or_wait(slot_name, limit, DEFAULT_WAIT, || {
+        // **والسطر يقول الآن ما الذي يشغل الفتحة** (‏`held_slots_of` ·
+        // `held_slots`): كان الانتظار يُعلَن بلا سبب ظاهر — «بانتظار…» ثم صمت
+        // (قاس المدقّق ٣٤٢ ثانية)، ومن يسأل «ما الذي يحجز؟» لا يجد في السجلّ
+        // جواباً. وهذان **العدّادان الوحيدان** اللذان يقيسان **الإشغال** لا
+        // التسجيل (انظر تعريفهما): عدد حائزي هذا الاسم، ومجموع العملية.
         tracing::info!(
             target: "slots",
-            "المهمّة #{id} ({label}) بانتظار فتحة فصل (سقف {limit})…",
-            id = job.id()
+            "المهمّة #{id} ({label}) بانتظار فتحة فصل (سقف {limit}) — \
+             مشغول بهذا الاسم: {held} · مجموع العملية: {total}…",
+            id = job.id(),
+            held = held_slots_of(slot_name),
+            total = held_slots()
         );
     })
     .inspect_err(|e| {
@@ -1712,7 +1811,7 @@ mod tests {
     /// واحدة، فمحاولتان على خيط واحد تعطيان «1» **أبداً** لا ميزانية. وهذا
     /// بالضبط ما أسقط أول كتابتين لهذا الحارس على الشيفرة السليمة، فالقاعدة
     /// الآن: **كل محاولة على خيطها**، والنتيجة تُقرأ من عدّ المحاولات.
-    fn take_slot_once(name: &str) -> Result<SlotGuard, String> {
+    fn take_slot_once(name: &str) -> Result<SlotLease, String> {
         acquire_named(name, MAX_LIMIT, Duration::ZERO)
     }
 
@@ -1860,6 +1959,133 @@ mod tests {
             std::process::id(),
             now_ms()
         )
+    }
+
+    /// **تثبيت مرسى تصنيف الجسر على نصّنا المُنتَج** (ط-١٢).
+    ///
+    /// الجسر يصنّف عطل المحرّك إلى رمز فرعي بمرسى «الفصل» (‏**أوسع المراسي
+    /// عمداً**، ويُفحَص أخيراً فلا يسرق تصنيف المراسي الأخصّ)، ومنتجُه **هنا**:
+    /// رسالة المهلة ورسالة الرفض التراكبي. فلو تغيّر نصّهما انكسر التصنيف
+    /// **صامتاً** — وهذا الحارس يجعله يسقط بصوت.
+    ///
+    /// **مُفسَده**: حذف «الفصل» من `timeout_message` (أو من `reentry_message`)
+    /// ⇒ يسقط هذا الاختبار.
+    #[test]
+    fn the_slot_messages_carry_the_bridge_anchor() {
+        let anchor = crate::bridge::ANCHOR_SLOT_WAIT;
+        let timeout = timeout_message(Duration::from_secs(30));
+        assert!(
+            timeout.contains(anchor),
+            "نصّ المهلة لا يحمل مرسى التصنيف «{anchor}»: {timeout}"
+        );
+        let reentry = reentry_message(&unique_name("anchor"));
+        assert!(
+            reentry.contains(anchor),
+            "نصّ الرفض التراكبي لا يحمل مرسى التصنيف «{anchor}»: {reentry}"
+        );
+    }
+
+    /// **حارس مُوصِّل الإشغال** (`held_slots_of` · `held_slots`) — العدّادان
+    /// الذين يقيسان **حائزي الفتحة** لا المسجَّلين.
+    ///
+    /// **ولماذا حارسٌ خاصّ بهما**: `telegram::tests::t3_…` لا يبلغ الفتحة أصلاً
+    /// (الخادم الوهميّ لا يسلّم ملفاً ⇒ المهمّة تموت قبل المحرّك، **وقِيس**:
+    /// ذروة إشغال 0 مقابل ذروة سِجلّ 2)، فلو لم يُحرَس العدّاد هنا لبقي بلا قياس.
+    ///
+    /// **وما يقيسه**:
+    /// ١. العدّ **بالإجارات الحيّة** لا بالتسجيل: تُؤخذ فتحة ⇒ 1، وتُحرَّر ⇒ 0.
+    /// ٢. **العزل بالاسم**: فتحة اسمٍ آخر لا تُحتسب على هذا الاسم (وإلا صار كل
+    ///    قياس أسيرَ مهامّ غيره — وهو نفس صنف العطل الذي أُصلح في `t3`).
+    /// ٣. **كشف خرق السقف**: سقف ١ لا يقبل فتحةً ثانية، والعدّاد يقول 1 —
+    ///    ومُفسَده يُبطل فحص السقف فيصير العدّاد 2 ⇒ يسقط.
+    #[test]
+    fn the_held_slots_connector_counts_holders_not_registrations() {
+        let name = unique_name("held");
+        let other = unique_name("held-other");
+        assert_eq!(held_slots_of(&name), 0, "لا إجارة قبل الأخذ");
+
+        // (١) إجارتان بسقف `MAX_LIMIT` ⇒ العدّاد 2 (والاكتساب **التراكبي على
+        //     الخيط نفسه مرفوض** بالإجماع، فالأولى على خيط آخر).
+        let (held_a, release_a) = acquire_holding_on_thread(&name, MAX_LIMIT);
+        held_a
+            .recv_timeout(Duration::from_secs(10))
+            .expect("الحائز الأول أُعلن اكتسابه");
+        assert_eq!(held_slots_of(&name), 1, "إجارة واحدة ⇒ 1");
+        let second = acquire_named(&name, MAX_LIMIT, Duration::from_secs(5)).expect("فتحة ثانية");
+        assert_eq!(held_slots_of(&name), 2, "إجارتان ⇒ 2 (والسقف 2)");
+
+        // (٢) **العزل بالاسم**: فتحة اسمٍ آخر لا تُحتسب على هذا الاسم.
+        let (held_other, release_other) = acquire_holding_on_thread(&other, MAX_LIMIT);
+        held_other
+            .recv_timeout(Duration::from_secs(10))
+            .expect("حائز الاسم الآخر أُعلن");
+        assert_eq!(held_slots_of(&name), 2, "فتحة اسمٍ آخر لا تُحتسب على اسمنا");
+        assert_eq!(held_slots_of(&other), 1, "وتُحتسب على اسمها");
+        // **والمجموع لا يُساوَى بعددٍ في طقم متوازٍ**: اختبارات أخرى قد تحمل
+        // فتحاتٍ بأسماءٍ أخرى في اللحظة نفسها (قِيس: سقط هذا الادّعاء في التشغيل
+        // الكامل بعد أن مرّ وحده) ⇒ العلاقة المؤكَّدة هي **الاحتواء** لا التساوي:
+        // مجموع العملية لا يقلّ عن حائزي هذين الاسمين.
+        assert!(
+            held_slots() >= 3,
+            "مجموع العملية {} أقلّ من حائزي الاسمين (3) — عدّاد الإشغال ناقص",
+            held_slots()
+        );
+
+        // (٣) **التحرير يُنقص** (وهو ما يجعل العدّاد إشغالاً لا تاريخاً).
+        drop(second);
+        assert_eq!(held_slots_of(&name), 1, "بعد تحرير إجارتنا ⇒ 1");
+        release_a.wait(); // يُحرَّر حارس الخيط الآخر عند خروجه
+        assert_eq!(
+            wait_until_held(&name, 0),
+            0,
+            "وبعد تحرير الحائز على الخيط الآخر ⇒ 0 (والصفّ يُزال)"
+        );
+        release_other.wait();
+        assert_eq!(wait_until_held(&other, 0), 0, "واسم آخر يعود صفراً");
+        assert_eq!(
+            held_slots_of(&name),
+            0,
+            "واسمنا يعود صفراً (ولا يُساوَى مجموع العملية هنا: طقم متوازٍ)"
+        );
+    }
+
+    /// **كشف خرق السقف الحقيقي على الفتحة** (وهو مُفسَد الحارس أعلاه).
+    ///
+    /// سقف ١ = حصرية (الرمزان معاً)، فطلبٌ ثانٍ لنفس الاسم **لا ينجح**، والعدّاد
+    /// يبقى 1. فلو أُبطل فحص السقف لنجح الطلب الثاني وصار العدّاد **2 > السقف 1**
+    /// ⇒ يسقط هذا الاختبار (وهو «الخرق الحقيقي المصنوع» الذي يُشترط كشفه).
+    #[test]
+    fn a_second_holder_above_the_cap_is_refused_and_the_connector_would_see_it() {
+        let name = unique_name("cap1");
+        let (held_a, release_a) = acquire_holding_on_thread(&name, 1);
+        held_a
+            .recv_timeout(Duration::from_secs(10))
+            .expect("الحائز بسقف ١ أُعلن");
+        assert_eq!(held_slots_of(&name), 1, "حائز واحد والسقف ١");
+
+        let second = acquire_named(&name, 1, Duration::ZERO);
+        assert!(
+            second.is_err(),
+            "سقف ١: طلبٌ ثانٍ لنفس الاسم يجب ألّا ينجح (حصرية الرمزين)"
+        );
+        let held = held_slots_of(&name);
+        assert!(held <= 1, "الإشغال {held} تجاوز السقف ١ — سقفُ الفتحة مخروق");
+
+        release_a.wait();
+        assert_eq!(wait_until_held(&name, 0), 0, "ويعود صفراً بعد التحرير");
+    }
+
+    /// انتظار **محدود** لعودة عدّاد الإشغال إلى قيمة (تحرير الخيط الآخر يقع في
+    /// `Drop` بعده، فلا لحظة مضمونة) — ويعيد آخر قيمة قرأها.
+    fn wait_until_held(name: &str, want: usize) -> usize {
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            let now = held_slots_of(name);
+            if now == want || std::time::Instant::now() >= deadline {
+                return now;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
     }
 
     /// مجلد عمل فريد لكل **تشغيل** (لا لكل مهمّة فقط).

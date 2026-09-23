@@ -362,7 +362,90 @@ pub const E_DOWNLOAD_CANCELLED: &str = "download_cancelled";
 /// عطل داخلي في العامل (نجا من `catch_unwind`) — إعادة المحاولة مفيدة.
 pub const E_INTERNAL: &str = "internal_error";
 /// فشل من المحرّك/الشبكة/نظام الملفات، ونصّه الخام (`e.to_string()`) هو التفصيل.
+///
+/// **ومعه رمز فرعي**: انظر كتلة `SUB_ENGINE_*` أدناه — الرمز الواحد لا يقول
+/// **أيّ** عطل، فيضطر العميل إلى عرض النصّ الخام (عربي داخل جملة إنجليزية).
 pub const E_ENGINE: &str = "engine_error";
+
+// ── **رموز أعطال المحرّك الفرعية** (ط-١٢ · البند ٤) ─────────────────────────
+//
+// **العطل المقيس**: جملة `code.engine_error` تحمل `error` = **تفصيل المحرّك الخام**
+// (عربي غالباً) ⇒ عربيةٌ داخل جملة إنجليزية في الإضافة وفي واجهة التطبيق، ولا
+// سبيل للعميل أن يترجمها لأن الرمز الواحد `engine_error` لا يقول أيّ عطل.
+//
+// **والعلاج**: رمز فرعي **مصدره الواحد هذه الكتلة**، يُصدَّر في حمولة الفشل **مع**
+// `code`، و**السبب لا يُفقد**: النصّ الخام يبقى في `error` كما كان ويُضاف `detail`
+// صريحاً — فالعميل الذي يعرف الرمز يعرض جملة مترجمة، ومن لا يعرفه يعرض النصّ كما
+// كان. **ولا رمز `code` قائم يتغيّر** (الإضافة وواجهة التطبيق تعتمدانها، وبوّابة
+// `pnpm bridge:codes` تحرسها) — والرموز الفرعية **حقل جديد** لا يمسّها.
+/// طلب المستخدم إلغاء المعالجة (وصل نصّه مسارَ المحرّك لا مسار الإلغاء).
+pub const SUB_ENGINE_CANCELLED: &str = "engine_cancelled";
+/// نموذج الفصل غير موجود في مجلد `models` (أشهر عطل أول تشغيل).
+pub const SUB_ENGINE_MODEL_MISSING: &str = "engine_model_missing";
+/// أداة مفقودة (`ffmpeg`/`ffprobe`/`yt-dlp`) — تُحلّ من `bin`.
+pub const SUB_ENGINE_TOOL_MISSING: &str = "engine_tool_missing";
+/// الملف قيد المعالجة في مهمّة أخرى (تخطٍّ صريح لا عطل).
+pub const SUB_ENGINE_BUSY: &str = "engine_busy";
+/// مدخل غير صالح (ملف غير مقروء أو ليس ستيريو بعد التوحيد).
+pub const SUB_ENGINE_BAD_INPUT: &str = "engine_bad_input";
+/// خطأ ملفات (قراءة/كتابة على مسار الفصل).
+pub const SUB_ENGINE_IO: &str = "engine_io";
+/// فشل نداء الاستدلال نفسه (جلسة ONNX أو تشغيل النموذج).
+pub const SUB_ENGINE_INFERENCE: &str = "engine_inference";
+/// انتظار فتحة الفصل لم يكتمل (مهلة أو رفض تراكبي).
+pub const SUB_ENGINE_SLOT_WAIT: &str = "engine_slot_wait";
+/// عطل محرّك لم يُصنَّف (يبقى النصّ الخام هو التفصيل).
+pub const SUB_ENGINE_OTHER: &str = "engine_other";
+
+// **مراسي التصنيف** — نصوصٌ من **مصدرها** حيث أمكن (ثوابت `pipeline`/`separator`/
+// `proc`)، والثلاثة الباقية **من `Display` النوع المُنتج** لأن المُنتج
+// (`media.rs`) ليس ملفّي — **وكلٌّ منها مُثبَّت باختبار** يقابلها بـ`Display` النوع
+// نفسه (`the_classifier_anchors_are_pinned_to_their_producers`)، فلو تغيّر نصّ
+// المُنتج **سقط الحارس** بدل أن يصير التصنيف صامتاً خاطئاً.
+const ANCHOR_TOOL_MISSING: &str = "أداة مفقودة";
+const ANCHOR_BAD_INPUT: &str = "مدخل غير صالح";
+const ANCHOR_IO: &str = "خطأ ملفات";
+const ANCHOR_INFERENCE: &str = "خطأ استدلال النموذج";
+/// **مُصدَّر للداخل**: اختبار `slots` يُثبّته على **نصّي المهلة والرفض التراكبي**
+/// المُنتَجين هناك. وهو **أوسع المراسي عمداً** («الفصل») لأنه يُفحَص **أخيراً**:
+/// المراسي الأخصّ (`مدخل غير صالح` · `خطأ ملفات` · `خطأ استدلال`) تسبقه، فلا
+/// يسرق تصنيفها.
+pub(crate) const ANCHOR_SLOT_WAIT: &str = "الفصل";
+
+/// **تصنيف عطل المحرّك إلى رمز فرعي**.
+///
+/// **والشرط على نصّ الرسالة — وهذا حدٌّ مُعلَن لا اختيار**: `slots::run_separation`
+/// يُرجع `String` (نوع الخطأ يُمحى عند حدّه، لأن الخطأ من مصدرين: الفتحة والمحرّك)،
+/// فالنصّ هو الحامل الوحيد عند الجسر. **وما يجعله مقبولاً**: المراسي **من مصدرها**
+/// (ثوابت) أو **مُثبَّتة باختبار على `Display` منتجها** — وتصنيفٌ خاطئ لا يُسكِت
+/// السبب: النصّ الخام يبقى في `error` و`detail` دائماً.
+fn engine_subcode(msg: &str) -> &'static str {
+    if msg.contains(crate::pipeline::CANCELLED_BY_USER) || msg == crate::proc::CANCELLED {
+        return SUB_ENGINE_CANCELLED;
+    }
+    if msg.contains(crate::separator::MODEL_FILENAME) {
+        return SUB_ENGINE_MODEL_MISSING;
+    }
+    if msg.contains(ANCHOR_TOOL_MISSING) {
+        return SUB_ENGINE_TOOL_MISSING;
+    }
+    if msg == crate::pipeline::LOCK_BUSY {
+        return SUB_ENGINE_BUSY;
+    }
+    if msg.contains(ANCHOR_BAD_INPUT) {
+        return SUB_ENGINE_BAD_INPUT;
+    }
+    if msg.contains(ANCHOR_IO) {
+        return SUB_ENGINE_IO;
+    }
+    if msg.contains(ANCHOR_INFERENCE) {
+        return SUB_ENGINE_INFERENCE;
+    }
+    if msg.contains(ANCHOR_SLOT_WAIT) {
+        return SUB_ENGINE_SLOT_WAIT;
+    }
+    SUB_ENGINE_OTHER
+}
 /// رسالة بروتوكول بنوع غير معروف (لا تُعرض للمستخدم في المسار العادي).
 pub const E_UNKNOWN_MESSAGE: &str = "unknown_message";
 /// طلب غير قابل للتنفيذ: إطار مشوّه · JSON غير مقروء · رابط فارغ · لا مخرج مكتمل.
@@ -371,14 +454,28 @@ pub const E_BAD_INPUT: &str = "bad_input";
 /// حمولة `last` الفاشلة في الحالة (يقرأها `status`): النصّ `error` **كما هو** + `code`.
 /// وترتيب الوسائط (`code` أولاً) هو نفسه في `reply_err` عمداً: يحرسه
 /// `scripts/check-bridge-codes.cjs` فيتأكّد أن **كل موضع خطأ يمرّر رمزاً معلَناً**.
+///
+/// **وزيادة ط-١٢**: لعطل المحرّك وحده يُضاف **رمز فرعي** (`subcode`) و**تفصيل
+/// صريح** (`detail`) — فالرمز الفرعي هو ما يترجمه العميل، و`error`/`detail`
+/// يبقيان النصّ الخام (فلا يُفقد سبب)، و`code` القائم **لم يتغيّر**.
 fn err_last(code: &str, name: &str, msg: &str) -> serde_json::Value {
-    serde_json::json!({ "name": name, "ok": false, "error": msg, "code": code })
+    let mut v = serde_json::json!({ "name": name, "ok": false, "error": msg, "code": code });
+    if code == E_ENGINE {
+        v["subcode"] = serde_json::json!(engine_subcode(msg));
+        v["detail"] = serde_json::json!(msg);
+    }
+    v
 }
 
 /// ردّ رسالة بروتوكول فاشلة: الحمولة نفسها على قناة Native Messaging
 /// (‏`ok:false` + `error` كما هو + `code`) — ولا تغيير في `error` القائم.
 fn reply_err(code: &str, msg: &str) {
-    reply_ok(serde_json::json!({ "ok": false, "error": msg, "code": code }));
+    let mut v = serde_json::json!({ "ok": false, "error": msg, "code": code });
+    if code == E_ENGINE {
+        v["subcode"] = serde_json::json!(engine_subcode(msg));
+        v["detail"] = serde_json::json!(msg);
+    }
+    reply_ok(v);
 }
 
 fn write_request(url: &str, watch: bool, mode: Option<&str>) -> Result<String, String> {
@@ -1874,6 +1971,153 @@ mod tests {
     /// ويقيس **الوجهة** لا العلم وحده: العلم الصريح ⇒ مجلد الصوت المؤقّت (يُكنس
     /// عند كل اكتمال)، والوضع الصريح ⇒ مجلد الحفظ. والعلم **لا يُخلط بـ`mode`**.
     ///
+    /// **رموز أعطال المحرّك الفرعية (ط-١٢)** — ثلاثة حرّاس في واحد:
+    ///
+    /// ١. **الوصول بالرمز لا بالنصّ الخام**: كل عطل معروف يبلغ رمزه الفرعي،
+    ///    فالعميل يعرض جملة مترجمة بدل عربيةٍ داخل جملة إنجليزية.
+    /// ٢. **المراسي مُثبَّتة على مُنتجيها**: تُقابَل بـ`Display` النوع الذي ينتج
+    ///    النصّ فعلاً (`media::MediaError` · `separator::SepError`) وبثوابت
+    ///    `pipeline`/`proc` — فلو تغيّر نصّ مُنتج **سقط الحارس** بدل أن يصير
+    ///    التصنيف صامتاً خاطئاً.
+    /// ٣. **الحمولة تحمل الرمز والتفصيل معاً**: `code` القائم لم يتغيّر،
+    ///    و`subcode` جديد، و`detail` = النصّ الخام (فلا يُفقد سبب).
+    ///
+    /// **مُفسَده**: جعل `engine_subcode` تُرجع النصّ الخام (أو `SUB_ENGINE_OTHER`
+    /// دائماً) ⇒ يسقط الادّعاءان الأول والثالث.
+    #[test]
+    fn engine_subcodes_are_reached_by_code_and_the_raw_reason_is_kept() {
+        use crate::media::MediaError;
+        use crate::separator::SepError;
+
+        // (٢) **تثبيت المراسي على مُنتجيها** — لا نسخة نصّية هنا.
+        assert!(
+            MediaError::ToolMissing("ffmpeg".into())
+                .to_string()
+                .contains(ANCHOR_TOOL_MISSING),
+            "مرسى «الأداة المفقودة» لم يبق في نصّ `MediaError::ToolMissing`"
+        );
+        assert!(
+            SepError::InvalidInput("x".into())
+                .to_string()
+                .contains(ANCHOR_BAD_INPUT),
+            "مرسى «المدخل غير الصالح» لم يبق في نصّ `SepError::InvalidInput`"
+        );
+        assert!(
+            SepError::Io("x".into()).to_string().contains(ANCHOR_IO),
+            "مرسى «خطأ الملفات» لم يبق في نصّ `SepError::Io`"
+        );
+        assert!(
+            SepError::Inference("x".into())
+                .to_string()
+                .contains(ANCHOR_INFERENCE),
+            "مرسى «خطأ الاستدلال» لم يبق في نصّ `SepError::Inference`"
+        );
+        assert!(
+            SepError::ModelMissing
+                .to_string()
+                .contains(crate::separator::MODEL_FILENAME),
+            "مرسى النموذج المفقود لم يبق في نصّ `SepError::ModelMissing`"
+        );
+
+        // (١) **الوصول بالرمز** — من النصّ الذي ينتجه النوع نفسه.
+        let cases: [(String, &str); 8] = [
+            (SepError::ModelMissing.to_string(), SUB_ENGINE_MODEL_MISSING),
+            (
+                MediaError::ToolMissing("ffmpeg".into()).to_string(),
+                SUB_ENGINE_TOOL_MISSING,
+            ),
+            (crate::pipeline::LOCK_BUSY.to_string(), SUB_ENGINE_BUSY),
+            (
+                SepError::InvalidInput("x".into()).to_string(),
+                SUB_ENGINE_BAD_INPUT,
+            ),
+            (SepError::Io("x".into()).to_string(), SUB_ENGINE_IO),
+            (
+                SepError::Inference("x".into()).to_string(),
+                SUB_ENGINE_INFERENCE,
+            ),
+            (
+                crate::pipeline::CANCELLED_BY_USER.to_string(),
+                SUB_ENGINE_CANCELLED,
+            ),
+            (crate::proc::CANCELLED.to_string(), SUB_ENGINE_CANCELLED),
+        ];
+        for (msg, want) in &cases {
+            assert_eq!(
+                engine_subcode(msg),
+                *want,
+                "عطل «{msg}» لم يُصنَّف إلى رمزه الفرعي"
+            );
+            // **والرمز ليس نصّاً خاماً**: كل الرموز الفرعية معرَّفة في هذه الكتلة.
+            assert!(
+                ALL_ENGINE_SUBCODES.contains(want),
+                "الرمز {want} ليس من كتلة `SUB_ENGINE_*` المعلَنة"
+            );
+        }
+        // وحدّ مصرَّح به: ما لا يُعرف يقع في `other` (ولا يُخترع تصنيف).
+        assert_eq!(engine_subcode("عطلٌ لم يُصنَّف"), SUB_ENGINE_OTHER);
+
+        // (٣) **الحمولة**: الرمز القائم كما هو + الفرعي + التفصيل الخام.
+        let payload = err_last(E_ENGINE, "u55.mp4", &cases[0].0);
+        assert_eq!(payload["code"], serde_json::json!(E_ENGINE));
+        assert_eq!(
+            payload["subcode"],
+            serde_json::json!(SUB_ENGINE_MODEL_MISSING)
+        );
+        assert_eq!(payload["detail"], serde_json::json!(cases[0].0));
+        assert_eq!(
+            payload["error"],
+            serde_json::json!(cases[0].0),
+            "النصّ الخام باقٍ في `error` كما كان (لا فقدان سبب)"
+        );
+        // **والرمز الفرعي لا يُدسّ في `code`**: رموز `code` القائمة لم تُمسّ.
+        assert_ne!(
+            payload["code"], payload["subcode"],
+            "الرمز الفرعي حقل مستقلّ، و`code` يبقى `engine_error`"
+        );
+        // وردّ البروتوكول يحمل الزيادة نفسها.
+        let reply = {
+            let mut v = serde_json::json!({ "ok": false, "error": cases[1].0, "code": E_ENGINE });
+            v["subcode"] = serde_json::json!(engine_subcode(&cases[1].0));
+            v
+        };
+        assert_eq!(reply["subcode"], serde_json::json!(SUB_ENGINE_TOOL_MISSING));
+    }
+
+    /// **مُفسَد هجوم «النصّ الخام رمزاً»**: لو أُعيد النصّ الخام في حقل الرمز
+    /// الفرعي (أو صار التصنيف `other` دائماً) سقط الحارس أعلاه — وهذا الاختبار
+    /// يقيس **الحالة المضادّة** صراحةً: الرمز الفرعي يجب أن يكون **من الكتلة**.
+    #[test]
+    fn a_raw_message_is_never_a_valid_subcode() {
+        for raw in [
+            crate::separator::SepError::ModelMissing.to_string(),
+            crate::pipeline::LOCK_BUSY.to_string(),
+            "أي نصّ خام".to_string(),
+        ] {
+            assert!(
+                !ALL_ENGINE_SUBCODES.contains(&raw.as_str()),
+                "نصٌّ خام دخل مجموعة الرموز المعلَنة: {raw}"
+            );
+        }
+        assert!(
+            ALL_ENGINE_SUBCODES.iter().all(|c| c.starts_with("engine_")),
+            "كل رمز فرعي يبدأ بـ`engine_` (شكل واحد للعائلة)"
+        );
+    }
+
+    /// **مجموعة الرموز الفرعية المعلَنة** — تُقرأ من الكتلة نفسها.
+    const ALL_ENGINE_SUBCODES: [&str; 9] = [
+        SUB_ENGINE_CANCELLED,
+        SUB_ENGINE_MODEL_MISSING,
+        SUB_ENGINE_TOOL_MISSING,
+        SUB_ENGINE_BUSY,
+        SUB_ENGINE_BAD_INPUT,
+        SUB_ENGINE_IO,
+        SUB_ENGINE_INFERENCE,
+        SUB_ENGINE_SLOT_WAIT,
+        SUB_ENGINE_OTHER,
+    ];
+
     /// **مُفسَده**: إزالة فرع `watch:true` من `job_watch_of` ⇒ يسقط الادّعاءان
     /// الأول والثاني (والثالث في اختبار الوضع القديم).
     #[test]
