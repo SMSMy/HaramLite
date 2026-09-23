@@ -5418,9 +5418,78 @@ fn download_status_text(pct: f64) -> String {
     format!("📥 جارٍ التنزيل… {}", progress_bar_text(pct))
 }
 
+/// **اسم المرحلة كما يراه المستخدم** — مصدر واحد، فلا اسمان لمرحلة واحدة.
+fn stage_label(name: &str) -> &'static str {
+    match name {
+        "normalize" => "تجهيز الملف",
+        "separate" => "فصل الصوت",
+        "effects" => "تنقية وتحسين",
+        "encode" => "ترميز الناتج",
+        _ => "معالجة",
+    }
+}
+
+/// **باني واحد لكل مرحلة**: الاسم + العدّاد + الشريط.
+///
+/// **ولماذا هذا الباني وُجد** (بلاغ المالك 2026-09-23: «فصل الصوت بدون عداد»):
+/// كان نصّ المرحلة يُبنى في موضع النداء **بلا رقم**، و`pipeline.rs:798-801` ينادي
+/// `stage` **قبل** `progress` في اللحظة نفسها، و[`StatusMsg::push`] يمنح نافذة
+/// [`EDIT_MIN_GAP`] للكاتب **الأول** ويسقط الثاني ⇒ نصّ العدّاد لا يصل أبداً.
+/// فصار للمرحلة بانيها نفسه، ولا تُعرَض مرحلة بلا رقم.
+fn process_stage_status_text(name: &str, pct: f64) -> String {
+    format!("🎛️ {}… {}", stage_label(name), progress_bar_text(pct))
+}
+
 /// ونصّ حالة **المعالجة** كذلك — النسبة الواحدة تُعرض بالشكل الواحد.
 fn process_status_text(pct: f64) -> String {
-    format!("🎛️ فصل الصوت… {}", progress_bar_text(pct))
+    process_stage_status_text("separate", pct)
+}
+
+/// **تقرير التقدّم الكلّي** — موضع واحد، ومنه يمرّ **مسار الرابط ومسار الملف
+/// معاً** (المغلقتان في `run_job` تُبنيان من هنا، فلا مسار بلا تقرير).
+///
+/// **ودالّة لا مغلقة داخليّة**: المغلقة لا تُنادى من اختبار، وهذه يناديها
+/// `run_job` **والحارس** — فالحراسة على **المسار** لا على وجود باني.
+fn report_process_progress(
+    cfg: &TgConfig,
+    status: &std::cell::RefCell<StatusMsg>,
+    row_id: u64,
+    overall: &std::cell::Cell<f32>,
+    stop: &AtomicBool,
+    p: f32,
+) -> bool {
+    overall.set(p);
+    // تقدّم حقيقي ⇒ بثٌّ حقيقي (`telegram-jobs`)، لا استطلاعاً دورياً.
+    jobs_progress(row_id, f64::from(p) * 100.0);
+    status
+        .borrow_mut()
+        .set(cfg, process_status_text(f64::from(p) * 100.0), false);
+    !stop.load(Ordering::SeqCst)
+}
+
+/// **تقرير المرحلة** — ومعه العدّاد والشريط **من الباني نفسه**.
+///
+/// **والعطل المقيس الذي أوجبه**: `pipeline.rs:798-801` ينادي `stage` **قبل**
+/// `progress` في اللحظة نفسها، و[`StatusMsg::push`] يمنح نافذة [`EDIT_MIN_GAP`]
+/// للكاتب **الأول** ويسقط الثاني. وكان نصّ المرحلة بلا رقم ⇒ **نصّ العدّاد لا
+/// يصل أبداً** إبّان الفصل، وهو بلاغ المالك «فصل الصوت بدون عداد». فالمرحلة
+/// الآن تحمل الرقم والشريط، فأيّ الكاتبين سبق النافذة فما يراه المستخدم رقم.
+///
+/// **والرقم هو التقدّم الكلّي** ([`report_process_progress`] يكتبه) لا تقدّم
+/// المرحلة: لو أخذنا `p` الخاصّ بالمرحلة لهبط الشريط إلى الصفر عند كل انتقال
+/// (`stage("separate", 0.0)` بعد `stage("normalize", 1.0)`)، وهو رقم يخصّ مرحلةً
+/// لا المهمّة.
+fn report_process_stage(
+    cfg: &TgConfig,
+    status: &std::cell::RefCell<StatusMsg>,
+    overall: &std::cell::Cell<f32>,
+    name: &str,
+) {
+    status.borrow_mut().set(
+        cfg,
+        process_stage_status_text(name, f64::from(overall.get()) * 100.0),
+        false,
+    );
 }
 
 /// Throttled status message: Telegram rate-limits edits, and progress is
@@ -5457,6 +5526,20 @@ impl StatusMsg {
             button_live: message_id != 0,
             cancel,
         }
+    }
+
+    /// **للقياس وحده**: يُبطل نافذة [`EDIT_MIN_GAP`] فيُكتب التحديث التالي ولو
+    /// جاء في اللحظة نفسها.
+    ///
+    /// **ولماذا لزمت**: الإنتاج ينتظر ثوانيَ بين تحديثين، والاختبار يقع في أجزاء
+    /// من الثانية ⇒ كل تحديثٍ بعده يُسقَط بالنافذة، فلا يُقاس **ما يُكتب** بل
+    /// «ما سُقط». وهذه تُبطل النافذة **صراحةً** بدل انتظار ٣ ثوانٍ في اختبار
+    /// (ولا تُصنَع نصّاً: المنتَج يكتب بنفسه، والاختبار يقرأ).
+    #[cfg(test)]
+    fn allow_now(&mut self) {
+        self.last = Instant::now()
+            .checked_sub(EDIT_MIN_GAP)
+            .unwrap_or(self.last);
     }
 
     /// تحديث **أثناء العمل**: يمرّر زرّ الإلغاء فيبقى على الرسالة.
@@ -5868,24 +5951,12 @@ fn run_job(
             fmt: OutFormat::Mp3,
         }
     };
-    let prog = |p: f32| {
-        // تقدّم حقيقي ⇒ بثٌّ حقيقي (`telegram-jobs`)، لا استطلاعاً دورياً.
-        jobs_progress(row_id, f64::from(p) * 100.0);
-        status
-            .borrow_mut()
-            .set(cfg, process_status_text(f64::from(p) * 100.0), false);
-        !stop.load(Ordering::SeqCst)
-    };
-    let stage = |name: &str, _p: f32| {
-        let ar = match name {
-            "normalize" => "تجهيز الملف…",
-            "separate" => "فصل الموسيقى عن الصوت…",
-            "effects" => "تنقية وتحسين…",
-            "encode" => "ترميز الناتج…",
-            _ => "معالجة…",
-        };
-        status.borrow_mut().set(cfg, ar.to_string(), false);
-    };
+    // **آخر تقدّم كلّي معلوم**: يكتبه تقرير التقدّم وتقرأه المرحلة، فلا يهبط
+    // الشريط إلى الصفر عند انتقالٍ بين مرحلتين — ولا نُكرّر في تلغرام حساب
+    // `pipeline` الداخليّ (`0.05 + p * 0.85`).
+    let overall = std::cell::Cell::new(0.0f32);
+    let prog = |p: f32| report_process_progress(cfg, &status, row_id, &overall, stop, p);
+    let stage = |name: &str, _p: f32| report_process_stage(cfg, &status, &overall, name);
     // م١: مهمّة البوت تأخذ فتحة جهاز مثل كل مدخل آخر.
     // م٢: ووسمها يحمل معرّف المحادثة (`telegram:<chat_id>`) فيجدها `/kill`،
     // ويُسجَّل مسار الإدخال معها فتظهر الواجهةُ المهمّةَ بمصدرها.
@@ -11974,5 +12045,92 @@ mod tests {
                 );
             }
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  ش-٣ · مرحلة الفصل تحمل العدّاد — حارس على **المسار** لا على الباني
+    //  (بلاغ المالك 2026-09-23: «جاري التنزيل ▰▰▰▰▰▰▱▱▱▱ … يعمل» ·
+    //   «فصل الصوت بدون عداد»)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// **حارس المسار**: لا يقيس أنّ بانيَ نصّ المرحلة **موجود** (وهذا صنف «حارس
+    /// على ورق»)، بل أنّ **نداءَي المسار** — وهما بعينهما ما يُمرَّر إلى المحرّك
+    /// من `run_job`، ولمسار الرابط ومسار الملف معاً — **يكتبان شريطاً على السلك**.
+    ///
+    /// **والعطل المقيس**: `pipeline.rs:798-801` ينادي `stage` **قبل** `progress`
+    /// في اللحظة نفسها، و`StatusMsg::push` يمنح نافذة [`EDIT_MIN_GAP`] للكاتب
+    /// **الأول** ويسقط الثاني. فكان نصّ المرحلة (بلا رقم) هو ما يصل دائماً، ونصّ
+    /// العدّاد يُسقَط ⇒ «فصل الصوت بدون عداد». ولذلك **الترتيب هنا يحاكي
+    /// الإنتاج** (`stage` ثم `progress`) ولو قُلب لمَرَّ الفحص كذباً.
+    ///
+    /// **والقياس على السلك**: يُقرأ نصّ `editMessageText` الذي استقبله الخادم
+    /// الوهمي، فلا يُكتفى بأن الدالّة «تُنتج» شريطاً.
+    ///
+    /// (المُفسَد ①: إعادة نصّ المرحلة الموازي بلا رقم ⇒ يسقط. ②: فصل مغلقة
+    /// `run_job` عن هذين التقريرين ⇒ يسقط فحص الوصلة أدناه.)
+    #[test]
+    fn the_separation_stage_reaches_the_wire_with_the_counter() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let msg = 7101;
+        let status =
+            std::cell::RefCell::new(StatusMsg::new(7, 7, msg, Arc::new(AtomicBool::new(false))));
+        let overall = std::cell::Cell::new(0.0f32);
+        let stop = Arc::new(AtomicBool::new(false));
+
+        // ما يسبق المحرّك: «▶ بدأت المعالجة — الوضع: …» (كما في `run_job`).
+        status.borrow_mut().set(&cfg, running_text("أغنية"), true);
+
+        // نداءات المحرّك إبّان الفصل، **بترتيب الإنتاج حرفاً**: stage ثم progress.
+        for p in [0.05f32, 0.2, 0.45, 0.7, 0.95] {
+            status.borrow_mut().allow_now();
+            report_process_stage(&cfg, &status, &overall, "separate");
+            status.borrow_mut().allow_now();
+            assert!(
+                report_process_progress(&cfg, &status, 1, &overall, &stop, p),
+                "التقدّم طُلب إلغاؤه بلا سبب"
+            );
+        }
+
+        let texts = edit_texts_on(&bot, msg);
+        assert!(
+            texts.len() >= 11,
+            "لم تُكتب تحديثات كافية لقياس المرحلة ({} نصّاً): {texts:?}",
+            texts.len()
+        );
+        // **كل** كتابة بعد نصّ البداية — أيًّا كان الكاتب الذي سبق النافذة —
+        // تحمل الشريط بعرضه المعلَن ونسبةً منتهية بعلامتها.
+        for t in texts.iter().skip(1) {
+            let cells = t
+                .chars()
+                .filter(|c| *c == BAR_FULL || *c == BAR_EMPTY)
+                .count();
+            assert_eq!(
+                cells, PROGRESS_BAR_CELLS,
+                "نصّ مرحلة وصل بلا شريط بعرضه — وهو العطل الأصلي: {t:?}"
+            );
+            assert!(t.ends_with('%'), "نصّ مرحلة وصل بلا نسبة: {t:?}");
+        }
+        // وضابط: النصّ ليس نصّ البداية المُعاد (فالقياس على تحديثٍ حقيقيّ).
+        assert!(
+            !texts[1].contains("بدأت المعالجة"),
+            "أول تحديث هو نصّ البداية نفسه: {:?}",
+            texts[1]
+        );
+
+        // **ووصلةٌ بنيوية على المقعد**: `run_job` يبني المغلقتين من هذين
+        // التقريرين — لا نصّاً موازياً. (وإن أُعيد تنسيق السطر يسقط الفحص
+        // برسالته، وهذا مقصود: الوصلة نفسها تغيّرت.)
+        let prod = production_source(SELF_SOURCE);
+        assert!(
+            prod.contains("let prog = |p: f32| report_process_progress("),
+            "نداء التقدّم في `run_job` ليس من تقرير المسار — نصٌّ موازٍ عاد"
+        );
+        assert!(
+            prod.contains("|name: &str, _p: f32| report_process_stage("),
+            "نداء المرحلة في `run_job` ليس من تقرير المسار — نصٌّ موازٍ عاد"
+        );
     }
 }
