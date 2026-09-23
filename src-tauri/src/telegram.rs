@@ -688,7 +688,7 @@ pub(crate) fn cancel_reply(gone: bool, phase: slots::JobPhase) -> String {
     }
     match phase {
         slots::JobPhase::Preparing => format!(
-            "🛑 طُلب الإلغاء — المهمّة في **مرحلة التحضير** (تنزيل/استلام): أدواتها \
+            "🛑 طُلب الإلغاء — المهمّة في مرحلة التحضير (تنزيل/استلام): أدواتها \
              (yt-dlp/ffmpeg) تُقتل فوراً. أطول ما قيس في هذه المرحلة {:.1} ث.",
             CANCEL_PREPARE_WORST_SECS
         ),
@@ -697,7 +697,7 @@ pub(crate) fn cancel_reply(gone: bool, phase: slots::JobPhase) -> String {
             let mins = secs as f64 / 60.0;
             let slot_mins = slots::DEFAULT_WAIT.as_secs() / 60;
             format!(
-                "🛑 طُلب الإلغاء — المهمّة في **مرحلة المعالجة**: إمّا تنتظر فتحة \
+                "🛑 طُلب الإلغاء — المهمّة في مرحلة المعالجة: إمّا تنتظر فتحة \
                  جهاز (حتى {slot_mins} دقيقة)، وإمّا داخل نداء محرّك لا يُقطع داخل \
                  العملية (لا نقطة إلغاء فيه). أطول ما قيس {mins:.1} دقيقة ({secs} ث)، \
                  والغالب أقلّ بكثير."
@@ -2782,7 +2782,7 @@ fn mode_question_text(hint: &str, ahead: u32) -> String {
         String::new()
     };
     format!(
-        "{hint}\n{wait}\nهل هذا **أغنية** أم **مقطع عادي**؟\n\
+        "{hint}\n{wait}\nهل هذا أغنية أم مقطع عادي؟\n\
          (الأغنية: فصل كامل + قصّ الصمت — المقطع: إزالة الموسيقى فقط)"
     )
 }
@@ -2802,7 +2802,7 @@ fn running_text(label: &str) -> String {
 fn pending_full_text() -> String {
     format!(
         "⏳ عندك {MAX_PENDING_PER_CHAT} ملفات تنتظر اختيار الوضع — \
-         **أكمل الملفات الحالية أولاً** ثم أعد إرسال هذا الملف."
+         أكمل الملفات الحالية أولاً ثم أعد إرسال هذا الملف."
     )
 }
 
@@ -3362,7 +3362,7 @@ pub fn apply_bot_identity(
         // `photo_applied:true` فيعمل العكس (يُزيل الصورة ويُعيد الاسم).
         return Err(match e {
             BotSetupError::Name(m) => BotSetupError::Name(format!(
-                "{m} — ⚠ الصورة **رُفعت فعلاً** والاسم لم يُضبط؛ \
+                "{m} — ⚠ الصورة رُفعت فعلاً والاسم لم يُضبط؛ \
                  ألغِ المربّع لإزالة الصورة وإعادة الاسم «{previous}»"
             )),
             other => other,
@@ -3420,7 +3420,7 @@ pub fn revert_bot_identity(
     if let Err(e) = set_bot_name(cfg, &previous) {
         return Err(match e {
             BotSetupError::Name(m) => BotSetupError::Name(format!(
-                "{m} — ⚠ الصورة **أُزيلت فعلاً** والاسم لم يُعَد إلى «{previous}»"
+                "{m} — ⚠ الصورة أُزيلت فعلاً والاسم لم يُعَد إلى «{previous}»"
             )),
             other => other,
         });
@@ -3660,7 +3660,7 @@ fn finish_identity(
 fn cpu_advice_line(provider: Option<&str>) -> Option<&'static str> {
     match provider {
         Some("CPU") => Some(
-            "⚠️ آخر فصلٍ على هذا الجهاز جرى على **المعالج (CPU)** لا على كرت — \
+            "⚠️ آخر فصلٍ على هذا الجهاز جرى على المعالج (CPU) لا على كرت — \
              ومجموعةٌ فيها أكثر من عضو غير عملية على المعالج.",
         ),
         _ => None,
@@ -3673,7 +3673,7 @@ fn intro_text(bot: &BotIdentity, advice: Option<&str>) -> String {
     let example = if bot.username.is_empty() {
         "اذكرني مع الرابط: مثال `@<البوت> https://…`".to_string()
     } else {
-        format!("**اذكرني مع الرابط** — مثال: `@{} https://…`", bot.username)
+        format!("اذكرني مع الرابط — مثال: `@{} https://…`", bot.username)
     };
     let mut s = format!("📌 للاستخدام: {example}\nوالمعالجة تجري على جهاز المالك.");
     if let Some(a) = advice {
@@ -3773,11 +3773,11 @@ pub fn oversize_guide_text() -> String {
         "ℹ️ كيف أرفع الحدّ؟\n\n\
          • حدّ تلغرام السحابي للبوت: {} إرسالاً و{} استقبالاً — وهو حدّ الخدمة، \
          لا إعداد في هذا البرنامج.\n\
-         • الحلّ الرسمي: تشغيل **خادم Bot API محلي** (‏telegram-bot-api) على الجهاز، \
+         • الحلّ الرسمي: تشغيل خادم Bot API محلي (‏telegram-bot-api) على الجهاز، \
          فيصير الحدّ 2000 م.ب.\n\
          • وبعد تشغيله: الإعدادات ← تيليجرام ← «عنوان الخادم المحلي» \
          (مثال: {LOCAL_SERVER_HINT}).\n\n\
-         وهذا الزرّ **معلومة لا إجراء**: لا يرسل شيئاً ولا يغيّر إعداداً.\n\
+         وهذا الزرّ معلومة لا إجراء: لا يرسل شيئاً ولا يغيّر إعداداً.\n\
          ولا أقسّم الناتج إلى أجزاء — قرار المالك.",
         human_mb(CLOUD_SEND_MAX_BYTES),
         human_mb(CLOUD_DOWNLOAD_MAX_BYTES)
@@ -3899,7 +3899,7 @@ fn purge_oversize(cfg: &TgConfig, store: &Arc<Mutex<OversizeStore>>) {
             o.msg_id,
             &format!(
                 "⌛ انتهت صلاحية سؤال الضغط ({} دقيقة).\n\
-                 الناتج **باقٍ في مجلد النتائج ولم يُحذف**: أعد إرسال الملف إن أردت المحاولة.",
+                 الناتج باقٍ في مجلد النتائج ولم يُحذف: أعد إرسال الملف إن أردت المحاولة.",
                 OVERSIZE_TTL.as_secs() / 60
             ),
             None,
@@ -4821,7 +4821,7 @@ fn handle_approval_press(
                         if saved.is_ok() {
                             " — أُضيف إلى قائمة السماح"
                         } else {
-                            " — أُضيف في الذاكرة **وتعذّر حفظه**"
+                            " — أُضيف في الذاكرة وتعذّر حفظه"
                         }
                     } else {
                         " — كان مسموحاً أصلاً"
@@ -7529,14 +7529,14 @@ mod tests {
                 e.pointer("/reply_markup/inline_keyboard/0/0/callback_data")
                     .and_then(Value::as_str),
                 Some("cancel:7:7"),
-                "تعديل **أثناء العمل** بلا زرّ إلغاء ⇒ الزر يختفي في تلغرام: {e}"
+                "تعديل أثناء العمل بلا زرّ إلغاء ⇒ الزر يختفي في تلغرام: {e}"
             );
         }
         let last = edits.last().unwrap();
         assert_eq!(
             last.pointer("/reply_markup/inline_keyboard"),
             Some(&json!([])),
-            "التعديل النهائي يجب أن يمرّر **لوحة فارغة صراحةً**: {last}"
+            "التعديل النهائي يجب أن يمرّر لوحة فارغة صراحةً: {last}"
         );
         assert!(
             last["text"].as_str().unwrap_or("").starts_with('✗'),
@@ -7738,7 +7738,7 @@ mod tests {
         let text = &sent_texts(&bot)[0];
         assert!(
             text.contains("⏳ في قائمة الانتظار"),
-            "الإشعار يجب أن يأتي **عند الوصول**: {text}"
+            "الإشعار يجب أن يأتي عند الوصول: {text}"
         );
         assert!(
             text.contains("دورك: 3"),
@@ -7770,7 +7770,7 @@ mod tests {
         handle_update(&cfg, &mut poll, &ov, &file_msg(7, 41, "only.mp4"), &tx);
         let text = &sent_texts(&bot)[0];
         assert!(!text.contains("قائمة الانتظار"), "لا انتظار بلا سابق: {text}");
-        assert!(text.contains("هل هذا **أغنية**"), "السؤال قائم: {text}");
+        assert!(text.contains("هل هذا أغنية"), "السؤال قائم: {text}");
     }
 
     /// **«ثم حرّرها لمّا يبدأ الدور»**: رسالة الوضع تصير رسالة الحالة، وتُحرَّر
@@ -9519,7 +9519,7 @@ mod tests {
         assert_eq!(
             sent_to(&bot, -101).len(),
             first,
-            "أُعيدت رسالة «غير مسموح» — المطلوب **واحدة** موجزة"
+            "أُعيدت رسالة «غير مسموح» — المطلوب واحدة موجزة"
         );
         assert_eq!(poll.pending.count_for(-101), 0, "ملفٌّ سُجّل لغير مسموح");
 
@@ -11211,5 +11211,173 @@ mod tests {
             }
             other => panic!("رفض setMyCommands يجب أن يُعلَن، جاء: {other:?}"),
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  ش-١ · حارس نصوص البوت: لا نجمتَي Markdown حرفيّتين
+    //  (عطل المالك 2026-09-23: رسالة سؤال الوضع وصلت وفيها `**أغنية**` حرفيّة)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// **مصدر هذا الملف** يُقرأ عند التصريف ⇒ الحارس يقيس **النصّ المشحون**، لا
+    /// قائمةً مكتوبةً بيدٍ تتقادم بصمت.
+    const SELF_SOURCE: &str = include_str!("telegram.rs");
+
+    /// يستخرج **النصوص الحرفيّة** من مصدر Rust: يتخطّى التعليقات (`//`،
+    /// و`/* */` المتداخلة)، والنصوص الخام (`r"…"` · `r#"…"#`)، **ومحارف `'…'`**.
+    ///
+    /// **والفخّ مسمّى**: ماسحٌ لا يميّز `'"'` يظنّه فاتحَ نصّ ⇒ **ينقلب التكافؤ**
+    /// ⇒ يقرأ الكود نصّاً والنصّ كوداً، ويمرّ التشخيص **كذباً**. ولهذا يقيس
+    /// [`the_literal_scanner_sees_what_it_claims`] الماسحَ نفسه على نصٍّ مصنوع
+    /// فيه `'"'` **قبل** أن يُبنى عليه أيّ حكم.
+    fn string_literals(src: &str) -> Vec<String> {
+        let b = src.as_bytes();
+        let n = b.len();
+        let mut out: Vec<String> = Vec::new();
+        let mut i = 0usize;
+        while i < n {
+            match b[i] {
+                b'/' if b.get(i + 1) == Some(&b'/') => {
+                    i = b[i..].iter().position(|c| *c == b'\n').map_or(n, |p| i + p);
+                }
+                b'/' if b.get(i + 1) == Some(&b'*') => {
+                    let mut depth = 1usize;
+                    i += 2;
+                    while i < n && depth > 0 {
+                        if b[i] == b'/' && b.get(i + 1) == Some(&b'*') {
+                            depth += 1;
+                            i += 2;
+                        } else if b[i] == b'*' && b.get(i + 1) == Some(&b'/') {
+                            depth -= 1;
+                            i += 2;
+                        } else {
+                            i += 1;
+                        }
+                    }
+                }
+                b'\'' => {
+                    // `'\x'` محرف مهروب · `'x'` محرف · `'a` عمرُ نوعٍ (بلا إغلاق).
+                    if b.get(i + 1) == Some(&b'\\') {
+                        i = b[i + 2..]
+                            .iter()
+                            .position(|c| *c == b'\'')
+                            .map_or(n, |p| i + 3 + p);
+                    } else if b.get(i + 2) == Some(&b'\'') {
+                        i += 3;
+                    } else {
+                        i += 1;
+                    }
+                }
+                b'r' if b.get(i + 1) == Some(&b'"') || b.get(i + 1) == Some(&b'#') => {
+                    let hashes = b[i + 1..].iter().take_while(|c| **c == b'#').count();
+                    let open = i + 1 + hashes;
+                    if b.get(open) != Some(&b'"') {
+                        i += 1;
+                        continue;
+                    }
+                    let close = (open + 1..n).find(|k| {
+                        b[*k] == b'"' && (1..=hashes).all(|t| b.get(k + t) == Some(&b'#'))
+                    });
+                    let end = close.unwrap_or(n);
+                    out.push(String::from_utf8_lossy(&b[open + 1..end]).into_owned());
+                    i = end + 1 + hashes;
+                }
+                b'"' => {
+                    let mut j = i + 1;
+                    let mut escaped = false;
+                    let mut close = None;
+                    while j < n {
+                        let c = b[j];
+                        if escaped {
+                            escaped = false;
+                        } else if c == b'\\' {
+                            escaped = true;
+                        } else if c == b'"' {
+                            close = Some(j);
+                            break;
+                        }
+                        j += 1;
+                    }
+                    let end = close.unwrap_or(n);
+                    out.push(String::from_utf8_lossy(&b[i + 1..end]).into_owned());
+                    i = end + 1;
+                }
+                _ => i += 1,
+            }
+        }
+        out
+    }
+
+    /// **حارس على الماسح نفسه**: نصٌّ مصنوع فيه الفخّ الذي يُفسد ماسحاً لا يميّز
+    /// المحرف `'"'`، ونصٌّ خامّ، وتعليقان يحملان النجمة — فلا يُبنى حكمٌ على
+    /// ماسحٍ لم يُقَس.
+    ///
+    /// (المُفسَد: إسقاط فرع المحرف `'…'` ⇒ يقرأ `'"'` فاتحَ نصّ ⇒ يسقط هذا الفحص.)
+    #[test]
+    fn the_literal_scanner_sees_what_it_claims() {
+        // النجمة تُبنى وقت التشغيل عمداً: لو كُتبت في المصدر لصار الماسح يقيس نفسه.
+        let stars: String = ['*', '*'].iter().collect();
+        let sample = [
+            "// تعليق فيه ",
+            stars.as_str(),
+            " و\"نصّ زائف\"\n",
+            "/* كتلة فيها ",
+            stars.as_str(),
+            " و\"نصّ زائف\" */\n",
+            "fn f() { let q = '\"'; let s = \"ع ",
+            stars.as_str(),
+            " ع\"; let r = r#\"خ ",
+            stars.as_str(),
+            " خ\"#; }\n",
+        ]
+        .concat();
+        let lits = string_literals(&sample);
+        assert_eq!(
+            lits.len(),
+            2,
+            "الماسح قرأ تعليقاً أو أضاع نصّاً (فخّ `'\"'`): {lits:?}"
+        );
+        assert!(
+            lits.iter().all(|l| l.contains(&stars)),
+            "النصّان الصحيحان وحدهما يُقرآن: {lits:?}"
+        );
+        assert!(
+            lits.iter().any(|l| l.starts_with("خ")),
+            "النصّ الخامّ لم يُقرأ: {lits:?}"
+        );
+        // وضابط: النصّ العاديّ يُقرأ بلا نجوم أيضاً (فالماسح لا يخترع نجوماً).
+        let plain = string_literals("let a = \"س\"; let b = \"ص\";");
+        assert_eq!(plain, vec!["س".to_string(), "ص".to_string()]);
+    }
+
+    /// **الحارس (عطل ٢٠٢٦-٠٩-٢٣)**: لا `**` في أي نصٍّ حرفيّ في هذا الملف.
+    ///
+    /// **العطل المقيس**: نصوص البوت كانت تحمل تأكيد Markdown (`**أغنية**`)،
+    /// و`parse_mode` غير مضبوط في أي موضع من هذا الملف (قياس: ٨ نتائج لكلمة
+    /// `parse_mode` كلّها لدالّة تحليل `callback_data`، وصفر موضع تنسيق) ⇒ تصل
+    /// النجمتان **حرفيّتين** إلى الشاشة — وهي صورة المالك نفسها.
+    ///
+    /// **والحدّ أوسع من المطلوب عمداً**: يشمَل نصوص الاختبارات أيضاً، فلا
+    /// يُخترق الحارس بنقل نصٍّ بين `mod tests` والإنتاج.
+    ///
+    /// (المُفسَد: إعادة `**` إلى نصّ سؤال الوضع ⇒ يسقط هذا الفحص.)
+    #[test]
+    fn no_bot_text_carries_literal_markdown_stars() {
+        let lits = string_literals(SELF_SOURCE);
+        assert!(
+            lits.len() > 1500,
+            "الماسح لم يقرأ الملف ({} نصّاً حرفيّاً) — وحارسٌ على مدخلٍ فارغ يمرّ كذباً",
+            lits.len()
+        );
+        assert!(
+            lits.iter().any(|l| l.contains("جارٍ التنزيل")),
+            "الماسح لا يرى نصوص حالة التنزيل — فهو لا يرى ما يدّعي حراسته"
+        );
+        let stars: String = ['*', '*'].iter().collect();
+        let bad: Vec<&String> = lits.iter().filter(|l| l.contains(&stars)).collect();
+        assert!(
+            bad.is_empty(),
+            "نجمتا Markdown حرفيّتان في {} نصّاً يصل إلى تلغرام: {bad:?}",
+            bad.len()
+        );
     }
 }
