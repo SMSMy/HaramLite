@@ -2086,6 +2086,7 @@ fn main() {
     let permanent_fail = dir_name.contains("permanent_fail");
     let valid_leftover = dir_name.contains("valid_leftover");
     let transient_after_valid = dir_name.contains("transient_after_valid");
+    let transient_then_wait = dir_name.contains("transient_then_wait");
 
     // ② **العامل** في الصورة ذات العمليتين: يسجّل معرّفه وينام (يمسك الأنبوب
     //    الموروث من مُشغّله — ولهذا تبقى المهمّة معلّقة إن نجا).
@@ -2217,6 +2218,20 @@ fn main() {
         }
         let _ = std::io::stdout().flush();
         return;
+    }
+
+    // ③.ز **فشلٌ عابر مع نافذة إلغاء**: يكتب السبب ثم **ينتظر ٢ ث** قبل الخروج —
+    //    في窗口中 يُلغي المستخدم، ويُقاس أن الإلغاء **يمنع الإعادة** (شرط ٥).
+    if transient_then_wait {
+        let _ = bump_calls(dir.as_deref());
+        for i in 1..=2 {
+            progress(&format!("step {i}"));
+        }
+        eprintln!("ERROR: unable to download video data: HTTP Error 403: Forbidden");
+        let _ = std::io::stderr().flush();
+        let _ = std::io::stdout().flush();
+        std::thread::sleep(std::time::Duration::from_millis(2000));
+        std::process::exit(1);
     }
 
     // ④ الصورة المبسّطة: العملية نفسها هي التي تنزّل.
@@ -3031,6 +3046,61 @@ fn main() {
         assert!(
             err.contains("نجح دون ملف ناتج صالح"),
             "النتيجة ليست نصّ «نجح دون ملف ناتج صالح»: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// **حارس (١٢): الإلغاء يمنع الإعادة — شرط ٥ «الإلغاء يبقى نافذاً».**
+    ///
+    /// المزيّف (صورة `transient_then_wait`) يكتب فشلاً عابراً (403) ثم **ينتظر
+    /// ٢ ث** قبل الخروج؛ وفي تلك النافذة يُلغى التنزيل (كما يفعل زرّ الإلغاء).
+    /// **فيجب ألّا تُعاد المحاولة**: نداءٌ واحد — لا اثنان. (والقتل يقع فعلاً من
+    /// الحارس الداخلي، فالخروج غير صفري والسبب مكتوب — أي أن كل شرطَي الإعادة
+    /// متحقّقان عدا الإلغاء، وهذا هو ما يقيسه الحارس وحده.)
+    /// (مُفسَد محروس: إسقاط شرط `!cancelled` ⇒ يسقط — مُنفَّذ.)
+    #[cfg(windows)]
+    #[test]
+    fn a_cancelled_run_is_never_retried() {
+        use std::sync::atomic::Ordering;
+        use std::time::Duration;
+
+        let _reg = crate::slots::registry_test_lock();
+        let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
+        let fake = fake_variant(&root, "transient_then_wait");
+        let tmp = std::env::temp_dir().join(format!("hl_retry_cancel_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("مجلد القياس");
+
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(fake);
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        // الإلغاء **بعد** كتابة السبب وقبل الخروج: نافذة المزيّف ٢ ث.
+        let flag = cancel.clone();
+        let canceller = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(1200));
+            flag.store(true, Ordering::SeqCst);
+        });
+        let r = download_media(
+            "https://www.youtube.com/watch?v=AJOOve4s0_8",
+            &tmp,
+            &|_p| true,
+            &cancel,
+        );
+        let _ = canceller.join();
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = None;
+
+        let calls = fake_calls(&tmp);
+        assert_eq!(
+            calls, 1,
+            "أُعيدت المحاولة على فشلٍ **بعد إلغاء المستخدم** (نداءات: {calls}) — الإلغاء ليس عابراً يُعاد عليه"
+        );
+        assert!(
+            r.is_err(),
+            "تنزيلٌ أُلغى عاد نجاحاً: {:?}",
+            r.map(|p| p.display().to_string())
         );
         let _ = std::fs::remove_dir_all(&tmp);
     }
