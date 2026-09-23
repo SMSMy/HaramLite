@@ -6,6 +6,13 @@ const HOST = 'com.harammute.haramlite';
 const MENU_LINK = 'hl-send-link';
 const MENU_PAGE = 'hl-send-page';
 const MENU_VIDEO = 'hl-send-video';
+/* مدخلَا الوضع (بند ٣ج) — بلاغ المالك: «لا يوجد زر في المشغل باليوتيوب لاختيار هل
+ * هو مقطع عادي أو أغنية»، والنافذة وحدها كانت تعرض الاختيار. وهذا الامتداد **لا
+ * يبدّل** المداخل الثلاثة القائمة (عقد قائم: `{type:'link', url, ts}` بلا `mode`
+ * ⇒ التطبيق يبقى على سلوكه السابق) بل **يضيف** مدخلين يحملان `mode` صريحاً —
+ * وهو الحقل نفسه الذي يقرأه التطبيق من المنبثق (`bridge.rs:826-832`). */
+const MENU_SONG = 'hl-send-song';
+const MENU_CLIP = 'hl-send-clip';
 
 /* ── i18n: كائن ثابت، لا بناء ديناميكي ──────────────────────────────────────
  * نفس نمط `content.js` (جولة م٦-أ) و`popup.js`: جدول ثابت بمفاتيح `ar`/`en`
@@ -25,11 +32,15 @@ const I18N = {
     'menu.link': 'أرسل الرابط إلى HaramLite',
     'menu.page': 'أرسل هذه الصفحة إلى HaramLite',
     'menu.video': 'أرسل الفيديو إلى HaramLite',
+    'menu.song': 'HaramLite — أغنية (فصل كامل + قصّ الصمت)',
+    'menu.clip': 'HaramLite — مقطع (إزالة الموسيقى وحدها)',
   },
   en: {
     'menu.link': 'Send the link to HaramLite',
     'menu.page': 'Send this page to HaramLite',
     'menu.video': 'Send the video to HaramLite',
+    'menu.song': 'HaramLite — song (full separation + silence trimming)',
+    'menu.clip': 'HaramLite — clip (remove the music only)',
   },
 };
 
@@ -47,8 +58,15 @@ function pickLang(list) {
   }
   return 'en';
 }
+/** تفضيل مخزَّن صالح (`hl.lang`): `ar`/`en` فقط؛ وغيره ⇒ لغة المتصفّح. */
+function storedLang(value) {
+  return (value === 'ar' || value === 'en') ? value : null;
+}
 // في عامل الخدمة `navigator` هو `WorkerNavigator` و`languages` متاحة فيه.
-const LANG = pickLang(
+// و`LANG` **يتبدّل**: مبدّل النافذة يكتب `hl.lang` في `chrome.storage.local`
+// فيُعاد بناء عناوين القائمة بلغته (وإلا بقيت القائمة بلغة التثبيت القديمة —
+// وهو الحدّ المُعلَن قبل هذا البند، وقد رُفع).
+let LANG = pickLang(
   (typeof navigator !== 'undefined' && navigator.languages && navigator.languages.length)
     ? navigator.languages
     : [(typeof navigator !== 'undefined' && navigator.language) || 'en']
@@ -59,25 +77,39 @@ function t(key) {
   return (key in row) ? row[key] : I18N.ar[key];
 }
 
-chrome.runtime.onInstalled.addListener(() => {
+/** يبني مداخل قائمة النقر الأيمن الخمسة بلغة `LANG` الحالية. */
+function buildMenus() {
   chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({
-      id: MENU_LINK,
-      title: t('menu.link'),
-      contexts: ['link'],
-    });
-    chrome.contextMenus.create({
-      id: MENU_PAGE,
-      title: t('menu.page'),
-      contexts: ['page'],
-    });
-    chrome.contextMenus.create({
-      id: MENU_VIDEO,
-      title: t('menu.video'),
-      contexts: ['video'],
-    });
+    chrome.contextMenus.create({ id: MENU_LINK, title: t('menu.link'), contexts: ['link'] });
+    chrome.contextMenus.create({ id: MENU_PAGE, title: t('menu.page'), contexts: ['page'] });
+    chrome.contextMenus.create({ id: MENU_VIDEO, title: t('menu.video'), contexts: ['video'] });
+    // الوضعان: على الصفحة والفيديو والرابط — فيمكن اختيار «أغنية» أو «مقطع» من
+    // أيّ سياق. والمدخلان **جديدان** فلا يُغيَّر عقد المداخل الثلاثة.
+    chrome.contextMenus.create({ id: MENU_SONG, title: t('menu.song'), contexts: ['page', 'video', 'link'] });
+    chrome.contextMenus.create({ id: MENU_CLIP, title: t('menu.clip'), contexts: ['page', 'video', 'link'] });
   });
-});
+}
+
+chrome.runtime.onInstalled.addListener(buildMenus);
+
+/* تفضيل اللغة من النافذة: يُقرأ عند الإقلاع (وإلا بُنيت القائمة بلغة المتصفّح
+ * وحدها) ويُتابَع بـ`onChanged` فيُعاد البناء بلغة جديدة فوراً. وغياب
+ * `chrome.storage` (بيئة قياس) ⇒ لغة المتصفّح كما كان — لا تعطّل. */
+function readLang(cb) {
+  try {
+    if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) { cb(null); return; }
+    chrome.storage.local.get(['hl.lang'], (got) => cb(storedLang(got && got['hl.lang'])));
+  } catch (e) { cb(null); }
+}
+readLang((l) => { if (l) { LANG = l; buildMenus(); } });
+try {
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener((changes) => {
+      const next = storedLang(changes && changes['hl.lang'] && changes['hl.lang'].newValue);
+      if (next && next !== LANG) { LANG = next; buildMenus(); }
+    });
+  }
+} catch (e) { /* بلا `chrome.storage` — لا تتبّع */ }
 
 // Audit E-1: ONE persistent Native Messaging port (connectNative) reused for
 // every message, instead of spawning and killing a host process on every
@@ -158,19 +190,30 @@ function sendNative(message) {
 const lastSend = new Map();
 
 chrome.contextMenus.onClicked.addListener((info) => {
-  let url = null;
-  if (info.menuItemId === MENU_LINK) url = info.linkUrl;
-  else if (info.menuItemId === MENU_PAGE) url = info.pageUrl;
-  else if (info.menuItemId === MENU_VIDEO) url = info.srcUrl || info.pageUrl;
+  const url = urlFor(info);
   if (!url) return;
   const key = `${info.menuItemId}|${url}`;
   const now = Date.now();
   if (now - (lastSend.get(key) || 0) < 1500) return;
   lastSend.set(key, now);
-  sendNative({ type: 'link', url, ts: Date.now() })
+  const link = { type: 'link', url, ts: Date.now() };
+  // المداخل الثلاثة القائمة **بلا `mode`** كما كانت؛ والوضعان الجديدان يحملانه
+  // صريحاً (`song`/`clip`) فيقرأه التطبيق من الحقل نفسه الذي يقرأه من المنبثق.
+  if (info.menuItemId === MENU_SONG) link.mode = 'song';
+  else if (info.menuItemId === MENU_CLIP) link.mode = 'clip';
+  sendNative(link)
     .then((r) => console.log('[HaramLite Bridge] sent:', r))
     .catch((e) => console.error('[HaramLite Bridge] failed:', e.message));
 });
+
+/** رابط الطلب بحسب مدخل القائمة: الثلاثة القائمة كما كانت، والوضعان يأخذان
+ * صفحة السياق أو رابطه أو مصدر الفيديو — أيّهما وُجد. */
+function urlFor(info) {
+  if (info.menuItemId === MENU_LINK) return info.linkUrl;
+  if (info.menuItemId === MENU_PAGE) return info.pageUrl;
+  if (info.menuItemId === MENU_VIDEO) return info.srcUrl || info.pageUrl;
+  return info.pageUrl || info.linkUrl || info.srcUrl || null;
+}
 
 // The popup asks whether the desktop bridge is reachable.
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

@@ -743,6 +743,25 @@ function selfcheck() {
         ['✗ فشل حارس رموز الجسر', 'غير مُعلَنة', 'e.message']
       );
     }
+
+    /* Ⓗ مُفسَد (ط): **بطاقة الاكتمال في النافذة** (`popup.js` — `renderCompleted`)
+       تقرأ `last.error` خامّاً. وهو مُفسَد الجاسوس Ⓖ بعينه: مرّ على حارس الرموز
+       وحارس jsdom معاً قبل قاعدة العرض. فالمواضع الثلاثة التي سمّاها الجاسوس صار
+       لكلٍّ منها مُفسَد دائم هنا (Ⓔ الاستطلاع · Ⓖ جلب الصوت · Ⓗ بطاقة الاكتمال)
+       — وهي بعينها «ط-١٠» في `docs/BACKLOG-0.3.md`، والحارس صار يراها كلها. */
+    {
+      const dir = writeFixture(path.join(work, 'mutant-raw-read-completed'));
+      edit(dir, TABLE_RELS[1],
+        "    : fill(t('done.failed'), { e: errText(last, t('err.unknown')) });",
+        "    : fill(t('done.failed'), { e: String(last.error || '') });");
+      const res = runChild(dir);
+      add(
+        'Ⓗ مُفسَد (ط): بطاقة الاكتمال في popup.js تقرأ `last.error` خامّاً (مُفسَد الجاسوس Ⓖ) ⇒ يسقط',
+        EXIT.FAIL,
+        res,
+        ['✗ فشل حارس رموز الجسر', 'غير مُعلَنة', 'last.error']
+      );
+    }
   } catch (e) {
     cases.push({ label: 'بناء حالات الفحص الذاتي', ok: false, detail: (e && e.message) || String(e) });
   }

@@ -122,6 +122,42 @@
       border: 1px solid rgba(218, 119, 86, 0.3);
     }
 
+    /* مبدّل اللغة (بند ٤) — موضع ثابت في الترويسة بين الشعار ورقم الإصدار،
+       فلا يزحم بطاقة الحالة ولا يتحرّك مع تغيّر الحالة. */
+    .lang-switch {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      margin-inline-start: auto;
+      margin-inline-end: 8px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      background: rgba(33, 31, 29, 0.9);
+    }
+
+    .lang-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      cursor: pointer;
+      line-height: 1.4;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .lang-btn:hover {
+      color: var(--text);
+    }
+
+    .lang-btn[aria-pressed='true'] {
+      background: var(--accent);
+      color: #fff;
+    }
+
     /* Main Container Content */
     .popup-content {
       padding: 14px 16px;

@@ -28,7 +28,9 @@
 (() => {
   const BTN_PROC = 'haramlite-yt-proc';
   const BTN_WATCH = 'haramlite-yt-watch';
+  const BTN_MODE = 'haramlite-yt-mode';
   const MENU_ID = 'haramlite-yt-watchmenu';
+  const MODE_MENU_ID = 'haramlite-yt-modemenu';
   const TOAST_ID = 'haramlite-toast';
 
   const T = {
@@ -68,8 +70,18 @@
       'btn.watch.fetchingTitle': 'HaramLite — جلب الصوت المفلتر',
       'btn.watch.disabledTitle': 'HaramLite — يفعَّل بعد التجهيز',
       'btn.watch.fetchingPct': 'جارٍ الجلب… {pct}%',
+      // اختيار الوضع من الصفحة (بلاغ المالك 2026-09-23: لا زرّ في المشغّل يفرّق
+      // بين «أغنية» و«مقطع») — الزرّ يعرض الوضع الحالي، ونقرته تفتح قائمة الوضعين.
+      'btn.mode.song': '🎵 أغنية',
+      'btn.mode.clip': '🎬 مقطع',
+      'btn.mode.title': 'HaramLite — اختر نوع المعالجة (أغنية أو مقطع)',
+      'mode.title': 'نوع المعالجة',
+      'menu.song': '🎵 أغنية — فصل كامل + قصّ الصمت',
+      'menu.clip': '🎬 مقطع — إزالة الموسيقى وحدها',
       // قائمة النقر الأيمن
       'menu.reprocess': '↻ معالجة كاملة',
+      // نسخة أخرى من الإضافة تملك أزرار الصفحة (تعايش مقيس: معرّف الزرّ ثابت)
+      'foreign.bar': 'نسخة أخرى من إضافة HaramLite مفعَّلة وتحرس أزرار هذا المشغّل — عطّلها من chrome://extensions ثم أعد تحميل الصفحة، وإلا فالإلغاء والوضع لا يعملان من هذه النسخة',
       // الجسر
       'bridge.noResponse': 'فشل الاتصال',
       // بدء المعالجة
@@ -122,7 +134,14 @@
       'btn.watch.fetchingTitle': 'HaramLite — fetching the filtered audio',
       'btn.watch.disabledTitle': 'HaramLite — enabled after processing',
       'btn.watch.fetchingPct': 'Fetching… {pct}%',
+      'btn.mode.song': '🎵 Song',
+      'btn.mode.clip': '🎬 Clip',
+      'btn.mode.title': 'HaramLite — choose what to process (song or clip)',
+      'mode.title': 'Processing mode',
+      'menu.song': '🎵 Song — full separation + silence trimming',
+      'menu.clip': '🎬 Clip — remove the music only',
       'menu.reprocess': '↻ Full reprocess',
+      'foreign.bar': 'Another copy of the HaramLite extension is enabled and owns this player’s buttons — disable it in chrome://extensions, then reload the page; otherwise cancel and mode will not work from this copy',
       'bridge.noResponse': 'Connection failed',
       'start.sendFailed': 'Send failed',
       'start.received': '✓ Link received — starting the download...',
@@ -173,12 +192,25 @@
     // لغة غير عربية ولا إنجليزية (فرنسية · تركية · …) ⇒ الإنجليزية.
     return 'en';
   }
-  const LANG = pickLang(
+  /* اللغة: **الافتراضيّ لغة واجهة المتصفّح** كما كان بالضبط (لا يكسر السلوك
+   * القائم ولا اختبارات `pickLang`)، و**تفضيل صريح** من النافذة يغلبه: مفتاح
+   * `hl.lang` في `chrome.storage.local` — بلاغ المالك (2026-09-23): «زر اللغة
+   * بالإضافة لم أجده حتى أحوّله إلى اللغة الإنجليزية».
+   *
+   * و`localStorage` **لا يصلح لحمل هذا التفضيل**: `content.js` يعمل في أصل
+   * **الصفحة** (`youtube.com`) لا في أصل الإضافة، فقراءة ما كتبته النافذة منه
+   * مستحيلة — ولذلك `chrome.storage` (يقرأه الطرفان ويُشعِر بالتغيّر).
+   */
+  let LANG = pickLang(
     (typeof navigator !== 'undefined' && navigator.languages && navigator.languages.length)
       ? navigator.languages
       : [(typeof navigator !== 'undefined' && navigator.language) || 'en']
   );
-  const RTL = LANG === 'ar';
+  let RTL = LANG === 'ar';
+  /** اللغة المخزَّنة الصالحة: `ar`/`en` فقط — وأي شيء آخر (أو غياب) ⇒ بلا تفضيل. */
+  function storedLang(value) {
+    return (value === 'ar' || value === 'en') ? value : null;
+  }
   /** نصّ الواجهة بمفتاحه. مفتاح مجهول ⇒ العربية (المرجع) لا فراغ. */
   function t(key) {
     const row = I18N[LANG] || I18N.ar;
@@ -218,12 +250,109 @@
 
   let procBtn = null;
   let watchBtn = null;
+  let modeBtn = null;
   let menuCloser = null;
+  let modeCloser = null;
   let toastTimer = 0;
   let BUSY = false;
   let LAST = null;
   let WATCH = null;
   let SENT_URL = null;
+  /* حالة الأزرار المعروضة **مسجَّلة** لا مشتقّة: مبدّل اللغة (بند ٤) يحتاج إعادة
+   * رسم ما هو معروض الآن بمفاتيح اللغة الجديدة، ولو أُعيد الرسم من `BUSY`/`LAST`
+   * وحدهما لضاع رقم النسبة المعروض (`setProc('working', pct)`) فيُقرأ 0%. */
+  let PROC_VIEW = { state: 'idle', pct: 0 };
+  let WATCH_VIEW = 'disabled';
+  /* وضع المعالجة المختار من الصفحة (بند ٣): `song` أو `clip`، ويُحفظ في
+   * `chrome.storage.local['hl.popup.mode']` — **المفتاح نفسه** الذي تكتبه النافذة،
+   * فيتفق السطحان على تفضيل واحد بدل تفضيلين يتناقضان. والافتراضيّ `clip` كما في
+   * النافذة (`popup.js` — `let mode = 'clip'`). */
+  let MODE = 'clip';
+
+  /* ── `chrome.storage.local`: اللغة والوضع — وصفر سقوط إن غاب الـAPI ─────────
+   * الحارس البنيوي (`scripts/check-extension-i18n.cjs`) يعدّ مفاتيح `localStorage`
+   * **بالاسم**؛ وهذان المفتاحان في `chrome.storage` لا في `localStorage` (السبب
+   * في تعليق اللغة أعلاه)، فيُعلَنان في `TARGETS` بالاسم نفسه مع تعليلهما.
+   * و`chrome.storage` غير متاح في كل بيئة قياس (شيم الحارس)، فالقراءة **مُسيَّجة**
+   * بـ`try` وبفحص وجود الواجهة: غيابها يعني «لا تفضيل» لا انهيار السكربت كله.
+   */
+  function readPrefs(keys, cb) {
+    try {
+      if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) { cb({}); return; }
+      chrome.storage.local.get(keys, (got) => cb(got || {}));
+    } catch (e) {
+      cb({});
+    }
+  }
+  function applyPrefs(got) {
+    const l = storedLang(got && got['hl.lang']);
+    if (l) applyLang(l);
+    const m = got && got['hl.popup.mode'];
+    if (m === 'song' || m === 'clip') MODE = m;
+    paintModeBtn();
+  }
+  readPrefs(['hl.lang', 'hl.popup.mode'], applyPrefs);
+  try {
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+      chrome.storage.onChanged.addListener((changes) => {
+        // النافذة غيّرت اللغة ⇒ الصفحة تتبعها فوراً (بلاغ المالك: المبدّل «يتبعه
+        // content.js أيضاً»). و`applyPrefs` تتجاهل ما لم يتغيّر فعلاً.
+        if (changes && (changes['hl.lang'] || changes['hl.popup.mode'])) {
+          const next = {};
+          if (changes['hl.lang']) next['hl.lang'] = changes['hl.lang'].newValue;
+          if (changes['hl.popup.mode']) next['hl.popup.mode'] = changes['hl.popup.mode'].newValue;
+          applyPrefs(next);
+        }
+      });
+    }
+  } catch (e) { /* بلا `chrome.storage` — لا تتبّع، ولا انهيار */ }
+
+  /** يعرض لغةً مختارة على الصفحة: تُعيد رسم المعروض بمفاتيحها واتجاهها. */
+  function applyLang(next) {
+    if (next !== 'ar' && next !== 'en') return;   // قيمة غريبة ⇒ لا تغيير
+    if (next === LANG) return;
+    LANG = next;
+    RTL = next === 'ar';
+    closeWatchMenu();
+    closeModeMenu();
+    repaintBar();
+  }
+  /** إعادة رسم ما هو معروض (لا إنشاء جديد): الأزرار بحالتها المسجَّلة. */
+  function repaintBar() {
+    setProc(PROC_VIEW.state, PROC_VIEW.pct);
+    setWatchBtn(WATCH_VIEW);
+    paintModeBtn();
+  }
+
+  /* ── قفل الإلغاء (بند ١أ) ────────────────────────────────────────────────────
+   * العطل المقيس (سجلّ التطبيق `haramlite.log.2026-09-23`): إلغاء عند
+   * `10:39:53.609` ثم `طلب من المتصفح: …AJOOve4s0_8` عند `10:39:53.616` — **٧ مللي**
+   * بعده — ثم `watch-temp request` فمهمّة كاملة «أُلغيت: false» ونغمة انتهاء.
+   *
+   * والسطر `watch-temp request` **يحسم المُرسِل**: `bridge.rs:1097` لا يطبعه إلا على
+   * مسار `watch`، و`job_watch_of` (`bridge.rs:817-820`) لا يجعله صحيحاً إلا بـ
+   * `mode == "watch"` — وهذا الحقل كان يُرسله في 1.1.8 **موضع واحد فقط**:
+   * `startFull()` في هذا الملف. و`doCancel()` هي المسار الوحيد إلى `cancel`، ومن
+   * `resetBar()` تُصفّر `BUSY` **متزامنةً** ⇒ الزرّ يعود «عالج هذا الفيديو» في اللحظة
+   * نفسها، فالنقرة الثانية من **الإيماءة الفيزيائية نفسها** (نقرة مزدوجة، أو نقرة
+   * «لم يستجب؟» بعد رؤية الزرّ عاد) تُرسل طلباً جديداً للرابط نفسه — وهو ما يُحيي
+   * مهمّة في طابور التطبيق بعد تفريغه بالإلغاء.
+   *
+   * فالقفل: بعد الإلغاء يُرفض البدء مدة `CANCEL_LATCH_MS`، وهي **أطول من مهلة
+   * النقر المزدوج في ويندوز** (٥٠٠ مللي افتراضاً) فلا تعبرها نقرة مزدوجة، وأقصر من
+   * أن تُناقض نصّ الإلغاء المعروض («اضغط للبدء من جديد» يبقى صادقاً: ضغطة ثانية
+   * واعية بعد انقضاء القفل تبدأ من جديد).
+   */
+  const CANCEL_LATCH_MS = 900;
+  let CANCELLED_AT = 0;
+  /* نسخة **أخرى** من الإضافة تحقن في الصفحة نفسها: معرّف الزرّ ثابت
+   * (`haramlite-yt-proc`) في 1.1.5 وفي نسختنا (قِيس بالقراءة في
+   * `Extensions\kaijaffkolenjhfcbaepmjndheahhikg\1.1.5_0\content.js:29`)، وكلتاهما
+   * تنسحب إن وجدت المعرّف ⇒ **أول من يحقن يفوز** والثانية تصمت. فإذا وجدنا الزرّ
+   * ولا نملكه (`procBtn === null`) فالمالك نسخة أخرى — ونُبلغ المالك في صفحته بدل
+   * الصمت (بلاغه اليوم قِيس على جهاز فيه 1.1.5 من المتجر مفعَّلة مع نسختنا). */
+  let FOREIGN_BAR = false;
+  let foreignTold = false;
 
   // Match a completion to THIS page by video identity — output FILE names
   // derive from video titles (not ids), so name-matching would misfire.
@@ -287,6 +416,21 @@
   }
 
   /* ── bar buttons ───────────────────────────────────────────────── */
+  /** عنصر من وسمه، بنمطه، ونصّه — **بلا `innerHTML` إطلاقاً**.
+   *  والسبب **مقيس حيّاً** (كروم 153 على `www.youtube.com` و`music.youtube.com`
+   *  الحقيقيين): يوتيوب يفرض سياسة **Trusted Types**، فإسناد `innerHTML` يرمي
+   *  `TypeError: Failed to set the 'innerHTML' property on 'Element': This document
+   *  requires 'TrustedHTML' assignment.` ⇒ كل قائمة كانت تُبنى بـ`innerHTML` **لم
+   *  تكن تُفتح على يوتيوب إطلاقاً** (قائمة النقر الأيمن القائمة، وقائمة الوضع الجديدة).
+   *  ولم يرَ ذلك أيّ حارس `jsdom` (لا يفرض Trusted Types) — فالقاعدة الآن بنيوية:
+   *  لا `innerHTML` في هذا الملف، ويعدّها `scripts/check-extension-sync.cjs`.
+   *  و`textContent` لا يُفسَّر كوسم فلا مسار حقن أصلاً. */
+  function mkNode(tag, css, text) {
+    const n = document.createElement(tag);
+    if (css) n.style.cssText = css;
+    if (text !== null && text !== undefined) n.textContent = text;
+    return n;
+  }
   function barBtnBase() {
     // والاتجاه **يُضبط صريحاً** كالتوست والقائمة: بدونه يرث الزرّ اتجاه **الصفحة**،
     // فعلى يوتيوب عربي (`dir="rtl"`) بواجهة إنجليزية يأخذ الزرّ RTL ⇒ خلل bidi في
@@ -314,6 +458,94 @@
     });
     return btn;
   }
+  /* ── زرّ اختيار الوضع (بند ٣) ────────────────────────────────────────────────
+   * بلاغ المالك: «لا يوجد زر في المشغل باليوتيوب لاختيار هل هو مقطع عادي أو أغنية».
+   * فزرّ ثالث في الشريط يعرض **الوضع الحالي** بنصّه، ونقرته تفتح قائمة صغيرة
+   * بالوضعين؛ واختيار أحدهما يحفظه في `chrome.storage.local['hl.popup.mode']`
+   * (المفتاح نفسه الذي تكتبه النافذة) ثم يبدأ المعالجة بذلك الوضع.
+   */
+  function makeModeBtn() {
+    const btn = document.createElement('button');
+    btn.id = BTN_MODE;
+    btn.type = 'button';
+    btn.className = 'ytp-button';
+    btn.style.cssText = barBtnBase();
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+      if (BUSY) { toggleModeMenu(btn); return; }   // أثناء العمل: القائمة للعلم فقط
+      toggleModeMenu(btn);
+    });
+    return btn;
+  }
+  function paintModeBtn() {
+    if (!modeBtn) return;
+    modeBtn.textContent = MODE === 'song' ? t('btn.mode.song') : t('btn.mode.clip');
+    modeBtn.title = t('btn.mode.title');
+    modeBtn.setAttribute('aria-label', modeBtn.title);
+  }
+  function closeModeMenu() {
+    document.getElementById(MODE_MENU_ID)?.remove();
+    if (modeCloser) {
+      document.removeEventListener('click', modeCloser);
+      modeCloser = null;
+    }
+  }
+  function toggleModeMenu(anchor) {
+    if (document.getElementById(MODE_MENU_ID)) { closeModeMenu(); return; }
+    closeWatchMenu();
+    const r = anchor.getBoundingClientRect();
+    const menu = mkNode('div', null);
+    menu.id = MODE_MENU_ID;
+    menu.style.cssText =
+      `position:fixed;bottom:${window.innerHeight - r.top + 8}px;right:${window.innerWidth - r.right}px;` +
+      `min-width:210px;background:${T.panel};border:1px solid ${T.border};border-radius:10px;` +
+      `box-shadow:0 10px 28px rgba(0,0,0,.55);padding:8px;z-index:2147483003;` +
+      `font-family:Roboto,Arial,sans-serif;font-size:12px;direction:${RTL ? 'rtl' : 'ltr'};color:${T.text};`;
+    // عنوان القائمة ثم مدخلان — **يُبنيان بعقد DOM لا بـ`innerHTML`** (التعليل في
+    // تعليق `mkNode`)، ونصّاهما **من الجدول** (`menu.song`/`menu.clip`) فلا نصّ
+    // عربي خارج `I18N`، والوسم «✓» عقدة نصّية مستقلّة بلا تركيب نصّ.
+    menu.appendChild(mkNode('div', `padding:2px 6px 6px;color:${T.sub};font-size:11px;`, t('mode.title')));
+    const entryCss = (on) =>
+      `width:100%;padding:8px 6px;background:transparent;border:none;color:${on ? T.text : T.sub};` +
+      `font-size:12px;text-align:${RTL ? 'right' : 'left'};cursor:pointer;`;
+    /* المدخلان: **المفتاح نصّ حرفيّ في موضع النداء** (`t('menu.song')`) والنصّ
+     * يُمرَّر جاهزاً إلى الباني — ولا مفتاح محسوب: §٢٦ يمنع `t(key)` بمتغيّر لأنه
+     * يُخفي النصّ عن حارس التعريب فتصير مفاتيح الجدول «ميتة» بلا تغطية (قِيس:
+     * نسخة أولى بـ`t(key)` أسقطت الحارس بفحصين: مفتاح محسوب + مفتاحان ميتان). */
+    const mkEntry = (id, text, on) => {
+      const b = mkNode('button', entryCss(on), null);
+      b.id = id;
+      b.type = 'button';
+      if (on) b.appendChild(mkNode('span', null, '✓ '));
+      b.appendChild(mkNode('span', null, text));
+      return b;
+    };
+    const song = mkEntry('hl-ext-mode-song', t('menu.song'), MODE === 'song');
+    const clip = mkEntry('hl-ext-mode-clip', t('menu.clip'), MODE === 'clip');
+    menu.appendChild(song);
+    menu.appendChild(clip);
+    document.body.appendChild(menu);
+    song.addEventListener('click', () => chooseMode('song'));
+    clip.addEventListener('click', () => chooseMode('clip'));
+    setTimeout(() => {
+      if (!menu.isConnected) return;
+      modeCloser = (e) => { if (!menu.contains(e.target)) closeModeMenu(); };
+      document.addEventListener('click', modeCloser);
+    }, 0);
+  }
+  /** يحفظ الوضع المختار ويبدأ به. و`BUSY` ⇒ لا بدء (الزرّ أثناء العمل للإلغاء). */
+  function chooseMode(next) {
+    MODE = next === 'song' ? 'song' : 'clip';
+    paintModeBtn();
+    closeModeMenu();
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ 'hl.popup.mode': MODE });
+      }
+    } catch (e) { /* بلا تخزين: يبقى الوضع للجلسة الحالية */ }
+    if (!BUSY) void startFull();
+  }
   function makeWatchBtn() {
     const btn = document.createElement('button');
     btn.id = BTN_WATCH;
@@ -336,6 +568,7 @@
     return btn;
   }
   function setProc(state, pct) {
+    PROC_VIEW = { state: state || 'idle', pct: pct || 0 };
     if (!procBtn) return;
     if (state === 'working') {
       procBtn.disabled = false;
@@ -364,6 +597,7 @@
     }
   }
   function setWatchBtn(state) {
+    WATCH_VIEW = state || 'disabled';
     if (!watchBtn) return;
     if (state === 'ready') {
       watchBtn.disabled = false;
@@ -425,12 +659,20 @@
       `font-family:Roboto,Arial,sans-serif;font-size:12px;direction:${RTL ? 'rtl' : 'ltr'};color:${T.text};`;
     // لا خيار للمستخدم: قفز الفجوات إجباريّ (قرار المالك «اجباري لكل مستخدم لا خيار
     // لتعديلها») — حُذف الصندوق، والقائمة فيها «معالجة كاملة» وحدها.
-    menu.innerHTML =
-      `<button id="hl-ext-reprocess" style="width:100%;padding:8px 6px;background:transparent;border:none;` +
-      `color:${T.sub};font-size:12px;text-align:${RTL ? 'right' : 'left'};cursor:pointer;">` +
-      `${t('menu.reprocess')}</button>`;
+    // **ويُبنى بعقد DOM لا بـ`innerHTML`** — كان `innerHTML` هنا هو العطل نفسه
+    // المقيس في قائمة الوضع (يوتيوب يفرض Trusted Types فيرمي عليه) ⇒ هذه القائمة
+    // (النقر الأيمن) **لم تكن تُفتح إطلاقاً** على يوتيوب الحقيقي. المقيس حيّاً:
+    // `TypeError: Failed to set the 'innerHTML' property on 'Element': This document
+    // requires 'TrustedHTML' assignment.` — ولم يرها أيّ حارس jsdom (لا يفرض Trusted Types).
+    const reprocess = mkNode('button', null, t('menu.reprocess'));
+    reprocess.id = 'hl-ext-reprocess';
+    reprocess.type = 'button';
+    reprocess.style.cssText =
+      `width:100%;padding:8px 6px;background:transparent;border:none;color:${T.sub};` +
+      `font-size:12px;text-align:${RTL ? 'right' : 'left'};cursor:pointer;`;
+    menu.appendChild(reprocess);
     document.body.appendChild(menu);
-    menu.querySelector('#hl-ext-reprocess').addEventListener('click', () => {
+    reprocess.addEventListener('click', () => {
       closeWatchMenu();
       // نُبقي الإنهاء الصريح هنا: startFull() ينصرف فوراً إن كان BUSY، فلا تبقى مشاهدة قائمة.
       stopWatch(true);
@@ -450,6 +692,11 @@
 
   async function startFull() {
     if (BUSY) return;
+    // قفل الإلغاء: نقرة تابعة لإيماءة الإلغاء نفسها لا تُحيي مهمّة (التعليل أعلاه).
+    if (Date.now() - CANCELLED_AT < CANCEL_LATCH_MS) {
+      toast(t('cancel.done'));
+      return;
+    }
     stopWatch(true);
     resetBar();
     // Pause the page at once — the goal is hearing no music. Failures leave
@@ -460,7 +707,9 @@
     SENT_URL = location.href;
     let r = null;
     try {
-      r = await native({ type: 'link', url: location.href, mode: 'watch' });
+      // `mode` يحمل **اختيار المستخدم** (`song`/`clip`) كما يرسله المنبثق اليوم،
+      // وهو الحقل الذي يقرأه التطبيق (`bridge.rs:826-832` — `job_mode_of`).
+      r = await native({ type: 'link', url: location.href, mode: MODE });
     } catch (e) {
       toast('⚠ ' + errText(e, t('start.sendFailed')), 4000);
       return;
@@ -476,10 +725,19 @@
   }
 
   function doCancel() {
+    CANCELLED_AT = Date.now();   // قفل الإلغاء — يمنع إحياء المهمّة بنقرة تابعة
     native({ type: 'cancel' }).catch(() => {});
     stopPoll();
     resetBar();
     toast(t('cancel.done'));
+  }
+
+  /** الزرّ في الشريط ليس زرّنا: نسخة أخرى من الإضافة تملكه ⇒ نُبلغ مرّة لكل صفحة. */
+  function noteForeignBar() {
+    FOREIGN_BAR = true;
+    if (foreignTold) return;
+    foreignTold = true;
+    toast('⚠ ' + t('foreign.bar'), 6000);
   }
 
   function poll() {
@@ -739,8 +997,18 @@ function keptStretchAround(kept, gapStart, gapEnd) {
     let total = 0;
     for (;;) {
       const r = await native({ type: 'result_file', offset, len: 262144 });
+      /* **ردّ فشل مسمّى** (`{ok:false, code, error}`) — يُرمى بخطأ يحمل رمزه ليترجمه
+       * `errText`؛ وهذا هو العطل الميداني المقيس (بلاغ المالك 2026-09-23): التطبيق
+       * يردّ `engine_error` («لا يوجد صوت صفحة مكتمل بعد» — `bridge.rs:433-440`) فكان
+       * يُعرض «رد فارغ من التطبيق — أعد المحاولة»، وهو نصّ يصف **غياب** الردّ لا سببه،
+       * ويُخفي الرمز الذي يحمله الردّ فعلاً. و`native()` لا يرمي هنا: `ok` التي يفحصها
+       * هي `ok` **النقل** (`background.js` يمرّر حمولة المضيف كما هي في `resp`)،
+       * فحمولة المضيف الفاشلة تصل مُحلَّلة لا مرميَّة. */
+      if (r && r.ok === false) throw bridgeError(r);
       const f = r && r.file;
-      if (!f || typeof f.data !== 'string') throw new Error(t('fetch.emptyReply'));
+      // و`fetch.emptyReply` لا يبقى إلّا لغياب `file` فعلاً (لا ردّ)، وسِواه «ملف ناقص».
+      if (!f) throw new Error(t('fetch.emptyReply'));
+      if (typeof f.data !== 'string') throw new Error(t('fetch.partialFile'));
       total = f.total || 0;
       parts.push(f.data);
       offset = f.offset + f.data.length / 2;
@@ -1323,24 +1591,53 @@ function keptStretchAround(kept, gapStart, gapEnd) {
     }).catch(() => {});
   }
 
+  /* ── موضعا الحقن — **مقيسان حيّاً** (كروم 153.0.8010.53، تبويبان حقيقيان) ────
+   * • `www.youtube.com`: `.ytp-right-controls` (المحدِّد التاريخي، قائم).
+   * • `music.youtube.com`: `.ytp-right-controls` **غير موجود إطلاقاً** —
+   *   `document.querySelectorAll('.ytp-right-controls').length === 0` على صفحة
+   *   `music.youtube.com/watch?v=AJOOve4s0_8` حقيقية ⇒ فلا زرّ كان يُحقن هناك.
+   *   والحاضن المقيس هو العنصر المخصّص `ytmusic-player-bar` وداخله `.right-controls`
+   *   (أبناء الشريط: left 0..280 · middle 280..968 · right 968..1252 من شريط
+   *   عرضه 1252px وارتفاعه 72px). وزرّ بارتفاع 32px مُدرَج في `.right-controls`
+   *   **يُرسم مرئياً**: `w=53 h=32` عند `y=713`، و`overflow` الأب `visible` ⇒ لا قصّ.
+   *   و`.middle-controls` **مرفوض بالقياس**: `overflow: hidden` يقصّ ما يُدرج فيه.
+   */
+  const HOST_SELECTORS = ['.ytp-right-controls', 'ytmusic-player-bar .right-controls'];
+  /** الشريط الحاضن للأزرار، أو `null` إن لم يكن أيّهما في الصفحة بعد. */
+  function hostBar() {
+    for (const sel of HOST_SELECTORS) {
+      const n = document.querySelector(sel);
+      if (n) return n;
+    }
+    return null;
+  }
+
   function tryInject() {
     const isNewVideo = (currentVideoUrl !== location.href);
     // Buttons persisted across an SPA navigation: still re-check the video.
     if (document.getElementById(BTN_PROC)) {
+      // الزرّ موجود ولا نملكه ⇒ نسخة أخرى حقنت قبلاً (التعليل في تعليق FOREIGN_BAR).
+      if (!procBtn) noteForeignBar();
       if (isNewVideo) {
         currentVideoUrl = location.href;
         checkStatusForCurrentVideo();
       }
       return true;
     }
-    const controls = document.querySelector('.ytp-right-controls');
+    const controls = hostBar();
     if (!controls) return false;
+    const mb = makeModeBtn();
     const wb = makeWatchBtn();
     const pb = makeProcBtn();
+    // الإدراج بترتيب معكوس لأن `prepend` يضع في المقدّمة ⇒ الترتيب المعروض
+    // (معالجة · مشاهدة · الوضع) في الشريطين معاً.
+    controls.prepend(mb);
     controls.prepend(wb);
     controls.prepend(pb);
     procBtn = pb;
     watchBtn = wb;
+    modeBtn = mb;
+    paintModeBtn();
     currentVideoUrl = location.href;
     checkStatusForCurrentVideo();
     return true;
@@ -1367,9 +1664,29 @@ function keptStretchAround(kept, gapStart, gapEnd) {
     scheduleInject();
   });
   window.addEventListener('yt-page-data-updated', scheduleInject);
-  const watchRoot = document.querySelector('#movie_player') || document.body;
-  const domObserver = new MutationObserver(scheduleInject);
-  domObserver.observe(watchRoot, { childList: true, subtree: true });
+  /* المَراصد: `#movie_player` (يوتيوب **و**يوتيوب-ميوزيك — `#movie_player` قائم
+   * في كليهما بالقياس)، و**شريط YouTube Music** نفسه لأن `yt-navigate-finish`
+   * **لا يُطلق هناك إطلاقاً**: قِيس صفر حدث في تحميل كامل، وصفر في تنقّل داخلي
+   * حقيقي (نقرة `.next-button` نقلت إلى `watch?v=9waqGhS2RUI`)، ومع ذلك بقي
+   * الشريط وأزراره في المستند ⇒ فالتغيّر يُلتقط بالرصد لا بالحدث.
+   * والالتفاف بـ`try` مقصود: مراقب على عقدة غير موجودة **يرمي**، ورميه يُسقط بقية
+   * الـIIFE — ومنها تسجيل `chrome.runtime.onMessage` في آخر الملف (أي أن زرّ
+   * النافذة يتعطّل كلّه). قِيس الرمي فعلاً في الحقن المبكر عبر CDP (مسبار). */
+  const observedRoots = [];
+  function observeRoots() {
+    const roots = [document.querySelector('#movie_player') || document.body,
+      document.querySelector('ytmusic-player-bar')];
+    const domObserver = new MutationObserver(scheduleInject);
+    for (const root of roots) {
+      if (!root || observedRoots.includes(root)) continue;
+      try {
+        domObserver.observe(root, { childList: true, subtree: true });
+        observedRoots.push(root);
+      } catch (e) { /* عقدة غير قابلة للرصد — لا يُسقط السكربت */ }
+    }
+  }
+  observeRoots();
+  window.addEventListener('yt-page-data-updated', observeRoots);
 
   let tries = 0;
   const timer = setInterval(() => {
@@ -1384,12 +1701,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   try {
     if (typeof WATCH !== 'undefined' && WATCH) {
       stopWatch();
-      sendResponse({ ok: true, watching: false });
+      sendResponse({ ok: true, watching: false, foreignBar: FOREIGN_BAR });
     } else if (typeof startWatch === 'function') {
       void startWatch();
-      sendResponse({ ok: true, watching: true });
+      sendResponse({ ok: true, watching: true, foreignBar: FOREIGN_BAR });
     } else {
-      sendResponse({ ok: false, error: 'watch unavailable on this page' });
+      sendResponse({ ok: false, error: 'watch unavailable on this page', foreignBar: FOREIGN_BAR });
     }
   } catch (e) {
     sendResponse({ ok: false, error: String((e && e.message) || e) });

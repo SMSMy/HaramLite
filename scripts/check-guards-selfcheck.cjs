@@ -774,7 +774,8 @@ CASES.push({
       apply: (dir) => editExt(dir, 'background.js', "if (msg.mode === 'song' || msg.mode === 'clip') link.mode = msg.mode;", 'if (msg.mode) link.mode = msg.mode;'),
       mustMatch: /القيمتان المقبولتان/ },
     { label: 'تثبيت الاتجاه LTR في popup.js ⇒ العربية تفقد rtl',
-      apply: (dir) => editExt(dir, 'popup.js', "const RTL = LANG === 'ar';", 'const RTL = false;'),
+      // `let` بدل `const`: اللغة صارت قابلة للتبديل من مبدّل ظاهر (بند ٤، جولة x1-ext).
+      apply: (dir) => editExt(dir, 'popup.js', "let RTL = LANG === 'ar';", 'let RTL = false;'),
       mustMatch: /direction=rtl/ },
     { label: 'pageVideo تسقط إلى المحدِّد العام ⇒ الفيديو المُضلِّل يكشفها (ثقب و-١)',
       apply: (dir) => editExt(dir, 'content.js',

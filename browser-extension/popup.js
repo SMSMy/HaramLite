@@ -35,6 +35,8 @@ const el = {
   watch: $('btn-watch'),
   openFolder: $('btn-open-folder'),
   ytNotice: $('card-yt-notice'),
+  langAr: $('lang-ar'),
+  langEn: $('lang-en'),
   // بالمُحدِّد الصنفي لا بمعرّف: `scripts/pack-extension.js` يقرأ الوسم بنمط
   // `class="version-tag">v?([^<\s]+)<` ويرفض الحزم إن تغيّر شكله (سمةٌ بعد
   // `class` تُفسده) — فالشكل **عقد** مع الحازم، ولا يُضاف إليه معرّف.
@@ -47,10 +49,17 @@ const el = {
  * واجهة المتصفّح** لا لغة الصفحة — والاتجاه (‏`rtl`/`ltr`) مشتقّ من اللغة
  * المُختارة لا من الصفحة المعروضة.
  *
+ * **والافتراضيّ بقي لغة المتصفّح كما كان بالضبط** (بند ٤): التفضيل الصريح من
+ * المبدّل الظاهر يغلبه، ومخزَّنه `chrome.storage.local['hl.lang']` — لا
+ * `localStorage`، لأن `content.js` يعمل في أصل **الصفحة** (`youtube.com`) فلا
+ * يقرأ ما تكتبه النافذة في أصل الإضافة. ومانيفست الإضافة صار يطلب `storage`
+ * لهذا الغرض وحده (صلاحية بلا تحذير للمستخدم)، و`localStorage` بقي لمفتاح
+ * الوضع `MODE_KEY` وحده كما كان (§٢٧ لم يُنقَض: المفتاح القديم قائم، والجديد
+ * مُعلَن بالاسم في `TARGETS` بحارسه).
+ *
  * ولا آلية تعريب ثانية في هذه النافذة: لا `chrome.i18n` ولا `_locales` هنا —
  * و`_locales` في هذا المستودع **مقصورة على ما يعرضه المتصفّح من المانيفست**
- * (اسم الإضافة ووصفها) لأنه لا يمرّ بكود أصلاً. ولا مفتاح تخزين جديد:
- * `MODE_KEY` وحده كما كان، والحارس يعدّ مفاتيح `localStorage` بعدد لكل ملف.
+ * (اسم الإضافة ووصفها) لأنه لا يمرّ بكود أصلاً.
  *
  * ونصوص `popup.html` لا تسكن هناك: الصفحة تحمل مفاتيح `data-i18n` وحدها بلا
  * نصّ عربي، وهذا الجدول مصدرها الوحيد — وكل مفتاح مربوط في الصفحة يُفحص وجوده
@@ -113,6 +122,13 @@ const I18N = {
     // التذييل
     'footer.privacy': 'معالجة محلية 100% · بلا سحابة',
     'footer.install': 'دليل التثبيت ⚙',
+    // مبدّل اللغة (بند ٤) — النصّان من الجدول، ومعروضهما يُعلَن بـ`aria-pressed`.
+    // واسم اللغة **بلغتها المعروضة** لا بلغة الطرف الآخر: في الواجهة العربية
+    // «العربية / الإنجليزية»، وفي الإنجليزية «Arabic / English» — وبهذا لا تحمل
+    // قيمة إنجليزية محرفاً عربياً (وهو ما يرفضه حارس الكتابة) ولا قيمة عربية بلا عربية.
+    'lang.ar': 'العربية',
+    'lang.en': 'الإنجليزية',
+    'lang.title': 'لغة الواجهة',
     // رموز خطأ التطبيق المستقرّة (`code` في عقد الجسر — م٦-ج): النافذة تعرض
     // `last.error`، وهو نصّ يصوغه التطبيق بالعربية ⇒ يُترجم برمزه لا بنصّه.
     // ويحرس التقابل في الاتجاهين `scripts/check-bridge-codes.cjs`.
@@ -168,6 +184,9 @@ const I18N = {
     'yt.body': 'The inline controls (process this video / watch without music) are injected automatically into the YouTube bar inside the page.',
     'footer.privacy': '100% local processing · no cloud',
     'footer.install': 'Install guide ⚙',
+    'lang.ar': 'Arabic',
+    'lang.en': 'English',
+    'lang.title': 'Interface language',
     'code.duplicate_link': 'This link was already requested in this session — skipping the duplicate',
     'code.cancelled_by_user': 'Processing was cancelled by the user',
     'code.download_cancelled': 'The download was cancelled by the user',
@@ -196,13 +215,19 @@ function pickLang(list) {
   }
   return 'en';
 }
-const LANG = pickLang(
+const LANG_DEFAULT = pickLang(
   (typeof navigator !== 'undefined' && navigator.languages && navigator.languages.length)
     ? navigator.languages
     : [(typeof navigator !== 'undefined' && navigator.language) || 'en']
 );
-/** اتجاه الواجهة **مشتقّ من اللغة** لا من الصفحة. */
-const RTL = LANG === 'ar';
+/* اللغة المعروضة: تبدأ بلغة المتصفّح (السلوك القائم) ويغلبها التفضيل المخزَّن إن
+ * وُجد — والقراءة **قبل أول رسم**، فلا وميض لغة ثم تبديلها. */
+let LANG = LANG_DEFAULT;
+let RTL = LANG === 'ar';
+/** تفضيل مخزَّن صالح: `ar`/`en` فقط؛ وأي شيء آخر (أو غياب) ⇒ لغة المتصفّح. */
+function storedLang(value) {
+  return (value === 'ar' || value === 'en') ? value : null;
+}
 /** نصّ الواجهة بمفتاحه. مفتاح مجهول ⇒ العربية (المرجع) لا فراغ. */
 function t(key) {
   const row = I18N[LANG] || I18N.ar;
@@ -248,7 +273,44 @@ function applyI18n() {
     const at = spec.indexOf(':');
     node.setAttribute(spec.slice(0, at), t(spec.slice(at + 1)));
   });
+  // وعلامة الزرّ المختار جزء من الرسم نفسه: لا تُترك لنداء منفصل يُنسى.
+  paintLang();
 }
+
+/* ── مبدّل اللغة (بند ٤) ────────────────────────────────────────────────────
+ * بلاغ المالك: «زر اللغة بالإضافة لم أجده حتى أحوّله إلى اللغة الإنجليزية».
+ * فالزرّان **ظاهران دائماً** في الترويسة، والمختار منهما يُعلَن بـ`aria-pressed`
+ * (فيُقاس في DOM لا بالنظر)، والاختيار يُحفظ في `chrome.storage.local['hl.lang']`
+ * فيتبعه `content.js` (يقرأ المفتاح نفسه ويستمع `chrome.storage.onChanged`).
+ */
+const LANG_KEY = 'hl.lang';
+
+/** يعلّم الزرّ المختار. يُنادى من `applyI18n` بعد كل رسم. */
+function paintLang() {
+  if (el.langAr) el.langAr.setAttribute('aria-pressed', String(LANG === 'ar'));
+  if (el.langEn) el.langEn.setAttribute('aria-pressed', String(LANG === 'en'));
+}
+
+/** يبدّل اللغة: يعيد رسم الصفحة كلها بلغتها، ثم يحفظ التفضيل. */
+function setLang(next, persist) {
+  const l = (next === 'ar' || next === 'en') ? next : null;
+  if (!l) return;
+  LANG = l;
+  RTL = l === 'ar';
+  applyI18n();
+  paintLang();
+  // إعادة رسم ما هو معروض الآن (الحالة والوضع وبطاقة الاكتمال) — لا إنشاء جديد.
+  setState(STATE);
+  paintMode();
+  if (DONE_VIEW) renderCompleted(DONE_VIEW.last, DONE_VIEW.provider);
+  if (persist) {
+    try {
+      if (chrome.storage && chrome.storage.local) chrome.storage.local.set({ [LANG_KEY]: LANG });
+    } catch (e) { /* بلا تخزين: التبديل يبقى لهذه النافذة */ }
+  }
+}
+if (el.langAr) el.langAr.addEventListener('click', () => setLang('ar', true));
+if (el.langEn) el.langEn.addEventListener('click', () => setLang('en', true));
 
 /* مراحل المعالجة: خريطة دوالّ بمفاتيح **حرفية**. ولا تُبنى بالمزج
  * (`'stage.' + s`) لأن §٢٦ يمنع تركيب النصّ، وتركيب المفتاح يُخفي وجوده عن
@@ -265,7 +327,13 @@ const MODE_KEY = 'hl.popup.mode';
 
 function show(node, on) { node.classList.toggle('hidden', !on); }
 
+/* الحالة المعروضة وبطاقة الاكتمال **مسجَّلتان**: تبديل اللغة يعيد رسمهما بلغتها
+ * الجديدة بلا انتظار دورة استطلاع (بند ٤). */
+let STATE = 'ready';
+let DONE_VIEW = null;
+
 function setState(state) {
+  STATE = state;   // مسجَّلة ليُعاد رسمها عند تبديل اللغة (بند ٤)
   // Reset to the ready layout, then narrow it down for the current state.
   show(el.offline, false);
   show(el.progress, false);
@@ -358,9 +426,14 @@ function paintMode() {
 function chooseMode(next) {
   mode = next === 'song' ? 'song' : 'clip';
   paintMode();
-  // localStorage لا chrome.storage: مانيفست الإضافة لا يطلب صلاحية `storage`،
-  // وطلبها كان سيضيف صلاحية إلى قائمة المتجر بلا داعٍ لتفضيل واحد.
+  // `localStorage` يبقى للمفتاح القديم (توافق مع من اختار وضعه قبل 1.1.9)،
+  // ومعه **مِرآة إلى `chrome.storage.local` بالمفتاح نفسه**: `content.js` لا يقرأ
+  // `localStorage` (أصل الصفحة ليس أصل الإضافة)، وبها يتفق زرّ الصفحة والنافذة
+  // على تفضيل واحد بدل تفضيلين يتناقضان (بند ٣).
   try { localStorage.setItem(MODE_KEY, mode); } catch (e) { /* ignore */ }
+  try {
+    if (chrome.storage && chrome.storage.local) chrome.storage.local.set({ [MODE_KEY]: mode });
+  } catch (e) { /* ignore */ }
 }
 
 el.modeClip.addEventListener('click', () => chooseMode('clip'));
@@ -416,6 +489,7 @@ function renderProgress(st, provider) {
 }
 
 function renderCompleted(last, provider) {
+  DONE_VIEW = { last, provider };
   setState('completed');
   el.completedText.textContent = last.ok
     ? fill(t('done.okSeconds'), { s: (last.seconds || 0).toFixed(1) })
@@ -495,28 +569,49 @@ el.watch.addEventListener('click', () => {
 });
 
 // ── الإقلاع ────────────────────────────────────────────────────────────────
-// نصوص الصفحة الثابتة والاتجاه أولاً، ثم رقم الإصدار من المانيفست نفسه (فلا
-// يتقادم الوسم في الترويسة صامتاً عند رفع الإصدار)، ثم الحالة.
-applyI18n();
-try {
-  if (el.version && chrome.runtime.getManifest) {
-    el.version.textContent = 'v' + chrome.runtime.getManifest().version;
-  }
-} catch (e) { /* يبقى الوسم الثابت في الصفحة */ }
+// **الترتيب مقصود** (بند ٤): تُقرأ التفضيلات المخزَّنة (`hl.lang` · `hl.popup.mode`)
+// **قبل أول رسم**، فلا تُرسم الواجهة بلغة ثم تُقلب إلى أخرى (وميض). وإن غاب
+// `chrome.storage` (بيئة قياس) أو تعذّرت قراءته فالافتراضيّ لغة المتصفّح كما كان
+// بالضبط — لا فراغ ولا تعطّل.
+function boot(got) {
+  const saved = storedLang(got && got[LANG_KEY]);
+  if (saved) { LANG = saved; RTL = saved === 'ar'; }
+  applyI18n();
+  try {
+    if (el.version && chrome.runtime.getManifest) {
+      el.version.textContent = 'v' + chrome.runtime.getManifest().version;
+    }
+  } catch (e) { /* يبقى الوسم الثابت في الصفحة */ }
 
-try {
-  const savedMode = localStorage.getItem(MODE_KEY);
-  if (savedMode === 'song' || savedMode === 'clip') mode = savedMode;
-} catch (e) { /* ignore */ }
-paintMode();
+  try {
+    const m = got && got[MODE_KEY];
+    if (m === 'song' || m === 'clip') mode = m;
+    else {
+      // توافق: من اختار وضعه قبل 1.1.9 فتفضيله في `localStorage` وحده.
+      const savedMode = localStorage.getItem(MODE_KEY);
+      if (savedMode === 'song' || savedMode === 'clip') mode = savedMode;
+    }
+  } catch (e) { /* ignore */ }
+  paintMode();
 
-loadTarget();
-status().then((r) => {
-  const st = (r && r.state) || {};
-  if (st.running) { pollProgress(); return; }
-  if (st.last && st.last.ok) {
-    renderCompleted(st.last, r.provider);
-    return;
+  loadTarget();
+  status().then((r) => {
+    const st = (r && r.state) || {};
+    if (st.running) { pollProgress(); return; }
+    if (st.last && st.last.ok) {
+      renderCompleted(st.last, r.provider);
+      return;
+    }
+    setState('ready');
+  }).catch(() => setState('disconnected'));
+}
+
+function readPrefs(keys, cb) {
+  try {
+    if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) { cb({}); return; }
+    chrome.storage.local.get(keys, (got) => cb(got || {}));
+  } catch (e) {
+    cb({});
   }
-  setState('ready');
-}).catch(() => setState('disconnected'));
+}
+readPrefs([LANG_KEY, MODE_KEY], boot);

@@ -1566,8 +1566,22 @@ console.log('\n=== ٣١) عدّ ثابت للمجدولات والمستمعين
 // + خصائص المؤقّتات (`x = setInterval(…)`). وكل مجموعة تُثبَّت **بعددها الحالي**، فأي
 // إضافة — ولو بصيغة جديدة — تُسقط الفحص حتى تُضاف وعياً.
 const SCHED_NAMES = ['setInterval', 'setTimeout', 'requestAnimationFrame', 'setImmediate', 'queueMicrotask'];
+/* **والأعداد تُرفع وعياً لا تلقائياً.** جولة x1-ext (بند ٣ و٤) أضافت — بعد قياس:
+ *   · `addEventListener` 11 ⇒ 16: خمسة مستمعين، كلٌّ بداعٍ مسمّى:
+ *     (١) زرّ الوضع في الشريط (`makeModeBtn`) — البند ٣ نفسه.
+ *     (٢)(٣) مدخلَا الوضع في القائمة الصغيرة («أغنية»/«مقطع») — اختيار المستخدم.
+ *     (٤) `document.addEventListener('click', modeCloser)` — إغلاق القائمة بنقرة
+ *         خارجها (نفس نمط `menuCloser` القائم، فلا نمط جديد).
+ *     (٥) `window.addEventListener('yt-page-data-updated', observeRoots)` — رصد
+ *         شريط YouTube Music: قِيس حيّاً أن `yt-navigate-finish` **لا يُطلق هناك**
+ *         إطلاقاً (صفر حدث في تحميل كامل وصفر في تنقّل داخلي بنقرة `.next-button`)
+ *         فبلا هذا المستمع لا يُرصد تغيّر الشريط. وهو **لا يُسجّل مستمعاً جديداً في
+ *         كل تغيّر**: `observeRoots` تتخطّى الجذور المرصودة سلفاً (`observedRoots`).
+ *   · `setTimeout` 8 ⇒ 9: مؤقّت واحد في `toggleModeMenu` لإرجاع المستمع بعد إدراج
+ *     القائمة — حرفياً نفس نمط `toggleWatchMenu` القائم (‏`setTimeout(…, 0)`).
+ * وكل زيادة جديدة بعد اليوم تُسقط هذه الفحوص حتى تُضاف وعياً هنا. */
 const COUNT_WANT = {
-  setInterval: 5, setTimeout: 8, on: 10, addEventListener: 11,
+  setInterval: 5, setTimeout: 9, on: 10, addEventListener: 16,
   requestAnimationFrame: 0, setImmediate: 0, queueMicrotask: 0,
   propHandlers: 0, timerProps: 6,
 };
@@ -2153,6 +2167,41 @@ const directFell = (text) => {
 };
 for (const [label, mutant] of directMuts) {
   const fell = mutant !== src ? directFell(mutant) : [];
+  ok(`مُفسَد ${label}`, mutant !== src);
+  ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
+}
+
+console.log('\n=== ٣٣) صفر مصرف HTML خام: يوتيوب يفرض Trusted Types (عطل ميداني مقيس) ===');
+/* **العطل المقيس** (قياس حيّ، كروم 153.0.8010.53 على `www.youtube.com` و
+ * `music.youtube.com` الحقيقيين): إسناد `menu.innerHTML` يرمي
+ *   `TypeError: Failed to set the 'innerHTML' property on 'Element': This document
+ *    requires 'TrustedHTML' assignment.`
+ * ⇒ فقائمة النقر الأيمن (‏`toggleWatchMenu` — `menu.innerHTML` التاريخي) **لم تكن
+ * تُفتح على يوتيوب إطلاقاً**، وكذلك قائمة الوضع الجديدة. **ولم يرَ العطل أيّ حارس
+ * `jsdom`** لأن jsdom لا يفرض Trusted Types — فالثقب كان في القياس لا في الكود وحده.
+ * والقاعدة الآن: **صفر مصرف HTML خام** في `content.js` (‏`innerHTML` · `outerHTML` ·
+ * `insertAdjacentHTML` · `document.write`)، والبناء بعقد DOM + `textContent`
+ * (‏`mkNode`) فلا مسار حقن ولا اعتماد على سياسة الصفحة.
+ * ونصّ العدّ مجرَّد التعليقات، فشرحُ القاعدة في تعليق لا يُسقطها. */
+const HTML_SINKS = ['.innerHTML', '.outerHTML', 'insertAdjacentHTML', 'document.write', 'createContextualFragment'];
+const sinkScan = (text) => {
+  const noCom = stripComments(text);
+  return HTML_SINKS.filter((s) => noCom.includes(s));
+};
+const sinksNow = sinkScan(src);
+ok(`صفر مصرف HTML خام في content.js (${HTML_SINKS.length} مصرفاً مُعدّاً)`,
+  sinksNow.length === 0, 'وُجد: ' + (sinksNow.join(' · ') || '—'));
+const sinkMuts = [
+  ['هـ١: قائمة النقر الأيمن عادت تُبنى بـ`innerHTML` (العطل الميداني نفسه)',
+    src.replace("    const reprocess = mkNode('button', null, t('menu.reprocess'));",
+      "    menu.innerHTML = t('menu.reprocess');\n    const reprocess = mkNode('button', null, t('menu.reprocess'));")],
+  ['هـ٢: إدراج HTML عبر `insertAdjacentHTML` في التوست',
+    src.replace('    el.textContent = msg;', "    el.insertAdjacentHTML('beforeend', msg);")],
+  ['هـ٣: قراءة HTML عبر `outerHTML` في بناءٍ ما',
+    src.replace('  function mkNode(tag, css, text) {', '  function mkNode(tag, css, text) {\n    void document.body.outerHTML;')],
+];
+for (const [label, mutant] of sinkMuts) {
+  const fell = mutant !== src ? sinkScan(mutant) : [];
   ok(`مُفسَد ${label}`, mutant !== src);
   ok(`  والحارس يسقط عليه (سقط: ${fell.join(' · ') || 'لا شيء'})`, mutant !== src && fell.length > 0);
 }
