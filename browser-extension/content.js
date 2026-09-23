@@ -307,7 +307,7 @@
     }
   } catch (e) { /* بلا `chrome.storage` — لا تتبّع، ولا انهيار */ }
 
-  /** يعرض لغةً مختارة على الصفحة: تُعيد رسم المعروض بمفاتيحها واتجاهها. */
+  /** يعرض لغةً مختارة على الصفحة: تُعيد رسم المعروض بمفاتيحها **واتجاهه**. */
   function applyLang(next) {
     if (next !== 'ar' && next !== 'en') return;   // قيمة غريبة ⇒ لا تغيير
     if (next === LANG) return;
@@ -317,11 +317,25 @@
     closeModeMenu();
     repaintBar();
   }
-  /** إعادة رسم ما هو معروض (لا إنشاء جديد): الأزرار بحالتها المسجَّلة. */
+  /** الاتجاه المُشتقّ من اللغة — يُسند إلى **كل** سطح يرسمه هذا الملف. */
+  function dirNow() { return RTL ? 'rtl' : 'ltr'; }
+  /* إعادة رسم ما هو معروض (لا إنشاء جديد): الأزرار بحالتها المسجَّلة **وباتجاهها**.
+   *
+   * **والاتجاه يُعاد إسناده هنا صراحةً** — وهذا إصلاح عطل قِيس بجاسوس مستقلّ على
+   * `2b1d8c2`: `barBtnBase()` هي الوحيدة التي تُسند `direction`، وتُنادى في مواضع
+   * **الإنشاء** الثلاثة وحدها، فإعادة الرسم كانت تُغيّر النصّ **وتترك `direction`
+   * القديم** ⇒ يعود عيب bidi نفسه من باب التبديل الحيّ (نصّ إنجليزي في حاوية
+   * `rtl`). القياس: إقلاع بمخزَّن `ar` ⇒ `{procDir:"rtl",watchDir:"rtl",modeDir:"rtl"}`،
+   * ثم تبديل حيّ إلى `en` ⇒ النصّ `"Process this video"` والاتجاهات **`rtl` كما هي**.
+   * (وهو نفس صنف العطل الذي يقول تعليق `barBtnBase` إنه أُصلح — فلا يجوز أن يعود
+   * من مسار التبديل.) */
   function repaintBar() {
     setProc(PROC_VIEW.state, PROC_VIEW.pct);
     setWatchBtn(WATCH_VIEW);
     paintModeBtn();
+    for (const b of [procBtn, watchBtn, modeBtn]) {
+      if (b) b.style.direction = dirNow();
+    }
   }
 
   /* ── قفل الإلغاء (بند ١أ) ────────────────────────────────────────────────────
@@ -345,6 +359,9 @@
    */
   const CANCEL_LATCH_MS = 900;
   let CANCELLED_AT = 0;
+  /* وعلم البدء: يُسند **متزامنةً قبل `await`** في `startFull` فلا يمرّ طلب ثانٍ من
+   * نقرة مزدوجة قبل أن يُسند `BUSY` (التعليل الكامل في `startFull`). */
+  let STARTING = false;
   /* نسخة **أخرى** من الإضافة تحقن في الصفحة نفسها: معرّف الزرّ ثابت
    * (`haramlite-yt-proc`) في 1.1.5 وفي نسختنا (قِيس بالقراءة في
    * `Extensions\kaijaffkolenjhfcbaepmjndheahhikg\1.1.5_0\content.js:29`)، وكلتاهما
@@ -691,12 +708,20 @@
   function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
   async function startFull() {
-    if (BUSY) return;
+    /* **قفل البدء** (نظير قفل الإلغاء، وبنفس صنف العطل): `BUSY` يُسند **بعد**
+     * `await` (أسفل: `BUSY = true;` بعد ردّ الجرس)، فبين النقرة وردّ الجرس **لا
+     * شيء يمنع طلباً ثانياً**. قِيس بجاسوس مستقلّ على `2b1d8c2`: نقرتان بفرق
+     * **٥٫٤ مللي** ⇒ `link` ثم `link` (والنسخة القديمة أسوأ: ثلاث نقرات ⇒ ثلاثة
+     * طلبات). والعلم يُسند **متزامنةً قبل الـ`await`** فيُغلق الباب **بلا ثابت
+     * زمني** — بخلاف قفل الإلغاء الذي يحتاج نافذة زمنية لأنه يواجه إيماءة قد
+     * تتكرّر بعد ثوانٍ. */
+    if (BUSY || STARTING) return;
     // قفل الإلغاء: نقرة تابعة لإيماءة الإلغاء نفسها لا تُحيي مهمّة (التعليل أعلاه).
     if (Date.now() - CANCELLED_AT < CANCEL_LATCH_MS) {
       toast(t('cancel.done'));
       return;
     }
+    STARTING = true;
     stopWatch(true);
     resetBar();
     // Pause the page at once — the goal is hearing no music. Failures leave
@@ -713,6 +738,8 @@
     } catch (e) {
       toast('⚠ ' + errText(e, t('start.sendFailed')), 4000);
       return;
+    } finally {
+      STARTING = false;   // الطلب خرج من اليد: إمّا بدأت مهمّة (`BUSY`) أو فشل الإرسال
     }
     if (!r || !r.ok) {
       toast('✗ ' + errText(r, t('start.sendFailed')), 4000);

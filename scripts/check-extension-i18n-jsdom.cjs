@@ -90,7 +90,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  *  تقع بالمفتاح الصحيح. والقراءة **تزامنية** كما ينصّ العقد المُعلَن في الشيمين
  *  (‏`content.js`/`popup.js` كلاهما بأسلوب النداء الراجع)، فيبقى القياس الحيّ
  *  لترتيب الربط الثابت صالحاً كما كان. */
-function storageShim(store, writes) {
+function storageShim(store, writes, listeners) {
   return {
     local: {
       get: (keys, cb) => {
@@ -105,7 +105,9 @@ function storageShim(store, writes) {
         if (typeof cb === 'function') cb();
       },
     },
-    onChanged: { addListener: () => {} },
+    /* **والمستمعون يُسجَّلون فعلاً** (لا `() => {}`): يلزم لقياس «الصفحة تتبع تبديل
+     * النافذة حيّاً» — وهو ما يقيس عطل `repaintBar` (نصّ جديد واتجاه قديم). */
+    onChanged: { addListener: (fn) => { if (typeof fn === 'function') listeners.push(fn); } },
   };
 }
 const textOf = (w, sel) => { const n = w.document.querySelector(sel); return n ? n.textContent : null; };
@@ -135,6 +137,7 @@ function render(src, languages, opts) {
   const down = !!(opts && opts.down);
   const store = Object.assign({}, (opts && opts.store) || {});
   const writes = [];
+  const listeners = [];
   const dom = new JSDOM(src.html, { url: 'https://haramlite.test/popup.html', runScripts: 'outside-only' });
   const w = dom.window;
   Object.defineProperty(w.navigator, 'languages', { value: languages, configurable: true });
@@ -151,7 +154,7 @@ function render(src, languages, opts) {
         }, 0);
       },
     },
-    storage: storageShim(store, writes),
+    storage: storageShim(store, writes, listeners),
     tabs: {
       query: (_q, cb) => cb([{ id: 1, url: 'https://www.youtube.com/watch?v=abc', title: 'Example video' }]),
       sendMessage: (_id, _m, cb) => cb({ ok: true }),
@@ -297,6 +300,7 @@ const grab = (src, re, n) => {
 function renderContent(jsSrc, languages, replyFn, opts) {
   const store = Object.assign({}, (opts && opts.store) || {});
   const writes = [];
+  const listeners = [];
   const page = (opts && opts.page) || CONTENT_PAGE;
   const sent = [];
   const dom = new JSDOM(page, { url: 'https://www.youtube.com/watch?v=abc', runScripts: 'outside-only' });
@@ -314,7 +318,7 @@ function renderContent(jsSrc, languages, replyFn, opts) {
       },
       onMessage: { addListener: () => {} },
     },
-    storage: storageShim(store, writes),
+    storage: storageShim(store, writes, listeners),
   };
   /* ── محاكاة Trusted Types (يوتيوب يفرضها) ────────────────────────────────────
    * **العطل الميداني المقيس**: في كروم 153 على يوتيوب حقيقي، `menu.innerHTML = …`
@@ -337,6 +341,7 @@ function renderContent(jsSrc, languages, replyFn, opts) {
     }
   } catch (e) { /* بلا محاكاة — تبقى الفحوص البنيوية وحدها */ }
   w.__sent = sent;
+  w.__fireStorage = (changes) => { for (const fn of listeners) { try { fn(changes); } catch (e) { /* مستمع رمى */ } } };
   w.__store = store;
   w.__storeWrites = writes;
   w.eval(jsSrc);
@@ -548,6 +553,29 @@ function popupLang(src, languages, store) {
   };
 }
 
+/** يقود **قائمة النقر الأيمن** (‏`toggleWatchMenu`) — القائمة التي كانت **لا تُفتح
+ *  إطلاقاً** على يوتيوب الحقيقي قبل إصلاح Trusted Types، ولم يكن يقيسها أيّ حارس:
+ *  فمُفسَدا الثقبين (㉓ `menu['innerHTML']` · ㉔ `menu.setHTMLUnsafe`) يمرّان بلا أن
+ *  يلمسهما القياس إن لم تُفتح هذه القائمة صراحةً. */
+async function contentWatchMenu(jsSrc, languages) {
+  let w = null;
+  try { w = renderContent(jsSrc, languages, REPLY_START); } catch (e) { return { why: 'تنفيذ content.js رمى: ' + (e && e.message ? e.message : e) }; }
+  w.dispatchEvent(new w.Event('yt-navigate-finish'));
+  await sleep(320);
+  const watch = w.document.getElementById('haramlite-yt-watch');
+  if (!watch) return { why: 'زرّ المشاهدة غير مُحقَن' };
+  const before = !!w.document.getElementById('hl-ext-reprocess');
+  watch.dispatchEvent(new w.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  await sleep(40);
+  const entry = w.document.getElementById('hl-ext-reprocess');
+  return {
+    before,
+    open: !!entry,
+    text: entry ? entry.textContent : null,
+    dir: entry && entry.parentElement ? entry.parentElement.style.direction : null,
+  };
+}
+
 /** القياس كاملاً لبندَي x1 (٣ و٤). و`src` = `{ content, popup, html }` — **مصدران
  *  منفصلان**: مُفسَدات بند ٣ تُطبَّق على `content` وحدها ومُفسَدات بند ٤ على `popup`
  *  وحدها، فلا يُقيَّم نصّ Popup في صفحة المشغّل ولا العكس. */
@@ -618,9 +646,23 @@ async function measureX1(src, report) {
   report('[en] وغياب الردّ فعلاً (لا `file` أصلاً) ⇒ `fetch.emptyReply` كما كان',
     emptyEn.text === '✗ ' + I18N.en['fetch.emptyReply'], 'وُجد ' + JSON.stringify(emptyEn.text));
 
+  /* (ج٢) **قائمة النقر الأيمن** تُفتح فعلاً — الصفّ الذي يمسك ثقبَي Trusted Types
+     (‏`menu['innerHTML']` و`menu.setHTMLUnsafe`) سلوكياً، لا بنمط نصّي وحده. */
+  for (const L of [{ lang: 'en', langs: ['en-US', 'ar'] }, { lang: 'ar', langs: ['ar-SA', 'en'] }]) {
+    const wm = await contentWatchMenu(contentJs, L.langs);
+    if (!wm.open) {
+      report(`[watchmenu/${L.lang}] صفر مدخل: النقر الأيمن على زرّ المشاهدة يفتح القائمة`, false, wm.why || 'القائمة لم تُفتح');
+    } else {
+      report(`[watchmenu/${L.lang}] القائمة **تُفتح** ويظهر مدخلها «معالجة كاملة» ولم تكن مفتوحة قبلها`,
+        wm.before === false && wm.text === I18N[L.lang]['menu.reprocess'],
+        'before=' + wm.before + ' text=' + JSON.stringify(wm.text));
+      report(`[watchmenu/${L.lang}] واتجاه القائمة اتجاه اللغة (${L.lang === 'ar' ? 'rtl' : 'ltr'})`,
+        wm.dir === (L.lang === 'ar' ? 'rtl' : 'ltr'), 'وُجد ' + JSON.stringify(wm.dir));
+    }
+  }
+
   /* (د) مبدّل اللغة. */
-  const defAr = popupLang(src.popup, ['ar-SA', 'en-US'], {});
-  report('[lang] الافتراضيّ يبقى لغة المتصفّح (‏ar-SA ⇒ rtl/ar)', defAr.dir === 'rtl' && defAr.lang === 'ar',
+  const defAr = popupLang(src.popup, ['ar-SA', 'en-US'], {});  report('[lang] الافتراضيّ يبقى لغة المتصفّح (‏ar-SA ⇒ rtl/ar)', defAr.dir === 'rtl' && defAr.lang === 'ar',
     'dir=' + defAr.dir + ' lang=' + defAr.lang);
   report('[lang] والمختار مُعلَن بـ`aria-pressed` (‏ar)', defAr.arPressed === 'true' && defAr.enPressed === 'false',
     'ar=' + defAr.arPressed + ' en=' + defAr.enPressed);
@@ -673,6 +715,73 @@ async function measureX1(src, report) {
         click.w.document.documentElement.dir === 'rtl' && click.w.document.documentElement.lang === 'ar'
         && click.w.__store['hl.lang'] === 'ar',
         'dir=' + click.w.document.documentElement.dir + ' store=' + JSON.stringify(click.w.__store));
+    }
+  }
+
+  /* (هـ) **تبديل حيّ**: النصّ **والاتجاه** معاً — عطل قِيس بجاسوس مستقلّ على `2b1d8c2`:
+     `barBtnBase()` تُسند `direction` في مواضع الإنشاء وحدها، فإعادة الرسم كانت تُغيّر
+     النصّ وتترك الاتجاه القديم ⇒ نصّ إنجليزي في حاوية `rtl`. */
+  {
+    const dirsOf = (w) => {
+      const d = (id) => {
+        const n = w.document.getElementById(id);
+        return n ? n.style.direction : null;
+      };
+      return { proc: d('haramlite-yt-proc'), mode: d('haramlite-yt-mode'), watch: d('haramlite-yt-watch') };
+    };
+    let w = null;
+    try { w = renderContent(contentJs, ['en-US', 'en'], REPLY_START, { store: { 'hl.lang': 'ar' } }); } catch (e) { w = null; }
+    if (!w || !w.__fireStorage) {
+      report('[switch] صفر مدخل: نافذة الصفحة مع مستمع `onChanged`', false, 'لم تُنشأ أو لا مستمع');
+    } else {
+      w.dispatchEvent(new w.Event('yt-navigate-finish'));
+      await sleep(320);
+      const arDirs = dirsOf(w);
+      const arTexts = { proc: textOf(w, '#haramlite-yt-proc'), mode: textOf(w, '#haramlite-yt-mode') };
+      report('[switch] إقلاع بمخزَّن `ar` على متصفّح إنجليزي ⇒ الأزرار الثلاثة `rtl` ونصّها عربي',
+        arDirs.proc === 'rtl' && arDirs.mode === 'rtl' && arDirs.watch === 'rtl'
+        && arTexts.proc === I18N.ar['btn.proc.idle'] && arTexts.mode === I18N.ar['btn.mode.clip'],
+        'dirs=' + JSON.stringify(arDirs) + ' texts=' + JSON.stringify(arTexts));
+      // التبديل الحيّ إلى `en` عبر `chrome.storage.onChanged` (المسار الحقيقي).
+      w.__fireStorage({ 'hl.lang': { newValue: 'en' } });
+      await sleep(60);
+      const enDirs = dirsOf(w);
+      const enTexts = { proc: textOf(w, '#haramlite-yt-proc'), mode: textOf(w, '#haramlite-yt-mode') };
+      report('[switch] وتبديل حيّ إلى `en` ⇒ النصّ **والاتجاه** معاً (`ltr`)، لا نصّ جديد باتجاه قديم',
+        enDirs.proc === 'ltr' && enDirs.mode === 'ltr' && enDirs.watch === 'ltr'
+        && enTexts.proc === I18N.en['btn.proc.idle'] && enTexts.mode === I18N.en['btn.mode.clip'],
+        'dirs=' + JSON.stringify(enDirs) + ' texts=' + JSON.stringify(enTexts));
+      w.__fireStorage({ 'hl.lang': { newValue: 'ar' } });
+      await sleep(60);
+      const backDirs = dirsOf(w);
+      report('[switch] ورجوع حيّ إلى `ar` ⇒ الاتجاهات `rtl` والنصّ عربي',
+        backDirs.proc === 'rtl' && backDirs.mode === 'rtl' && backDirs.watch === 'rtl'
+        && textOf(w, '#haramlite-yt-proc') === I18N.ar['btn.proc.idle'],
+        'dirs=' + JSON.stringify(backDirs));
+    }
+  }
+
+  /* (و) **نقرة مزدوجة سريعة ⇒ طلب واحد**: `BUSY` يُسند بعد `await`، فبين النقرة وردّ
+     الجرس لا شيء يمنع طلباً ثانياً. قِيس بجاسوس مستقلّ على `2b1d8c2`: نقرتان بفرق
+     ٥٫٤ مللي ⇒ `link` ثم `link`. والقفل (`STARTING`) يُسند متزامنةً قبل الـ`await`. */
+  {
+    let w = null;
+    try { w = renderContent(contentJs, ['en-US'], REPLY_START); } catch (e) { w = null; }
+    if (!w) { report('[double] صفر مدخل: نافذة الصفحة للقياس', false, 'لم تُنشأ'); }
+    else {
+      w.dispatchEvent(new w.Event('yt-navigate-finish'));
+      await sleep(320);
+      const btn = w.document.getElementById('haramlite-yt-proc');
+      if (!btn) { report('[double] صفر مدخل: زرّ المعالجة مُحقَن', false, 'مفقود'); }
+      else {
+        // نقرتان في **النبضة نفسها**: أقصر فارق ممكن، وأقصى ما يبلغه سباق ما قبل `BUSY`.
+        btn.click();
+        btn.click();
+        await sleep(200);
+        const links = w.__sent.filter((m) => m && m.type === 'link');
+        report('[double] نقرتان متتاليتان ⇒ **طلب واحد** لا طلبان (قفل البدء قبل `await`)',
+          links.length === 1, 'عدد الطلبات=' + links.length + ' · الأوضاع=' + JSON.stringify(links.map((m) => m.mode)));
+      }
     }
   }
 }
@@ -768,6 +877,21 @@ async function main() {
       { popup: { ...SHIPPED, js: sub(SHIPPED.js, /  \/\/ وعلامة الزرّ المختار جزء من الرسم نفسه: لا تُترك لنداء منفصل يُنسى\.\n  paintLang\(\);\n/, '') } }, 'fall'],
     ['⑳ مدخل جدول اللغة محذوف ⇒ الزرّ يعرض `undefined`',
       { popup: { ...SHIPPED, js: sub(SHIPPED.js, /    'lang\.en': 'English',\n/, '') } }, 'fall'],
+    /* ㉑ عطل الجاسوس على 2b1d8c2: إعادة الرسم تُغيّر النصّ **ولا تُسند الاتجاه**
+       (‏`barBtnBase` تُسنده في مواضع الإنشاء وحدها) ⇒ نصّ إنجليزي في حاوية `rtl`. */
+    ['㉑ `repaintBar` بلا إسناد اتجاه ⇒ التبديل الحيّ يترك النصّ الجديد باتجاه قديم',
+      { content: sub(CONTENT.js, /    for \(const b of \[procBtn, watchBtn, modeBtn\]\) \{\n      if \(b\) b\.style\.direction = dirNow\(\);\n    \}\n/, '') }, 'fall'],
+    /* ㉒ عطل الجاسوس (نقرة مزدوجة ٥٫٤ مللي ⇒ طلبان): نزع قفل البدء. */
+    ['㉒ قفل البدء منزوع ⇒ نقرتان متتاليتان ترسلان طلبين',
+      { content: sub(CONTENT.js, /    if \(BUSY \|\| STARTING\) return;/, '    if (BUSY) return;') }, 'fall'],
+    /* ㉓/㉔ ثقبا قسم ٣٣ — يُقاسان هنا **سلوكياً** أيضاً: محاكاة Trusted Types تُسقط
+       فتح القائمة كما تُسقطه في كروم (والنمط البنيوي يمسكهما في حارس المزامنة). */
+    ['㉓ `menu[innerHTML] = …` (وصول محسوب) ⇒ القائمة لا تُفتح (Trusted Types)',
+      { content: sub(CONTENT.js, /    const reprocess = mkNode\('button', null, t\('menu\.reprocess'\)\);/,
+        "    menu['innerHTML'] = t('menu.reprocess');\n    const reprocess = mkNode('button', null, t('menu.reprocess'));") }, 'fall'],
+    ['㉔ `menu.setHTMLUnsafe(…)` (معالج كروم ١٢٤+) ⇒ القائمة لا تُفتح',
+      { content: sub(CONTENT.js, /    const reprocess = mkNode\('button', null, t\('menu\.reprocess'\)\);/,
+        "    menu.setHTMLUnsafe(t('menu.reprocess'));\n    const reprocess = mkNode('button', null, t('menu.reprocess'));") }, 'fall'],
   ];
 
   let caught = 0, survived = 0, passed = 0, badPass = 0, skipped = 0;

@@ -2183,22 +2183,45 @@ console.log('\n=== ٣٣) صفر مصرف HTML خام: يوتيوب يفرض Trus
  * `insertAdjacentHTML` · `document.write`)، والبناء بعقد DOM + `textContent`
  * (‏`mkNode`) فلا مسار حقن ولا اعتماد على سياسة الصفحة.
  * ونصّ العدّ مجرَّد التعليقات، فشرحُ القاعدة في تعليق لا يُسقطها. */
-const HTML_SINKS = ['.innerHTML', '.outerHTML', 'insertAdjacentHTML', 'document.write', 'createContextualFragment'];
+/* **القاعدة بيضاء لا سوداء** (تصحيح بعد حكم جاسوس مستقلّ على `2b1d8c2`): العدّ الأول
+ * كان يشترط النصّ الحرفيّ (`.innerHTML`) فمرّ **ثقبان يعيدان العطل ميدانياً**:
+ *   · `menu['innerHTML'] = '…'` — وصول محسوب بمفتاح حرفيّ ⇒ قِيس حيّاً: القائمة
+ *     **لا تُفتح** + `TypeError … TrustedHTML … at toggleWatchMenu`.
+ *   · `menu.setHTMLUnsafe('…')` (كروم ١٢٤+) ⇒ قِيس حيّاً: `TypeError … requires
+ *     'TrustedHTML'`.
+ * فالعدّ الآن **بالأنماط**: كل صيغة تُسند HTML خاماً — حرفيّةً أو محسوبةً أو بمعالج
+ * `set*HTML*` — مع خمسة مصارف كلاسيكية. والفحص السلوكي الموازي في
+ * `check-extension-i18n-jsdom.cjs` (محاكاة Trusted Types + فتح القائمتين) يمسك
+ * الصيغ نفسها في DOM، والمُفسَدان مقيَّسان في الموضعين. */
+const HTML_SINKS = [
+  { label: 'إسناد `.innerHTML`', re: /\.\s*innerHTML\b/ },
+  { label: 'إسناد `.outerHTML`', re: /\.\s*outerHTML\b/ },
+  { label: 'نداء `insertAdjacentHTML(`', re: /\.\s*insertAdjacentHTML\s*\(/ },
+  { label: 'نداء `document.write(`', re: /\bdocument\s*\.\s*write(?:ln)?\s*\(/ },
+  { label: 'نداء `createContextualFragment(`', re: /\.\s*createContextualFragment\s*\(/ },
+  { label: 'وصول محسوب إلى خاصيّة HTML', re: /\[\s*(['"`])[A-Za-z_$]*HTML[A-Za-z_$]*\1\s*\]/ },
+  { label: 'معالج `set*HTML*()`', re: /\.\s*set[A-Za-z_$]*HTML[A-Za-z_$]*\s*\(/ },
+];
 const sinkScan = (text) => {
   const noCom = stripComments(text);
-  return HTML_SINKS.filter((s) => noCom.includes(s));
+  return HTML_SINKS.filter((s) => s.re.test(noCom)).map((s) => s.label);
 };
 const sinksNow = sinkScan(src);
-ok(`صفر مصرف HTML خام في content.js (${HTML_SINKS.length} مصرفاً مُعدّاً)`,
+ok(`صفر مصرف HTML خام في content.js (${HTML_SINKS.length} نمطاً: حرفيّ · محسوب · set*HTML*)`,
   sinksNow.length === 0, 'وُجد: ' + (sinksNow.join(' · ') || '—'));
+const OPEN_HTML = "    const reprocess = mkNode('button', null, t('menu.reprocess'));";
 const sinkMuts = [
   ['هـ١: قائمة النقر الأيمن عادت تُبنى بـ`innerHTML` (العطل الميداني نفسه)',
-    src.replace("    const reprocess = mkNode('button', null, t('menu.reprocess'));",
-      "    menu.innerHTML = t('menu.reprocess');\n    const reprocess = mkNode('button', null, t('menu.reprocess'));")],
+    src.replace(OPEN_HTML, "    menu.innerHTML = t('menu.reprocess');\n" + OPEN_HTML)],
   ['هـ٢: إدراج HTML عبر `insertAdjacentHTML` في التوست',
     src.replace('    el.textContent = msg;', "    el.insertAdjacentHTML('beforeend', msg);")],
   ['هـ٣: قراءة HTML عبر `outerHTML` في بناءٍ ما',
     src.replace('  function mkNode(tag, css, text) {', '  function mkNode(tag, css, text) {\n    void document.body.outerHTML;')],
+  // الثقبان المقيسان على 2b1d8c2:
+  ['هـ٤ (ثقب الجاسوس): `menu[\'innerHTML\'] = …` — وصول محسوب بمفتاح حرفيّ',
+    src.replace(OPEN_HTML, "    menu['innerHTML'] = t('menu.reprocess');\n" + OPEN_HTML)],
+  ['هـ٥ (ثقب الجاسوس): `menu.setHTMLUnsafe(…)` — معالج كروم ١٢٤+',
+    src.replace(OPEN_HTML, "    menu.setHTMLUnsafe(t('menu.reprocess'));\n" + OPEN_HTML)],
 ];
 for (const [label, mutant] of sinkMuts) {
   const fell = mutant !== src ? sinkScan(mutant) : [];
