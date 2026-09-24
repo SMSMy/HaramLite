@@ -1334,15 +1334,43 @@ fn open_settings<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(), Stri
         w.set_focus().map_err(|e| e.to_string())?;
         return Ok(());
     }
-    let win = tauri::WebviewWindowBuilder::new(&app, "settings", tauri::WebviewUrl::default())
-        .title("HaramLite — الإعدادات")
-        .inner_size(980.0, 760.0)
-        .min_inner_size(720.0, 560.0)
-        .build()
-        .map_err(|e| e.to_string())?;
+    let win = tauri::WebviewWindowBuilder::new(
+        &app,
+        "settings",
+        // **والوضع يُمرَّر من الرست في الرابط** (`#settings`): بديلٌ صريح يمنع
+        // انفراد تفعيل الشاشة بقراءة اللابل — وهو ما طلبه المشرف بعد عطب
+        // «النافذة البيضاء» الميداني. والجزء (`#`) عميليّ فلا يُرسَل إلى معالج
+        // المورد ولا يمسّ تحميل الصفحة، **وبقاؤه مقيس** في اختبار
+        // `mock_runtime` أدناه عبر `window.url()` (لا مفترَض).
+        tauri::WebviewUrl::App("index.html#settings".into()),
+    )
+    .title("HaramLite — الإعدادات")
+    .inner_size(980.0, 760.0)
+    .min_inner_size(720.0, 560.0)
+    .build()
+    .map_err(|e| e.to_string())?;
     win.set_focus().map_err(|e| e.to_string())?;
     tracing::info!(target: "app", "فُتحت نافذة الإعدادات المستقلة");
     Ok(())
+}
+
+/// **ماذا يفعل طلب الإغلاق؟** — دالّة قرار **واحدة** يقرؤها المعالج ويقيسها
+/// اختبار (فلا يبقى السلوك مستنبطاً من فرعٍ داخل مُغلَق لا يُقاس).
+///
+/// **والقرار النهائي للمالك (2026-09-24، بعد تصحيح المشرف)**: **الإخفاء في كل
+/// النوافذ** كما صُمِّم — **ولا إغلاق فعلي إطلاقاً**؛ فالرئيسية تُخفى إلى الشريط
+/// (البوت والمراقبة والجسر يبقون)، ونافذة الإعدادات تُخفى أيضاً فتعود بحالتها
+/// (تبويبها وتمريرها) من `open_settings` بلا بناء ثانٍ.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum CloseAction {
+    /// يُمنع الإغلاق وتُخفى النافذة — **وهو سلوك كل النوافذ**.
+    Hide,
+}
+
+/// **السلوك واحد لكل النوافذ** — والدالّة باقية لتكون **نقطة قرار واحدة**
+/// مقيسة (ولو كان القرار واحداً اليوم، فالتغيير يقع في موضع واحد).
+fn close_action(_label: &str) -> CloseAction {
+    CloseAction::Hide
 }
 
 pub fn run() {
@@ -1369,20 +1397,25 @@ pub fn run() {
         // exactly the complaint that produced tray.rs.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
-                // **والسطر يميّز النافذة**: نافذة الإعدادات المستقلة تُخفى
-                // أيضاً (قرار التكليف: تُخفى ولا تُدمَّر)، لكن نصّ «إلى الشريط…
-                // يعمل في الخلفية» يخصّ النافذة الرئيسية — فقولُه عن نافذة
-                // الإعدادات وعدٌ في غير موضعه.
-                if window.label() == "main" {
-                    tracing::info!(target: "app", "أُخفيت النافذة إلى الشريط — البرنامج يعمل في الخلفية (الإغلاق الكامل من قائمة الأيقونة)");
-                } else {
-                    tracing::info!(
-                        target: "app",
-                        "أُخفيت نافذة «{}» (لا تُدمَّر: العودة إليها بنفس حالتها)",
-                        window.label()
-                    );
+                match close_action(window.label()) {
+                    // **الإخفاء لا الإغلاق** في كل النوافذ (قرار المالك النهائي
+                    // بعد تصحيح المشرف): لا `destroy` ولا بناء من جديد.
+                    CloseAction::Hide => {
+                        api.prevent_close();
+                        let _ = window.hide();
+                        // **وسطر لكل نافذة — فالحدّ الذي لا يُسجَّل لا يُقاس**،
+                        // وبلاغ «X لا يعمل» لا يمكن الحكم فيه بلا أثر في السجلّ:
+                        // هذا السطر هو دليل وقوع الإخفاء (‏`INFO` بنفس النمط).
+                        if window.label() == "main" {
+                            tracing::info!(target: "app", "أُخفيت النافذة إلى الشريط — البرنامج يعمل في الخلفية (الإغلاق الكامل من قائمة الأيقونة)");
+                        } else {
+                            tracing::info!(
+                                target: "app",
+                                "أُخفيت نافذة «{}» عند طلب الإغلاق (لا تُدمَّر: تعود بحالتها من زرّ الإعدادات)",
+                                window.label()
+                            );
+                        }
+                    }
                 }
             }
         })
@@ -2130,6 +2163,21 @@ mod open_file_tests {
             .get_webview_window("settings")
             .expect("النافذة المستقلة وُجدت فعلاً بعد النداء (‏`settings`)");
         assert_eq!(first.label(), "settings", "اللابل هو ما تقرؤه الواجهة");
+        // **والوضع في الرابط مقيس لا مفترَض**: الجزء `#settings` يجب أن يبقى بعد
+        // دمج المسار في عنوان التطبيق — وهو **الدليل الثاني** لوضع الشاشة (فلا
+        // ينفرد اللابل بتفعيلها).
+        let url = first
+            .url()
+            .map_err(|e| e.to_string())
+            .expect("عنوان النافذة");
+        assert!(
+            url.as_str().contains("index.html"),
+            "النافذة تحمل صفحة التطبيق نفسها: {url}"
+        );
+        assert!(
+            url.fragment() == Some("settings"),
+            "الوضع لم يُمرَّر في الرابط (fragment) — فبقيت الشاشة رهن قراءة اللابل: {url}"
+        );
         // **والنداء الثاني لا يبني ثانية**: نفس النافذة (لابل واحد لا يتكرّر).
         invoke().expect("النداء الثاني يُظهر القائمة لا يفشل");
         let again = app
@@ -2140,6 +2188,21 @@ mod open_file_tests {
             "open_settings (IPC): النافذة «{}» أُنشئت ثم أُعيد استخدامها",
             again.label()
         );
+    }
+
+    /// **قرار الإغلاق مقيس** (قرار المالك النهائي 2026-09-24 بعد تصحيح المشرف):
+    /// **الإخفاء في كل النوافذ — ولا إغلاق فعلي إطلاقاً**.
+    ///
+    /// **مُفسَده**: إضافة فرع «إغلاق فعلي» لأي لابل ⇒ يسقط هذا الاختبار.
+    #[test]
+    fn the_close_action_hides_every_window_and_never_closes_for_real() {
+        for label in ["main", "settings", "any-other"] {
+            assert_eq!(
+                close_action(label),
+                CloseAction::Hide,
+                "النافذة «{label}» يجب أن تُخفى عند X (لا تُغلق فعلاً ولا تُدمَّر)"
+            );
+        }
     }
 
     /// **القدرة تشمل اللابل الجديد** — وإلا رُفض كل `invoke` من نافذة الإعدادات

@@ -311,5 +311,28 @@ describe('لا مسار ثانٍ · في الرئيسية لا تُفتح الش
     expect(isSettingsMode('main')).toBe(false);
     expect(isSettingsMode(null, '#settings'), 'بديل الـhash صريح').toBe(true);
     expect(isSettingsMode(null, '#anything')).toBe(false);
+    // **والدلالتان تُجمعان بـ«أو»** (وهو موضع عطب «النافذة البيضاء» الميداني):
+    // كان اللابل يُقدَّم فيُهمَل الرابط الذي يمرّره الرست في `open_settings`
+    // ⇒ فسقوط إحداهما كان يُسقط الوضع.
+    // مُفسَده: إعادة `if (label) return label === 'settings'` ⇒ يسقط السطران.
+    expect(
+      isSettingsMode('main', '#settings'),
+      'الرابط يقول إعدادات ⇒ كفى ولو خالف اللابل (الرست يمرّره في open_settings)',
+    ).toBe(true);
+    expect(isSettingsMode('', '#settings'), 'لابل فارغ لا يُبطل الرابط').toBe(true);
+  });
+
+  it('لا نافذة فارغة: في وضع الإعدادات الشاشة ظاهرة، وفي الرئيسية مخفيّة', async () => {
+    // الحال الضارّ الذي يُنتج بياضاً: الوضع مُعلَن (فيُخفى `main`) والشاشة مخفيّة
+    // ⇒ لا مرئيّ إطلاقاً. فيُقاس **الصنفان معاً** لا أحدهما.
+    await mountSettingsWindow();
+    const screen = document.getElementById('settings-menu')!;
+    expect(document.body.classList.contains('settings-mode'), 'الوضع مُعلَن').toBe(true);
+    expect(screen.classList.contains('hidden'), 'والشاشة ظاهرة معه (لا بياض)').toBe(false);
+
+    await mountMainWindow();
+    const screen2 = document.getElementById('settings-menu')!;
+    expect(document.body.classList.contains('settings-mode'), 'لا وضع في الرئيسية').toBe(false);
+    expect(screen2.classList.contains('hidden'), 'والشاشة مخفيّة (لا مسار ثانٍ)').toBe(true);
   });
 });
