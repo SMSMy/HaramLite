@@ -336,7 +336,7 @@ fn complete_pairing(from_id: i64) -> Result<Settings, String> {
 fn pairing_hint(from_id: i64) -> String {
     format!(
         "🔒 هذا البوت غير مقترن بعد.\n\
-         معرّفك: `{from_id}`\n\n\
+         معرّفك: {from_id}\n\n\
          لربطه: افتح البرنامج ← الإعدادات ← تيليجرام، وأرسل رمز الاقتران الظاهر هناك \
          إلى هذا البوت (أو الصق معرّفك في خانة «معرّف المستخدم المسموح»)."
     )
@@ -688,7 +688,7 @@ pub(crate) fn cancel_reply(gone: bool, phase: slots::JobPhase) -> String {
     }
     match phase {
         slots::JobPhase::Preparing => format!(
-            "🛑 طُلب الإلغاء — المهمّة في **مرحلة التحضير** (تنزيل/استلام): أدواتها \
+            "🛑 طُلب الإلغاء — المهمّة في مرحلة التحضير (تنزيل/استلام): أدواتها \
              (yt-dlp/ffmpeg) تُقتل فوراً. أطول ما قيس في هذه المرحلة {:.1} ث.",
             CANCEL_PREPARE_WORST_SECS
         ),
@@ -697,7 +697,7 @@ pub(crate) fn cancel_reply(gone: bool, phase: slots::JobPhase) -> String {
             let mins = secs as f64 / 60.0;
             let slot_mins = slots::DEFAULT_WAIT.as_secs() / 60;
             format!(
-                "🛑 طُلب الإلغاء — المهمّة في **مرحلة المعالجة**: إمّا تنتظر فتحة \
+                "🛑 طُلب الإلغاء — المهمّة في مرحلة المعالجة: إمّا تنتظر فتحة \
                  جهاز (حتى {slot_mins} دقيقة)، وإمّا داخل نداء محرّك لا يُقطع داخل \
                  العملية (لا نقطة إلغاء فيه). أطول ما قيس {mins:.1} دقيقة ({secs} ث)، \
                  والغالب أقلّ بكثير."
@@ -1301,10 +1301,813 @@ fn send_ephemeral(
     Ok(v.get("message_id").and_then(Value::as_i64).unwrap_or(0))
 }
 
+// ── i18n: لغات رسائل البوت ──────────────────────────────────────────────────
+
+/// **لغة رسائل البوت** — نظير `settings.lang` في التطبيق (`"ar"` · `"en"`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum Lang {
+    #[default]
+    #[serde(rename = "ar")]
+    Ar,
+    #[serde(rename = "en")]
+    En,
+}
+
+impl Lang {
+    pub const ALL: [Lang; 2] = [Lang::Ar, Lang::En];
+
+    pub fn code(self) -> &'static str {
+        match self {
+            Lang::Ar => "ar",
+            Lang::En => "en",
+        }
+    }
+
+    /// **اسم اللغة بلغة القارئ نفسه** — يُعرَض في قائمة `/lang` فلا يحتاج ترجمة.
+    fn endonym(self) -> &'static str {
+        match self {
+            Lang::Ar => "العربية",
+            Lang::En => "English",
+        }
+    }
+
+    /// يقبل الرمز (`ar` · `en`) واسم اللغة (`العربية` · `english`).
+    fn from_code(code: &str) -> Option<Lang> {
+        match code.trim().to_ascii_lowercase().as_str() {
+            "ar" | "arab" | "arabic" | "العربية" => Some(Lang::Ar),
+            "en" | "eng" | "english" | "الإنجليزية" => Some(Lang::En),
+            _ => None,
+        }
+    }
+}
+
+/// **مدخل لغة محفوظ**: لغة محادثةٍ بعينها (نظير `AllowPair` في قائمة السماح).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct LangEntry {
+    chat_id: i64,
+    lang: Lang,
+}
+
+/// ملف اللغات كما يُكتب على القرص.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+struct LangFile {
+    #[serde(default)]
+    v: u32,
+    #[serde(default)]
+    entries: Vec<LangEntry>,
+}
+
+/// **لغات المحادثات** — ملفٌّ واحد بجانب `telegram-access.json`، ويُقرأ عند كل
+/// طلب (في نقطة الاختناق). و`path: None` يعني «بلا حفظ» — وهو حال كل اختبار.
+///
+/// **والافتراضيّ يُحسم مرة واحدة** عند التحميل (`fallback`، من `settings.lang`)
+/// لا عند كل رسالة: قراءته في كل طلب كانت تربط لغة البوت بحالةٍ عامّة تتغيّر
+/// تحت الاختبارات (وقع فعلاً: فحصٌ يضبط `lang:"en"` في الإعدادات قلب نصوص فحوصٍ
+/// أخرى إلى الإنجليزية في العمليّة نفسها).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct LangStore {
+    entries: HashMap<i64, Lang>,
+    path: Option<PathBuf>,
+    /// لغة من لم يختر: لغة إعداد التطبيق لحظة التحميل، والعربية إن غابت.
+    fallback: Lang,
+}
+
+impl LangStore {
+    /// ملفٌّ تالف أو غائب ⇒ **لا مدخلات** لا خطأ: الافتراضيّ (لغة التطبيق) يحكم.
+    fn from_path(path: PathBuf) -> Self {
+        Self::from_path_with(path, default_lang())
+    }
+
+    /// **والافتراضيّ معاملاً**: يُقاس به «الافتراضيّ = لغة الإعداد» بلا لمس حالة
+    /// التطبيق العامّة (وهي مُلوَّثة بين الاختبارات).
+    fn from_path_with(path: PathBuf, fallback: Lang) -> Self {
+        let entries = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<LangFile>(&raw).ok())
+            .map(|f| f.entries.into_iter().map(|e| (e.chat_id, e.lang)).collect())
+            .unwrap_or_default();
+        Self {
+            entries,
+            path: Some(path),
+            fallback,
+        }
+    }
+
+    /// **لغة محادثة**: ما اختارها صاحبها، وإلا **لغة إعداد التطبيق**، وإلا العربية.
+    fn lang_for(&self, chat_id: i64) -> Lang {
+        self.entries.get(&chat_id).copied().unwrap_or(self.fallback)
+    }
+
+    /// يعيد `true` إن تغيّرت اللغة فعلاً (فلا يُقال «بُدِّلت» لمن اختار لغته).
+    fn set(&mut self, chat_id: i64, lang: Lang) -> bool {
+        if self.entries.get(&chat_id) == Some(&lang) {
+            return false;
+        }
+        self.entries.insert(chat_id, lang);
+        true
+    }
+
+    /// كتابة **ذرّية** (`atomic.rs`): الملف يُقرأ عند كل إرسال، فملفٌّ مقطوع يعني
+    /// فقدان اختيار المستخدم.
+    fn save(&self) -> Result<(), String> {
+        let Some(path) = self.path.as_ref() else {
+            return Ok(());
+        };
+        let mut entries: Vec<LangEntry> = self
+            .entries
+            .iter()
+            .map(|(chat_id, lang)| LangEntry {
+                chat_id: *chat_id,
+                lang: *lang,
+            })
+            .collect();
+        entries.sort_by_key(|e| e.chat_id);
+        let body = serde_json::to_string(&LangFile { v: 1, entries }).map_err(|e| e.to_string())?;
+        crate::atomic::write_atomic_str(path, &body, "telegram-lang").map_err(|e| e.to_string())
+    }
+}
+
+fn lang_path(app_data: &Path) -> PathBuf {
+    app_data.join("telegram-lang.json")
+}
+
+fn lang_store() -> &'static Mutex<LangStore> {
+    static L: OnceLock<Mutex<LangStore>> = OnceLock::new();
+    L.get_or_init(|| Mutex::new(LangStore::default()))
+}
+
+/// يصفّر المخزن — **بين الاختبارات**: المخزن **واحد للعملية**، فاختبارٌ يبدّل لغة
+/// محادثةٍ يتركها لمن بعده فيُقاس نصٌّ بلغةٍ ليست لغته (وقع فعلاً: سبعة اختبارات
+/// سقطت لأن اختبار `/lang` بدّل المحادثة ٧ إلى الإنجليزية).
+#[cfg(test)]
+fn reset_lang_store() {
+    *lang_store().lock().unwrap_or_else(|p| p.into_inner()) = LangStore::default();
+}
+
+/// يضبط المخزن من القرص عند الإقلاع (يُنادى من مسار الإقلاع، مثل قائمة السماح).
+fn load_lang_store(app_data: &Path) -> LangStore {
+    let store = LangStore::from_path(lang_path(app_data));
+    *lang_store().lock().unwrap_or_else(|p| p.into_inner()) = store.clone();
+    store
+}
+
+/// **لغة إعداد التطبيق** — الافتراضيّ لمن لم يختر، والعربية إن غابت الإعدادات.
+fn default_lang() -> Lang {
+    APP.get()
+        .and_then(|a| {
+            use tauri::Manager;
+            a.try_state::<crate::AppState>().map(|st| {
+                st.settings
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .lang
+                    .clone()
+            })
+        })
+        .and_then(|code| Lang::from_code(&code))
+        .unwrap_or(Lang::Ar)
+}
+
+/// لغة الطلب من `chat_id` نفسه (أو نطاق `setMyCommands`) — فلا تُمرَّر لغةٌ
+/// يدويّاً إلى ٧١ موضع نداء، ولا يبقى موضعٌ بنسخةٍ خاصّة.
+/// لغة محادثةٍ بعينها — للنصوص **المركَّبة** التي تُبنى قبل الطلب (قائمة الأوامر
+/// تُبنى من وصف كل أمر، فلا تصل إلى نقطة الاختناق كنصٍّ واحد يطابق الجدول).
+fn body_lang_of_chat(chat_id: i64) -> Lang {
+    lang_store()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .lang_for(chat_id)
+}
+
+fn body_lang(body: &Value) -> Lang {
+    let chat = body
+        .get("chat_id")
+        .and_then(|v| {
+            v.as_i64()
+                .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+        })
+        .or_else(|| body.pointer("/scope/chat_id").and_then(Value::as_i64));
+    match chat {
+        Some(id) => body_lang_of_chat(id),
+        None => default_lang(),
+    }
+}
+
+/// **جدول الترجمة**: العربي هو المفتاح (نمط `gettext`) والإنجليزي هو المقابل.
+///
+/// **ولماذا مفتاحٌ نصّيّ بدل رمزٍ لكل نصّ**: نصوص البوت **١٥٣ نصّاً** موزّعة على
+/// ٧١ موضع نداء، وتمرير رمزٍ إلى كلٍّ منها كان يمسّ كل سطر إرسال في الملف؛ ونقطة
+/// الاختناق ([`localize_body`]) تضمن أن **لا نصّ يصل بلغة غير لغته** — وهي الضمانة
+/// نفسها التي كان الرمز يقدّمها، بلا مساس بمواضع النداء. والثمن المُعلَن: المفتاح
+/// نصٌّ عربي في موضعه، ويحرسه [`every_user_text_has_a_translation`].
+///
+/// والأماكن النائبة (`{}` · `{name}`) تُقابَل **بالموضع**: ما يُلتقط من العربي
+/// يُسكَب في الإنجليزي بالترتيب نفسه.
+///
+/// **والمفاتيح مولَّدة من القيم المفكوكة** لا مكتوبة بيد: أخرجها ماسح النصوص
+/// نفسه (`{:?}`) فأُدرجت كما هي — فلا يفترق المفتاح عن النصّ الواقع بحرف.
+const TEXTS: &[(&str, &str)] = &[
+    (
+        "\nأرسل رابط فيديو، أو ارفع ملف صوت/فيديو (حتى {} سحابيا\u{64b})، وسأزيل الموسيقى وأعيده إليك.",
+        "\nSend a video link, or upload an audio/video file (up to {} on the cloud), and I will remove the music and send it back.",
+    ),
+    (
+        "\n⏳ في قائمة الانتظار — دورك: {}\n(قبلك {} مهم\u{651}ة تعمل أو تنتظر)\n",
+        "\n⏳ Queued — your turn: {}\n({} job(s) running or waiting ahead of you)\n",
+    ),
+    ("\n⚠\u{fe0f} آخر خطأ: {last_error}", "\n⚠\u{fe0f} Last error: {last_error}"),
+    ("   • {file} — منذ {secs} ث{}\n", "   • {file} — {secs}s ago{}\n"),
+    (" (ط\u{64f}لب إلغاؤها)", " (cancellation requested)"),
+    (" عبر خادم محلي", " via a local server"),
+    (" — أ\u{64f}ضيف إلى قائمة السماح", " — added to the allow-list"),
+    (
+        " — أ\u{64f}ضيف في الذاكرة وتعذ\u{651}ر حفظه",
+        " — added in memory, but saving it failed",
+    ),
+    (" — كان مسموحا\u{64b} أصلا\u{64b}", " — was already allowed"),
+    (
+        "(لا أوامر عامة — الأوامر تظهر في محادثة المالك وحدها)\n",
+        "(no public commands — they appear in the owner's chat only)\n",
+    ),
+    ("<التوكن محجوب>", "<token redacted>"),
+    ("{head}\n\nاختر ما تريد:", "{head}\n\nChoose what you want:"),
+    (
+        "{head}\n\n✗ ولا يمكن إدخاله بالضغط: أطول من أن يحمله أدنى معد\u{651}ل صوتي ({} كيلوبت، والهدف {} م.ب).\nارفع الحد\u{651} بخادم Bot API محلي (زر\u{651} «كيف أرفع الحد\u{651}؟»)، أو أرسل مقطعا\u{64b} أقصر، أو خ\u{64f}ذ الملف من مجلد النتائج على الجهاز.",
+        "{head}\n\n✗ And it cannot be squeezed in: longer than the lowest audio bitrate can carry ({} kbps, target {} MB).\nRaise the limit with a local Bot API server (the \"How do I raise the limit?\" button), send a shorter clip, or take the file from the results folder on this machine.",
+    ),
+    (
+        "{hint}\n{wait}\nهل هذا أغنية أم مقطع عادي؟\n(الأغنية: فصل كامل + قص\u{651} الصمت — المقطع: إزالة الموسيقى فقط)",
+        "{hint}\n{wait}\nIs this a song or an ordinary clip?\n(Song: full separation + silence trimming — Clip: music removal only)",
+    ),
+    (
+        "{m} — ⚠ الصورة أ\u{64f}زيلت فعلا\u{64b} والاسم لم ي\u{64f}ع\u{64e}د إلى «{previous}»",
+        "{m} — ⚠ the photo really was removed and the name was not restored to \"{previous}\"",
+    ),
+    (
+        "{m} — ⚠ الصورة ر\u{64f}فعت فعلا\u{64b} والاسم لم ي\u{64f}ضبط؛ ألغ\u{650} المرب\u{651}ع لإزالة الصورة وإعادة الاسم «{previous}»",
+        "{m} — ⚠ the photo really was uploaded and the name was not set; clear the checkbox to remove the photo and restore the name \"{previous}\"",
+    ),
+    ("أبعاد الصورة خارج المعقول: {w}×{h}", "Unreasonable image dimensions: {w}×{h}"),
+    ("أستخرج الصوت وأضغطه…", "Extracting the audio and compressing it…"),
+    ("أضغط ثم أرسل…", "Compressing, then sending…"),
+    ("أغنية", "Song"),
+    ("أ\u{64f}لغي استلام الملف", "File receive cancelled"),
+    ("أ\u{64f}لغي الإرسال", "Upload cancelled"),
+    ("إحصاءات {from_id}@{chat_id}", "stats for {from_id}@{chat_id}"),
+    ("إحصاءاتك: عدد الملفات والحجم", "your stats: file count and size"),
+    (
+        "إعادة أزرار اختيار الوضع للملفات المنتظرة",
+        "resend the mode buttons for waiting files",
+    ),
+    ("إلغاء مهم\u{651}ة هذه المحادثة", "cancel this chat's job"),
+    ("اخترت: {label}", "You chose: {label}"),
+    (
+        "اذكرني مع الرابط — مثال: @{} https://…",
+        "Mention me with the link — for example: @{} https://…",
+    ),
+    (
+        "اذكرني مع الرابط: مثال @<البوت> https://…",
+        "Mention me with the link: for example @<bot> https://…",
+    ),
+    (
+        "اسم البوت {len} حرفا\u{64b} وحد\u{651} setMyName {MAX_BOT_NAME}",
+        "the bot name is {len} characters and the setMyName limit is {MAX_BOT_NAME}",
+    ),
+    ("اقتران ناجح: {from_id}", "paired: {from_id}"),
+    (
+        "الاسم السابق {} حرفا\u{64b} فوق حد\u{651} setMyName {MAX_BOT_NAME}",
+        "the previous name is {} characters, over the setMyName limit {MAX_BOT_NAME}",
+    ),
+    ("التطبيق غير مهيأ", "the app is not initialised"),
+    (
+        "الملف أكبر من حد تيليجرام السحابي ({}) — أرسله كرابط، أو فع\u{651}ل الخادم المحلي من الإعدادات",
+        "The file is larger than Telegram's cloud limit ({}) — send it as a link, or enable the local server in Settings",
+    ),
+    ("انتهت صلاحية سؤال تجاوز للـ{}", "an oversize question expired for {}"),
+    ("انتهت صلاحية هذا الطلب — أعد الإرسال", "This request expired — send it again"),
+    (
+        "انتهت مهلة انتظار معر\u{651}ف الرسالة من طابور الإرسال",
+        "timed out waiting for a message id from the send queue",
+    ),
+    ("انقطع استلام الملف: {e}", "File receive was interrupted: {e}"),
+    ("بلا ملف", "no file"),
+    ("بوت تيليجرام متوقف", "Telegram bot stopped"),
+    ("بوت تيليجرام يعمل{} ({})", "Telegram bot running{} ({})"),
+    ("تجهيز الملف", "Preparing the file"),
+    ("تنقية وتحسين", "Cleaning and enhancing"),
+    ("ترميز الناتج", "Encoding the result"),
+    ("تعذر الاتصال بتيليجرام: {e}", "Could not reach Telegram: {e}"),
+    ("تم", "Done"),
+    ("تم الاقتران بالمعر\u{651}ف {from_id}", "paired with id {from_id}"),
+    ("جار\u{64d} التنفيذ بالفعل", "Already running"),
+    ("حالة التطبيق غير متاحة", "the app state is unavailable"),
+    ("خطأ غير معروف من تيليجرام", "unknown error from Telegram"),
+    ("ر\u{64f}فض الطلب", "The request was refused"),
+    ("س\u{64f}مح لطلب {}@{}", "allowed request {}@{}"),
+    ("طلب موافقة من {} في {} (رسالة {msg_id})", "approval request from {} in {} (message {msg_id})"),
+    ("ط\u{64f}ب\u{650}\u{651}قت", "applied"),
+    ("ع\u{64f}كست", "reverted"),
+    ("غير معروف", "unknown"),
+    ("غير مقترن: رسالة من {from_id}", "not paired: message from {from_id}"),
+    ("فصل الصوت", "Separating the audio"),
+    ("قائمة الأوامر", "command list"),
+    ("قرار غير معروف", "unknown decision"),
+    ("لا أعرف الأمر /{other}.\n\n{}", "I do not know the command /{other}.\n\n{}"),
+    ("لا توكن للبوت", "no bot token"),
+    ("لا مسار للملف في رد تيليجرام", "no file path in Telegram's reply"),
+    (
+        "لا ملفات تنتظر اختيار الوضع الآن.\nأرسل ملفا\u{64b} أو رابطا\u{64b} وسأسألك.",
+        "No files are waiting for a mode now.\nSend a file or a link and I will ask you.",
+    ),
+    ("لا مهم\u{651}ة جارية", "No job is running"),
+    (
+        "لغة رسائل البوت (العربية أو الإنجليزية)",
+        "the bot's message language (Arabic or English)",
+    ),
+    ("لم أجد رابطا\u{64b} في رسالتك.\n{}", "I found no link in your message.\n{}"),
+    ("لم يعد هذا السؤال فع\u{651}الا\u{64b}", "This question is no longer active"),
+    ("لم يعد هذا الطلب فع\u{651}الا\u{64b}", "This request is no longer active"),
+    ("لم ي\u{64f}ختر بعد", "not chosen yet"),
+    ("ما يعمل الآن ول\u{650}م\u{64e}ن", "what is running now, and for whom"),
+    ("محاولة اقتران فاشلة من {from_id}", "failed pairing attempt from {from_id}"),
+    ("معالجة", "Processing"),
+    ("معلومة", "info"),
+    ("مقترن", "paired"),
+    ("مقطع عادي", "Ordinary clip"),
+    ("ملف", "file"),
+    ("هذا الزر\u{651} ليس لك", "This button is not yours"),
+    (
+        "هذا الزر\u{651} ليس لهذه المحادثة",
+        "This button does not belong to this chat",
+    ),
+    ("هذا القرار للمالك وحده", "This decision is the owner's alone"),
+    (
+        "هذا سؤال قديم — استعمل أزرار آخر رسالة سؤال",
+        "This is an old question — use the buttons on the latest question message",
+    ),
+    ("هوية البوت: {} (الاسم {})", "bot identity: {} (name {})"),
+    ("وضع الاقتران", "pairing mode"),
+    (
+        "ℹ\u{fe0f} المقطع طويل ({}) — لا يمكن أن يحمل الفيديو داخل حد تيليجرام، سأرسل الصوت بجودة كاملة.",
+        "ℹ\u{fe0f} The clip is long ({}) — the video cannot fit inside Telegram's limit, so I will send the audio at full quality.",
+    ),
+    ("ℹ\u{fe0f} كيف أرفع الحد\u{651}؟", "ℹ\u{fe0f} How do I raise the limit?"),
+    (
+        "ℹ\u{fe0f} كيف أرفع الحد\u{651}؟\n\n• حد\u{651} تلغرام السحابي للبوت: {} إرسالا\u{64b} و{} استقبالا\u{64b} — وهو حد\u{651} الخدمة، لا إعداد في هذا البرنامج.\n• الحل\u{651} الرسمي: تشغيل خادم Bot API محلي (\u{200f}telegram-bot-api) على الجهاز، فيصير الحد\u{651} 2000 م.ب.\n• وبعد تشغيله: الإعدادات ← تيليجرام ← «عنوان الخادم المحلي» (مثال: {LOCAL_SERVER_HINT}).\n\nوهذا الزر\u{651} معلومة لا إجراء: لا يرسل شيئا\u{64b} ولا يغي\u{651}ر إعدادا\u{64b}.\nولا أقس\u{651}م الناتج إلى أجزاء — قرار المالك.",
+        "ℹ\u{fe0f} How do I raise the limit?\n\n• Telegram's cloud limit for a bot: {} sent and {} received — that is the service limit, not a setting in this program.\n• The official fix: run a local Bot API server (\u{200f}telegram-bot-api) on this machine, and the limit becomes 2000 MB.\n• Once it runs: Settings → Telegram → \"Local server address\" (example: {LOCAL_SERVER_HINT}).\n\nThis button is information, not an action: it sends nothing and changes no setting.\nAnd I never split the result into parts — the owner's decision.",
+    ),
+    (
+        "⌛ انتهت صلاحية سؤال الضغط ({} دقيقة).\nالناتج باق\u{64d} في مجلد النتائج ولم ي\u{64f}حذف: أعد إرسال الملف إن أردت المحاولة.",
+        "⌛ The compression question expired ({} minutes).\nThe result is still in the results folder and was not deleted: send the file again if you want to retry.",
+    ),
+    (
+        "⏳ الناتج {} فوق حد\u{651} الإرسال — سألتك في الرسالة أدناه.",
+        "⏳ The result {} is over the send limit — I asked you in the message below.",
+    ),
+    (
+        "⏳ عندك {MAX_PENDING_PER_CHAT} ملفات تنتظر اختيار الوضع — أكمل الملفات الحالية أولا\u{64b} ثم أعد إرسال هذا الملف.",
+        "⏳ You have {MAX_PENDING_PER_CHAT} files waiting for a mode — finish the current ones first, then send this file again.",
+    ),
+    (
+        "⏳ في قائمة الانتظار — دورك: {position}\nالوضع: {label}",
+        "⏳ Queued — your turn: {position}\nMode: {label}",
+    ),
+    (
+        "⏳ في قائمة الانتظار: {queued}\n📎 ملفات تنتظر اختيار الوضع: {pendings}\n⏳ أسئلة ضغط مفتوحة: {oversize}\n👤 المحادثة: {chat_id}",
+        "⏳ Queued: {queued}\n📎 files waiting for a mode: {pendings}\n⏳ open compression questions: {oversize}\n👤 chat: {chat_id}",
+    ),
+    ("▶ بدأت المعالجة — الوضع: {label}", "▶ Processing started — mode: {label}"),
+    (
+        "▶ لا شيء يعمل لهذه المحادثة الآن.\n",
+        "▶ Nothing is running for this chat right now.\n",
+    ),
+    ("▶ يعمل الآن ({}):\n", "▶ Running now ({}):\n"),
+    ("♾\u{fe0f} اسمح دائما\u{64b}", "♾\u{fe0f} Always allow"),
+    (
+        "♾\u{fe0f} س\u{64f}مح دائما\u{64b} لـ{} ({}){}.",
+        "♾\u{fe0f} Always allowed for {} ({}){}.",
+    ),
+    ("⚠ تعذر جدولة المهمة", "⚠ the job could not be scheduled"),
+    ("⚠ تعذر حفظ الاقتران: {e}", "⚠ could not save the pairing: {e}"),
+    (
+        "⚠\u{fe0f} آخر فصل\u{64d} على هذا الجهاز جرى على المعالج (CPU) لا على كرت — ومجموعة\u{64c} فيها أكثر من عضو غير عملية على المعالج.",
+        "⚠\u{fe0f} The last separation on this machine ran on the CPU, not a GPU — and a group with more than one member is not practical on the CPU.",
+    ),
+    (
+        "⚠\u{fe0f} الناتج {} — {file}\nيتجاوز حد\u{651} الإرسال في تلغرام ({}).\nالملف محفوظ في مجلد النتائج ولن ي\u{64f}حذف.",
+        "⚠\u{fe0f} The result {} — {file}\nis over Telegram's send limit ({}).\nThe file is kept in the results folder and will not be deleted.",
+    ),
+    ("✅ اسمح", "✅ Allow"),
+    (
+        "✅ تم اقتران حسابك بنجاح.\nأرسل رابط فيديو، أو ارفع ملف صوت/فيديو، وسأزيل الموسيقى وأعيده إليك.",
+        "✅ Your account is paired.\nSend a video link, or upload an audio/video file, and I will remove the music and send it back.",
+    ),
+    ("✅ تم — {} في {:.0} ثانية", "✅ Done — {} in {:.0} seconds"),
+    ("✅ تم — أ\u{64f}رسل بعد الضغط ({}).", "✅ Done — sent after compression ({})."),
+    ("✅ س\u{64f}مح لطلب {} ({}).", "✅ Allowed request {} ({})."),
+    (
+        "✗ بقي المضغوط {} — فوق حد\u{651} الإرسال ({}).\nالناتج الأصلي باق\u{64d} في مجلد النتائج.",
+        "✗ The compressed file is still {} — over the send limit ({}).\nThe original result is still in the results folder.",
+    ),
+    ("✗ تعذر استخراج الصوت", "✗ could not extract the audio"),
+    ("✗ تعذر استلام الملف: {e}", "✗ could not receive the file: {e}"),
+    (
+        "✗ تعذر تصغير الناتج ليدخل في حد تيليجرام",
+        "✗ could not shrink the result to fit Telegram's limit",
+    ),
+    ("✗ تعذر ضغط الناتج: {e}", "✗ could not compress the result: {e}"),
+    ("✗ تعذر نسخ الملف: {e}", "✗ could not copy the file: {e}"),
+    (
+        "✗ تعذ\u{651}ر الضغط إلى داخل الحد\u{651} — الناتج الأصلي باق\u{64d} في مجلد النتائج.",
+        "✗ could not compress it under the limit — the original result is still in the results folder.",
+    ),
+    (
+        "✗ تعذ\u{651}ر الضغط: {e}\nالناتج الأصلي باق\u{64d} في مجلد النتائج.",
+        "✗ compression failed: {e}\nThe original result is still in the results folder.",
+    ),
+    (
+        "✗ تعذ\u{651}ر بدء الضغط: {e}\nالناتج باق\u{64d} في مجلد النتائج.",
+        "✗ could not start the compression: {e}\nThe result is still in the results folder.",
+    ),
+    ("✗ تعذ\u{651}ر طرح سؤال الضغط: {e}", "✗ could not ask the compression question: {e}"),
+    (
+        "✗ حجم الملف {} يتجاوز حد تيليجرام للتنزيل ({}).\nأرسل المقطع كرابط (بلا حد)، أو فع\u{651}ل الخادم المحلي من الإعدادات.",
+        "✗ The file size {} is over Telegram's download limit ({}).\nSend the clip as a link (no limit), or enable the local server in Settings.",
+    ),
+    ("✗ فشل الإرسال: {e}", "✗ send failed: {e}"),
+    (
+        "✗ فشل الإرسال: {e}\nالناتج الأصلي باق\u{64d} في مجلد النتائج.",
+        "✗ send failed: {e}\nThe original result is still in the results folder.",
+    ),
+    ("✗ فشل التنزيل: {e}", "✗ download failed: {e}"),
+    ("✗ فشلت المعالجة: {e}", "✗ processing failed: {e}"),
+    ("✗ لم ينتج ملف", "✗ no file was produced"),
+    ("✗ مسار الملف المحلي غير موجود", "✗ the local file path does not exist"),
+    (
+        "❌ أ\u{64f}لغي الإرسال — الناتج باق\u{64d} في مجلد النتائج ولم ي\u{64f}حذف.",
+        "❌ The upload was cancelled — the result is still in the results folder and was not deleted.",
+    ),
+    ("❌ إلغاء", "❌ Cancel"),
+    ("❌ ارفض", "❌ Refuse"),
+    ("❌ ر\u{64f}فض طلب {} ({}).", "❌ Refused request {} ({})."),
+    (
+        "❌ كود غير صحيح — أ\u{64f}بطل الرمز. اطلب رمزا\u{64b} جديدا\u{64b} من إعدادات البرنامج.",
+        "❌ Wrong code — the code was invalidated. Request a new one from the program's settings.",
+    ),
+    (
+        "❌ كود غير صحيح. المحاولات المتبقية: {fails_left}",
+        "❌ Wrong code. Attempts left: {fails_left}",
+    ),
+    (
+        "🌐 العربية هي اللغة العاملة أصلا\u{64b} — لا تغيير.\nالمتاح: {list}",
+        "🌐 Arabic is already the active language — nothing changed.\nAvailable: {list}",
+    ),
+    (
+        "🌐 لا تتوف\u{651}ر لغة «{code}» بعد — الرسائل بالعربية وحدها.\nالمتاح: {list}",
+        "🌐 The language \"{code}\" is not available yet — messages stay in Arabic.\nAvailable: {list}",
+    ),
+    (
+        "🌐 لغة رسائل البوت: العربية\nالمتاح: {list}",
+        "🌐 Bot message language: Arabic\nAvailable: {list}",
+    ),
+    ("🎧 HaramLite — أ\u{64f}زيلت الموسيقى ({} — مضغوط بطلبك)", "🎧 HaramLite — music removed ({} — compressed at your request)"),
+    (
+        "🎧 HaramLite — أ\u{64f}زيلت الموسيقى ({})\nالوضع: {}",
+        "🎧 HaramLite — music removed ({})\nMode: {}",
+    ),
+    ("🎧 أرسله صوتا\u{64b}", "🎧 Send it as audio"),
+    ("🎬 مقطع عادي", "🎬 Ordinary clip"),
+    ("🎵 أغنية", "🎵 Song"),
+    ("📊 إحصاءات", "📊 Stats"),
+    ("📊 الحال الآن\n", "📊 Status now\n"),
+    (
+        "📌 للاستخدام: {example}\nوالمعالجة تجري على جهاز المالك.",
+        "📌 To use it: {example}\nProcessing runs on the owner's machine.",
+    ),
+    ("📤 جار\u{64d} إرسال المضغوط…", "📤 Sending the compressed file…"),
+    ("📤 جار\u{64d} الإرسال…", "📤 Uploading…"),
+    ("📥 جار\u{64d} استلام الملف…", "📥 Receiving the file…"),
+    ("📥 جار\u{64d} استلام الملف… {}", "📥 Receiving the file… {}"),
+    // **نصّ المرحلة مركَّب** (`🎛️ {وسم}… {شريط}`): القالب واحد، ووسمُ المرحلة
+    // يُترجَم بالوسيط نفسه (كل وسم في الجدول). وهذا ما كشفه **الحكم على القيمة**:
+    // المفتاح لا يراه لأنه لا يُكتب حرفاً في المصدر.
+    ("🎛️ {}… {}", "🎛️ {}… {}"),
+    ("📥 جار\u{64d} التنزيل… {}", "📥 Downloading… {}"),
+    (
+        "🔒 طلبك يحتاج إذن المالك، وتعذ\u{651}ر إبلاغه الآن.",
+        "🔒 Your request needs the owner's permission, and he could not be notified right now.",
+    ),
+    (
+        "🔒 لست في قائمة السماح لهذا البوت — اطلب من المالك السماح.",
+        "🔒 You are not on this bot's allow-list — ask the owner to allow you.",
+    ),
+    ("🔒 لم ي\u{64f}سمح بطلبك.", "🔒 Your request was not allowed."),
+    (
+        "🔒 هذا الأمر للمالك وحده في المجموعة.",
+        "🔒 This command is the owner's alone in a group.",
+    ),
+    (
+        "🔒 هذا البوت غير مقترن بعد.\nمعر\u{651}فك: {from_id}\n\nلربطه: افتح البرنامج ← الإعدادات ← تيليجرام، وأرسل رمز الاقتران الظاهر هناك إلى هذا البوت (أو الصق معر\u{651}فك في خانة «معر\u{651}ف المستخدم المسموح»).",
+        "🔒 This bot is not paired yet.\nYour id: {from_id}\n\nTo pair it: open the program → Settings → Telegram, and send the pairing code shown there to this bot (or paste your id into the \"Allowed user id\" field).",
+    ),
+    (
+        "🔗 طلب من {} ({})\n📎 {}\n\nلا معالجة قبل ضغطتك.",
+        "🔗 Request from {} ({})\n📎 {}\n\nNothing runs before you press.",
+    ),
+    ("🗜\u{fe0f} اضغط وأرسل (حتى ~{} م.ب)", "🗜\u{fe0f} Compress and send (up to ~{} MB)"),
+    (
+        "🗜\u{fe0f} الناتج {} — أضغطه ليدخل في حد تيليجرام…",
+        "🗜\u{fe0f} The result is {} — compressing it to fit Telegram's limit…",
+    ),
+    (
+        "🗜\u{fe0f} جار\u{64d} الضغط… (لن ت\u{64f}حجب بقية المحادثة)",
+        "🗜\u{fe0f} Compressing… (the rest of the chat is not blocked)",
+    ),
+    ("🛑 أ\u{64f}لغيت", "🛑 Cancelled"),
+    ("🛑 إلغاء", "🛑 Cancel"),
+    (
+        "🛑 ط\u{64f}لب الإلغاء — المهم\u{651}ة في مرحلة التحضير (تنزيل/استلام): أدواتها (yt-dlp/ffmpeg) ت\u{64f}قتل فورا\u{64b}. أطول ما قيس في هذه المرحلة {:.1} ث.",
+        "🛑 Cancellation requested — the job is in the preparation phase (download/receive): its tools (yt-dlp/ffmpeg) are killed at once. The longest measured in this phase is {:.1}s.",
+    ),
+    (
+        "🛑 ط\u{64f}لب الإلغاء — المهم\u{651}ة في مرحلة المعالجة: إم\u{651}ا تنتظر فتحة جهاز (حتى {slot_mins} دقيقة)، وإم\u{651}ا داخل نداء محر\u{651}ك لا ي\u{64f}قطع داخل العملية (لا نقطة إلغاء فيه). أطول ما قيس {mins:.1} دقيقة ({secs} ث)، والغالب أقل\u{651} بكثير.",
+        "🛑 Cancellation requested — the job is in the processing phase: either it is waiting for a device slot (up to {slot_mins} minutes), or it is inside an engine call that cannot be interrupted in-process (it has no cancellation point). The longest measured is {mins:.1} minutes ({secs}s), and the usual case is far less.",
+    ),
+    (
+        "🌐 لغة رسائل البوت: {}\nالمتاح: {list}",
+        "🌐 Bot message language: {}\nAvailable: {list}",
+    ),
+    (
+        "🌐 لا تتوف\u{651}ر لغة «{}» بعد — المتاح: {list}",
+        "🌐 The language \"{}\" is not available yet — available: {list}",
+    ),
+    (
+        "🌐 {} هي اللغة العاملة أصلا\u{64b} — لا تغيير.\nالمتاح: {list}",
+        "🌐 {} is already the active language — nothing changed.\nAvailable: {list}",
+    ),
+    ("🤖 أوامر البوت:\n", "🤖 Bot commands:\n"),
+];
+
+/// **نصوص لا تمرّ بنقطة الاختناق** — مُعلَنة بالعدد، فلا يُظنّ الجدول ناقصاً:
+/// ① سجلّات التطوير (`tracing`)، ② أخطاء إعداد البوت التي تُعرَض في **واجهة
+/// البرنامج** ولها ترجمتها هناك، ③ أسماء اللغات بلغتها (`endonym`).
+#[cfg(test)]
+const NON_SENT: &[&str] = &[
+    // ① أسماء اللغات بلغتها (`Lang::endonym`) — تُعرَض كما هي في قائمة `/lang`.
+    "العربية",
+    "الإنجليزية",
+    // ② سجلّات التطوير (`tracing`) — لا تصل إلى تلغرام.
+    "طابور إرسال المحادثة {chat_id} بلغ {depth} (العتبة {SEND_QUEUE_CAP}) — الم\u{64f}سق\u{64e}ط 0: الرسائل الضرورية لا ت\u{64f}سق\u{64e}ط، والتأخ\u{651}ر على خيط الكاتب وحده",
+    "ث\u{64f}ب\u{651}تت رسالة التعريف في {chat_id} (مرة واحدة)",
+    "تعذ\u{651}ر تثبيت رسالة التعريف في {chat_id}: {e}",
+    "تعذ\u{651}ر الإرسال إلى {chat_id} من طابور الإرسال: {e}",
+    "تنبيه العضو {user_id} في {chat_id} سلك {path:?}",
+    "نص\u{651} بلا ترجمة ({lang:?}): {text}",
+    "getMe فشل: {e}",
+    "قائمة السماح: {} مدخلا\u{64b}",
+    "تعذ\u{651}ر تدوين إحصاءات {user_id}: {e}",
+    "س\u{64f}ج\u{651}لت أوامر المالك في محادثته وحدها: {n} أمرا\u{64b}",
+    "قائمة الأوامر مخالفة لحدود Bot API ({} أمرا\u{64b} · المخالف {bad:?}) — لم ت\u{64f}سج\u{64e}\u{651}ل",
+    "لا معر\u{651}ف مالك — لا نطاق محادثة ت\u{64f}سج\u{64e}\u{651}ل فيه الأوامر (اقترن أولا\u{64b})",
+    "طلب من غير مسموح: {from_id}@{chat_id}",
+    "ر\u{64f}فض متطفل: {from_id}",
+    "رسالة من غير المالك ({from_id}) — تجاه\u{64f}ل تام",
+    "ر\u{64f}فض أمر مالك من {from_id}@{chat_id}",
+    "رسالة التعريف مثب\u{64e}\u{651}تة أصلا\u{64b} في {chat_id}",
+    "لا نصيحة معالج: لم ي\u{64f}ق\u{64e}س مزو\u{651}د أي فصل بعد",
+    "ر\u{64f}فض طلب {}@{}",
+    "تعذ\u{651}ر حفظ قائمة السماح: {e}",
+    "(أ\u{64f}سق\u{650}ط لسقف المجموعة) {text}",
+    "ح\u{64f}ذف مؤقت: {}",
+    "تعذر حذف المؤقت {}: {e}",
+    "ن\u{64f}ظ\u{651}ف مجلد تيليجرام المؤقت: {n} ملفا\u{64b} ({:.1}MB)",
+    "لغات المحادثات المحفوظة: {}",
+    "تعذ\u{651}ر حفظ لغة المحادثة: {e}",
+    // ③ أخطاء إعداد البوت: تُعرَض في **واجهة البرنامج** لا في تلغرام، ولها
+    //    ترجمتها في واجهته (`src/`) — فلا تُترجَم مرّتين.
+    "تعذ\u{651}ر ضبط هوية البوت: {e}",
+    "تعذ\u{651}ر قراءة هوية البوت (getMe) — المنشن لن ي\u{64f}عر\u{64e}ف",
+    "تعذ\u{651}ر ضبط الأوامر: {e}",
+    "تعذ\u{651}رت قراءة اسم البوت (getMyName): {e}",
+    "تعذ\u{651}ر تعيين اسم البوت (setMyName): {e}",
+    "تعذ\u{651}ر ضبط صورة البوت: {e}",
+    "قيمة مخالفة لحدود Bot API: {e}",
+    "حالة الهوية: {e}",
+    "لا بوت م\u{64f}هي\u{64e}\u{651}أ: {e}",
+    "ليس JPEG صالحا\u{64b}: ترويسة FFD8FF مفقودة ({} بايت)",
+    "ملف JPEG بلا نهاية FFD9 (ملف مقطوع)",
+    "تعذ\u{651}رت قراءة أبعاد JPEG (لا وسم SOF)",
+    "صورة البوت ر\u{64f}فعت ({w}×{h} · {len} بايت)",
+    "لا هوية مطب\u{64e}\u{651}قة مخز\u{64e}\u{651}نة — لا اسم سابق ي\u{64f}عاد",
+    "تعذ\u{651}رت مقابلة اسم البوت بالخادم: {e}",
+    "تعذ\u{651}رت قراءة اسم البوت قبل القرار: {e}",
+];
+
+/// هل المحرف من النطاق العربي؟ (يُستعمل في التنبيه على نصٍّ بلا ترجمة، وفي حارسَي
+/// التغطية والقيمة.)
+fn is_arabic(c: char) -> bool {
+    ('\u{0600}'..='\u{06FF}').contains(&c)
+}
+
+/// يقطّع قالباً إلى مقاطعَه حول الأماكن النائبة.
+fn template_segments(t: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut rest = t;
+    while let Some(i) = rest.find('{') {
+        let Some(j) = rest[i..].find('}').map(|k| i + k) else {
+            break;
+        };
+        out.push(&rest[..i]);
+        rest = &rest[j + 1..];
+    }
+    out.push(rest);
+    out
+}
+
+/// **يترجم قيمةً لا حرفاً**: مطابقةٌ تامّة أولاً، وإلا مطابقةُ قالبٍ بالأماكن
+/// النائبة ⇒ تُلتقط الوسائط من النصّ الواقع وتُسكَب في القالب المقابل.
+///
+/// واللغة معاملٌ لأن الجدول قد يحمل لغاتٍ أكثر لاحقاً (`ar`/`en` اليوم) — والفحص
+/// على **القيمة** المترجَمة، لا على وجود المفتاح.
+/// **يترجم قيمةً لا حرفاً** — القالب يطابق الأماكن النائبة بالموضع.
+fn translate_at(lang: Lang, text: &str, depth: usize) -> Option<String> {
+    if lang == Lang::Ar {
+        // العربية هي لغة المصدر: النصّ هو نفسه، والترجمة لا معنى لها.
+        return Some(text.to_string());
+    }
+    for (ar, en) in TEXTS {
+        // **والمفتاح يُجرَّب بأشكاله**: بادئُ السطر الجديد أو خاتمته يزولان حين
+        // تُقتطَع الفقرة من سياقها في التركيب (`"\nأرسل رابط…"` تُلحَق بعد فقرة،
+        // و`"🤖 أوامر البوت:\n"` يصير سطراً بلا خاتمة) — والتشذيب يُطبَّق على
+        // **المقابل الإنجليزي مثله**، فلا يتضاعف سطرٌ جديد عند إعادة الجمع.
+        let trims: [fn(&str) -> &str; 4] = [
+            |s| s,
+            |s| s.trim_start_matches('\n'),
+            |s| s.trim_end_matches('\n'),
+            |s| s.trim_matches('\n'),
+        ];
+        for trim in trims {
+            let key = trim(ar);
+            let en_v = trim(en);
+            if text == key {
+                return Some(en_v.to_string());
+            }
+            if !key.contains('{') {
+                continue;
+            }
+            let ars = template_segments(key);
+            if ars.len() < 2 || !text.starts_with(ars[0]) {
+                continue;
+            }
+            let mut rest = &text[ars[0].len()..];
+            let mut args: Vec<&str> = Vec::new();
+            let mut ok = true;
+            for seg in &ars[1..] {
+                if seg.is_empty() {
+                    args.push(rest);
+                    rest = "";
+                    continue;
+                }
+                match rest.find(seg) {
+                    Some(i) => {
+                        args.push(&rest[..i]);
+                        rest = &rest[i + seg.len()..];
+                    }
+                    None => {
+                        ok = false;
+                        break;
+                    }
+                }
+            }
+            if !ok || !rest.is_empty() || args.len() + 1 != ars.len() {
+                continue;
+            }
+            let ens = template_segments(en_v);
+            if ens.len() != ars.len() {
+                continue;
+            }
+            let mut out = String::with_capacity(en_v.len() + text.len() / 4);
+            for (i, seg) in ens.iter().enumerate() {
+                out.push_str(seg);
+                if let Some(a) = args.get(i) {
+                    // **والوسيط يُترجَم هو أيضاً**: النصّ المركَّب قد يحمل نصّاً
+                    // آخر في مكانه (`mode_question_text` تُركّب إشعار الانتظار
+                    // داخل السؤال، ونصّ الخطأ يدخل في `✗ …: {e}`). وبلا هذا بقيت
+                    // الجملة الخارجية إنجليزية وداخلها عربيّ — وهو الثقب الذي
+                    // كشفه **الحكم على القيمة** لا على المفتاح.
+                    out.push_str(&localize_at(lang, a, depth + 1));
+                }
+            }
+            return Some(out);
+        }
+    }
+    // (③) **تركيبٌ بالجمع لا بقالبٍ واحد**: `intro_text` تبني بتسلسل `push_str`
+    // (سطرٌ ثم يُلحَق به شرحٌ)، فلا يطابق الناتجُ أيَّ مدخل. فتُترجَم **الفقرات**
+    // ثم **السطور**، ويُعاد التركيب بالفاصل نفسه. وهو ما كشفه الحكم على القيمة
+    // مرّتين: مرة في الوسيط المركَّب ومرّة في النصّ المجموع.
+    if depth < 3 {
+        for sep in ["\n\n", "\n"] {
+            if !text.contains(sep) {
+                continue;
+            }
+            let parts: Vec<&str> = text.split(sep).collect();
+            let mut changed = false;
+            let mut out: Vec<String> = Vec::with_capacity(parts.len());
+            for p in parts {
+                let t = localize_at(lang, p, depth + 1);
+                if t != p {
+                    changed = true;
+                }
+                out.push(t);
+            }
+            if changed {
+                return Some(out.join(sep));
+            }
+        }
+    }
+    None
+}
+
+/// يترجم نصّاً واحداً؛ وبلا مدخلٍ يُترك كما هو (ويُنبَّه في السجلّ — فالثقب يُرى
+/// ولا يمرّ صامتاً).
+fn localize(lang: Lang, text: &str) -> String {
+    localize_at(lang, text, 0)
+}
+
+/// **وبعمقٍ محدود**: التركيب المتداخل حقيقيّ (نصّ في نصّ)، والعمق يمنع دوراناً
+/// لو صار مدخلٌ يطابق مخرَجَه.
+fn localize_at(lang: Lang, text: &str, depth: usize) -> String {
+    if lang == Lang::Ar || text.is_empty() || depth > 3 {
+        return text.to_string();
+    }
+    match translate_at(lang, text, depth) {
+        Some(t) => t,
+        None => {
+            // **وأسطرٌ جديدة بادئة تُشذَّب ثم تُعاد**: الفقرة تُقتطَع من سياقها في
+            // التركيب (`help_text_for` تبني فقرةً تبدأ بـ`\n` ثم تُلحَق بغيرها)،
+            // فالشكل المُشذَّب هو ما يطابق الجدول. والإعادة تحفظ الشكل الأصلي.
+            let lead = text.len() - text.trim_start_matches('\n').len();
+            if lead > 0 {
+                if let Some(t) = translate_at(lang, &text[lead..], depth) {
+                    return format!("{}{t}", &text[..lead]);
+                }
+            }
+            if text.chars().any(is_arabic) {
+                tracing::warn!(target: "telegram", "نصّ بلا ترجمة ({lang:?}): {text}");
+            }
+            text.to_string()
+        }
+    }
+}
+
+/// **نقطة الاختناق**: يُترجَم الطلب كلّه قبل أن يخرج — نصُّه، وتعليقه، ونصوص
+/// أزراره، وأوصاف أوامره. فما يُرسَل هو ما يُترجَم، ولا يبقى نصٌّ خارج الطريق.
+fn localize_body(lang: Lang, method: &str, body: &Value) -> Value {
+    if lang == Lang::Ar {
+        return body.clone();
+    }
+    let mut out = body.clone();
+    for field in ["text", "caption"] {
+        if let Some(s) = out.get(field).and_then(Value::as_str) {
+            let t = localize(lang, s);
+            if let Some(slot) = out.get_mut(field) {
+                *slot = Value::String(t);
+            }
+        }
+    }
+    if let Some(rows) = out
+        .pointer_mut("/reply_markup/inline_keyboard")
+        .and_then(Value::as_array_mut)
+    {
+        for row in rows.iter_mut() {
+            if let Some(buttons) = row.as_array_mut() {
+                for b in buttons.iter_mut() {
+                    if let Some(t) = b.get("text").and_then(Value::as_str) {
+                        let n = localize(lang, t);
+                        b["text"] = Value::String(n);
+                    }
+                }
+            }
+        }
+    }
+    if method == "setMyCommands" {
+        if let Some(cmds) = out.get_mut("commands").and_then(Value::as_array_mut) {
+            for c in cmds.iter_mut() {
+                if let Some(d) = c.get("description").and_then(Value::as_str) {
+                    let n = localize(lang, d);
+                    c["description"] = Value::String(n);
+                }
+            }
+        }
+    }
+    out
+}
+
 // ── HTTP: cloud and local speak the same language ───────────────────────────
 
 fn call(cfg: &TgConfig, method: &str, body: &Value, timeout: Duration) -> Result<Value, String> {
     let url = format!("{}/{}", cfg.api(), method);
+    let body = &localize_body(body_lang(body), method, body);
     let resp = ureq::post(&url)
         .timeout(timeout)
         .set("Content-Type", "application/json")
@@ -1523,6 +2326,7 @@ fn download_cloud_file(
     dest: &Path,
     cap: u64,
     cancel: &std::sync::Arc<AtomicBool>,
+    progress: &dyn Fn(u64),
 ) -> Result<u64, String> {
     let url = format!(
         "{}/file/bot{}/{}",
@@ -1561,6 +2365,9 @@ fn download_cloud_file(
         };
         out.write_all(&buf[..n]).map_err(|e| e.to_string())?;
         written += n as u64;
+        // **العدّاد من البايتات المستلمة** لا من تقدير — والمستدعي يعرف الحجم
+        // الكلّي ويحسب النسبة ([`report_receive_progress`]).
+        progress(written);
     }
     if written > cap {
         drop(out);
@@ -2704,6 +3511,14 @@ fn spawn_poll_thread(
                 "قائمة السماح: {} مدخلاً",
                 access.entries.len()
             );
+            // **ولغات المحادثات معها** (نظير قائمة السماح): يُقرأ الاختيار من
+            // القرص عند كل إقلاع، فما يختاره المالك في `/lang` يبقى بعده.
+            let langs = load_lang_store(&crate::paths::data_dir());
+            tracing::info!(
+                target: "telegram",
+                "لغات المحادثات المحفوظة: {}",
+                langs.entries.len()
+            );
             // Drop the backlog: links sent while the app was closed are stale,
             // and processing them unasked would burn the machine at startup.
             let mut offset = match call(
@@ -2782,7 +3597,7 @@ fn mode_question_text(hint: &str, ahead: u32) -> String {
         String::new()
     };
     format!(
-        "{hint}\n{wait}\nهل هذا **أغنية** أم **مقطع عادي**؟\n\
+        "{hint}\n{wait}\nهل هذا أغنية أم مقطع عادي؟\n\
          (الأغنية: فصل كامل + قصّ الصمت — المقطع: إزالة الموسيقى فقط)"
     )
 }
@@ -2802,7 +3617,7 @@ fn running_text(label: &str) -> String {
 fn pending_full_text() -> String {
     format!(
         "⏳ عندك {MAX_PENDING_PER_CHAT} ملفات تنتظر اختيار الوضع — \
-         **أكمل الملفات الحالية أولاً** ثم أعد إرسال هذا الملف."
+         أكمل الملفات الحالية أولاً ثم أعد إرسال هذا الملف."
     )
 }
 
@@ -2815,7 +3630,7 @@ const COMMANDS: &[(&str, &str)] = &[
     ("status", "ما يعمل الآن ولِمَن"),
     ("stats", "إحصاءاتك: عدد الملفات والحجم"),
     ("mode", "إعادة أزرار اختيار الوضع للملفات المنتظرة"),
-    ("lang", "لغة رسائل البوت (العربية وحدها متاحة الآن)"),
+    ("lang", "لغة رسائل البوت (العربية أو الإنجليزية)"),
     ("kill", "إلغاء مهمّة هذه المحادثة"),
     ("help", "قائمة الأوامر"),
 ];
@@ -2831,28 +3646,30 @@ const PUBLIC_COMMANDS: &[(&str, &str)] = &[];
 
 /// قائمة موجزة **صادقة**: كل سطر فيها أمرٌ يعمل فعلاً — **لمن يقرؤها**.
 /// وغير المالك يرى [`PUBLIC_COMMANDS`] وحدها، فلا يُعرض عليه أمرٌ سيُرفض.
-fn help_text_for(is_owner: bool) -> String {
+fn help_text_for(lang: Lang, is_owner: bool) -> String {
     let list: &[(&str, &str)] = if is_owner { COMMANDS } else { PUBLIC_COMMANDS };
     let mut s = String::from("🤖 أوامر البوت:\n");
     if list.is_empty() {
         s.push_str("(لا أوامر عامة — الأوامر تظهر في محادثة المالك وحدها)\n");
     }
     for (name, desc) in list {
-        s.push_str(&format!("/{name} — {desc}\n"));
+        // **الوصف يُترجَم في موضعه**: السطر مركَّبٌ (`/name — desc`)، فلا يطابق
+        // الجدولَ كلُّه — والوسيط هو ما يُترجَم. (اسم الأمر نفسه لا يُترجَم.)
+        s.push_str(&format!("/{name} — {}\n", localize(lang, desc)));
     }
     s.push_str(&format!(
         "\nأرسل رابط فيديو، أو ارفع ملف صوت/فيديو (حتى {} سحابياً)، \
          وسأزيل الموسيقى وأعيده إليك.",
         human_mb(CLOUD_DOWNLOAD_MAX_BYTES)
     ));
-    s
+    localize(lang, &s)
 }
 
 /// قائمة المالك — الاسم الذي تناديه حرّاس `/help` القائمة (`help_text()`).
 /// والمنتَج ينادي [`help_text_for`] لأن القائمة تختلف بحسب القارئ (م٤/٣).
 #[cfg(test)]
 fn help_text() -> String {
-    help_text_for(true)
+    help_text_for(Lang::Ar, true)
 }
 
 /// يفصل الأمر ووسيطه: `/kill@MyBot الآن` ⇒ `("kill", Some("الآن"))`.
@@ -2926,24 +3743,51 @@ pub fn status_text(
 
 /// نصّ `/lang` — **صادق**: العربية وحدها عاملة، ولا يُوهم بمفتاح لغةٍ لا وجود
 /// لها (تسجيل `/lang` بوصفه مبدِّلاً وهو لا يبدّل شيئاً كذبٌ صريح).
-fn lang_text(arg: Option<&str>) -> String {
-    const AVAILABLE: [(&str, &str); 1] = [("ar", "العربية")];
-    let list = AVAILABLE
+/// **`/lang` يعمل فعلاً**: بلا وسيط يعرض اللغة الحالية والمتاح؛ وبوسيط **يبدّل
+/// ويحفظ**، ويؤكّد التبديل بلغة القارئ الجديدة.
+///
+/// **ويُعيد `(النصّ، هل تبدّلت؟)`** — فيُبنى التأكيد على ما وقع لا على ما نُوي.
+fn lang_text(chat_id: i64, arg: Option<&str>) -> (String, bool) {
+    let list = Lang::ALL
         .iter()
-        .map(|(c, n)| format!("{n} ({c})"))
+        .map(|l| format!("{} ({})", l.endonym(), l.code()))
         .collect::<Vec<_>>()
         .join(" · ");
-    match arg {
-        None => format!("🌐 لغة رسائل البوت: العربية\nالمتاح: {list}"),
-        Some(code) => {
-            let code = code.trim().to_ascii_lowercase();
-            if AVAILABLE.iter().any(|(c, _)| *c == code) {
-                format!("🌐 العربية هي اللغة العاملة أصلاً — لا تغيير.\nالمتاح: {list}")
-            } else {
-                format!("🌐 لا تتوفّر لغة «{code}» بعد — الرسائل بالعربية وحدها.\nالمتاح: {list}")
+    let current = lang_store()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .lang_for(chat_id);
+    let Some(arg) = arg else {
+        return (
+            format!("🌐 لغة رسائل البوت: {}\nالمتاح: {list}", current.endonym()),
+            false,
+        );
+    };
+    let Some(want) = Lang::from_code(arg) else {
+        return (
+            format!("🌐 لا تتوفّر لغة «{}» بعد — المتاح: {list}", arg.trim()),
+            false,
+        );
+    };
+    let changed = {
+        let mut store = lang_store().lock().unwrap_or_else(|p| p.into_inner());
+        let changed = store.set(chat_id, want);
+        if changed {
+            if let Err(e) = store.save() {
+                tracing::warn!(target: "telegram", "تعذّر حفظ لغة المحادثة: {e}");
             }
         }
-    }
+        changed
+    };
+    let text = if changed {
+        format!("🌐 لغة رسائل البوت: {}\nالمتاح: {list}", want.endonym())
+    } else {
+        format!(
+            "🌐 {} هي اللغة العاملة أصلاً — لا تغيير.\nالمتاح: {list}",
+            want.endonym()
+        )
+    };
+    (text, changed)
 }
 
 // ── م٥: الإحصاءات (من الملف وحده) ───────────────────────────────────────────
@@ -3362,7 +4206,7 @@ pub fn apply_bot_identity(
         // `photo_applied:true` فيعمل العكس (يُزيل الصورة ويُعيد الاسم).
         return Err(match e {
             BotSetupError::Name(m) => BotSetupError::Name(format!(
-                "{m} — ⚠ الصورة **رُفعت فعلاً** والاسم لم يُضبط؛ \
+                "{m} — ⚠ الصورة رُفعت فعلاً والاسم لم يُضبط؛ \
                  ألغِ المربّع لإزالة الصورة وإعادة الاسم «{previous}»"
             )),
             other => other,
@@ -3420,7 +4264,7 @@ pub fn revert_bot_identity(
     if let Err(e) = set_bot_name(cfg, &previous) {
         return Err(match e {
             BotSetupError::Name(m) => BotSetupError::Name(format!(
-                "{m} — ⚠ الصورة **أُزيلت فعلاً** والاسم لم يُعَد إلى «{previous}»"
+                "{m} — ⚠ الصورة أُزيلت فعلاً والاسم لم يُعَد إلى «{previous}»"
             )),
             other => other,
         });
@@ -3660,7 +4504,7 @@ fn finish_identity(
 fn cpu_advice_line(provider: Option<&str>) -> Option<&'static str> {
     match provider {
         Some("CPU") => Some(
-            "⚠️ آخر فصلٍ على هذا الجهاز جرى على **المعالج (CPU)** لا على كرت — \
+            "⚠️ آخر فصلٍ على هذا الجهاز جرى على المعالج (CPU) لا على كرت — \
              ومجموعةٌ فيها أكثر من عضو غير عملية على المعالج.",
         ),
         _ => None,
@@ -3671,9 +4515,9 @@ fn cpu_advice_line(provider: Option<&str>) -> Option<&'static str> {
 /// **إن عُرف** فقط — ولا يُختلق اسمٌ لم يُقرأ.
 fn intro_text(bot: &BotIdentity, advice: Option<&str>) -> String {
     let example = if bot.username.is_empty() {
-        "اذكرني مع الرابط: مثال `@<البوت> https://…`".to_string()
+        "اذكرني مع الرابط: مثال @<البوت> https://…".to_string()
     } else {
-        format!("**اذكرني مع الرابط** — مثال: `@{} https://…`", bot.username)
+        format!("اذكرني مع الرابط — مثال: @{} https://…", bot.username)
     };
     let mut s = format!("📌 للاستخدام: {example}\nوالمعالجة تجري على جهاز المالك.");
     if let Some(a) = advice {
@@ -3773,11 +4617,11 @@ pub fn oversize_guide_text() -> String {
         "ℹ️ كيف أرفع الحدّ؟\n\n\
          • حدّ تلغرام السحابي للبوت: {} إرسالاً و{} استقبالاً — وهو حدّ الخدمة، \
          لا إعداد في هذا البرنامج.\n\
-         • الحلّ الرسمي: تشغيل **خادم Bot API محلي** (‏telegram-bot-api) على الجهاز، \
+         • الحلّ الرسمي: تشغيل خادم Bot API محلي (‏telegram-bot-api) على الجهاز، \
          فيصير الحدّ 2000 م.ب.\n\
          • وبعد تشغيله: الإعدادات ← تيليجرام ← «عنوان الخادم المحلي» \
          (مثال: {LOCAL_SERVER_HINT}).\n\n\
-         وهذا الزرّ **معلومة لا إجراء**: لا يرسل شيئاً ولا يغيّر إعداداً.\n\
+         وهذا الزرّ معلومة لا إجراء: لا يرسل شيئاً ولا يغيّر إعداداً.\n\
          ولا أقسّم الناتج إلى أجزاء — قرار المالك.",
         human_mb(CLOUD_SEND_MAX_BYTES),
         human_mb(CLOUD_DOWNLOAD_MAX_BYTES)
@@ -3899,7 +4743,7 @@ fn purge_oversize(cfg: &TgConfig, store: &Arc<Mutex<OversizeStore>>) {
             o.msg_id,
             &format!(
                 "⌛ انتهت صلاحية سؤال الضغط ({} دقيقة).\n\
-                 الناتج **باقٍ في مجلد النتائج ولم يُحذف**: أعد إرسال الملف إن أردت المحاولة.",
+                 الناتج باقٍ في مجلد النتائج ولم يُحذف: أعد إرسال الملف إن أردت المحاولة.",
                 OVERSIZE_TTL.as_secs() / 60
             ),
             None,
@@ -4547,7 +5391,8 @@ fn handle_update(
                 }
                 // ── `/lang`: يقول اللغات المتاحة بصدق ولا يدّعي تبديلاً ──
                 "lang" => {
-                    let _ = send_message(cfg, chat_id, &lang_text(arg), None, Some(src_msg_id));
+                    let (text, _changed) = lang_text(chat_id, arg);
+                    let _ = send_message(cfg, chat_id, &text, None, Some(src_msg_id));
                 }
                 // ── `/stats` (م٥): إحصاءات **صاحب الأمر** من ملفه وحده ──
                 //    (وملفٌّ لكل مستخدم مفتاحه الـID، فتغيّر الاسم لا يُنشئ
@@ -4565,7 +5410,7 @@ fn handle_update(
                     let _ = send_message(
                         cfg,
                         chat_id,
-                        &help_text_for(is_owner),
+                        &help_text_for(body_lang_of_chat(chat_id), is_owner),
                         // م٥: زرّ الإحصاءات يُرسَل مع القائمة — فما يظهر يعمل،
                         // وضغطته رسالةٌ واحدة.
                         Some(stats_keyboard()),
@@ -4577,7 +5422,10 @@ fn handle_update(
                     let _ = send_message(
                         cfg,
                         chat_id,
-                        &format!("لا أعرف الأمر /{other}.\n\n{}", help_text_for(is_owner)),
+                        &format!(
+                            "لا أعرف الأمر /{other}.\n\n{}",
+                            help_text_for(body_lang_of_chat(chat_id), is_owner)
+                        ),
                         None,
                         Some(src_msg_id),
                     );
@@ -4587,7 +5435,7 @@ fn handle_update(
                         let _ = send_message(
                             cfg,
                             chat_id,
-                            &help_text_for(is_owner),
+                            &help_text_for(body_lang_of_chat(chat_id), is_owner),
                             None,
                             Some(src_msg_id),
                         );
@@ -4595,7 +5443,10 @@ fn handle_update(
                         let _ = send_message(
                             cfg,
                             chat_id,
-                            &format!("لم أجد رابطاً في رسالتك.\n{}", help_text_for(is_owner)),
+                            &format!(
+                                "لم أجد رابطاً في رسالتك.\n{}",
+                                help_text_for(body_lang_of_chat(chat_id), is_owner)
+                            ),
                             None,
                             Some(src_msg_id),
                         );
@@ -4821,7 +5672,7 @@ fn handle_approval_press(
                         if saved.is_ok() {
                             " — أُضيف إلى قائمة السماح"
                         } else {
-                            " — أُضيف في الذاكرة **وتعذّر حفظه**"
+                            " — أُضيف في الذاكرة وتعذّر حفظه"
                         }
                     } else {
                         " — كان مسموحاً أصلاً"
@@ -5368,6 +6219,170 @@ fn keyboard_is_empty(keyboard: &Value) -> bool {
         .unwrap_or(false)
 }
 
+// ── شريط التقدّم النصّي (بند ز-٨/١) ─────────────────────────────────────────
+
+/// **عرض الشريط بالخلايا** — رقم واحد معلَن. تغييره يغيّر الشكل وحده ولا يمسّ
+/// حساب النسبة؛ وحارسٌ يمنع أن يتباعد عمّا هو معلَن.
+pub const PROGRESS_BAR_CELLS: usize = 10;
+/// الخليّة الممتلئة والفارغة — الزوج الذي يطلبه البند (`▰▰▰▰▱▱ 62%`).
+const BAR_FULL: char = '▰';
+const BAR_EMPTY: char = '▱';
+
+/// يُقصّ النسبة إلى `0.0..=100.0`: `NaN` صفر، واللانهاية إلى حدّها. **وموضعها
+/// هنا وحده**، فالشريط والرقم يُحسبان من القيمة نفسها ولا يفترقان أبداً.
+fn bar_pct(pct: f64) -> f64 {
+    if pct.is_nan() {
+        0.0
+    } else {
+        pct.clamp(0.0, 100.0)
+    }
+}
+
+/// **دالّة الحساب النقيّة**: عدد الخلايا الممتلئة لنسبة وعرض.
+///
+/// وحدودها مقصودة ومقيسة: نسبة سالبة ⇒ صفر، وفوق ١٠٠ ⇒ العرض كاملاً، و`NaN`
+/// ⇒ صفر، و`cells = 0` ⇒ صفر (لا قسمة على صفر)، و`cells` ضخم ⇒ لا انفجار (تحويل
+/// `f64` إلى `usize` **يشبع** ولا يلتفّ منذ Rust 1.45). والناتج دائماً `0..=cells`.
+fn bar_filled(pct: f64, cells: usize) -> usize {
+    let filled = (bar_pct(pct) / 100.0 * cells as f64).round() as usize;
+    filled.min(cells)
+}
+
+/// `▰▰▰▰▰▰▱▱▱▱ 62%` — العرض ثابت [`PROGRESS_BAR_CELLS`]، **والرقم من النسبة نفسها
+/// التي حُسب منها الشريط**، فلا يفترق الشكل عن الرقم.
+///
+/// **ولا `%` في قالبٍ نصّيّ هنا**: تُكتب محرفاً (`push('%')`) لأن حارساً بنيوياً
+/// يمنع `%` في أي نصٍّ حرفيّ في هذا الملف. والسبب مقيس: كان `"… {}%"` مكتوباً
+/// بيدٍ في ثلاثة مواضع، وهو بعينه عطل «الشريط لا يظهر». فالقاعدة الآن **لا يمكن
+/// كتابة نسبةٍ بلا شريط**، بدل قاعدةٍ تقول «تذكّر الشريط».
+fn progress_bar_text(pct: f64) -> String {
+    let pct = bar_pct(pct);
+    let filled = bar_filled(pct, PROGRESS_BAR_CELLS);
+    let mut s = String::with_capacity(PROGRESS_BAR_CELLS * 3 + 8);
+    for i in 0..PROGRESS_BAR_CELLS {
+        s.push(if i < filled { BAR_FULL } else { BAR_EMPTY });
+    }
+    s.push(' ');
+    s.push_str(&(pct.round() as i64).to_string());
+    s.push('%');
+    s
+}
+
+/// نصّ حالة **التنزيل** — موضع واحد لبنائه، فلا يفترق موضعان بنصّين.
+///
+/// والعتبة القائمة لم تُمسّ: التحديث **في مكانه** (`edit`) عبر [`StatusMsg`]،
+/// بفجوة [`EDIT_MIN_GAP`] (٣ ث) وبسقف المجموعة ([`GROUP_MSG_PER_MINUTE`]) —
+/// فلا رسالة جديدة لكل نسبة.
+fn download_status_text(pct: f64) -> String {
+    format!("📥 جارٍ التنزيل… {}", progress_bar_text(pct))
+}
+
+/// **اسم المرحلة كما يراه المستخدم** — مصدر واحد، فلا اسمان لمرحلة واحدة.
+fn stage_label(name: &str) -> &'static str {
+    match name {
+        "normalize" => "تجهيز الملف",
+        "separate" => "فصل الصوت",
+        "effects" => "تنقية وتحسين",
+        "encode" => "ترميز الناتج",
+        _ => "معالجة",
+    }
+}
+
+/// **باني واحد لكل مرحلة**: الاسم + العدّاد + الشريط.
+///
+/// **ولماذا هذا الباني وُجد** (بلاغ المالك 2026-09-23: «فصل الصوت بدون عداد»):
+/// كان نصّ المرحلة يُبنى في موضع النداء **بلا رقم**، و`pipeline.rs:798-801` ينادي
+/// `stage` **قبل** `progress` في اللحظة نفسها، و[`StatusMsg::push`] يمنح نافذة
+/// [`EDIT_MIN_GAP`] للكاتب **الأول** ويسقط الثاني ⇒ نصّ العدّاد لا يصل أبداً.
+/// فصار للمرحلة بانيها نفسه، ولا تُعرَض مرحلة بلا رقم.
+fn process_stage_status_text(name: &str, pct: f64) -> String {
+    format!("🎛️ {}… {}", stage_label(name), progress_bar_text(pct))
+}
+
+/// ونصّ حالة **المعالجة** كذلك — النسبة الواحدة تُعرض بالشكل الواحد.
+fn process_status_text(pct: f64) -> String {
+    process_stage_status_text("separate", pct)
+}
+
+/// نصّ حالة **الاستلام** (ملف أرسله المستخدم) — من الشريط نفسه أيضاً.
+fn receive_status_text(pct: f64) -> String {
+    format!("📥 جارٍ استلام الملف… {}", progress_bar_text(pct))
+}
+
+/// **النصّ الوحيد المسموح بلا عدّاد في مرحلة غير منتهية** — لحظةَ مخاطبة
+/// `getFile` **قبل** أن يُعرَف الحجم، فلا رقم موجود ليُعرض.
+///
+/// و`file_size` قد يغيب من ردّ `getFile` (اختيّ في الـAPI) فتبقى الحالة هذه
+/// بلا عدّاد **مُعلَنةً**، ولا يُختلق لها رقم من السقف (٢٠ م.ب): نسبةٌ من سقفٍ لا
+/// من حجم تعني أن ملفاً صغيراً يبدأ عند ٥٪ ثم يقفز — رقمٌ كاذب.
+const RECEIVING_TEXT: &str = "📥 جارٍ استلام الملف…";
+
+/// **تقرير استلام الملف**: النسبة من **البايتات المستلمة ÷ الحجم المعلوم**.
+///
+/// وحجمٌ مجهول (`total == 0`) ⇒ **لا كتابة**: يُترك [`RECEIVING_TEXT`] كما هو
+/// بدل نسبةٍ مُختلقة.
+fn report_receive_progress(
+    cfg: &TgConfig,
+    status: &std::cell::RefCell<StatusMsg>,
+    total: u64,
+    written: u64,
+) {
+    if total == 0 {
+        return;
+    }
+    let pct = written as f64 / total as f64 * 100.0;
+    status
+        .borrow_mut()
+        .set(cfg, receive_status_text(pct), false);
+}
+
+/// **تقرير التقدّم الكلّي** — موضع واحد، ومنه يمرّ **مسار الرابط ومسار الملف
+/// معاً** (المغلقتان في `run_job` تُبنيان من هنا، فلا مسار بلا تقرير).
+///
+/// **ودالّة لا مغلقة داخليّة**: المغلقة لا تُنادى من اختبار، وهذه يناديها
+/// `run_job` **والحارس** — فالحراسة على **المسار** لا على وجود باني.
+fn report_process_progress(
+    cfg: &TgConfig,
+    status: &std::cell::RefCell<StatusMsg>,
+    row_id: u64,
+    overall: &std::cell::Cell<f32>,
+    stop: &AtomicBool,
+    p: f32,
+) -> bool {
+    overall.set(p);
+    // تقدّم حقيقي ⇒ بثٌّ حقيقي (`telegram-jobs`)، لا استطلاعاً دورياً.
+    jobs_progress(row_id, f64::from(p) * 100.0);
+    status
+        .borrow_mut()
+        .set(cfg, process_status_text(f64::from(p) * 100.0), false);
+    !stop.load(Ordering::SeqCst)
+}
+
+/// **تقرير المرحلة** — ومعه العدّاد والشريط **من الباني نفسه**.
+///
+/// **والعطل المقيس الذي أوجبه**: `pipeline.rs:798-801` ينادي `stage` **قبل**
+/// `progress` في اللحظة نفسها، و[`StatusMsg::push`] يمنح نافذة [`EDIT_MIN_GAP`]
+/// للكاتب **الأول** ويسقط الثاني. وكان نصّ المرحلة بلا رقم ⇒ **نصّ العدّاد لا
+/// يصل أبداً** إبّان الفصل، وهو بلاغ المالك «فصل الصوت بدون عداد». فالمرحلة
+/// الآن تحمل الرقم والشريط، فأيّ الكاتبين سبق النافذة فما يراه المستخدم رقم.
+///
+/// **والرقم هو التقدّم الكلّي** ([`report_process_progress`] يكتبه) لا تقدّم
+/// المرحلة: لو أخذنا `p` الخاصّ بالمرحلة لهبط الشريط إلى الصفر عند كل انتقال
+/// (`stage("separate", 0.0)` بعد `stage("normalize", 1.0)`)، وهو رقم يخصّ مرحلةً
+/// لا المهمّة.
+fn report_process_stage(
+    cfg: &TgConfig,
+    status: &std::cell::RefCell<StatusMsg>,
+    overall: &std::cell::Cell<f32>,
+    name: &str,
+) {
+    status.borrow_mut().set(
+        cfg,
+        process_stage_status_text(name, f64::from(overall.get()) * 100.0),
+        false,
+    );
+}
+
 /// Throttled status message: Telegram rate-limits edits, and progress is
 /// cosmetic — 3s granularity is plenty.
 ///
@@ -5402,6 +6417,20 @@ impl StatusMsg {
             button_live: message_id != 0,
             cancel,
         }
+    }
+
+    /// **للقياس وحده**: يُبطل نافذة [`EDIT_MIN_GAP`] فيُكتب التحديث التالي ولو
+    /// جاء في اللحظة نفسها.
+    ///
+    /// **ولماذا لزمت**: الإنتاج ينتظر ثوانيَ بين تحديثين، والاختبار يقع في أجزاء
+    /// من الثانية ⇒ كل تحديثٍ بعده يُسقَط بالنافذة، فلا يُقاس **ما يُكتب** بل
+    /// «ما سُقط». وهذه تُبطل النافذة **صراحةً** بدل انتظار ٣ ثوانٍ في اختبار
+    /// (ولا تُصنَع نصّاً: المنتَج يكتب بنفسه، والاختبار يقرأ).
+    #[cfg(test)]
+    fn allow_now(&mut self) {
+        self.last = Instant::now()
+            .checked_sub(EDIT_MIN_GAP)
+            .unwrap_or(self.last);
     }
 
     /// تحديث **أثناء العمل**: يمرّر زرّ الإلغاء فيبقى على الرسالة.
@@ -5682,15 +6711,13 @@ fn run_job(
         Source::Link(url) => {
             status
                 .borrow_mut()
-                .set(cfg, "📥 جارٍ التنزيل… 0%".into(), true);
+                .set(cfg, download_status_text(0.0), true);
             let dir = out_dir();
             let _ = std::fs::create_dir_all(&dir);
             let dl = |p: f32| {
-                status.borrow_mut().set(
-                    cfg,
-                    format!("📥 جارٍ التنزيل… {}%", (p * 100.0).round()),
-                    false,
-                );
+                status
+                    .borrow_mut()
+                    .set(cfg, download_status_text(f64::from(p) * 100.0), false);
                 !stop.load(Ordering::SeqCst)
             };
             match crate::yt_dlp::download_media(url, &dir, &dl, &cancel) {
@@ -5723,8 +6750,8 @@ fn run_job(
             }
             status
                 .borrow_mut()
-                .set(cfg, "📥 جارٍ استلام الملف…".into(), true);
-            let (remote, _sz) = match get_file(cfg, file_id) {
+                .set(cfg, RECEIVING_TEXT.to_string(), true);
+            let (remote, size) = match get_file(cfg, file_id) {
                 Ok(v) => v,
                 Err(e) => {
                     status
@@ -5733,6 +6760,10 @@ fn run_job(
                     return;
                 }
             };
+            // الحجم صار معلوماً ⇒ **يظهر العدّاد فوراً**، ولا يُنتظر أوّل كتلة.
+            if size > 0 {
+                status.borrow_mut().set(cfg, receive_status_text(0.0), true);
+            }
             let safe = sanitize_name(name);
             let dest = scratch.join(format!("{}_{}", nanos(), safe));
             if cfg.is_local() {
@@ -5758,7 +6789,14 @@ fn run_job(
                     return;
                 }
             } else {
-                match download_cloud_file(cfg, &remote, &dest, CLOUD_DOWNLOAD_MAX_BYTES, &cancel) {
+                match download_cloud_file(
+                    cfg,
+                    &remote,
+                    &dest,
+                    CLOUD_DOWNLOAD_MAX_BYTES,
+                    &cancel,
+                    &|written| report_receive_progress(cfg, &status, size, written),
+                ) {
                     Ok(_) => {
                         scratch_files.track(&dest);
                         dest
@@ -5815,26 +6853,12 @@ fn run_job(
             fmt: OutFormat::Mp3,
         }
     };
-    let prog = |p: f32| {
-        // تقدّم حقيقي ⇒ بثٌّ حقيقي (`telegram-jobs`)، لا استطلاعاً دورياً.
-        jobs_progress(row_id, f64::from(p) * 100.0);
-        status.borrow_mut().set(
-            cfg,
-            format!("🎛️ فصل الصوت… {}%", (p * 100.0).round()),
-            false,
-        );
-        !stop.load(Ordering::SeqCst)
-    };
-    let stage = |name: &str, _p: f32| {
-        let ar = match name {
-            "normalize" => "تجهيز الملف…",
-            "separate" => "فصل الموسيقى عن الصوت…",
-            "effects" => "تنقية وتحسين…",
-            "encode" => "ترميز الناتج…",
-            _ => "معالجة…",
-        };
-        status.borrow_mut().set(cfg, ar.to_string(), false);
-    };
+    // **آخر تقدّم كلّي معلوم**: يكتبه تقرير التقدّم وتقرأه المرحلة، فلا يهبط
+    // الشريط إلى الصفر عند انتقالٍ بين مرحلتين — ولا نُكرّر في تلغرام حساب
+    // `pipeline` الداخليّ (`0.05 + p * 0.85`).
+    let overall = std::cell::Cell::new(0.0f32);
+    let prog = |p: f32| report_process_progress(cfg, &status, row_id, &overall, stop, p);
+    let stage = |name: &str, _p: f32| report_process_stage(cfg, &status, &overall, name);
     // م١: مهمّة البوت تأخذ فتحة جهاز مثل كل مدخل آخر.
     // م٢: ووسمها يحمل معرّف المحادثة (`telegram:<chat_id>`) فيجدها `/kill`،
     // ويُسجَّل مسار الإدخال معها فتظهر الواجهةُ المهمّةَ بمصدرها.
@@ -6521,6 +7545,9 @@ mod tests {
         QUEUE_DEPTH.store(0, Ordering::SeqCst);
         IN_FLIGHT.store(0, Ordering::SeqCst);
         reset_status_gates();
+        // **ولغات المحادثات معها**: مخزنٌ عامّ كبوّابات الرسائل، فاختبارٌ يبدّل
+        // لغة محادثةٍ كان يفرض لغته على من بعده.
+        reset_lang_store();
         // **ومُنظِّم المجموعة معها** (م٤): حصّة الإرسال عدّادٌ عامّ أيضاً،
         // ففحصٌ يرسل في مجموعةٍ كان يُسقط رسائل الفحص التالي بلا سبب.
         reset_send_pacer();
@@ -7537,14 +8564,14 @@ mod tests {
                 e.pointer("/reply_markup/inline_keyboard/0/0/callback_data")
                     .and_then(Value::as_str),
                 Some("cancel:7:7"),
-                "تعديل **أثناء العمل** بلا زرّ إلغاء ⇒ الزر يختفي في تلغرام: {e}"
+                "تعديل أثناء العمل بلا زرّ إلغاء ⇒ الزر يختفي في تلغرام: {e}"
             );
         }
         let last = edits.last().unwrap();
         assert_eq!(
             last.pointer("/reply_markup/inline_keyboard"),
             Some(&json!([])),
-            "التعديل النهائي يجب أن يمرّر **لوحة فارغة صراحةً**: {last}"
+            "التعديل النهائي يجب أن يمرّر لوحة فارغة صراحةً: {last}"
         );
         assert!(
             last["text"].as_str().unwrap_or("").starts_with('✗'),
@@ -7746,7 +8773,7 @@ mod tests {
         let text = &sent_texts(&bot)[0];
         assert!(
             text.contains("⏳ في قائمة الانتظار"),
-            "الإشعار يجب أن يأتي **عند الوصول**: {text}"
+            "الإشعار يجب أن يأتي عند الوصول: {text}"
         );
         assert!(
             text.contains("دورك: 3"),
@@ -7778,7 +8805,7 @@ mod tests {
         handle_update(&cfg, &mut poll, &ov, &file_msg(7, 41, "only.mp4"), &tx);
         let text = &sent_texts(&bot)[0];
         assert!(!text.contains("قائمة الانتظار"), "لا انتظار بلا سابق: {text}");
-        assert!(text.contains("هل هذا **أغنية**"), "السؤال قائم: {text}");
+        assert!(text.contains("هل هذا أغنية"), "السؤال قائم: {text}");
     }
 
     /// **«ثم حرّرها لمّا يبدأ الدور»**: رسالة الوضع تصير رسالة الحالة، وتُحرَّر
@@ -8621,12 +9648,17 @@ mod tests {
         let ov = new_oversize_store();
         let (tx, _rx) = chan();
 
+        // **والتبديل آخر القائمة عمداً**: الأجوبة قبله تُقاس عربيّة، وهو يُقاس
+        // إنجليزيّاً — فالفحص يقيس **اللغتين** في مرورٍ واحد. (وكان `/lang en`
+        // في الموضع الثالث زمن «الأمر لا يبدّل»، فلمّا صار يبدّل — بأمر المالك —
+        // قِيس ما بعده بالإنجليزية، وهو الصواب لا العطل.)
         for (i, cmd) in [
             "/status",
             "/help",
             "/lang",
-            "/lang en",
+            "/lang de",
             "/mode",
+            "/lang en",
             "/nonsense",
         ]
         .iter()
@@ -8635,16 +9667,33 @@ mod tests {
             handle_update(&cfg, &mut poll, &ov, &text_msg(7, 200 + i as i64, cmd), &tx);
         }
         let texts = sent_texts(&bot);
-        assert_eq!(texts.len(), 6, "كل أمر يُجاب: {texts:?}");
+        assert_eq!(texts.len(), 7, "كل أمر يُجاب: {texts:?}");
         assert!(texts[0].contains("📊 الحال الآن"), "{}", texts[0]);
         assert!(texts[1].contains("/status"), "{}", texts[1]);
         assert!(texts[2].contains("العربية"), "{}", texts[2]);
         assert!(texts[3].contains("لا تتوفّر لغة"), "{}", texts[3]);
         assert!(texts[4].contains("لا ملفات تنتظر"), "{}", texts[4]);
+        // ⑤ التبديل وقع: التأكيد إنجليزيّ، وما بعده صار إنجليزيّاً كذلك.
         assert!(
-            texts[5].contains("لا أعرف الأمر /nonsense"),
-            "الأمر المجهول يُقال بصراحة: {}",
+            texts[5].contains("Bot message language: English"),
+            "تأكيد التبديل ليس بلغة القارئ الجديدة: {}",
             texts[5]
+        );
+        assert!(
+            texts[6].contains("I do not know the command /nonsense"),
+            "بعد التبديل، الأمر المجهول لم يُقَل بالإنجليزية: {}",
+            texts[6]
+        );
+        assert!(
+            texts.iter().take(5).all(|t| t.chars().any(is_arabic)),
+            "أجوبة ما قبل التبديل ليست عربيّة: {texts:?}"
+        );
+        // ولا تُترك لغةٌ على محادثة ٧ لفحصٍ آخر (المخزن عامّ).
+        reset_lang_store();
+        assert!(
+            texts[6].contains("I do not know the command /nonsense"),
+            "الأمر المجهول يُقال بصراحة: {}",
+            texts[6]
         );
 
         // متطفل: **صمت تام** — ولا حتى إقرار (نفس سياسة الرسائل).
@@ -8841,7 +9890,7 @@ mod tests {
         let status = std::cell::RefCell::new(StatusMsg::new(7, 7, msg, cancel.clone()));
         status
             .borrow_mut()
-            .set(&cfg, "🎛️ فصل الصوت… 50%".into(), true);
+            .set(&cfg, process_status_text(50.0), true);
         // الزرّ أو `/kill` يضبطان الرمز، ثم يخرج المسار بخطأ المحرّك نفسه.
         cancel.store(true, Ordering::SeqCst);
         status
@@ -9077,90 +10126,103 @@ mod tests {
         );
     }
 
-    /// **العطل (٤-ب)**: جعل نصّ `/lang` يقول «تم تبديل اللغة إلى العربية» ⇒ نجحت
-    /// الاختبارات (لا حارس على **مصداقية النصّ**).
+    /// **العطل (٤-ب) — وبطلانه اليوم**: كان `/lang` **لا يبدّل شيئاً** (لا مخزن
+    /// لغة)، وحرسَ ذلك اختبارٌ يشترط ألّا يدّعي النصّ تبديلاً. وقد صار الأمر
+    /// **يبدّل فعلاً** بأمر المالك، **فالدعوى تغيّرت والقياس يتبعها**: لم يُرخَ
+    /// الحارس، بل صار يقيس **وقوع التبديل** لا غيابه.
     ///
-    /// **القياس**: (أ) لا صيغة تبديل في أي جواب من أجوبة `/lang` — والأمر لا
-    /// يبدّل شيئاً فعلاً (لا مفتاح لغة في الإعدادات)، و(ب) والدليل السلوكي:
-    /// تنفيذ الأمر لا يُغيّر شيئاً في المحادثة (رسالة واحدة، ونصّ `/help` نفسه
-    /// حرفياً قبله وبعده) — فالنصّ الذي يدّعي تبديلاً يكذّب هذا القياس.
+    /// **القياس**: (أ) `/lang en` يبدّل لغة المحادثة وحدها، ويؤكّد التأكيد بلغة
+    /// **القارئ الجديدة** على السلك، (ب) محادثةٌ أخرى تبقى على لغتها (لا لغة
+    /// عالميّة)، (ج) والحفظ يقع على القرص (يُقرأ من ملفٍّ مؤقّت)، (د) ولغةٌ
+    /// مجهولة لا تبدّل.
     ///
-    /// (مُفسَد محروس: نصّ يدّعي التبديل ⇒ يسقط الفحص (أ) و(ب) معاً.)
+    /// (المُفسَدات: نصّ مباشر في مسار الإرسال ⇒ يسقط حارس التغطية · `/lang` لا
+    /// يحفظ ⇒ يسقط (ج) · محادثة تُخاطَب بلغة غير لغتها ⇒ يسقط (ب).)
     #[test]
-    fn the_lang_command_never_claims_a_switch_it_does_not_make() {
-        // صيغ «فعل التبديل» — قائمة **معلَنة الحدّ**: مرادفٌ غير مُدرَج يعضّها،
-        // ولهذا يقيس (ب) عدمَ وقوع الفعل لا غياب الكلمة وحدها.
-        const SWITCH_CLAIMS: [&str; 8] = [
-            "تم تبديل",
-            "تم التبديل",
-            "تم تغيير",
-            "تم التغيير",
-            "بدّلت اللغة",
-            "غيّرت اللغة",
-            "سأبدّل",
-            "تم ضبط اللغة",
-        ];
-        for arg in [None, Some("ar"), Some("AR"), Some("en"), Some("ar-EG")] {
-            let t = lang_text(arg);
-            for claim in SWITCH_CLAIMS {
-                assert!(
-                    !t.contains(claim),
-                    "نصّ /lang يدّعي تبديلاً لا يقع («{claim}»): {t}"
-                );
-            }
-            assert!(t.contains("المتاح"), "النصّ يعرض المتاح (لا فعل): {t}");
-        }
-        // والحالة الصادقة لكل جواب: لا تبديل، أو لغة غير متوفّرة.
-        assert!(
-            lang_text(Some("ar")).contains("لا تغيير"),
-            "اللغة العاملة أصلاً: يُقال إنها لا تغيير: {}",
-            lang_text(Some("ar"))
-        );
-        assert!(
-            lang_text(Some("en")).contains("لا تتوفّر لغة"),
-            "{}",
-            lang_text(Some("en"))
-        );
-        // والوصف المُسجَّل في تلغرام يقول الحقيقة نفسها (لا قائمتان تفترقان).
-        let described = COMMANDS
-            .iter()
-            .find(|(c, _)| *c == "lang")
-            .map(|(_, d)| *d)
-            .unwrap_or("");
-        assert!(
-            described.contains("العربية وحدها"),
-            "وصف الأمر لا يقول إن لغةً واحدة متاحة: {described}"
-        );
-
-        // (ب) سلوكي عبر الأمر نفسه: لا أثر — لا رسالة ثانية ولا تغيّر في نصّ /help.
+    fn the_lang_command_actually_switches_and_keeps_the_choice() {
         let _g = state_lock();
         reset_counters();
+        let dir = temp_dir("lang");
+        let path = dir.join("telegram-lang.json");
+        let _ = std::fs::remove_file(&path);
+        *lang_store().lock().unwrap_or_else(|p| p.into_inner()) =
+            LangStore::from_path(path.clone());
+
         let bot = FakeBot::start();
-        let cfg = bot.cfg(7);
+        // **محادثة مخصّصة لهذا الفحص** (لا ٧): المخزن عامّ، فلا تُفرَض لغةٌ على
+        // فحصٍ آخر يستعمل المعرّف نفسه.
+        let cfg = bot.cfg(777001);
         let mut poll = PollState::default();
         let ov = new_oversize_store();
         let (tx, _rx) = chan();
-        handle_update(&cfg, &mut poll, &ov, &text_msg(7, 601, "/help"), &tx);
-        let help_before = sent_texts(&bot).last().cloned().unwrap_or_default();
+
+        // (أ) التبديل يقع، والردّ **بالإنجليزية على السلك** (نقطة الاختناق).
+        handle_update(
+            &cfg,
+            &mut poll,
+            &ov,
+            &text_msg(777001, 601, "/lang en"),
+            &tx,
+        );
+        let reply = sent_texts(&bot).last().cloned().unwrap_or_default();
+        assert!(
+            reply.contains("English"),
+            "التأكيد لا يسمّي اللغة الجديدة: {reply:?}"
+        );
+        assert!(
+            reply
+                .chars()
+                .filter(|c| *c != '\u{200f}')
+                .collect::<String>()
+                .replace("العربية", "")
+                .chars()
+                .all(|c| !is_arabic(c)),
+            "ردّ التبديل وصل عربيّاً لمحادثة إنجليزية (سوى اسم اللغة بلغتها): {reply:?}"
+        );
+        assert_eq!(
+            lang_store()
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .lang_for(777001),
+            Lang::En,
+            "المخزن لم يُبدَّل"
+        );
+
+        // (ج) والحفظ وقع: يُقرأ من **الملف** لا من الذاكرة.
+        let saved = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(
+            saved.contains("\"chat_id\":777001") && saved.contains("\"en\""),
+            "اختيار اللغة لم يُحفظ على القرص: {saved:?}"
+        );
+
+        // (ب) ومحادثة أخرى تبقى على لغتها — لا لغة عالميّة.
+        let other = lang_store()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .lang_for(-777002);
+        assert_eq!(other, Lang::Ar, "محادثةٌ أخرى تبدّلت مع تغيير محادثة");
+
+        // ورسالة محادثةٍ أخرى تبقى عربيّة على السلك (الضابط المقابل).
         bot.clear();
-        handle_update(&cfg, &mut poll, &ov, &text_msg(7, 602, "/lang ar"), &tx);
-        assert_eq!(
-            bot.count("sendMessage"),
-            1,
-            "أمر /lang أرسل أكثر من جوابه: {:?}",
-            sent_texts(&bot)
+        let other_cfg = bot.cfg(777003);
+        handle_update(
+            &other_cfg,
+            &mut poll,
+            &ov,
+            &text_msg(777003, 602, "/lang"),
+            &tx,
         );
-        assert_eq!(
-            bot.count("editMessageText"),
-            0,
-            "أمر /lang حرّر رسالة (فعلٌ لم يُعلَن)"
+        let arabic_reply = sent_texts(&bot).last().cloned().unwrap_or_default();
+        assert!(
+            arabic_reply.chars().any(is_arabic),
+            "محادثة عربيّة صار ردّها غير عربيّ: {arabic_reply:?}"
         );
-        handle_update(&cfg, &mut poll, &ov, &text_msg(7, 603, "/help"), &tx);
-        let help_after = sent_texts(&bot).last().cloned().unwrap_or_default();
-        assert_eq!(
-            help_before, help_after,
-            "نصّ المحادثة تغيّر بعد /lang ar — تبديلٌ وقع بلا إعلان"
-        );
+
+        // (د) ولغةٌ مجهولة لا تبدّل ولا تكذب.
+        bot.clear();
+        let (unknown, changed) = lang_text(777001, Some("de"));
+        assert!(!changed, "لغة غير معروفة بدّلت شيئاً");
+        assert!(unknown.contains("de"), "الردّ لا يسمّي المطلوب: {unknown}");
     }
 
     /// **العطل (٤-ج)**: تعطيل شرط `Drop` في `CancelButtonGuard` بالكامل ⇒
@@ -9185,7 +10247,7 @@ mod tests {
         let status = std::cell::RefCell::new(StatusMsg::new(7, 7, msg, cancel));
         status
             .borrow_mut()
-            .set(&cfg, "🎛️ فصل الصوت… 10%".into(), true);
+            .set(&cfg, process_status_text(10.0), true);
         assert_eq!(bot.count("editMessageText"), 1, "لم تُكتب الحالة أصلاً");
 
         // خروجٌ **بلا `end`** (وهو الذعر في الإنتاج): الحارس وحده يُزيل الزرّ.
@@ -9203,7 +10265,7 @@ mod tests {
         );
         assert_eq!(
             edits[1].get("text").and_then(Value::as_str),
-            Some("🎛️ فصل الصوت… 10%"),
+            Some(process_status_text(10.0).as_str()),
             "الحارس غيّر النصّ بدل أن يُزيل الزرّ وحده"
         );
 
@@ -9213,7 +10275,7 @@ mod tests {
         let status2 = std::cell::RefCell::new(StatusMsg::new(7, 7, msg2, cancel2));
         status2
             .borrow_mut()
-            .set(&cfg, "🎛️ فصل الصوت… 20%".into(), true);
+            .set(&cfg, process_status_text(20.0), true);
         status2.borrow_mut().end(&cfg, "✅ تم".into());
         let before = edit_texts_on(&bot, msg2).len();
         assert_eq!(before, 2, "بدءٌ ثم نهاية: {before}");
@@ -9251,7 +10313,7 @@ mod tests {
             std::cell::RefCell::new(StatusMsg::new(7, 7, msg, Arc::new(AtomicBool::new(false))));
         status
             .borrow_mut()
-            .set(&cfg, "🎛️ فصل الصوت… 40%".into(), true);
+            .set(&cfg, process_status_text(40.0), true);
         status.borrow_mut().end(&cfg, "✅ تم".into());
 
         let edits = bot.edited_messages();
@@ -9527,7 +10589,7 @@ mod tests {
         assert_eq!(
             sent_to(&bot, -101).len(),
             first,
-            "أُعيدت رسالة «غير مسموح» — المطلوب **واحدة** موجزة"
+            "أُعيدت رسالة «غير مسموح» — المطلوب واحدة موجزة"
         );
         assert_eq!(poll.pending.count_for(-101), 0, "ملفٌّ سُجّل لغير مسموح");
 
@@ -9929,10 +10991,10 @@ mod tests {
         drop((job, elsewhere));
 
         // والقائمة: المالك يرى `/kill`، والعضو لا يراه.
-        assert!(help_text_for(true).contains("/kill"));
-        assert!(help_text_for(true).contains("/status"));
-        assert!(!help_text_for(false).contains("/kill"));
-        assert!(!help_text_for(false).contains("/status"));
+        assert!(help_text_for(Lang::Ar, true).contains("/kill"));
+        assert!(help_text_for(Lang::Ar, true).contains("/status"));
+        assert!(!help_text_for(Lang::Ar, false).contains("/kill"));
+        assert!(!help_text_for(Lang::Ar, false).contains("/status"));
     }
 
     // ── ت٨: الفانية غير مدعومة ⇒ السقوط لا الفشل ────────────────────────────
@@ -11113,7 +12175,7 @@ mod tests {
         // ② ولا في نصّ القائمة لأي قارئ.
         for is_owner in [true, false] {
             assert!(
-                !help_text_for(is_owner).contains(banned),
+                !help_text_for(Lang::Ar, is_owner).contains(banned),
                 "ظهر {banned} في /help (مالك: {is_owner})"
             );
         }
@@ -11260,5 +12322,944 @@ mod tests {
             }
             other => panic!("رفض setMyCommands يجب أن يُعلَن، جاء: {other:?}"),
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  ش-١ · حارس نصوص البوت: لا نجمتَي Markdown حرفيّتين
+    //  (عطل المالك 2026-09-23: رسالة سؤال الوضع وصلت وفيها `**أغنية**` حرفيّة)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// **مصدر هذا الملف** يُقرأ عند التصريف ⇒ الحارس يقيس **النصّ المشحون**، لا
+    /// قائمةً مكتوبةً بيدٍ تتقادم بصمت.
+    const SELF_SOURCE: &str = include_str!("telegram.rs");
+
+    /// يفكّ هروب النصّ الحرفيّ إلى **القيمة** التي يُنتجها Rust: `\n` · `\t` ·
+    /// `\r` · `\0` · `\\` · `\"` · `\'` · `\xNN` · `\u{…}` · ووصل السطر
+    /// (`\` + سطر جديد + إزاحة السطر التالي).
+    ///
+    /// **ولماذا الفكّ — وبه انكشف ثقب مُثبَت**: حارسٌ يقرأ **الحرف المكتوب**
+    /// يُخترق بصورة مكافئة. مُفسَد الجاسوس: `"\u{2a}\u{2a}"` بدل `"**"` — لا
+    /// تحمل النجمة في **المصدر** فتمرّ، وهي `**` في **القيمة** فتصل المستخدم.
+    /// ومثله `"\u{25}"` لـ`%` و`"\u{60}"` لعلامة الشيفرة. فالحكم على القيمة
+    /// (وهو نصّ قاعدة AGENT.md §٧: «احكم على القيمة لا على النصّ»).
+    fn unescape_rust_literal(raw: &str) -> String {
+        let cs: Vec<char> = raw.chars().collect();
+        let mut out = String::with_capacity(cs.len());
+        let mut i = 0usize;
+        while i < cs.len() {
+            let c = cs[i];
+            if c != '\\' {
+                out.push(c);
+                i += 1;
+                continue;
+            }
+            i += 1;
+            let Some(&e) = cs.get(i) else {
+                out.push('\\');
+                break;
+            };
+            i += 1;
+            match e {
+                'n' => out.push('\n'),
+                'r' => out.push('\r'),
+                't' => out.push('\t'),
+                '0' => out.push('\0'),
+                '\\' => out.push('\\'),
+                '\'' => out.push('\''),
+                '"' => out.push('"'),
+                'x' => {
+                    let hex: String = cs
+                        .get(i..i.saturating_add(2))
+                        .unwrap_or(&[])
+                        .iter()
+                        .collect();
+                    i = i.saturating_add(2);
+                    if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                        out.push(char::from(byte));
+                    }
+                }
+                'u' => {
+                    if cs.get(i) == Some(&'{') {
+                        let mut j = i + 1;
+                        let mut hex = String::new();
+                        while j < cs.len() && cs[j] != '}' {
+                            hex.push(cs[j]);
+                            j += 1;
+                        }
+                        i = j + 1;
+                        if let Some(ch) =
+                            u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32)
+                        {
+                            out.push(ch);
+                        }
+                    }
+                }
+                // وصل السطر: السطر الجديد وإزاحة ما بعده لا قيمة لهما.
+                '\n' | '\r' => {
+                    if e == '\r' && cs.get(i) == Some(&'\n') {
+                        i += 1;
+                    }
+                    while cs.get(i).is_some_and(|c| c.is_whitespace()) {
+                        i += 1;
+                    }
+                }
+                other => out.push(other),
+            }
+        }
+        out
+    }
+
+    /// يستخرج **النصوص الحرفيّة** من مصدر Rust: يتخطّى التعليقات (`//`،
+    /// و`/* */` المتداخلة)، والنصوص الخام (`r"…"` · `r#"…"#`)، **ومحارف `'…'`**
+    /// — **ويعيد القيمة لا التمثيل** (انظر [`unescape_rust_literal`]).
+    ///
+    /// **والفخّ مسمّى**: ماسحٌ لا يميّز `'"'` يظنّه فاتحَ نصّ ⇒ **ينقلب التكافؤ**
+    /// ⇒ يقرأ الكود نصّاً والنصّ كوداً، ويمرّ التشخيص **كذباً**. ولهذا يقيس
+    /// [`the_literal_scanner_sees_what_it_claims`] الماسحَ نفسه على نصٍّ مصنوع
+    /// فيه `'"'` **قبل** أن يُبنى عليه أيّ حكم.
+    fn string_literals(src: &str) -> Vec<String> {
+        let b = src.as_bytes();
+        let n = b.len();
+        let mut out: Vec<String> = Vec::new();
+        let mut i = 0usize;
+        while i < n {
+            match b[i] {
+                b'/' if b.get(i + 1) == Some(&b'/') => {
+                    i = b[i..].iter().position(|c| *c == b'\n').map_or(n, |p| i + p);
+                }
+                b'/' if b.get(i + 1) == Some(&b'*') => {
+                    let mut depth = 1usize;
+                    i += 2;
+                    while i < n && depth > 0 {
+                        if b[i] == b'/' && b.get(i + 1) == Some(&b'*') {
+                            depth += 1;
+                            i += 2;
+                        } else if b[i] == b'*' && b.get(i + 1) == Some(&b'/') {
+                            depth -= 1;
+                            i += 2;
+                        } else {
+                            i += 1;
+                        }
+                    }
+                }
+                b'\'' => {
+                    // `'\x'` محرف مهروب · `'x'` محرف · `'a` عمرُ نوعٍ (بلا إغلاق).
+                    if b.get(i + 1) == Some(&b'\\') {
+                        i = b[i + 2..]
+                            .iter()
+                            .position(|c| *c == b'\'')
+                            .map_or(n, |p| i + 3 + p);
+                    } else if b.get(i + 2) == Some(&b'\'') {
+                        i += 3;
+                    } else {
+                        i += 1;
+                    }
+                }
+                b'r' if b.get(i + 1) == Some(&b'"') || b.get(i + 1) == Some(&b'#') => {
+                    let hashes = b[i + 1..].iter().take_while(|c| **c == b'#').count();
+                    let open = i + 1 + hashes;
+                    if b.get(open) != Some(&b'"') {
+                        i += 1;
+                        continue;
+                    }
+                    let close = (open + 1..n).find(|k| {
+                        b[*k] == b'"' && (1..=hashes).all(|t| b.get(k + t) == Some(&b'#'))
+                    });
+                    let end = close.unwrap_or(n);
+                    out.push(String::from_utf8_lossy(&b[open + 1..end]).into_owned());
+                    i = end + 1 + hashes;
+                }
+                b'"' => {
+                    let mut j = i + 1;
+                    let mut escaped = false;
+                    let mut close = None;
+                    while j < n {
+                        let c = b[j];
+                        if escaped {
+                            escaped = false;
+                        } else if c == b'\\' {
+                            escaped = true;
+                        } else if c == b'"' {
+                            close = Some(j);
+                            break;
+                        }
+                        j += 1;
+                    }
+                    let end = close.unwrap_or(n);
+                    out.push(unescape_rust_literal(&String::from_utf8_lossy(
+                        &b[i + 1..end],
+                    )));
+                    i = end + 1;
+                }
+                _ => i += 1,
+            }
+        }
+        out
+    }
+
+    /// **حارس على الماسح نفسه**: نصٌّ مصنوع فيه الفخّ الذي يُفسد ماسحاً لا يميّز
+    /// المحرف `'"'`، ونصٌّ خامّ، وتعليقان يحملان النجمة — فلا يُبنى حكمٌ على
+    /// ماسحٍ لم يُقَس.
+    ///
+    /// (المُفسَد: إسقاط فرع المحرف `'…'` ⇒ يقرأ `'"'` فاتحَ نصّ ⇒ يسقط هذا الفحص.)
+    #[test]
+    fn the_literal_scanner_sees_what_it_claims() {
+        // النجمة تُبنى وقت التشغيل عمداً: لو كُتبت في المصدر لصار الماسح يقيس نفسه.
+        let stars: String = ['*', '*'].iter().collect();
+        let sample = [
+            "// تعليق فيه ",
+            stars.as_str(),
+            " و\"نصّ زائف\"\n",
+            "/* كتلة فيها ",
+            stars.as_str(),
+            " و\"نصّ زائف\" */\n",
+            "fn f() { let q = '\"'; let s = \"ع ",
+            stars.as_str(),
+            " ع\"; let r = r#\"خ ",
+            stars.as_str(),
+            " خ\"#; }\n",
+        ]
+        .concat();
+        let lits = string_literals(&sample);
+        assert_eq!(
+            lits.len(),
+            2,
+            "الماسح قرأ تعليقاً أو أضاع نصّاً (فخّ `'\"'`): {lits:?}"
+        );
+        assert!(
+            lits.iter().all(|l| l.contains(&stars)),
+            "النصّان الصحيحان وحدهما يُقرآن: {lits:?}"
+        );
+        assert!(
+            lits.iter().any(|l| l.starts_with("خ")),
+            "النصّ الخامّ لم يُقرأ: {lits:?}"
+        );
+        // وضابط: النصّ العاديّ يُقرأ بلا نجوم أيضاً (فالماسح لا يخترع نجوماً).
+        let plain = string_literals("let a = \"س\"; let b = \"ص\";");
+        assert_eq!(plain, vec!["س".to_string(), "ص".to_string()]);
+        // **والنصّ الخامّ بعلامات** (`r#"…"#` · `r##"…"##`): يُقرأ بعلاماته لا
+        // بأوّل علامةٍ تُصادَف، ومحتواه لا يُفكّ هروبه (لا هروب في الخامّ).
+        let raw_sample = [
+            "let a = r##\"نصّ فيه \"# ثم ",
+            stars.as_str(),
+            " خ\"##; let b = \"س\";",
+        ]
+        .concat();
+        let rl = string_literals(&raw_sample);
+        assert_eq!(
+            rl.len(),
+            2,
+            "النصّ الخامّ بعلامتين لم يُقرأ صحيحاً (تكافؤ الماسح ينهار عنده): {rl:?}"
+        );
+        assert!(
+            rl[0].contains(&stars) && rl[0].contains("\"#"),
+            "محتوى النصّ الخامّ لم يُقرأ كاملاً: {rl:?}"
+        );
+        assert_eq!(rl[1], "س", "النصّ العاديّ بعد الخامّ لم يُقرأ: {rl:?}");
+    }
+
+    /// قوالب أسماء ملفات داخليّة فيها `_` بعد `{}` — **أسماءٌ لا تنسيق**، أُبقيت
+    /// بنصّها. وهي الجرد الذي يُقابَل به «شكل المُعلِّم» في
+    /// [`no_bot_text_carries_literal_markdown_markup`].
+    const UNDERSCORE_FILENAME_TEMPLATES: [&str; 4] = [
+        "ov_{}_audio.mp3",
+        "ov_{}_small.mp4",
+        "{}_{}",
+        "tg_{}_small.mp4",
+    ];
+
+    /// **كل نصّ يبنيه الإنتاج بدالّة مسمّاة** — يُنادى هنا ويُفحَص **مخرَجُه**.
+    ///
+    /// وهذا هو **الحاكم** في حارس التنسيق، وماسحُ المصدر **مساعد**: مُفسَد الجاسوس
+    /// كتب النجمة `"\u{2a}"` والعلامة `"\u{60}"`، فلا يراها ماسحُ المصدر لو قرأ
+    /// الحرف المكتوب — ويراها هذا الفحص لأن الدالّة **أنتجت** المحرف فعلاً.
+    ///
+    /// **وحدّه المعلَن**: ما لا دالّة له (نصوص تُبنى داخل موضع النداء، مثل بطاقة
+    /// السماح ونصوص أخطاء الهوية) يبقى على ماسح المصدر وحده — وهو مذكور في
+    /// التقرير §١١-٤.
+    fn built_user_texts(lang: Lang) -> Vec<(&'static str, String)> {
+        let plan_yes = OversizePlan {
+            shrink_kbps: 700,
+            audio_kbps: 96,
+        };
+        let plan_no = OversizePlan {
+            shrink_kbps: 0,
+            audio_kbps: 0,
+        };
+        let named = BotIdentity {
+            id: 7,
+            username: "MyBot".into(),
+        };
+        let anon = BotIdentity::default();
+        let card = Approval {
+            chat_id: -101,
+            user_id: 55,
+            // **والاسم غير عربيّ عمداً**: الأسماء **لا تُترجَم** (control ب)،
+            // فاسمٌ عربي في المُدخَل يجعل الحارس يقيس البيانات لا الرسالة.
+            user: "member".into(),
+            source: Source::Link("https://example.test/x".into()),
+            src_msg_id: 12,
+            file: "clip.mp4".into(),
+            card_msg_id: 77,
+        };
+        vec![
+            ("mode_question_text", mode_question_text("📎 song.mp4", 0)),
+            (
+                "mode_question_text+wait",
+                mode_question_text("🔗 https://example.test/x", 3),
+            ),
+            ("waiting_text", waiting_text("أغنية", 2)),
+            ("running_text", running_text("مقطع عادي")),
+            ("pending_full_text", pending_full_text()),
+            (
+                "cancel_reply(cancelled)",
+                cancel_reply(true, slots::JobPhase::Preparing),
+            ),
+            (
+                "cancel_reply(preparing)",
+                cancel_reply(false, slots::JobPhase::Preparing),
+            ),
+            (
+                "cancel_reply(processing)",
+                cancel_reply(false, slots::JobPhase::Processing),
+            ),
+            ("cancelled_text", CANCELLED_TEXT.to_string()),
+            ("pairing_hint", pairing_hint(4242)),
+            ("intro_text(anon)", intro_text(&anon, None)),
+            ("intro_text(named)", intro_text(&named, None)),
+            (
+                "intro_text+advice",
+                intro_text(&named, cpu_advice_line(Some("CPU"))),
+            ),
+            ("help_text_for(owner)", help_text_for(lang, true)),
+            ("help_text_for(member)", help_text_for(lang, false)),
+            ("lang_text(none)", lang_text(7, None).0),
+            ("lang_text(ar)", lang_text(7, Some("ar")).0),
+            ("approval_text", approval_text(&card)),
+            (
+                "oversize_text(can-shrink)",
+                oversize_text(60 * 1024 * 1024, "big.mp4", &plan_yes),
+            ),
+            (
+                "oversize_text(no-option)",
+                oversize_text(60 * 1024 * 1024, "big.mp4", &plan_no),
+            ),
+            ("oversize_guide_text", oversize_guide_text()),
+            ("download_status_text", download_status_text(62.0)),
+            ("process_status_text", process_status_text(62.0)),
+        ]
+    }
+
+    /// عدد مواضع `_` التي **بشكل مُعلِّم المائل**: ما قبلها ليس محرف كلمة (وإلا
+    /// فهي داخل مُعرِّف مثل `chat_id`)، وما بعدها ليس فراغاً (وإلا فهي شرطة سُفلى
+    /// عارية). فالقاعدة تقيس **قصد التنسيق** لا وجود المحرف.
+    fn underscore_marker_sites(text: &str) -> usize {
+        let cs: Vec<char> = text.chars().collect();
+        let mut n = 0;
+        for (i, c) in cs.iter().enumerate() {
+            if *c != '_' {
+                continue;
+            }
+            let prev = if i == 0 { ' ' } else { cs[i - 1] };
+            let word_before = prev.is_alphanumeric() || prev == '_';
+            let opens = cs.get(i + 1).is_some_and(|next| !next.is_whitespace());
+            if !word_before && opens {
+                n += 1;
+            }
+        }
+        n
+    }
+
+    /// **الحارس (عطل ٢٠٢٦-٠٩-٢٣، وُسِّع في اليوم نفسه)**: لا محارف تنسيق تُعرض
+    /// حرفيّة في نصوص البوت.
+    ///
+    /// **العطل المقيس**: نصوص البوت كانت تحمل `**` (تأكيد)، ثم قِيس أنّها تحمل
+    /// أيضاً `` ` `` (شيفرة) — و`parse_mode` غير مضبوط في أيّ موضع من هذا الملف
+    /// (قياس: ٨ نتائج لكلمة `parse_mode` كلّها لدالّة تحليل `callback_data`،
+    /// وصفر موضع تنسيق) ⇒ تصل العلامات **حرفيّة** إلى الشاشة. والمالك لا يفرّق
+    /// بين `**` و`` ` `` — يرى علامات في محادثته، وهو الصنف نفسه.
+    ///
+    /// **والمرجع لا الذاكرة**: `core.telegram.org/bots/api` — صفّ
+    /// `MessageEntity.type` يسمّي التنسيق بمحارفه: `“bold” (**bold text**)` ·
+    /// `“italic” (_italic text_)` · `“code”`/`“pre”` (بين علامتَي شيفرة) ·
+    /// `“text_link”` (`[text](url)`).
+    ///
+    /// **الجرد المعلَن** (نصوص **الإنتاج** وحدها = 627 نصّاً حرفيّاً):
+    ///
+    /// | الصنف | قبل | بعد | مواضعه قبل |
+    /// |---|---|---|---|
+    /// | `` ` `` | 3 | **0** | `:339` معرّف الاقتران · `:3674` · `:3676` مثال المنشن |
+    /// | `**` | 16 (**الملف كلّه**) | **0** | ١١ إنتاجاً + ٥ رسائل اختبار |
+    /// | `*` | 0 | 0 | — |
+    /// | `[` · `]` | 0 · 0 | 0 · 0 | — |
+    /// | `_` | 4 (**قوالب أسماء ملفات**) | 4 (**مُبقاة ومُعلَنة**) | `ov_{}_audio.mp3` · `ov_{}_small.mp4` · `{}_{}` · `tg_{}_small.mp4` |
+    ///
+    /// **وحدّ `_` مقيس لا مقدَّر**: 126 نصّاً إنتاجيّاً تحمل `_`، وكلّها معرّفات
+    /// ومفاتيح Bot API وعناصر نائبة (`chat_id` · `{from_id}` · `setMyName` ·
+    /// `last_error`) — ولا واحد منها قُصد به التنسيق. فمنعُ `_` إطلاقاً كان
+    /// سيشوّه 126 نصّاً سليماً لإرضاء حارس، وهو الإفراط نفسه. فالبديل: يُقاس
+    /// **عدد المواضع ذات شكل المُعلِّم** ويُقابَل بالأربعة المعلَنة ⇒ **من أضاف
+    /// مائلاً حقيقيّاً في نصّ مستخدم يسقط**، ولا يُلمس اسم ملف.
+    ///
+    /// **وحدّان مقصودان**: `**` يمرّ على **الملف كلّه** (ومنها الاختبارات) فلا
+    /// يُخترق بنقل نصّ؛ وبقيّة الأصناف على **الإنتاج** وحده، لأن نصوص الاختبارات
+    /// لا تصل إلى تلغرام وفيها `` ` `` و`*` و`[` مشروعة (متوقَّعات ومقابلات).
+    ///
+    /// (المُفسَد: إعادة `` ` `` إلى نصّ التعريف ⇒ يسقط. وإعادة `**` إلى سؤال
+    /// الوضع ⇒ يسقط. وإضافة مائل حقيقيّ إلى نصّ مستخدم ⇒ يسقط.)
+    #[test]
+    fn no_bot_text_carries_literal_markdown_markup() {
+        // ① الملف كلّه: نجمتا التأكيد — أوسع من المطلوب عمداً.
+        let lits = string_literals(SELF_SOURCE);
+        assert!(
+            lits.len() > 1500,
+            "الماسح لم يقرأ الملف ({} نصّاً حرفيّاً) — وحارسٌ على مدخلٍ فارغ يمرّ كذباً",
+            lits.len()
+        );
+        assert!(
+            lits.iter().any(|l| l.contains("جارٍ التنزيل")),
+            "الماسح لا يرى نصوص حالة التنزيل — فهو لا يرى ما يدّعي حراسته"
+        );
+        let stars: String = ['*', '*'].iter().collect();
+        let bad: Vec<&String> = lits.iter().filter(|l| l.contains(&stars)).collect();
+        assert!(
+            bad.is_empty(),
+            "نجمتا التأكيد حرفيّتان في {} نصّاً يصل إلى تلغرام: {bad:?}",
+            bad.len()
+        );
+
+        // ② الإنتاج: محارف التنسيق المعلَنة.
+        let starts = tests_module_starts(SELF_SOURCE);
+        assert_eq!(
+            starts.len(),
+            1,
+            "حدّ وحدة الاختبارات ليس فريداً ({} موضعاً) — القياس بلا مرجع",
+            starts.len()
+        );
+        let boundary = line_of(SELF_SOURCE, starts[0]);
+        println!("حدّ وحدة الاختبارات: السطر {boundary}");
+        let prod = production_source(SELF_SOURCE);
+        assert!(
+            prod.len() < SELF_SOURCE.len(),
+            "حدّ الوحدة (السطر {boundary}) لم يُقرأ — فالحارس يقيس الملف كله بلا تمييز"
+        );
+        assert!(
+            !prod.contains("the_fake_bot_actually_records_what_it_receives"),
+            "الحدّ (السطر {boundary}) في غير موضعه: قِيسَت نصوص الاختبارات كأنها إنتاج"
+        );
+        assert!(
+            !prod.contains(["mod tests", " {"].concat().as_str()),
+            "الإنتاج يذكر عبارة حدّ وحدة الاختبارات (السطر {boundary}) — وهي بعينها ما \
+             يُخدع به ماسحٌ نصّيّ لنقل موضع القطع؛ احذفها من التعليق"
+        );
+        let plits = string_literals(prod);
+        assert!(
+            plits.len() > 500,
+            "الماسح لم يقرأ الإنتاج ({} نصّاً حرفيّاً)",
+            plits.len()
+        );
+        for ch in ['`', '*', '[', ']'] {
+            let hits: Vec<&String> = plits.iter().filter(|l| l.contains(ch)).collect();
+            assert!(
+                hits.is_empty(),
+                "المحرف {ch:?} حرفيٌّ في {} نصّاً من الإنتاج — يُعرض للمستخدم: {hits:?}",
+                hits.len()
+            );
+        }
+
+        // ③ `_`: مقابلةٌ بجرد معلَن لا منعٌ أعمى (الشرح في التوثيق أعلاه).
+        let mut got: Vec<String> = plits
+            .iter()
+            .filter(|l| underscore_marker_sites(l) > 0)
+            .map(|l| l.to_string())
+            .collect();
+        got.sort();
+        let mut want: Vec<String> = UNDERSCORE_FILENAME_TEMPLATES
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        want.sort();
+        assert_eq!(
+            got, want,
+            "مواضع `_` بشكل مُعلِّم تغيّرت — راجع: هل أُضيف مائل حقيقيّ إلى نصّ مستخدم؟"
+        );
+
+        // ④ **القيمة المُنتَجة لا الحرف المكتوب** — وهذا هو الحاكم، وماسحُ المصدر
+        //    مساعد. مُفسَد الجاسوس كتب `"\u{2a}"` و`"\u{60}"`: لا نجمةَ في المصدر،
+        //    والنجمة في **القيمة** تصل المستخدم. فالفحص هنا على مخرَج الدالّة.
+        for (name, text) in built_user_texts(Lang::Ar) {
+            for ch in ['`', '*', '[', ']'] {
+                assert!(
+                    !text.contains(ch),
+                    "«{name}» يُنتج المحرف {ch:?} — يصل المستخدم حرفيّاً: {text:?}"
+                );
+            }
+        }
+        // وضابط على الضابط: القائمة ليست فارغة، وفيها النصوص التي قِيس عليها العطل.
+        let built = built_user_texts(Lang::Ar);
+        assert!(
+            built.len() >= 20,
+            "قائمة النصوص المُنتَجة قصيرة ({} عنصراً) — ضابطٌ فارغ لا يقيس",
+            built.len()
+        );
+        assert!(
+            built
+                .iter()
+                .any(|(n, _)| *n == "pairing_hint" && n.contains("pairing")),
+            "نصّ الاقتران ليس في القائمة — وهو أحد ثلاثة مواضع قِيس فيها المحرف"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  ش-٢ · شريط التقدّم (بند ز-٨/١): حدودُ الدالّة النقيّة، والشريط في النصّ
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// **ما دون وحدة الاختبارات وحده** — والبيان مقيس في الحارس أدناه، لا مُدَّعى.
+    ///
+    /// **ولماذا الشريط يُقاس على الإنتاج وحده**: نصوص الاختبارات لا تصل إلى
+    /// تلغرام، وفيها **متوقَّعُ** النسبة (`"… 62%"`) وهو مشروع فيها. أما نصوص
+    /// الإنتاج فلا يجوز أن تحمل `%` بيدٍ إطلاقاً — فالشريط هو الطريق الوحيد.
+    ///
+    /// **وبيانه ليس مطابقةً نصّية** (ثقب مُثبَت أغلقه الجاسوس): كان
+    /// `src.find("mod tests {")`، فتعليقٌ إنتاجيّ بريء **يذكر هذه العبارة** ينقل
+    /// موضع القطع ⇒ يُقاس نصف الملف على أنه إنتاج ⇒ تسقط ثلاثة فحوص **بصمت**
+    /// (حارس `%` ومحارف ② وجرد `_` ③). والحدّ الآن **بنيويّ**: لا يطابق إلا سطراً
+    /// قائماً بذاته نصُّه `mod tests {` **والسطرُ الذي قبله `#[cfg(test)]`** —
+    /// فذكرُ العبارة داخل جملة لا يحرّكه. ويُشترط أن يكون **فريداً**، ويُعلَن
+    /// رقمه في رسائل الحارس.
+    fn tests_module_starts(src: &str) -> Vec<usize> {
+        let marker = ["mod tests", " {"].concat();
+        let mut out = Vec::new();
+        let mut from = 0usize;
+        while let Some(rel) = src[from..].find(&marker) {
+            let at = from + rel;
+            let line_start = src[..at].rfind('\n').map_or(0, |n| n + 1);
+            let alone_on_its_line = src[line_start..at].trim().is_empty();
+            let after_unit_attr = src[..line_start].trim_end().ends_with("#[cfg(test)]");
+            if alone_on_its_line && after_unit_attr {
+                out.push(line_start);
+            }
+            from = at + 1;
+        }
+        out
+    }
+
+    /// موضع القطع **بعدد أسطره** (1-based) — يُعلَن في رسائل الحارس.
+    fn line_of(src: &str, byte: usize) -> usize {
+        src[..byte].matches('\n').count() + 1
+    }
+
+    fn production_source(src: &str) -> &str {
+        let starts = tests_module_starts(src);
+        assert_eq!(
+            starts.len(),
+            1,
+            "حدّ وحدة الاختبارات ليس فريداً ({} موضعاً) — فأيّها الإنتاج؟",
+            starts.len()
+        );
+        &src[..starts[0]]
+    }
+
+    /// (خلايا ممتلئة، خلايا فارغة) من نصّ الشريط.
+    fn bar_cells(text: &str) -> (usize, usize) {
+        let bar = text.split(' ').next().unwrap_or("");
+        (
+            bar.chars().filter(|c| *c == BAR_FULL).count(),
+            bar.chars().filter(|c| *c == BAR_EMPTY).count(),
+        )
+    }
+
+    /// **حدود الدالّة النقيّة**: الصفر والعامّ الكامل والوسطى، ثم مدخلات لا تقع
+    /// في الإنتاج اليوم — تُقاس هنا لئلا تنفجر غداً.
+    ///
+    /// (المُفسَد ①: `PROGRESS_BAR_CELLS = 9` ⇒ يسقط عرض الـ١٠. ②: قلب العدّ
+    /// إلى `i >= PROGRESS_BAR_CELLS - filled` ⇒ يسقط النصّ المتوقَّع `…62%`.)
+    #[test]
+    fn the_progress_bar_is_a_declared_width_and_holds_its_boundaries() {
+        assert_eq!(PROGRESS_BAR_CELLS, 10, "العرض المعلَن تغيّر بلا تصريح");
+        // ① الطرفان — ومعها مثال البند المعلَن `▰▰▰▰▰▰▱▱▱▱ 62%`.
+        assert_eq!(progress_bar_text(0.0), "▱▱▱▱▱▱▱▱▱▱ 0%");
+        assert_eq!(progress_bar_text(100.0), "▰▰▰▰▰▰▰▰▰▰ 100%");
+        assert_eq!(progress_bar_text(50.0), "▰▰▰▰▰▱▱▱▱▱ 50%");
+        assert_eq!(progress_bar_text(62.0), "▰▰▰▰▰▰▱▱▱▱ 62%");
+        // ② العرض ثابت، والعدّ لا يرجع للخلف، والحساب هو المعروض.
+        let mut prev = 0usize;
+        for step in 0..=100 {
+            let (full, empty) = bar_cells(&progress_bar_text(f64::from(step)));
+            assert_eq!(full + empty, PROGRESS_BAR_CELLS, "عرض غير ثابت عند {step}%");
+            assert_eq!(full, bar_filled(f64::from(step), PROGRESS_BAR_CELLS));
+            assert!(full >= prev, "العدّ رجع للخلف عند {step}%");
+            prev = full;
+        }
+        // ③ مدخلات فاسدة: قصٌّ إلى الحدّ — لا ذعر ولا التفاف.
+        for (bad, want) in [
+            (f64::NAN, "▱▱▱▱▱▱▱▱▱▱ 0%"),
+            (-1.0, "▱▱▱▱▱▱▱▱▱▱ 0%"),
+            (-1.0e300, "▱▱▱▱▱▱▱▱▱▱ 0%"),
+            (f64::NEG_INFINITY, "▱▱▱▱▱▱▱▱▱▱ 0%"),
+            (100.0001, "▰▰▰▰▰▰▰▰▰▰ 100%"),
+            (1.0e300, "▰▰▰▰▰▰▰▰▰▰ 100%"),
+            (f64::INFINITY, "▰▰▰▰▰▰▰▰▰▰ 100%"),
+        ] {
+            assert_eq!(progress_bar_text(bad), want, "مدخل فاسد: {bad}");
+        }
+        // ④ والناتج لا يتجاوز العرض أبداً — ولا مع عرضٍ صفر أو ضخم.
+        for cells in [0usize, 1, 7, 10, 1000, usize::MAX] {
+            for pct in [
+                f64::NAN,
+                -1.0,
+                0.0,
+                33.3,
+                99.9,
+                100.0,
+                1.0e300,
+                f64::INFINITY,
+            ] {
+                assert!(
+                    bar_filled(pct, cells) <= cells,
+                    "تجاوز العرض عند {pct} في {cells} خليّة"
+                );
+            }
+        }
+        assert_eq!(bar_filled(50.0, 0), 0, "عرض صفر ⇒ صفر خلايا");
+    }
+
+    /// **الشريط في نصّ الحالة نفسه** — لا دالّةً معزولة يُدَّعى أنها تُستعمل.
+    #[test]
+    fn the_download_and_processing_status_texts_carry_the_bar() {
+        assert_eq!(download_status_text(0.0), "📥 جارٍ التنزيل… ▱▱▱▱▱▱▱▱▱▱ 0%");
+        assert_eq!(download_status_text(62.0), "📥 جارٍ التنزيل… ▰▰▰▰▰▰▱▱▱▱ 62%");
+        assert_eq!(
+            download_status_text(100.0),
+            "📥 جارٍ التنزيل… ▰▰▰▰▰▰▰▰▰▰ 100%"
+        );
+        assert_eq!(process_status_text(0.0), "🎛️ فصل الصوت… ▱▱▱▱▱▱▱▱▱▱ 0%");
+        assert_eq!(process_status_text(62.0), "🎛️ فصل الصوت… ▰▰▰▰▰▰▱▱▱▱ 62%");
+    }
+
+    /// و**الشريط يصل السلك**: يُقرأ من جسم `editMessageText` الذي استقبله الخادم
+    /// الوهمي — فمحرف `▰` (U+25B0) يمرّ بـJSON ثم UTF-8، ولا يُفترض أنه يمرّ.
+    #[test]
+    fn the_progress_bar_reaches_the_wire_on_the_status_message() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let msg = 6201;
+        let status =
+            std::cell::RefCell::new(StatusMsg::new(7, 7, msg, Arc::new(AtomicBool::new(false))));
+        status
+            .borrow_mut()
+            .set(&cfg, download_status_text(62.0), true);
+        assert_eq!(
+            edit_texts_on(&bot, msg),
+            vec!["📥 جارٍ التنزيل… ▰▰▰▰▰▰▱▱▱▱ 62%".to_string()],
+            "الشريط لم يصل على رسالة الحالة"
+        );
+    }
+
+    /// **الحارس (بند ز-٨/١)**: لا `%` مكتوبة بيدٍ — لا في نصٍّ حرفيّ **في
+    /// الإنتاج** ولا في **قيمة يُنتجها** الإنتاج ⇒ عرض النسبة **مُرغَم** أن يمرّ
+    /// بـ[`progress_bar_text`].
+    ///
+    /// وقاعدةٌ تقول «تذكّر الشريط» تُنسى؛ وهذه تقول «لا يمكن كتابة نسبةٍ بلا
+    /// شريط»، لأن النسبة الوحيدة المسموح بها تُبنى هناك بمحرف `push('%')` لا
+    /// بنصٍّ حرفيّ.
+    ///
+    /// (المُفسَد: إعادة `format!("📥 جارٍ التنزيل… {}%", …)` ⇒ يسقط هذا الفحص
+    /// **و**فحص الشريط أعلاه. ومُفسَد الجاسوس `"\u{25}"` — كتابة `%` بصورة
+    /// مكافئة — يسقط بالقسم الثاني لأن الفحص على **القيمة المُنتَجة**.)
+    #[test]
+    fn no_bot_text_writes_a_percent_by_hand() {
+        let prod = production_source(SELF_SOURCE);
+        assert!(
+            prod.len() < SELF_SOURCE.len(),
+            "حدّ وحدة الاختبارات لم يُقرأ — فالحارس يقيس الملف كله بلا تمييز"
+        );
+        assert!(
+            prod.contains("fn download_status_text"),
+            "الشريط تُرك خارج الإنتاج — القياس في غير موضعه"
+        );
+        assert!(
+            !prod.contains("the_fake_bot_actually_records_what_it_receives"),
+            "الحدّ في غير موضعه: قِيسَت نصوص الاختبارات كأنها إنتاج"
+        );
+        let lits = string_literals(prod);
+        assert!(
+            lits.len() > 500,
+            "الماسح لم يقرأ الإنتاج ({} نصّاً حرفيّاً) — حارسٌ على مدخلٍ فارغ يمرّ كذباً",
+            lits.len()
+        );
+        let bad: Vec<&String> = lits.iter().filter(|l| l.contains('%')).collect();
+        assert!(
+            bad.is_empty(),
+            "`%` مكتوبة بيدٍ في {} نصّاً من الإنتاج — النسبة تُعرض بالشريط: {bad:?}",
+            bad.len()
+        );
+
+        // **والقيمة المُنتَجة أيضاً** (ثقب الجاسوس `"\u{25}"`): نصٌّ يبنيه الإنتاج
+        // بدالّة مسمّاة لا يجوز أن يحمل `%` — إلا الشريطَين، ويُقابَلان بشكلٍ معلَن
+        // يجعل `%` **موضعَ الشريط وحده** لا موضعاً آخر.
+        for (name, text) in built_user_texts(Lang::Ar) {
+            if name.ends_with("_status_text") {
+                continue;
+            }
+            assert!(
+                !text.contains('%'),
+                "«{name}» يُنتج `%` في نصّه — النسبة تُعرض بالشريط وحده: {text:?}"
+            );
+        }
+        for (name, f) in [
+            (
+                "download_status_text",
+                download_status_text as fn(f64) -> String,
+            ),
+            (
+                "process_status_text",
+                process_status_text as fn(f64) -> String,
+            ),
+        ] {
+            for pct in [0.0, 62.0, 100.0] {
+                let text = f(pct);
+                let tail = text.rsplit(' ').next().unwrap_or("");
+                assert!(
+                    tail.ends_with('%')
+                        && !tail.trim_end_matches('%').is_empty()
+                        && tail
+                            .trim_end_matches('%')
+                            .chars()
+                            .all(|c| c.is_ascii_digit()),
+                    "«{name}»: `%` خارج موضع الشريط في {text:?}"
+                );
+                assert_eq!(
+                    text.matches('%').count(),
+                    1,
+                    "«{name}» يحمل `%` أكثر من مرّة: {text:?}"
+                );
+                // **والربط بالشريط لا بالشكل** (ثقب كشفه مُفسَد): نصٌّ مكتوب بيد
+                // `format!("… {}{}", n, '%')` له **الذات الشكل** الذي للشريط
+                // (`62%` في الذيل) فيمرّ من فحص الشكل وحده — وقد مرّ فعلاً في
+                // التشغيل الأول. فالمطلوب أن يحمل النصّ **مخرَج الشريط نفسه**،
+                // وهي الدعوى بعينها: الشريط ظاهر في نصّ الحالة.
+                assert!(
+                    text.contains(&progress_bar_text(pct)),
+                    "«{name}» لا يحمل الشريط عند {pct} — النسبة مكتوبة بيد: {text:?}"
+                );
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  ش-٣ · مرحلة الفصل تحمل العدّاد — حارس على **المسار** لا على الباني
+    //  (بلاغ المالك 2026-09-23: «جاري التنزيل ▰▰▰▰▰▰▱▱▱▱ … يعمل» ·
+    //   «فصل الصوت بدون عداد»)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// **حارس المسار**: لا يقيس أنّ بانيَ نصّ المرحلة **موجود** (وهذا صنف «حارس
+    /// على ورق»)، بل أنّ **نداءات المسار** — وهي بعينها ما يُمرَّر إلى المحرّك من
+    /// `run_job`، ولمسار الرابط ومسار الملف معاً — **تكتب شريطاً على السلك**،
+    /// **لكل مرحلة**: التنزيل · التجهيز · الفصل · التنقية والتحسين · الترميز ·
+    /// ومرحلة مجهولة.
+    ///
+    /// **والعطل المقيس** (بلاغ المالك على البناء المؤقّت): `pipeline.rs:798-801`
+    /// ينادي `stage` **قبل** `progress` في اللحظة نفسها، و`StatusMsg::push` يمنح
+    /// نافذة [`EDIT_MIN_GAP`] للكاتب **الأول** ويسقط الثاني. وكانت كتلة `stage`
+    /// تكتب **سبعة نصوص موازية بلا رقم** (`"separate" => "فصل الموسيقى عن
+    /// الصوت…"` · `"effects" => "تنقية وتحسين…"`) — وهي بعينها ما رآه المالك —
+    /// فكان نصّ العدّاد يُسقَط دائماً. ولذلك **الترتيب هنا يحاكي الإنتاج**
+    /// (`stage` ثم `progress`) ولو قُلب لمَرَّ الفحص كذباً.
+    ///
+    /// **والقياس على السلك**: يُقرأ نصّ `editMessageText` الذي استقبله الخادم
+    /// الوهمي، فلا يُكتفى بأن الدالّة «تُنتج» شريطاً. **ولكل مرحلة ضابطان**:
+    /// ① وسمُها ظهر فعلاً في نصّ وصل، ② وكل نصّ وصل يحمل شريطاً بعرضه ونسبةً.
+    ///
+    /// (المُفسَد ①: إعادة نصّ مرحلة موازٍ بلا رقم ⇒ يسقط. ②: فصل مغلقة `run_job`
+    /// عن التقريرين ⇒ يسقط فحص الوصلة أدناه.)
+    #[test]
+    fn every_stage_reaches_the_wire_with_the_counter() {
+        let _g = state_lock();
+        reset_counters();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        let msg = 7101;
+        let status =
+            std::cell::RefCell::new(StatusMsg::new(7, 7, msg, Arc::new(AtomicBool::new(false))));
+        let overall = std::cell::Cell::new(0.0f32);
+        let stop = Arc::new(AtomicBool::new(false));
+
+        // ما يسبق المحرّك: «▶ بدأت المعالجة — الوضع: …» (كما في `run_job`).
+        status.borrow_mut().set(&cfg, running_text("أغنية"), true);
+
+        // ① **التنزيل**: الباني نفسه، ويُكتب نداءً نداءً كما يفعل `dl`.
+        for p in [0.0f32, 0.3, 1.0] {
+            status.borrow_mut().allow_now();
+            status
+                .borrow_mut()
+                .set(&cfg, download_status_text(f64::from(p) * 100.0), false);
+        }
+
+        // ② **المعالجة**: كل مرحلة معروضة، بترتيب الإنتاج حرفاً: stage ثم progress.
+        let stages = ["normalize", "separate", "effects", "encode", "مجهولة"];
+        for name in stages {
+            for p in [0.05f32, 0.45, 0.95] {
+                status.borrow_mut().allow_now();
+                report_process_stage(&cfg, &status, &overall, name);
+                status.borrow_mut().allow_now();
+                assert!(
+                    report_process_progress(&cfg, &status, 1, &overall, &stop, p),
+                    "التقدّم طُلب إلغاؤه بلا سبب"
+                );
+            }
+        }
+
+        // ③ **الاستلام** (ملف أرسله المستخدم): العدّاد من بايتاتٍ ÷ حجم معلوم.
+        for written in [0u64, 128 * 1024, 512 * 1024] {
+            status.borrow_mut().allow_now();
+            report_receive_progress(&cfg, &status, 1024 * 1024, written);
+        }
+
+        let texts = edit_texts_on(&bot, msg);
+        assert!(
+            texts.len() >= 20,
+            "لم تُكتب تحديثات كافية لقياس المراحل ({} نصّاً): {texts:?}",
+            texts.len()
+        );
+        // ②′ وكل كتابة بعد نصّ البداية — أيًّا كان الكاتب الذي سبق النافذة —
+        // تحمل الشريط بعرضه المعلَن ونسبةً منتهية بعلامتها.
+        for t in texts.iter().skip(1) {
+            let cells = t
+                .chars()
+                .filter(|c| *c == BAR_FULL || *c == BAR_EMPTY)
+                .count();
+            assert_eq!(
+                cells, PROGRESS_BAR_CELLS,
+                "نصّ مرحلة وصل بلا شريط بعرضه — وهو العطل الأصلي: {t:?}"
+            );
+            assert!(t.ends_with('%'), "نصّ مرحلة وصل بلا نسبة: {t:?}");
+        }
+        // ①′ **وضابط لكل مرحلة على حِدة**: وسمها ظهر في نصّ بلغ السلك. فحارسٌ
+        // يمرّ لأن مرحلةً واحدة تحمل الشريط لا يقول شيئاً عن البقية.
+        assert!(
+            texts.iter().any(|t| t.contains("جارٍ التنزيل")),
+            "نصّ التنزيل لم يظهر في السلك: {texts:?}"
+        );
+        assert!(
+            texts.iter().any(|t| t.contains("استلام الملف")),
+            "نصّ الاستلام لم يظهر في السلك: {texts:?}"
+        );
+        for name in stages {
+            let label = stage_label(name);
+            assert!(
+                texts.iter().any(|t| t.contains(label)),
+                "المرحلة «{name}» (وسمها «{label}») لم تظهر في أيّ نصّ وصل: {texts:?}"
+            );
+        }
+        // وضابط: النصّ ليس نصّ البداية المُعاد (فالقياس على تحديثٍ حقيقيّ).
+        assert!(
+            !texts[1].contains("بدأت المعالجة"),
+            "أول تحديث هو نصّ البداية نفسه: {:?}",
+            texts[1]
+        );
+
+        // **ووصلةٌ بنيوية على المقعد**: `run_job` يبني المغلقتين من هذين
+        // التقريرين — لا نصّاً موازياً. (وإن أُعيد تنسيق السطر يسقط الفحص
+        // برسالته، وهذا مقصود: الوصلة نفسها تغيّرت.)
+        let prod = production_source(SELF_SOURCE);
+        assert!(
+            prod.contains("let prog = |p: f32| report_process_progress("),
+            "نداء التقدّم في `run_job` ليس من تقرير المسار — نصٌّ موازٍ عاد"
+        );
+        assert!(
+            prod.contains("|name: &str, _p: f32| report_process_stage("),
+            "نداء المرحلة في `run_job` ليس من تقرير المسار — نصٌّ موازٍ عاد"
+        );
+        assert!(
+            prod.contains("download_status_text(f64::from(p) * 100.0)"),
+            "نداء التنزيل في `run_job` ليس من باني الشريط — نصٌّ موازٍ عاد"
+        );
+        assert!(
+            prod.contains("&|written| report_receive_progress(cfg, &status, size, written)"),
+            "نداء الاستلام ليس من تقرير المسار — نصٌّ موازٍ عاد"
+        );
+        assert!(
+            prod.contains("RECEIVING_TEXT.to_string()"),
+            "نصّ الاستلام مكتوب حرفاً في موضعه بدل الثابت المعلَن"
+        );
+    }
+
+    #[test]
+    fn every_user_text_has_a_translation() {
+        let lits = string_literals(production_source(SELF_SOURCE));
+        let arabic: Vec<&String> = lits.iter().filter(|l| l.chars().any(is_arabic)).collect();
+        let missing: Vec<&String> = arabic
+            .iter()
+            .filter(|l| {
+                !TEXTS.iter().any(|(ar, _)| *ar == l.as_str()) && !NON_SENT.contains(&l.as_str())
+            })
+            .copied()
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "{} نصّاً عربيّاً بلا ترجمة ولا إعلان — إمّا أن يُترجَم وإمّا أن يُدرَج في NON_SENT بتعليل:\n{missing:#?}",
+            missing.len()
+        );
+        // وضابطان: الحارس يقرأ فعلاً، والجدول ليس فارغاً.
+        assert!(
+            arabic.len() > 150,
+            "الماسح لم يجد نصوصاً عربيّة ({}) — حارسٌ على مدخلٍ فارغ يمرّ كذباً",
+            arabic.len()
+        );
+        assert!(TEXTS.len() > 100, "جدول الترجمة فارغ أو ناقص");
+        assert!(
+            TEXTS.iter().all(|(_, en)| !en.is_empty()),
+            "مدخلٌ بلا مقابل إنجليزي"
+        );
+
+        // **وحكمٌ على القيمة لا على المفتاح** — على **صنفين**، كلٌّ كما يقع في
+        // الإنتاج: ① بواني **تأخذ اللغة** فتُنادى بالإنجليزية، ② وبواني تبني
+        // عربيّةً ثم تمرّ بنقطة الاختناق. وبانيٌ يتجاهل اللغة يُكشف في ①،
+        // وبانيٌ مركَّب (`intro_text` · `mode_question_text`) يُكشف في ②.
+        for (name, en) in built_user_texts(Lang::En) {
+            if !name.starts_with("help_text_for") {
+                continue;
+            }
+            let stripped = en.replace("العربية", "");
+            assert!(
+                !stripped.chars().any(is_arabic),
+                "«{name}» يبقى عربيّاً وقد نُودي بالإنجليزية: {en:?}"
+            );
+        }
+        for (name, ar) in built_user_texts(Lang::Ar) {
+            if name.starts_with("help_text_for") {
+                continue;
+            }
+            let en = localize(Lang::En, &ar).replace("العربية", "");
+            assert!(
+                !en.chars().any(is_arabic),
+                "«{name}» يبقى عربيّاً بعد نقطة الاختناق: {en:?}"
+            );
+        }
+        // **والطلب كلّه يُترجَم عند نقطة الاختناق**: نصُّه ونصوص أزراره.
+        let body = json!({
+            "chat_id": 777001,
+            "text": "🎵 أغنية",
+            "reply_markup": {
+                "inline_keyboard": [[{ "text": "🎬 مقطع عادي", "callback_data": "mode:clip:x" }]]
+            },
+        });
+        let en = localize_body(Lang::En, "sendMessage", &body);
+        assert_eq!(
+            en.get("text").and_then(Value::as_str),
+            Some("🎵 Song"),
+            "نصّ الطلب لم يُترجَم: {en}"
+        );
+        assert_eq!(
+            en.pointer("/reply_markup/inline_keyboard/0/0/text")
+                .and_then(Value::as_str),
+            Some("🎬 Ordinary clip"),
+            "نصّ الزرّ لم يُترجَم: {en}"
+        );
+        // والعربية لا تُمسّ (لا ترجمة على لغة المصدر).
+        assert_eq!(localize_body(Lang::Ar, "sendMessage", &body), body);
     }
 }
