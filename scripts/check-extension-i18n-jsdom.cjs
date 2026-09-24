@@ -138,6 +138,7 @@ function render(src, languages, opts) {
   const store = Object.assign({}, (opts && opts.store) || {});
   const writes = [];
   const listeners = [];
+  const popupSent = [];
   const dom = new JSDOM(src.html, { url: 'https://haramlite.test/popup.html', runScripts: 'outside-only' });
   const w = dom.window;
   Object.defineProperty(w.navigator, 'languages', { value: languages, configurable: true });
@@ -147,6 +148,9 @@ function render(src, languages, opts) {
       lastError: null,
       getManifest: () => ({ version: src.version }),
       sendMessage: (msg, cb) => {
+        // **كل ما ترسله النافذة يُسجَّل**: به يُقاس أن الوضع المُرسَل هو المعروض
+        // (لا افتراضيّ ثانٍ) — وهو نفس صنف عطل زرّ المشغّل (بند ١ من بلاغ المالك).
+        popupSent.push(msg);
         if (!cb) return;
         setTimeout(() => {
           if (down) w.chrome.runtime.lastError = { message: 'no host' };
@@ -162,6 +166,7 @@ function render(src, languages, opts) {
   };
   w.__store = store;
   w.__storeWrites = writes;
+  w.__popupSent = popupSent;
   w.eval(src.js);
   OPEN_WINDOWS.push(w);
   return w;
@@ -516,20 +521,24 @@ async function contentModePick(jsSrc, languages, which, entry) {
   return out;
 }
 
-/** يقود **زرّ المعالجة/المشاهدة** (`makeProcBtn`) ويُعيد حمولة الطلب — العقد الذي
- *  يعيد المسار المؤقّت (`watch:true` بلا `mode`، قرار المالك 2026-09-23). */
-async function contentWatchStart(jsSrc, languages) {
+/** يقود **زرّ المعالجة/المشاهدة** (`makeProcBtn`) ويُعيد حمولة الطلب **وما كان معروضاً
+ *  على زرّ الوضع لحظة الإرسال** — وهذا عقد «المعروض = المُرسَل» (عطل ميداني مقيس:
+ *  وضعان معروضان مختلفان أرسلا الحمولة نفسها بلا `mode`، فوقع التطبيق على
+ *  `s.watch_mode` وافتراضيّه `"song"` ⇒ «يعالج كـ`song` والمعروض `clip`»). */
+async function contentWatchStart(jsSrc, languages, store) {
   let w = null;
-  try { w = renderContent(jsSrc, languages, REPLY_START); } catch (e) { return { why: 'تنفيذ content.js رمى: ' + (e && e.message ? e.message : e) }; }
+  try { w = renderContent(jsSrc, languages, REPLY_START, { store: store || {} }); } catch (e) { return { why: 'تنفيذ content.js رمى: ' + (e && e.message ? e.message : e) }; }
   w.dispatchEvent(new w.Event('yt-navigate-finish'));
   await sleep(320);
   const btn = w.document.getElementById('haramlite-yt-proc');
   if (!btn) return { why: 'زرّ المعالجة غير مُحقَن' };
+  // **بلا أيّ نقرة على القائمة** (لا فتح ولا اختيار): نقرأ المعروض ثم نبدأ.
+  const shown = textOf(w, '#haramlite-yt-mode');
   btn.click();
   await sleep(150);
   const links = w.__sent.filter((m) => m && m.type === 'link');
   if (!links.length) return { why: 'لا طلب أُرسل' };
-  return { payload: links[0], count: links.length };
+  return { payload: links[0], count: links.length, shown };
 }
 
 /** يقود «معالجة كاملة» من **قائمة النقر الأيمن** ويُعيد حمولة الطلب. */
@@ -701,16 +710,28 @@ async function measureX1(src, report) {
      والحفظ باختيار الوضع بلا علم مشاهدة — وهو ما يعيد المسار المؤقّت (`page-audio`)
      فلا تتراكم ملفات في `~/Videos/HaramLite` من زرّ المشاهدة. */
   {
-    const ws = await contentWatchStart(contentJs, ['en-US', 'ar']);
-    if (!ws.payload) {
-      report('[watch] صفر مدخل: زرّ المعالجة/المشاهدة أرسل طلباً', false, ws.why || 'لا طلب');
-    } else {
-      report('[watch] يرسل `watch:true` — فيأخذ التطبيق المسار المؤقّت (`page_audio_dir`)',
+    /* **عقد «المعروض = المُرسَل»** — الصفّان المرجعيان للعطل الميداني: نبدأ المعالجة
+       **بلا أيّ نقرة على القائمة**، والمعروض يُثبَّت من المخزَّن، ثم يُقاس المُرسَل.
+       وصفّان لا صفّ واحد: `clip` و`song` معاً، فلا يُثبَّت أحدهما عشوائياً. */
+    for (const shownMode of ['clip', 'song']) {
+      const ws = await contentWatchStart(contentJs, ['en-US', 'ar'], { 'hl.popup.mode': shownMode });
+      const wantLabel = I18N.en['btn.mode.' + shownMode];
+      if (!ws.payload) {
+        report(`[notouch/${shownMode}] صفر مدخل: زرّ المعالجة/المشاهدة أرسل طلباً`, false, ws.why || 'لا طلب');
+        continue;
+      }
+      report(`[notouch/${shownMode}] المعروض على زرّ الوضع \`${wantLabel}\` (من المخزَّن، بلا نقرة)`,
+        ws.shown === wantLabel, 'وُجد ' + JSON.stringify(ws.shown));
+      report(`[notouch/${shownMode}] ويرسل \`watch:true\` (المسار المؤقّت)`,
         ws.payload.watch === true, 'الحمولة=' + JSON.stringify(ws.payload));
-      report('[watch] و**بلا `mode`** (العلم منفصل عن الوضع، والعقد القديم `mode:"watch"` لا يعود)',
-        !('mode' in ws.payload), 'الحمولة=' + JSON.stringify(ws.payload));
-      report('[watch] وطلب واحد لا أكثر من نقرة واحدة', ws.count === 1, 'عدد الطلبات=' + ws.count);
+      report(`[notouch/${shownMode}] **و\`mode:"${shownMode}"\` من الحالة لحظة الإرسال** (لا من الحدث، ولا افتراضيّ ثانٍ)`,
+        ws.payload.mode === shownMode, 'الحمولة=' + JSON.stringify(ws.payload));
+      report(`[notouch/${shownMode}] وطلب واحد لا أكثر`, ws.count === 1, 'عدد الطلبات=' + ws.count);
     }
+    const wsDefault = await contentWatchStart(contentJs, ['en-US', 'ar'], {});
+    report('[notouch/default] وبلا مخزَّن: المعروض والمُرسَل **الافتراضيّ نفسه** (`clip`)',
+      wsDefault.payload && wsDefault.shown === I18N.en['btn.mode.clip'] && wsDefault.payload.mode === 'clip',
+      'المعروض=' + JSON.stringify(wsDefault.shown) + ' الحمولة=' + JSON.stringify(wsDefault.payload));
     for (const which of ['youtube', 'music']) {
       for (const entry of ['song', 'clip']) {
         const r = await contentModePick(contentJs, ['en-US', 'ar'], which, entry);
@@ -746,6 +767,21 @@ async function measureX1(src, report) {
   const bogus = popupLang(src.popup, ['ar-SA', 'en-US'], { 'hl.lang': 'fr' });
   report('[lang] وقيمة مخزَّنة غريبة (`fr`) ⇒ لغة المتصفّح لا انهيار',
     bogus.dir === 'rtl' && bogus.lang === 'ar', 'dir=' + bogus.dir + ' lang=' + bogus.lang);
+
+  /* (د٢) **النافذة**: المعروض = المُرسَل أيضاً؟ (المطلب ٤ من بلاغ المزرعة الميداني).
+     نُرسل **بلا لمس بطاقتَي الوضع**: المخزَّن يحدّد المعروض، ويُقاس ما خرج في الرسالة. */
+  for (const shown of ['clip', 'song']) {
+    const w = render(src.popup, ['en-US'], { store: { 'hl.popup.mode': shown } });
+    const pressed = attrOf(w, '#' + 'mode-' + shown, 'aria-pressed');
+    const send = w.document.getElementById('btn-send-page');
+    if (!send) { report(`[popup/${shown}] صفر مدخل: زرّ الإرسال موجود`, false, 'مفقود'); continue; }
+    send.click();
+    await sleep(30);
+    const msg = (w.__popupSent || []).find((m) => m && m.type === 'send');
+    report(`[popup/${shown}] البطاقة المعروضة \`${shown}\` (بلا لمس)`, pressed === 'true', 'aria-pressed=' + pressed);
+    report(`[popup/${shown}] **والمُرسَل يحمل الوضع المعروض نفسه** \`${shown}\` (لا افتراضيّ ثانٍ)`,
+      !!msg && msg.mode === shown, 'الرسالة=' + JSON.stringify(msg || null));
+  }
 
   /* النقر: يبدّل الواجهة كلها (لا نصوصاً بعضها عربيّ وبعضها إنجليزي) ويحفظ. */
   const click = popupLang(src.popup, ['ar-SA', 'en-US'], {});
@@ -927,11 +963,22 @@ async function main() {
       { content: sub(CONTENT.js, /mode: MODE \}/, "mode: 'watch' }") }, 'fall'],
     /* ㉕/㉖ عقدا المدخلين (قرار المالك): العلم لا يُنزع من المشاهدة ولا يُضاف إلى الحفظ. */
     ['㉕ زرّ المشاهدة فقد علمه ⇒ يعود مسار الحفظ وتتراكم ملفات في مجلد المستخدم',
-      { content: sub(CONTENT.js, /: \{ type: 'link', url: location\.href, watch: true \};/,
-        ": { type: 'link', url: location.href };") }, 'fall'],
+      { content: sub(CONTENT.js, /: \{ type: 'link', url: location\.href, watch: true, mode: MODE \};/,
+        ": { type: 'link', url: location.href, mode: MODE };") }, 'fall'],
     ['㉖ مسار الحفظ اكتسب علم مشاهدة ⇒ ناتج الوضع لا يُحفظ',
       { content: sub(CONTENT.js, /\? \{ type: 'link', url: location\.href, mode: MODE \}/,
         "? { type: 'link', url: location.href, mode: MODE, watch: true }") }, 'fall'],
+    /* ㉗/㉘ عطل المالك الميداني: الوضع يُقرأ **من الحدث لا من الحالة**. */
+    ['㉗ (عطل المالك) زرّ المشاهدة يرسل العلم بلا `mode` ⇒ التطبيق يقع على `s.watch_mode` (افتراضيّه `song`) والمعروض `clip`',
+      { content: sub(CONTENT.js, /: \{ type: 'link', url: location\.href, watch: true, mode: MODE \};/,
+        ": { type: 'link', url: location.href, watch: true };") }, 'fall'],
+    ['㉘ وافتراضيّ مُثبَّت في مسار المشاهدة (`mode: \'clip\'` دائماً) ⇒ المعروض `song` لا يُرسَل',
+      { content: sub(CONTENT.js, /: \{ type: 'link', url: location\.href, watch: true, mode: MODE \};/,
+        ": { type: 'link', url: location.href, watch: true, mode: 'clip' };") }, 'fall'],
+    /* ㉙ النافذة بالمصدر نفسه: المُرسَل يفقد الحالة فيُثبَّت افتراضيّ ثانٍ. */
+    ['㉙ النافذة ترسل افتراضيّاً ثابتاً (`mode: \'clip\'`) بدل الحالة المعروضة',
+      { popup: { ...SHIPPED, js: sub(SHIPPED.js, /chrome\.runtime\.sendMessage\(\{ type: 'send', url, mode \},/,
+        "chrome.runtime.sendMessage({ type: 'send', url, mode: 'clip' },") } }, 'fall'],
     /* ⑭ زرّ الوضع لم يُحقن ⇒ لا سبيل لاختيار الوضع من الصفحة. */
     ['⑭ زرّ الوضع لم يُحقن (#haramlite-yt-mode مفقود)',
       { content: sub(CONTENT.js, /    controls\.prepend\(mb\);\n/, '') }, 'fall'],
