@@ -23,9 +23,12 @@ const MENU_CLIP = 'hl-send-clip';
  * باتجاه واجهته تبعاً للغة نفسها التي اخترناها — فلا `dir` نُسنده ولا `RTL`
  * ميت نتركه.
  *
- * وحدّ مُعلَن: العناوين تُبنى في `onInstalled` وحده (كما كان قبل التعريب، بلا
- * تغيير سلوك)، فمن غيّر لغة متصفّحه بعد التثبيت بقيت قائمته بلغتها القديمة حتى
- * تحديث الإضافة أو إعادة تثبيتها.
+ * **وأين تُبنى العناوين؟** في `buildMenus()`، ومن **ثلاثة مسارات** كلّها تمرّ من
+ * بوابة واحدة: `onInstalled` · قراءة اللغة عند الإقلاع (`readLang`) ·
+ * `chrome.storage.onChanged` عند تبديل اللغة من النافذة. فالحدّ القديم المُعلَن
+ * («العناوين تُبنى في `onInstalled` وحده… فمن غيّر لغة متصفّحه بعد التثبيت بقيت
+ * قائمته بلغتها القديمة») **لم يعد صحيحاً**: تبديل اللغة من المنبثقة يُعيد بناء
+ * القائمة فوراً. (وقد صُحّح هذا التعليق بعد أن كذّب الكودُ نصَّه — وثيقة تكذب عطب.)
  */
 const I18N = {
   ar: {
@@ -77,16 +80,55 @@ function t(key) {
   return (key in row) ? row[key] : I18N.ar[key];
 }
 
-/** يبني مداخل قائمة النقر الأيمن الخمسة بلغة `LANG` الحالية. */
+/* **بناء واحد في الوقت — والنداءات الثلاثة تمرّ من هذه البوّابة.**
+ *
+ * **العطل الميداني المقيس** (البناء التكاملي 1.1.9، متصفّح المالك):
+ *   `Unchecked runtime.lastError: Cannot create item with duplicate id hl-send-link`
+ *   ومعه `hl-send-page` · `hl-send-video` · `hl-send-song` · `hl-send-clip`.
+ * والسبب: `chrome.contextMenus.removeAll` **غير متزامنة**، ومساران يتقاطعان فينشئ
+ * **كلٌّ منهما** العناصر الخمسة بعد `removeAll` ⇒ معرّفات مكرّرة. والمسارَان
+ * `readLang` (الإقلاع) و`storage.onChanged` (تبديل اللغة) **جديدان في هذه الجولة**
+ * ⇒ فالانحدار من عمل اللغتين، لا من سلوك قديم.
+ *
+ * **والكتم مُنع أيضاً**: كل `create` يمرّر نداءً راجعاً ويقرأ `chrome.runtime.lastError`
+ * **داخله** — وإلا بقي الخطأ «غير مُلتقَط» (`Unchecked`). وإن فشل إنشاء فعلاً
+ * **يُعلَن** في سجلّ عامل الخدمة (`console.error`) ولا يُسكَت عنه.
+ *
+ * **ولا يُصفّ نداءٌ مؤجَّل**: نداءٌ يصل أثناء بناء جارٍ **يُسقَط** لا يُخزَّن — لأن
+ * العناوين تُحسب **داخل ردّ `removeAll`** باللغة الحالية `LANG`، فالبناء الجاري
+ * يحمل أحدث لغة أصلاً. ولذلك نداءان متقاربان (`onInstalled` + تبديل لغة) ⇒
+ * **بناء واحد = خمسة عناصر**، لا عشرة بمعرّفات مكرّرة.
+ *
+ * **وحدّه المُعلَن**: لو لم يستدعِ المتصفّح ردّ `removeAll` أبداً لبقي العلم مغلقاً
+ * — وهو مقيَّد بعقد الـAPI نفسه (`removeAll` يستدعي النداء الراجع دائماً)، فلم
+ * أُضف مؤقّتاً ثانياً بلا حال مقيسة تبرّره. */
+let menusBuilding = false;
 function buildMenus() {
+  if (menusBuilding) return;   // بناء جارٍ ⇒ يكفي: العناوين تُحسب باللغة الحالية لحظة الإنشاء
+  menusBuilding = true;
+  /** إنشاء باحترام `lastError` وبإعلانه — لا كتم. */
+  const put = (props) => {
+    chrome.contextMenus.create(props, () => {
+      const err = chrome.runtime.lastError;
+      if (err) {
+        const why = (err && err.message) || String(err);
+        console.error('[HaramLite Bridge] contextMenus.create failed — ' + props.id + ': ' + why);
+      }
+    });
+  };
   chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({ id: MENU_LINK, title: t('menu.link'), contexts: ['link'] });
-    chrome.contextMenus.create({ id: MENU_PAGE, title: t('menu.page'), contexts: ['page'] });
-    chrome.contextMenus.create({ id: MENU_VIDEO, title: t('menu.video'), contexts: ['video'] });
+    const err = chrome.runtime.lastError;
+    if (err) {
+      console.error('[HaramLite Bridge] contextMenus.removeAll failed: ' + ((err && err.message) || err));
+    }
+    put({ id: MENU_LINK, title: t('menu.link'), contexts: ['link'] });
+    put({ id: MENU_PAGE, title: t('menu.page'), contexts: ['page'] });
+    put({ id: MENU_VIDEO, title: t('menu.video'), contexts: ['video'] });
     // الوضعان: على الصفحة والفيديو والرابط — فيمكن اختيار «أغنية» أو «مقطع» من
     // أيّ سياق. والمدخلان **جديدان** فلا يُغيَّر عقد المداخل الثلاثة.
-    chrome.contextMenus.create({ id: MENU_SONG, title: t('menu.song'), contexts: ['page', 'video', 'link'] });
-    chrome.contextMenus.create({ id: MENU_CLIP, title: t('menu.clip'), contexts: ['page', 'video', 'link'] });
+    put({ id: MENU_SONG, title: t('menu.song'), contexts: ['page', 'video', 'link'] });
+    put({ id: MENU_CLIP, title: t('menu.clip'), contexts: ['page', 'video', 'link'] });
+    menusBuilding = false;
   });
 }
 

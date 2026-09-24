@@ -906,12 +906,22 @@ function measureRunner(src, r, probeResult, engineNote) {
 
 /* ── الصفّ ③: فرق song/clip ───────────────────────────────────────────── */
 
-function renderBackground(src, languages) {
+function renderBackground(src, languages, opts) {
+  const o = opts || {};
   const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { url: 'https://haramlite.test/sw.html', runScripts: 'outside-only' });
   const w = dom.window;
   Object.defineProperty(w.navigator, 'languages', { value: languages, configurable: true });
   Object.defineProperty(w.navigator, 'language', { value: languages[0] || 'en', configurable: true });
   const sent = [];
+  const createLog = o.createLog || [];
+  const errors = [];
+  const installed = [];
+  const onChange = [];
+  const store = Object.assign({}, o.store || {});
+  w.console = Object.assign({}, w.console, {
+    error: (...a) => { errors.push(a.map((x) => (x && x.message) || String(x)).join(' ')); },
+    warn: () => {}, log: () => {},
+  });
   let onMessage = null;
   const port = {
     onMessage: { addListener() { /* المُقيِّم لا يردّ: يُقاس ما يُرسَل لا ما يُستقبل */ } },
@@ -922,14 +932,46 @@ function renderBackground(src, languages) {
   w.chrome = {
     runtime: {
       lastError: null,
-      onInstalled: { addListener() { /* ignore */ } },
+      onInstalled: { addListener(fn) { installed.push(fn); } },
       connectNative: () => port,
       onMessage: { addListener(fn) { onMessage = fn; } },
+      getManifest: () => ({ version: '0.0.0' }),
     },
-    contextMenus: { removeAll(cb) { if (cb) cb(); }, create() {}, onClicked: { addListener() {} } },
+    contextMenus: {
+      // **غير متزامنة كما في المتصفّح**: النداء الراجع بعد دورة الحدث، فيتقاطع بناءان
+      // إن لم يكن في الكود بوابة. (وبلا هذه المحاكاة لا يُقاس العطل أصلاً.)
+      removeAll(cb) { if (o.removeAllAsync) setTimeout(() => { if (cb) cb(); }, 0); else if (cb) cb(); },
+      create(props, cb) {
+        createLog.push({ id: props && props.id, title: props && props.title });
+        if (o.failCreate) w.chrome.runtime.lastError = { message: 'duplicate id ' + (props && props.id) };
+        else w.chrome.runtime.lastError = null;
+        if (cb) cb();                        // الكود يقرأ `lastError` داخل النداء الراجع
+        w.chrome.runtime.lastError = null;   // ولا يتسرّب إلى نداءٍ تالٍ
+      },
+      onClicked: { addListener() {} },
+    },
+    storage: {
+      local: {
+        get: (keys, cb) => {
+          const list = Array.isArray(keys) ? keys : [keys];
+          const out = {};
+          for (const k of list) if (k in store) out[k] = store[k];
+          if (typeof cb === 'function') cb(out);
+        },
+        set: (obj, cb) => { Object.assign(store, obj); if (typeof cb === 'function') cb(); },
+      },
+      onChanged: { addListener(fn) { onChange.push(fn); } },
+    },
   };
   w.eval(src.backgroundJs);
-  return { w, sent, onMessage: () => onMessage };
+  return {
+    w, sent, createLog, errors,
+    onMessage: () => onMessage,
+    fireInstalled: () => { for (const fn of installed) { try { fn({ reason: 'install' }); } catch { /* ignore */ } } },
+    fireStorage: (changes) => { for (const fn of onChange) { try { fn(changes); } catch { /* ignore */ } } },
+    installedCount: installed.length,
+    onChangeCount: onChange.length,
+  };
 }
 
 const MODE_REQUESTS = [
@@ -1127,7 +1169,72 @@ function bridgeContract(root, opts) {
   return { state: 'ran', rust, lines, raw: raw.join('\n') };
 }
 
+
+/* ── قياس بناء قائمة النقر الأيمن: نداءان متقاربان ⇒ خمسة عناصر لا عشرة ────────
+ * **العطل الميداني** (البناء التكاملي 1.1.9، متصفّح المالك):
+ *   `Unchecked runtime.lastError: Cannot create item with duplicate id hl-send-link`
+ *   ومعه الأربعة الباقية. والسبب: `removeAll` غير متزامنة، ومساران (‏`onInstalled`
+ *   وتبديل اللغة) ينشئان الخمسة كلٌّ بعد `removeAll` ⇒ معرّفات مكرّرة.
+ * والمقيس هنا ثلاثة أوجه: **العدد** (‏٥ لا ١٠) · **تفرّد المعرّفات** · **اللغة النهائية**
+ * (فلا يكون «الإسقاط» صامتاً بل يحمل أحدث لغة) · و**إعلان الفشل** لا كتمه.
+ */
+async function measureMenus(src, r) {
+  const createLog = [];
+  const bg = renderBackground(src, ['en-US', 'en'], { createLog, removeAllAsync: true, store: { 'hl.lang': 'ar' } });
+  // «صفر مدخل»: البيئة سجّلت المسارين فعلاً وإلا فالمقيس وهم.
+  const wired = bg.installedCount === 1 && bg.onChangeCount === 1;
+  r.ok('قائمة النقر الأيمن: البيئة سجّلت مسارَي البناء (onInstalled · storage.onChanged)',
+    wired, 'onInstalled=' + bg.installedCount + ' · onChanged=' + bg.onChangeCount);
+
+  // بناء الإقلاع (من `hl.lang` المخزَّن) يقع عند التقييم؛ ننتظره ثمّ نصفّر العدّاد
+  // ليكون القياس على **النداءين المتقاربين** وحدهما.
+  await sleep(30);
+  const bootCreates = createLog.length;
+  createLog.length = 0;
+
+  // **نداءان متقاربان**: التثبيت ثم تبديل اللغة **قبل** أن يقع ردّ `removeAll`.
+  // **تبديل إلى لغة مختلفة** (`en` بعد أن ضبط الإقلاع `ar`): وإلا فالمستمع يرى
+  // `next === LANG` فلا ينادي البناء ⇒ لا بناءان متقاربان، والقياس يقيس الفراغ
+  // (وهو ثقب قِيس فعلاً: مُفسَد إزالة البوابة مرّ قبل هذا التصحيح).
+  bg.fireInstalled();
+  bg.fireStorage({ 'hl.lang': { newValue: 'en' } });
+  await sleep(60);
+
+  const ids = createLog.map((c) => c.id);
+  const uniq = [...new Set(ids)];
+  const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
+  const titles = createLog.map((c) => c.title);
+  const AR_CHAR = /[\u0600-\u06FF]/;
+  // البناء الناتج بلغة `en` (آخر لغة طُلبت) ⇒ **صفر محرف عربي** في العناوين.
+  const arabicLeft = titles.filter((x) => AR_CHAR.test(x));
+
+  r.ok('نداءان متقاربان (تثبيت + تبديل لغة) ⇒ **بناء واحد** = خمسة عناصر',
+    createLog.length === 5, 'عدد الإنشاءات=' + createLog.length + ' · المعرّفات=' + JSON.stringify(ids));
+  r.ok('ولا معرّف مكرّر (وهو نصّ عطل المالك حرفياً)',
+    dupes.length === 0, 'مكرّر: ' + JSON.stringify(dupes));
+  r.ok('والمعرّفات الخمسة هي المداخل المُعلَنة',
+    ['hl-send-link', 'hl-send-page', 'hl-send-video', 'hl-send-song', 'hl-send-clip'].every((x) => uniq.includes(x)),
+    JSON.stringify(uniq));
+  // **المقيس**: كلّ عنوان من الصفّ العربي (لا أن تتطابق العناوين — فهي خمسة مداخل مختلفة).
+  r.ok('**والبناء الناتج بلغة المستخدم الجديدة** (فالإسقاط ليس صمتاً: العناوين تُحسب في ردّ removeAll)',
+    titles.length === 5 && arabicLeft.length === 0, 'بقي عربي: ' + JSON.stringify(arabicLeft) + ' · العناوين=' + JSON.stringify(titles));
+  bg.w.close();
+
+  // **إعلان الفشل لا كتمه**: إن فشل create فعلاً يُقرأ `lastError` ويُعلَن في السجلّ.
+  const failing = renderBackground(src, ['en-US', 'en'], { removeAllAsync: false, failCreate: true });
+  await sleep(20);
+  failing.fireInstalled();
+  await sleep(20);
+  const announced = failing.errors.filter((e) => e.includes('contextMenus.create failed')).length;
+  r.ok('وفشل إنشاء فعلاً **يُعلَن** في السجلّ ولا يُكتَم (‏lastError مقروء لا «غير مُلتقَط»)',
+    announced === 5, 'إعلانات=' + announced + ' · النصّ=' + JSON.stringify(failing.errors.slice(0, 2)));
+  failing.w.close();
+
+  return { bootCreates, closeCreates: createLog.length, dupes: dupes.length, announced };
+}
+
 async function measureSongClip(src, r, bridge) {
+  const menus = await measureMenus(src, r);
   const bg = renderBackground(src, ['ar-SA']);
   const listener = bg.onMessage();
   const forward = [];
@@ -1196,6 +1303,10 @@ async function measureSongClip(src, r, bridge) {
     bridgeWhy: bridge.why || null,
     bridgeWire: wireVals,
     bridgeClip: clipVals,
+    // بناء قائمة النقر الأيمن: خمسة لا عشرة، وصفر معرّف مكرّر، وخمسة إعلانات فشل مُختبَرة
+    menusCloseCreates: menus.closeCreates,
+    menusDupes: menus.dupes,
+    menusFailAnnounced: menus.announced,
   };
 
   r.ok(`حقل \`mode\` يُقاس بتشغيل background.js المشحون (${MODE_REQUESTS.length} طلباً دُفع فعلاً)`,
@@ -1353,8 +1464,8 @@ const MUTANTS = [
   {
     id: 'M4', file: 'popup.js', row: ROW_IDS.popup,
     label: 'تثبيت الاتجاه LTR (‏RTL لم يُعد مشتقّاً من اللغة)',
-    from: "const RTL = LANG === 'ar';",
-    to: 'const RTL = false;',
+    from: "let RTL = LANG === 'ar';",
+    to: 'let RTL = false;',
   },
   {
     id: 'M5', file: 'content.js', row: ROW_IDS.runner,
@@ -1379,6 +1490,12 @@ const MUTANTS = [
     label: 'كل نقرة تمرّر song (‏chooseMode ثابت على song) — ثقب و-٣/ج',
     from: "  mode = next === 'song' ? 'song' : 'clip';",
     to: "  mode = 'song';",
+  },
+  {
+    id: 'M11', file: 'background.js', row: ROW_IDS.clip,
+    label: 'بوابة البناء الواحد منزوعة (‏menusBuilding) ⇒ نداءان متقاربان ينشئان عشرة بمعرّفات مكرّرة — عطل المالك',
+    from: '  if (menusBuilding) return;   //',
+    to: '  if (false) return;   //',
   },
   {
     id: 'M9', kind: 'bridge', row: ROW_IDS.clip,
@@ -1416,14 +1533,14 @@ const CONTROLS = [
   },
   {
     id: 'C4', file: 'popup.html',
-    label: 'ربط باقتباس مفرد (HTML صالح) — يجب أن يُرى في DOM فيبقى العدّ 21 (والعدّ النصّي القديم يقول 20)',
+    label: 'ربط باقتباس مفرد (HTML صالح) — يجب أن يُرى في DOM فيبقى العدّ 23 (بعد زرّي اللغة؛ والعدّ النصّي القديم يقول 22)',
     from: 'data-i18n="header.sub"',
     to: "data-i18n='header.sub'",
     expect: (res) => {
       const w = res.rows.find((r) => r.id === ROW_IDS.popup).reward;
-      return w.i18nBoundNodes === 21 && w.i18nBoundNodesNaiveRegex === 20;
+      return w.i18nBoundNodes === 23 && w.i18nBoundNodesNaiveRegex === 22;
     },
-    expectLabel: 'DOM=21 · العدّ النصّي=20',
+    expectLabel: 'DOM=23 · العدّ النصّي=22',
   },
 ];
 
