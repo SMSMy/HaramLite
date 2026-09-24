@@ -36,12 +36,16 @@ export const SETTINGS_WINDOW_LABEL = 'settings';
 /**
  * هل نحن في نافذة الإعدادات؟ — دالّة **خالصة** (تُقاس في jsdom بلا tauri).
  *
- * والترتيب مقصود: اللابل أوّلاً (الحقيقة في التطبيق)، ثم `location.hash` كبديل
- * صريح (اختبار/متصفّح)، ولا شيء آخر.
+ * **والدلالتان تُجمعان بـ«أو» ولا تُرتَّبان**: اللابل (`settings`) **والرابط**
+ * (`#settings` الذي يمرّره الرست في `open_settings`). كان اللابل يُقدَّم فيُهمَل
+ * الرابط متى قُرئ — وهو **موضع العطب الميداني**: بياضُ النافذة يعني أن الوضع لم
+ * يُفعَّل بينما أُخفي المحتوى الرئيسي (أو العكس). فصار **أيّهما قال «إعدادات»
+ * كفى**، وسقوط أحدهما لا يُسقط الوضع.
  */
 export function isSettingsMode(label: string | null | undefined, hash?: string): boolean {
-  if (label) return label === SETTINGS_WINDOW_LABEL;
-  return (hash ?? '').replace(/^#/, '') === SETTINGS_WINDOW_LABEL;
+  const byLabel = label === SETTINGS_WINDOW_LABEL;
+  const byHash = (hash ?? '').replace(/^#/, '') === SETTINGS_WINDOW_LABEL;
+  return byLabel || byHash;
 }
 
 /**
@@ -76,14 +80,28 @@ export function showTab(doc: Document, tab: SettingsTab): void {
  *
  * **ولا مسار ثانٍ**: الحاوية (`#settings-menu` — معرّف تاريخي) لا تُفتح في
  * الرئيسية بأي حال: يُفرض `hidden` هناك ولا يملك أي زرّ إظهارها.
+ *
+ * **وضمانة «لا نافذة فارغة»**: لا يجوز أن ينتهي الحال بـ**لا مرئيّ** — فالشاشة
+ * في وضع الإعدادات **تُنزع عنها `hidden` صراحةً** ويُتحقّق من ذلك في الحال،
+ * وإن تعذّر (حاوية غائبة عن الصفحة) **لا يُعلَن الوضع** فلا يُخفى المحتوى
+ * الرئيسي بلا بديل. (وهذا هو صنف العطب الذي أنتج «نافذة بيضاء» ميدانياً.)
  */
 export function applySettingsMode(doc: Document, inSettingsWindow: boolean): void {
   const body = doc.body;
   const screen = doc.getElementById('settings-menu');
   if (!screen) return;
+  if (inSettingsWindow && screen.classList.contains('hidden')) {
+    screen.classList.remove('hidden');
+  }
+  // **التحقّق قبل الإعلان**: لا يُضاف `settings-mode` (الذي يُخفي `<main>`)
+  // إلا إذا كانت الشاشة ظاهرة فعلاً — وإلا صارت النافذة فراغاً.
+  const screenVisible = !screen.classList.contains('hidden');
+  if (inSettingsWindow && !screenVisible) {
+    body.classList.remove('settings-mode');
+    return;
+  }
   if (inSettingsWindow) {
     body.classList.add('settings-mode');
-    screen.classList.remove('hidden');
     screen.setAttribute('aria-modal', 'true');
     showTab(doc, 'performance');
   } else {

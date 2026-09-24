@@ -57,7 +57,10 @@ body.settings-mode #settings-menu {
 body.settings-mode main {
   display: none;
 }
-body.settings-mode .settings-tab-panel {
+/* **ولا يُكسَر `hidden`**: قاعدة `display` على الصنف وحده كانت تتغلّب على
+ * `[hidden]` (لأن `[hidden]` في ورقة المتصفّح أدنى رتبةً من أي قاعدة مؤلّف)
+ * فتُعرض التبويبات السبعة معاً. فالقاعدة الآن على **غير المخفيّ** وحده. */
+body.settings-mode .settings-tab-panel:not([hidden]) {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
