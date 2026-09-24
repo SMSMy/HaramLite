@@ -77,19 +77,19 @@
   "surface": [
     {
       "path": "browser-extension/background.js",
-      "sha256": "be6ddc8d3bc0de5303535f679313e876c7dfc39aab738aca1bb9420d7851d1aa"
+      "sha256": "8ac5b58c6f4cc4fd119119a1f6e2ed156f3dc7913eb1ba0d934280c571b6250d"
     },
     {
       "path": "browser-extension/content.js",
-      "sha256": "e8265cfe8018ae58b714aa52e1d9af2d320a0f2b84ccc0f44ca1cad3c8e3a494"
+      "sha256": "807277ebd9e593eaaae61d976d6963f1438351897db35618d38a9ea673ef76c8"
     },
     {
       "path": "browser-extension/popup.js",
-      "sha256": "f2bbf32f788af1dba538ec4da8c956c13e6db6772ee2172ffa44952f655ecf16"
+      "sha256": "72e32cf09f517fe05a88c333b5c450420019122879b2636e7c91cfae47127725"
     },
     {
       "path": "browser-extension/popup.html",
-      "sha256": "af7bedacc05c4732e689debc113905ff7c7aa91eb94962510a3fce90a83f03c8"
+      "sha256": "052fe73e817b530908b8b70dd91940f24f3678172a76aecaeffaa358ce22fb22"
     },
     {
       "path": "scripts/check-browser-rows.mjs",

@@ -19,7 +19,14 @@
           <p class="sub" data-i18n="header.sub"></p>
         </div>
       </div>
-      <span class="version-tag">v1.1.8</span>
+      <!-- مبدّل اللغة (بند ٤): موضع ثابت في الترويسة لا يزحم بطاقة الحالة.
+           الزرّان نصّهما **من الجدول** (`lang.ar`/`lang.en`) لا نصّ عربي في HTML،
+           والمعروض منهما يُعلَن بـ`aria-pressed` ليُقاس في DOM. -->
+      <div class="lang-switch" id="lang-switch" role="group" data-i18n-attr="aria-label:lang.title">
+        <button type="button" class="lang-btn" id="lang-ar" data-i18n="lang.ar" aria-pressed="false"></button>
+        <button type="button" class="lang-btn" id="lang-en" data-i18n="lang.en" aria-pressed="false"></button>
+      </div>
+      <span class="version-tag">v1.1.9</span>
     </header>
 
     <div class="popup-content">

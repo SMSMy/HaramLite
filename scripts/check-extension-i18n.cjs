@@ -824,12 +824,16 @@ function audit(text, label, opts) {
         ' — المُعلَن [' + (want.join(' · ') || 'لا شيء') + ']؛ أي مفتاح جديد يُعلَن هنا أولاً (§٢٧).');
     }
 
-    /* ⑮ الاتجاه مشتقّ من اللغة المُختارة، لا من الصفحة ولا من قيمة ثابتة. */
+    /* ⑮ الاتجاه مشتقّ من اللغة المُختارة، لا من الصفحة ولا من قيمة ثابتة.
+     * و`let` مقبولة كما `const` (جولة x1-ext / بند ٤): اللغة صارت قابلة للتبديل
+     * من مبدّل ظاهر، فالوسم يجب أن يُعاد اشتقاقه عند التبديل — والقاعدة المقيسة
+     * هي **الاشتقاق من `LANG`** لا نوع الإعلان. ومُفسَدها قائم في
+     * `check-extension-i18n-mutants.cjs` (تثبيت `RTL = true`) فيسقط بها. */
     if (D.direction) {
       res.checks++;
-      if (!/const\s+RTL\s*=\s*LANG\s*===\s*'ar'\s*;/.test(noCom)) {
+      if (!/(?:const|let)\s+RTL\s*=\s*LANG\s*===\s*'ar'\s*;/.test(noCom)) {
         res.failures.push('✗ الاتجاه غير مشتقّ من اللغة في ' + label +
-          ' — المطلوب `const RTL = LANG === \'ar\';` حرفياً.');
+          ' — المطلوب `const RTL = LANG === \'ar\';` (أو `let` إن كانت اللغة قابلة للتبديل).');
       }
       /* ⑯ ويُسند فعلاً إلى المستند: اشتقاقٌ لا يُستعمل لا يُعرّب شيئاً. */
       res.checks++;
@@ -1188,13 +1192,38 @@ function auditManifest(text, label, opts) {
  * تُسقط الحارس حتى تُسجَّل هنا. و`content.js` **بلا `declared`** عمداً: جولته
  * (م٦-أ) قِيست وأُغلقت، فبقي على ٢٣ فحصاً بالضبط ولم يُحذف منه فحص واحد. */
 const TARGETS = [
-  { rel: 'browser-extension/content.js', kind: 'js', label: 'content.js' },
+  {
+    rel: 'browser-extension/content.js', kind: 'js', label: 'content.js',
+    /* **جولة x1-ext (بندا ٣ و٤) فتحت لـ`content.js` إعلاناً** — وكان بلا `declared`
+     * عمداً (جولة م٦-أ، ٢٣ فحصاً). والسبب أن الصفحة صارت تقرأ تفضيلات المستخدم من
+     * `chrome.storage.local` (الوضع واللغة: `localStorage` لا يصل — أصل الصفحة ليس
+     * أصل الإضافة) وتملك زرّ اختيار الوضع في الشريط. فالإعلان هنا **بالاسم** لكل
+     * ما مُسّ: مفتاح `localStorage` القائم (`hl.synclog`، §٢٧ — لا مفتاح جديد)،
+     * ومفتاحا `chrome.storage` (الفحص ⑱). والفحوص المقيَّدة الأخرى (الاتجاه ·
+     * `navigator.languages` · العناصر النائبة · `t(` المحسوب) تبقى **غير مفعَّلة**
+     * هنا لأن حقولها غير مُعلَنة، فلا يتغيّر ما كان مقيساً. */
+    declared: {
+      storage: { keys: ['hl.synclog'], why: 'مفتاح التتبّع القائم وحده (§٢٧: `hl.synclog` = 1 يُشعل سطر HL-SYNC)؛ لا مفتاح `localStorage` جديد' },
+      chromeStorage: {
+        keys: ['hl.lang', 'hl.popup.mode'],
+        why: '`hl.lang` لغة الواجهة الصريحة من مبدّل النافذة (بند ٤) · `hl.popup.mode` الوضع المختار، والمفتاح نفسه الذي تكتبه النافذة ليتفق زرّ الصفحة والنافذة (بند ٣)',
+      },
+    },
+  },
   {
     rel: 'browser-extension/popup.js', kind: 'js', label: 'popup.js',
     externalKeysFrom: 'browser-extension/popup.html',
     declared: {
       /* §٢٧ يقفل مفتاح التخزين: `MODE_KEY` وحده كما كان قبل هذه الجولة. */
       storage: { keys: ['hl.popup.mode'], why: 'تفضيل الوضع الوحيد؛ صفر مفتاح تخزين جديد في م٦-ب' },
+      /* **ومفاتيح `chrome.storage.local`** (جولة x1-ext، بندا ٣ و٤): لا تُعدّها
+       * `storageKeys` (تلك على `localStorage` وحده)، فتُعلَن هنا **بالاسم** ويعدّها
+       * الفحص ⑰ أدناه. ومانيفست الإضافة صار يطلب `storage` لهذين المفتاحين وحدهما
+       * (صلاحية بلا تحذير للمستخدم)، و`localStorage` بقي للمفتاح القديم توافقاً. */
+      chromeStorage: {
+        keys: ['hl.popup.mode', 'hl.lang'],
+        why: '`hl.popup.mode` مِرآة الوضع ليتفق زرّ الصفحة والنافذة (content.js لا يقرأ localStorage: أصل الصفحة ليس أصل الإضافة) · `hl.lang` تفضيل اللغة الصريح من المبدّل الظاهر (بند ٤)',
+      },
       direction: true,
       navigatorLang: true,
       placeholders: { n: 4, why: '{q} في الطابور · {s} الثواني · {e} نصّ الخطأ · و{e} في `code.engine_error` (م٦-ج: تفصيل خطأ المحرّك الخام داخل نصّه المترجم)' },
@@ -1207,7 +1236,13 @@ const TARGETS = [
   {
     rel: 'browser-extension/background.js', kind: 'js', label: 'background.js',
     declared: {
-      storage: { keys: [], why: 'عامل الخدمة لا يخزّن شيئاً' },
+      storage: { keys: [], why: 'عامل الخدمة لا يخزّن شيئاً في `localStorage`' },
+      // يقرأ `hl.lang` من `chrome.storage.local` ليبني عناوين قائمة النقر الأيمن
+      // بلغة المستخدم ويتابع تبديلها (بند ٤) — بالمفتاح نفسه الذي تكتبه النافذة.
+      chromeStorage: {
+        keys: ['hl.lang'],
+        why: 'لغة عناوين قائمة النقر الأيمن — تُقرأ عند الإقلاع وتُتابَع بـ`onChanged` فيُعاد بناء القائمة',
+      },
       direction: false,   // لا واجهة يرسمها: عناوين قائمة النقر الأيمن يرسمها المتصفّح باتجاهه
       navigatorLang: true,
       placeholders: { n: 0, why: 'ثلاثة عناوين قائمة لا تحمل رقماً ولا متغيّراً — فلا عنصر نائب أصلاً' },
@@ -1219,8 +1254,8 @@ const TARGETS = [
     tableFrom: 'browser-extension/popup.js',
     declared: {
       bindings: {
-        text: 21, attr: 1,
-        why: 'كل نصّ واجهة في الصفحة مربوط بمفتاح: ٢١ نصّاً وسمة alt واحدة (‏`alt:header.iconAlt`)',
+        text: 23, attr: 2,
+        why: 'كل نصّ واجهة في الصفحة مربوط بمفتاح: ٢٣ نصّاً (منها زرّا مبدّل اللغة «lang.ar»/«lang.en» — بند ٤) وسمتان (`alt:header.iconAlt` و`aria-label:lang.title` لمجموعة المبدّل)',
       },
     },
   },
@@ -1297,6 +1332,129 @@ function auditAll(texts) {
     res.checks += r.checks;
     for (const f of r.failures) res.failures.push(f);
   }
+
+  /* ══ ⑱ مفاتيح `chrome.storage.local` تُعلَن بالاسم (جولة x1-ext) ═══════════
+   * مانيفست الإضافة صار يطلب `storage` لبندَي ٣ و٤ (الوضع واللغة: `content.js`
+   * لا يقرأ `localStorage` لأن أصل الصفحة ليس أصل الإضافة). و`storageKeys` تعدّ
+   * `localStorage` وحده، فمفاتيح `chrome.storage` كانت **بلا أيّ حارس** — أي مفتاح
+   * جديد يمرّ صامتاً. والقاعدة في الاتجاهين: كل ملف يلمس `chrome.storage.local`
+   * يُعلن مفاتيحه في `TARGETS`، وكل مفتاح حرفيّ في نداءاته داخل المُعلَن، وكل
+   * مفتاح مُعلَن يظهر نصّاً في الملف (فلا إعلان ميت يوهم بتغطية).
+   * و«صفر مدخل» فشل: ملفات التشغيل تلمسه فعلاً اليوم، فإن لم يلمسه أحد فالقاعدة
+   * تقيس الفراغ لا الامتثال. */
+  let storeHits = 0;
+  const STORE_RE = /chrome\s*\.\s*storage\s*\.\s*local\s*\.\s*(?:get|set|remove)\s*\(\s*(\[[^\]]*\]|\{[^}]*\})/g;
+  for (const t of TARGETS) {
+    if (t.kind !== 'js') continue;
+    const noCom = stripComments(texts[t.rel]);
+    if (!/chrome\s*\.\s*storage\s*\.\s*local/.test(noCom)) continue;
+    storeHits++;
+    res.checks++;
+    const declaredKeys = (t.declared && t.declared.chromeStorage && t.declared.chromeStorage.keys) || [];
+    const lit = new Set();
+    for (const m of noCom.matchAll(STORE_RE)) {
+      for (const k of m[1].matchAll(/'([^']+)'|"([^"]+)"/g)) lit.add(k[1] || k[2]);
+    }
+    const undeclared = [...lit].filter((k) => !declaredKeys.includes(k));
+    const dead = declaredKeys.filter((k) => !noCom.includes("'" + k + "'") && !noCom.includes('"' + k + '"'));
+    const bad = [];
+    if (!declaredKeys.length) bad.push('لا إعلان مفاتيح لهذا الملف في TARGETS');
+    if (undeclared.length) bad.push('مفاتيح حرفيّة غير مُعلَنة [' + undeclared.join(' · ') + ']');
+    if (dead.length) bad.push('مفاتيح مُعلَنة ولا تُستعمل [' + dead.join(' · ') + ']');
+    if (bad.length) {
+      res.failures.push('✗ مفاتيح `chrome.storage.local` في ' + t.label + ': ' + bad.join(' · ') +
+        ' — المُعلَن [' + (declaredKeys.join(' · ') || 'لا شيء') + '].');
+    }
+  }
+  if (storeHits === 0) {
+    res.checks++;
+    res.failures.push('✗ صفر مدخل: لا ملف تشغيل يلمس `chrome.storage.local` — القاعدة ⑱ تقيس الفراغ.');
+  }
+  /* والصلاحية شرط عمل المفاتيح: `chrome.storage` غير معرَّف أصلاً بلا `storage`
+   * في المانيفست ⇒ استخدامه بلا الصلاحية يمرّ من كل حارس ويفشل في المتصفّح. */
+  if (storeHits > 0) {
+    res.checks++;
+    let perms = null;
+    try { perms = JSON.parse(texts['browser-extension/manifest.json']).permissions; } catch (e) { perms = null; }
+    if (!Array.isArray(perms) || !perms.includes('storage')) {
+      res.failures.push('✗ المانيفست لا يطلب صلاحية `storage` وهناك ' + storeHits +
+        ' ملفاً يستعمل `chrome.storage.local` — بلا الصلاحية لا يعمل التخزين إطلاقاً.');
+    }
+  }
+  res.storeHits = storeHits;
+
+  /* ══ ⑲ قاعدة اللغة الواحدة (قرار المالك 2026-09-23) ════════════════════════
+   * **القاعدة نصّاً**: «فرضاً أن المتحدّث وضع العربية: اجعل [الأسماء/المصطلحات
+   * التقنية] بالإنجليزية سواء بالعربي أو الإنجليزي، والعربية كذلك تبقى بالعربي،
+   * والإنجليزية (بالعربية)» ⇒ ① في الواجهة **العربية** تبقى الأسماء والعلامات
+   * والمصطلحات اللاتينية لاتينية ولا تُعرَّب · ② والواجهة **الإنجليزية** إنجليزية
+   * سليمة · ③ **ولا خلط**: لا عربية في نصّ إنجليزي، ولا لاتينية في نصّ عربي إلا ما
+   * أبقاه القرار (اسم/مسار).
+   *
+   * **والجرد المقيس قبل هذه القاعدة**: ٢١٦ قيمة في الجداول الثلاثة و`_locales`؛
+   * المختلط (عربي+لاتيني في نصّ واحد) **٢٣**، كلّه في `ar`، والرموز اللاتينية
+   * المتميّزة فيه **ثلاثة فقط**: `HaramLite` (٢٣ موضعاً) · `HaramLite Bridge`
+   * (اسم المتجر) · `chrome://extensions` (مسار يكتبه المستخدم) — وعربية في `en`
+   * **صفر**. فالقائمة البيضاء **بالاسم لا بالنمط**، ومُرتَّبة بالأطول أولاً فلا يبقى
+   * «Bridge» وحده مسموحاً في جملة عربية.
+   *
+   * والعناصر النائبة (`{s}` · `{pct}` …) تُنزع قبل الحكم: هي رموز عقد لا نثر —
+   * وتكافؤها بين اللغتين محروس في الفحص ⑫. */
+  const ALLOWED_LATIN = [
+    { text: 'HaramLite Bridge', why: 'اسم المتجر الذي يعرضه المتصفّح لهوية الإضافة (_locales/ar/appName)' },
+    { text: 'HaramLite', why: 'اسم البرنامج — لا يُعرَّب، ويُذكر في ٢٣ نصّاً عربياً' },
+    { text: 'chrome://extensions', why: 'مسار حرفيّ يكتبه المستخدم في شريط العنوان' },
+  ];
+  const ALLOWED_SORTED = [...ALLOWED_LATIN].sort((a, b) => b.text.length - a.text.length);
+  const oneLangBad = [];
+  const oneLangN = { ar: 0, en: 0 };
+  const checkOneLang = (where, lang, key, value) => {
+    oneLangN[lang]++;
+    const raw = String(value);
+    // ② الواجهة الإنجليزية: صفر محرف عربي (ولا قائمة بيضاء هنا — الاسم لاتينيّ أصلاً).
+    if (lang === 'en') {
+      if ([...raw].some((c) => AR.test(c))) {
+        oneLangBad.push(`${where} · en.${key}: عربية في واجهة إنجليزية — «${raw.slice(0, 44)}»`);
+      }
+      return;
+    }
+    // ① الواجهة العربية: لا رمز لاتيني إلّا ما أُعلن، ويُنزع بالأطول أولاً.
+    let body = raw.replace(/\{\w+\}/g, '');
+    for (const a of ALLOWED_SORTED) body = body.split(a.text).join(' ');
+    if (/[A-Za-z]/.test(body)) {
+      oneLangBad.push(`${where} · ar.${key}: رمز لاتيني غير مُعلَن — «${raw.slice(0, 44)}»`);
+    }
+  };
+  for (const t of TARGETS) {
+    if (t.kind !== 'js') continue;
+    const tbl = findTable(texts[t.rel]);
+    if (!tbl) continue;
+    let I18N = null;
+    try { I18N = new Function(tbl.literal + '\nreturn I18N;')(); } catch (e) { I18N = null; }
+    if (!I18N) continue;
+    for (const lang of ['ar', 'en']) {
+      for (const [k, v] of Object.entries(I18N[lang] || {})) checkOneLang(t.label, lang, k, v);
+    }
+  }
+  for (const t of TARGETS) {
+    for (const l of t.locales || []) {
+      const short = l.rel.replace('browser-extension/_locales/', '_locales/');
+      let j = null;
+      try { j = JSON.parse(texts[l.rel]); } catch (e) { j = null; }
+      if (!j) { oneLangBad.push(`${short}: رسالة غير مقروءة (JSON)`); continue; }
+      for (const [k, o] of Object.entries(j)) checkOneLang(short, l.locale, k, (o && o.message) || '');
+    }
+  }
+  res.checks++;
+  if (oneLangBad.length) {
+    res.failures.push('✗ قاعدة اللغة الواحدة (⑲): ' + oneLangBad.length + ' مخالفة — ' + oneLangBad.join(' · ') +
+      ' — والمُعلَن [' + ALLOWED_LATIN.map((a) => a.text).join(' · ') + '].');
+  }
+  if (oneLangN.ar === 0 || oneLangN.en === 0) {
+    res.checks++;
+    res.failures.push('✗ صفر مدخل: القاعدة ⑲ لم تقرأ قيماً في الاتجاهين (ar=' + oneLangN.ar + ' · en=' + oneLangN.en + ').');
+  }
+  res.oneLang = { ar: oneLangN.ar, en: oneLangN.en, allowed: ALLOWED_LATIN.length };
   return res;
 }
 

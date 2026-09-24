@@ -397,13 +397,32 @@ const CASES2 = [
     withFile(K.P, (s) => sub(s, /localStorage\.setItem\(MODE_KEY, mode\)/,
       "localStorage.setItem('hl.popup.extra', mode)")), 'fall'],
   ['⑧ popup.js: الاتجاه لم يعد مشتقّاً من اللغة (RTL ثابت)',
-    withFile(K.P, (s) => sub(s, /const RTL = LANG === 'ar';/, 'const RTL = true;')), 'fall'],
+    // `let` مقبولة كما `const` منذ جولة x1-ext (اللغة صارت قابلة للتبديل من مبدّل
+    // ظاهر) — والمُفسَد يثبّت الاشتقاق على `true` فيسقط بالفحص ⑮ أيّاً كان نوع الإعلان.
+    withFile(K.P, (s) => sub(s, /let RTL = LANG === 'ar';/, 'let RTL = true;')), 'fall'],
   ['⑨ popup.js: الاتجاه لا يُسند إلى المستند (نُزع سطر dir)',
     withFile(K.P, (s) => sub(s, /document\.documentElement\.dir = RTL \? 'rtl' : 'ltr';\n/, '')), 'fall'],
   ['⑩ popup.js: موضع `t(` محسوب ثالث خارج العدد المُعلَن',
     withFile(K.P, (s) => sub(s, /applyI18n\(\);/, (m) => m + "\nconst zk = 'header.sub';\nel.jobName.textContent = t(zk);")), 'fall'],
+  /* ⑩أ/⑩ب — قاعدة ⑱ (جولة x1-ext): مفاتيح `chrome.storage.local` تُعلَن بالاسم،
+     والصلاحية شرط عملها. مُفسَدان لكلٍّ من الاتجاهين. */
+  ['⑩أ popup.js: مفتاح `chrome.storage.local` حرفيّ غير مُعلَن',
+    withFile(K.P, (s) => sub(s, /chrome\.storage\.local\.set\(\{ \[LANG_KEY\]: LANG \}\);/,
+      "chrome.storage.local.set({ 'hl.ghost': 1 });")), 'fall'],
+  ['⑩ب manifest.json: صلاحية `storage` نُزعت وهناك ملفات تستعمل `chrome.storage.local`',
+    withFile(K.M, (s) => sub(s, /"permissions": \[([^\]]*)\]/, (m, g) => '"permissions": [' + g.replace(/,\s*"storage"/, '') + ']')), 'fall'],
   ['⑪ popup.js: مفتاح مربوط في الصفحة حُذف من الجدول (اللغتين)',
     withFile(K.P, (s) => sub(s, /'footer\.install': '[^']*',\n/g, '')), 'fall'],
+  /* ⑪أ–⑪ج — قاعدة اللغة الواحدة ⑲ (قرار المالك 2026-09-23، والجرد في الحارس). */
+  ['⑪أ popup.js: عربية داخل قيمة إنجليزية (خلط يُصلَح)',
+    withFile(K.P, (s) => sub(s, /'send\.button': 'Send this page to HaramLite'/,
+      "'send.button': 'Send this page " + AR_SUB + "'")), 'fall'],
+  ['⑪ب popup.js: رمز لاتيني غير مُعلَن داخل قيمة عربية (خلط يُصلَح)',
+    withFile(K.P, (s) => sub(s, /'send\.button': '[^']*'/,
+      "'send.button': 'أرسل هذه الصفحة إلى HaramLite (Send page)'")), 'fall'],
+  ['⑪ج ضابط: مصطلحات القائمة البيضاء داخل نصّ عربي — يجب ألّا تُسقط',
+    withFile(K.P, (s) => sub(s, /'send\.button': '[^']*'/,
+      "'send.button': 'أرسل هذه الصفحة إلى HaramLite — HaramLite Bridge — chrome://extensions'")), 'pass'],
   ['ض٢ popup.js: تعليق يحمل عربية — يجب ألّا يُسقط',
     withFile(K.P, (s) => sub(s, /applyI18n\(\);/, (m) => '// ' + AR_SUB + '\n' + m)), 'pass'],
 
