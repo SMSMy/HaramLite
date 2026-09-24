@@ -1,7 +1,7 @@
 {
   "why": "خطّ أساس مقيس لبوّابات Rust — يُحدَّث بـ--update بعد مراجعة السبب، ولا يُخفَّض لتُمرَّر بوّابة.",
   "clippy_unique_warnings": 14,
-  "tests_passed": 416,
+  "tests_passed": 418,
   "tests_ignored": 5,
   "tests": [
     "atomic::tests::a_failed_write_keeps_the_old_file_and_leaves_no_temp",
@@ -40,6 +40,7 @@
     "bridge::tests::the_watch_flag_takes_the_temp_dir_and_explicit_modes_keep_saving",
     "bridge::tests::watch_mode_parses_explicit_only",
     "bridge::tests::watch_request_dispatches_temp_job",
+    "bridge::tests::watch_with_explicit_clip_keeps_both_dimensions",
     "calibrate::tests::music_above_noise_on_synthetic",
     "calibrate::tests::report_calibration",
     "calibrate::tests::silence_class_scores_nothing",
@@ -138,6 +139,7 @@
     "open_file_tests::open_file_refuses_a_missing_path_before_any_launch",
     "open_file_tests::open_settings_creates_the_settings_window_over_ipc_and_reuses_it",
     "open_file_tests::the_capability_covers_the_settings_window_with_no_new_permission",
+    "open_file_tests::the_close_action_hides_every_window_and_never_closes_for_real",
     "open_file_tests::the_handed_path_stays_plain_and_absolute",
     "open_file_tests::the_open_handoff_is_the_os_file_manager",
     "open_file_tests::the_open_handoff_never_goes_through_a_command_interpreter",
