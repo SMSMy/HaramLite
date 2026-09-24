@@ -40,10 +40,12 @@
     "release:parity": "node scripts/check-release-parity.cjs",
     "site:latest-trust": "node scripts/check-site-latest-trust.cjs",
     "guards:selfcheck": "node scripts/check-guards-selfcheck.cjs",
-    "guards:selfcheck:all": "node scripts/check-guards-selfcheck.cjs && node scripts/check-release-assets.cjs --selfcheck && node scripts/check-fetch-redist.cjs && node scripts/check-release-parity.cjs --selfcheck && node scripts/check-site-latest-trust.cjs --selfcheck && node scripts/matrix-check.cjs --selfcheck",
+    "guards:selfcheck:all": "node scripts/check-guards-selfcheck.cjs && node scripts/check-rust-mutants.cjs --self-test && node scripts/check-release-assets.cjs --selfcheck && node scripts/check-fetch-redist.cjs && node scripts/check-release-parity.cjs --selfcheck && node scripts/check-site-latest-trust.cjs --selfcheck && node scripts/matrix-check.cjs --selfcheck",
     "ui:live": "node scripts/check-ui-live.mjs",
     "release:verify": "node scripts/check-release-artifact.cjs",
-    "rust:gates": "node scripts/check-rust-baselines.cjs"
+    "rust:gates": "node scripts/check-rust-baselines.cjs",
+    "rust:mutants": "node scripts/check-rust-mutants.cjs",
+    "rust:mutants:selfcheck": "node scripts/check-rust-mutants.cjs --self-test"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

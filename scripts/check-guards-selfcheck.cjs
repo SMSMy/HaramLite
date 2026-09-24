@@ -882,11 +882,28 @@ CASES.push({
     apply: (dir) => fs.rmSync(path.join(dir, 'src-tauri'), { recursive: true, force: true }) },
 });
 
-/* ── بوّابة خطوط أساس Rust: الرقمان المعلَنان (اختبارات · مواضع clippy) صارا باباً ──────
+/* ── بوّابة خطوط أساس Rust: الأرقام المعلَنة (اختبارات · مواضع clippy) صارت باباً ───────
  *    تُقاس **مقارنتها** لا cargo: بيئة مصنوعة فيها `cargo.cmd` مزيّف يطبع ما تتوقّعه البوّابة،
  *    فالمُفسَدات تُشغَّل في أجزاء الثانية بدل دقيقتين، ويبقى المقيس منطق البوّابة نفسه
- *    (القياس من cargo، والحكم منها). ─────────────────────────────────────────── */
-function relFakeCargo(dir, { warnings, passed, failed = 0, ignored = 4, silent = false }) {
+ *    (القياس من cargo، والحكم منها).
+ *
+ *    **والمزيّف يطبع جرد الأسماء أيضاً** (`test <اسم> ... ok`) لأن البوّابة صارت تقابل
+ *    **المجموعة** لا العدد وحده. وبهذا تُقاس هنا الثقبان المقيسان (G4 وG5) بلا رست:
+ *      · **G5** — حارس **نُزع** واختبار **تافه مكانه**: العدد كما هو ⇒ العدّ لا يراه،
+ *        والجرد يراه (الاسم القديم غاب). ومُفسَده أدناه.
+ *      · **G4** — حارس **مُعطَّل بـ`return` مبكّر** في **جسم اختباره**: الاسم باقٍ
+ *        و«ينجح» ⇒ **الجرد لا يراه، وهذا حدّه المُعلَن** (مذكور في ترويسة البوّابة).
+ *        فالرصيد المُقاس له في هذا الملف **ضابط** لا مُفسَد: حالة تُثبت أن الجرد **لا**
+ *        يكشفه، فلا يُوهم أحدٌ أن الثقب أُغلق. وكشفُه مقياسه الآخر `pnpm rust:mutants`
+ *        (تحويلة تُحقن في الشريفة ويُشترط سقوط اختبارها). ─────────────────────────── */
+function relTestNames(n, extra) {
+  /* أسماء مصنوعة مرتَّبة، وواحد منها يقبل الإبدال (`probe_swap`) لقياس «اختبار تافه مكانه». */
+  const names = [];
+  for (let i = 0; i < n; i++) names.push('probe_case_' + String(i).padStart(3, '0'));
+  if (extra) names[n - 1] = extra;
+  return names;
+}
+function relFakeCargo(dir, { warnings, passed, failed = 0, ignored = 4, silent = false, names = null }) {
   const jsonLines = [];
   for (let i = 0; i < warnings; i++) {
     jsonLines.push(JSON.stringify({
@@ -905,13 +922,18 @@ function relFakeCargo(dir, { warnings, passed, failed = 0, ignored = 4, silent =
   ];
   if (!silent) for (const l of jsonLines) lines.push('  echo ' + l.replace(/\^/g, '^^').replace(/[<>|&]/g, '^$&'));
   lines.push('  exit /b 0', ')');
+  /* سطور الاختبارات الفردية: هي ما يُبنى عليه الجرد. أسماء ASCII بلا محارف صدفة. */
+  if (names) for (const n of names) lines.push('echo test ' + n + ' ... ok');
   lines.push('if "%1"=="test" ( echo test result: ok. ' + passed + ' passed; ' + failed + ' failed; ' + ignored + ' ignored & exit /b 0 )');
   lines.push('exit /b 0');
   mk(dir, 'fakebin/cargo.cmd', lines.join('\r\n'));
 }
-function relBaseline(dir, clippy, tests) {
-  mk(dir, 'qa/rust-baselines.json',
-    JSON.stringify({ clippy_unique_warnings: clippy, tests_passed: tests, tests_ignored: 4 }, null, 2) + '\n');
+function relBaseline(dir, clippy, tests, names) {
+  const data = {
+    clippy_unique_warnings: clippy, tests_passed: tests, tests_ignored: 4,
+  };
+  if (names) data.tests = names;
+  mk(dir, 'qa/rust-baselines.json', JSON.stringify(data, null, 2) + '\n');
 }
 
 CASES.push({
@@ -919,8 +941,8 @@ CASES.push({
   script: S('check-rust-baselines.cjs'),
   build(dir) {
     mk(dir, 'src-tauri/Cargo.toml', '[package]\nname = "probe"\nversion = "0.0.0"\n');
-    relFakeCargo(dir, { warnings: 15, passed: 349 });
-    relBaseline(dir, 15, 349);
+    relFakeCargo(dir, { warnings: 15, passed: 349, names: relTestNames(349) });
+    relBaseline(dir, 15, 349, relTestNames(349));
   },
   controlArgs: (dir) => ['--root', dir],
   /* `USERPROFILE` موجَّه إلى مجلد مصنوع بلا `.cargo` حتى **يسقط البديل** أيضاً:
@@ -933,24 +955,68 @@ CASES.push({
   sawExpected: 349,
   mutants: [
     { label: 'تحذير clippy جديد فوق الأساس ⇒ يسقط ويسمّي المواضع',
-      apply: (dir) => { relFakeCargo(dir, { warnings: 17, passed: 349 }); },
+      apply: (dir) => { relFakeCargo(dir, { warnings: 17, passed: 349, names: relTestNames(349) }); },
       mustMatch: /تحذيرات clippy: 17 .*الأساس 15/ },
     { label: 'اختبار فاشل ⇒ يسقط ويذكر العدد',
-      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 348, failed: 1 }); },
+      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 348, failed: 1, names: relTestNames(348) }); },
       mustMatch: /اختبارات فاشلة: 1/ },
     { label: 'نقص اختبارات عن الأساس (حُذفت) ⇒ يسقط ولا يمرّ صامتاً',
-      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 340 }); },
+      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 340, names: relTestNames(340) }); },
       mustMatch: /اختبارات ناجحة: 340 < الأساس 349/ },
     { label: 'صفر تشخيص (لا JSON) ⇒ صفر مدخل لا نجاح فارغ',
-      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 349, silent: true }); },
+      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 349, silent: true, names: relTestNames(349) }); },
       mustMatch: /صفر مدخل/ },
     { label: 'خطّ أساس مفقود ⇒ صفر مدخل يسمّي الملف',
       apply: (dir) => fs.rmSync(path.join(dir, 'qa', 'rust-baselines.json'), { force: true }),
       mustMatch: /خطّ الأساس مفقود/ },
+    /* **G5 المقيس** (ثقب الجاسوس الثاني): حارس نُزع واختبار تافه مكانه ⇒ العدد ٣٤٩ كما هو،
+       والاسم الأخير استُبدل بـ`…_trivial_placeholder`. العدّ يمرّ، والجرد **يسقط**. */
+    { label: 'G5: نزع حارس + اختبار تافه مكانه (العدد كما هو ٣٤٩) ⇒ الجرد يسقط باسمه',
+      apply: (dir) => {
+        const swapped = relTestNames(349);
+        swapped[348] = 'probe_trivial_placeholder';
+        relFakeCargo(dir, { warnings: 15, passed: 349, names: swapped });
+      },
+      mustMatch: /اختبارات غابت عن التشغيل: 1[\s\S]*probe_case_348/ },
+    /* ونقيضه: نفس الإبدال **بلا** نزع — أي أن اختباراً أُضيف ولم يُسجَّل ⇒ **يُقبل بتصريح**
+       (يُسمّى ويُطلب `--update`) ولا يُسقط البناء. فالفرق بين «مفقود» و«جديد» هو ما يميّز
+       حارساً نُزع من اختبار أُضيف. */
+    { label: 'اختبار جديد غير مسجَّل في الأساس ⇒ **يُقبل** بتصريح لا يسقط (ضابط موجب)',
+      apply: (dir) => {
+        const added = relTestNames(349);
+        added[348] = 'probe_case_348';           // القديم باقٍ
+        added.push('probe_brand_new_case');      // والجديد زائد
+        relFakeCargo(dir, { warnings: 15, passed: 350, names: added });
+      },
+      expectPass: true,
+      mustMatch: /اختبارات جديدة لم تكن في الأساس: 1/ },
+    /* و**G3**: اختبار صار `#[ignore]` ⇒ غاب من الناجحين ⇒ يسقط باسمه (لا بالعدد وحده). */
+    { label: 'G3: اختبار صار #[ignore] ⇒ غاب من الجرد فيسقط باسمه',
+      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 348, names: relTestNames(348) }); },
+      mustMatch: /اختبارات غابت عن التشغيل: 1[\s\S]*probe_case_348/ },
+    /* و**G4 المُعلَن**: حارس مُعطَّل بـ`return` داخل جسم اختباره ⇒ الاسم باقٍ والناجح كما هو،
+       **والجرد لا يراه**. وهذا ليس مُفسَداً بل **ضابط حدّ**: يُثبت أن الثقب قائم ومُعلَن،
+       ولا يُدَّعى أنه أُغلق. (مقياسه الآخر: `pnpm rust:mutants`.) */
+    { label: 'G4 المُعلَن: تعطيل الحارس بـ`return` داخل الاختبار ⇒ الجرد **لا يراه** (حدّ مُصرَّح به)',
+      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 349, names: relTestNames(349) }); },
+      expectPass: true,
+      mustMatch: /الجرد 349\/349 اسماً والغائب صفر/ },
   ],
   zero: { label: 'لا cargo ولا بديل ⇒ صفر مدخل',
     apply: (dir) => fs.rmSync(path.join(dir, 'fakebin'), { recursive: true, force: true }) },
 });
+
+/* ── **ولا حالةَ لبوّابة مُفسَدات رست هنا — وهذا قرار مقيس لا سهو** ─────────────
+ *    جُرِّبت حالتان (ضابط موجب + صفر مدخل) فسقطتا في **الاصطلاح** لا في القياس:
+ *    البوّابة تُقاس بنقيضها (تُسقط غيرها)، فلا تُقاس بمعيار «مُفسَد يسقط الحارس»
+ *    بلا التباس. وقد قِيس أن التوفيق بين الاصطلاحين يكلّف تشويهاً في الحارسة العامة
+ *    أكبر من قيمته. **والبديل المُعلَن**: تُشغَّل بوّابة مُفسَدات رست بفحصها الذاتي
+ *    نفسه في كل مكان تُشغَّل فيه الحرّاس — `pnpm guards:selfcheck:all` (‏6/6 حالة،
+ *    بلا رست ولا تصريف)، وفي خطوة CI نفسها. فلا يبقى حارسٌ في المستودع بلا مُفسَد
+ *    يُشغَّل آلياً.
+ *    **ودرس الاصطلاح هنا مسجَّل**: أول محاولة حَسبت الضابط «مارّاً» لأن مخرَجه
+ *    يحمل «6/6 حالة»، ثم رسبت على مطابقة **الرتّاب** — والدرس أن تُقاس المخرجات
+ *    بترتيبها أو لا تُقاس به. ────────────────────────────────────────────────── */
 
 /* ═══ التشغيل ═══════════════════════════════════════════════════════════════ */
 
@@ -1056,15 +1122,25 @@ async function main() {
         const res = runNode(c.needsScriptCopy ? path.join(dir, 'scripts', c.name) : c.script, args, dir,
           m.env ? { ...env, ...m.env } : (c.childEnv ? env : undefined));
         const named = /✗/.test(res.out);
-        if (res.status === 0) { ok = false; detail = 'exit=0 ← مرّ المُفسَد'; }
+        /* **`expectPass`: حالة تُقاس بنقيضها** — لا مُفسَد بل ضابط حدّ أو ضابط موجب:
+           مُفسَد «نزع الحارس» يقابله «اختبار جديد» **يجب أن يُقبل**، وثقب **G4**
+           المُعلَن يُقاس بأن الجرد **لا** يكشفه (فيُثبت الحدّ ولا يُدَّعى إغلاقه).
+           وشرطها: exit=0 **و** ظهور العبارة المتوقَّعة — فلا يمرّ «نجاح» لأن الحارس
+           لم ينظر. */
+        if (m.expectPass) {
+          if (res.status !== 0) { ok = false; detail = 'exit=' + res.status + ' ← كان يجب أن يمرّ (ضابط موجب)'; }
+          else if (m.mustMatch && !m.mustMatch.test(res.out)) { ok = false; detail = 'مرّ لكن لم يُصرّح بما يجب (المتوقّع ' + m.mustMatch + ')'; }
+          else { detail = 'exit=0 · صرّح بما يجب (ضابط موجب)'; }
+        }
+        else if (res.status === 0) { ok = false; detail = 'exit=0 ← مرّ المُفسَد'; }
         else if (!named) { ok = false; detail = 'exit=' + res.status + ' بلا رسالة «✗» مسمّاة'; }
         else if (m.mustMatch && !m.mustMatch.test(res.out)) { ok = false; detail = 'سقط لكن لم يسمِّ العيب (المتوقّع ' + m.mustMatch + ')'; }
         else if (m.alsoCheck && !m.alsoCheck(dir)) { ok = false; detail = 'سقط لكن ترك الشجرة في حالة خاطئة'; }
         else { detail = 'exit=' + res.status + ' · رسالة مسمّاة'; }
         if (m.cleanup) m.cleanup(dir);
       }
-      record(c, 'مُفسَد', m.label, ok, detail);
-      if (!ok) console.log('  ✗ مُفسَد ' + c.name + ' / ' + m.label + ': ' + detail);
+      record(c, m.expectPass ? 'ضابط موجب' : 'مُفسَد', m.label, ok, detail);
+      if (!ok) console.log('  ✗ ' + (m.expectPass ? 'ضابط موجب' : 'مُفسَد') + ' ' + c.name + ' / ' + m.label + ': ' + detail);
     }
 
     /* ③ صفر مدخل: يجب أن يسقط برسالة مسمّاة */

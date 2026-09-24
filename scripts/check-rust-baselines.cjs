@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* بوّابة **خطوط الأساس لبوّابات Rust**: تحوّل رقمين يُقالان بالعين إلى بابٍ يُغلق البناء.
+/* بوّابة **خطوط الأساس لبوّابات Rust**: تحوّل الأرقام التي تُقال بالعين إلى بابٍ يُغلق البناء.
  *
  *   node scripts/check-rust-baselines.cjs [--baseline=<path>] [--update] [--quiet]
  *
@@ -7,11 +7,23 @@
  * `cargo clippy --all-targets` **بلا `-D warnings`** و`cargo test --quiet` **بلا أي قيد على العدد**،
  * فكان `١٤ تحذيراً` و`٣٤٩ ناجحاً` **إعلانين يُقاسان بالعين لا بوّابتين** — تحذير جديد يمرّ أخضر،
  * وحذف عشرة اختبارات يمرّ أخضر، والرقم المعلَن في التقارير يبقى صحيحاً حتى اللحظة التي يكفّ فيها.
- * فهذه البوّابة تقرأ الرقمين من تشغيل حقيقي وتقابلهما بخطّ أساس **مكتوب ومُراجَع**:
+ * فهذه البوّابة تقرأ الأرقام من تشغيل حقيقي وتقابلها بخطّ أساس **مكتوب ومُراجَع**:
  *
  *   ① **تحذيرات clippy**: تُعدّ **المواضع الفريدة** (`--message-format=json`: رمز التشخيص + ملف + سطر)
  *      — لا أسطر المخرَج، لأن cargo تطبع سطرَي ملخّص يبدآن بـ`warning:` أيضاً (خطأ قِسته على نفسي).
- *   ② **اختبارات Rust**: تُجمَع نتائج كل الأهداف، ويُشترط **صفر فاشل** و**ألّا يقلّ الناجح عن الأساس**.
+ *   ② **جرد أسماء اختبارات Rust** (ثقبان مقيسان أُغلقا — دفعة البوّابات، 2026-09-23): المقارنة
+ *      **مجموعةً لا عدداً**. العدّ وحده **لا يعرف أيّ الاختبارات تعمل**: جاسوس مستقلّ أعطى حارساً
+ *      **معطَّلاً بـ`return` مبكّر** ⇒ `exit=0` أخضر (`407 ناجح · 0 فاشل · 5 مُهمَل`) وهو **لا يعمل**؛
+ *      ونزع حارساً ووضع **اختباراً تافهاً مكانه** ⇒ `exit=0` أيضاً (العدد كما هو). فصار في خطّ
+ *      الأساس **جرد أسماء مرتَّب** (`tests`)، والمقارنة على المجموعة:
+ *        · اختبار في الأساس **غاب من التشغيل** (حُذف · أُهمل بـ`#[ignore]` · أُبدل باسم آخر) ⇒ **يسقط**.
+ *        · اختبار **جديد** لم يكن في الأساس ⇒ **يُقبل** بتصريح: يُسمّى ويُطلب `--update` ليثبت.
+ *        · والعدد يبقى **مؤشّراً إضافياً**: صفر فاشل · والناجح لا يقلّ عن الأساس.
+ *   ③ **وحدُّ الجرد معلَن لا مخفيّ**: الاسم الباقي لا يعني أن **جسم** الاختبار ما زال يعمل. فحارسٌ
+ *      مُعطَّل بـ`return` **داخل جسم اختباره** يبقى باسمه و«ينجح» — والجرد **لا يراه** (قيستُه فلم
+ *      يُمكن كشفه بالجرد، ولم أدّعِ خلافه). المقياس الذي يراه هو البوّابة السلبية
+ *      `scripts/check-rust-mutants.cjs`: تُحقن تحويلة في الشيفرة التي يحرسها الاختبار ويُشترط
+ *      **سقوطه**؛ فالاختبار المُعطَّل يمرّ عليها ⇒ تُسمّى ثقباً.
  *
  * `--update` يكتب خطّ الأساس من التشغيل الحالي (تعديل واعٍ يُراجَع في الالتزام، لا صمت).
  * و`--baseline=<path>` للاختبار (فيُقاس الحارس نفسه على خطّ أساس مُصطنع).
@@ -102,9 +114,13 @@ function clippyUniqueWarnings() {
   return { unique: seen.size, keys: [...seen.keys()].sort(), raw: parsed, status: r.status };
 }
 
-/* ── ② اختبارات Rust: مجموع نتائج كل الأهداف ─────────────────────────────── */
+/* ── ② اختبارات Rust: مجموع نتائج كل الأهداف + **جرد الأسماء** ───────────── */
+/** **بلا `--quiet`** (وهذا شرط الجرد لا تفضيل): `--quiet` يُخفي سطور `test <name> ... ok`
+ *  الفردية فلا يبقى إلا سطر الملخّص — ولا أسماء تُقابَل. قِيس فعلاً: `cargo test --quiet`
+ *  أعطى `0` سطر اختبار في المخرَج وثلاثة أسطر «test result:» وحدها، أي أن العدّ يعمل
+ *  والجرد **أعمى**. فالنداء يُترك صاخباً، والمخرَج كله يُقرأ مرةً واحدة. */
 function rustTestTotals() {
-  const r = cargoRun(['test', '--quiet', '--manifest-path', MANIFEST],
+  const r = cargoRun(['test', '--manifest-path', MANIFEST],
     { maxBuffer: 256 * 1024 * 1024 });
   const out = (r.stdout || '') + (r.stderr || '');
   if (r.error) return { error: r.error.message };
@@ -113,7 +129,26 @@ function rustTestTotals() {
     results++; passed += Number(m[2]); failed += Number(m[3]); ignored += Number(m[4]);
   }
   if (results === 0) return { error: 'لم يُقرأ سطر «test result:» واحد — لا نتيجة تُقاس' };
-  return { passed, failed, ignored, results, status: r.status };
+
+  /** أسماء الاختبارات التي **جرت ونجحت** (جاهزة للمقابلة بالاسم الواحد). */
+  const live = new Set();
+  const ignoredNames = [];
+  const extraFlagged = [];   // خرجت بـ`ok` ومعه عَلم ⇒ ليست نجاحاً عارياً
+  for (const line of out.split(/\r?\n/)) {
+    const m = line.match(/^test\s+(\S+)\s+\.\.\.\s+(\w+)(.*)$/);
+    if (!m) continue;
+    const [, name, verdict, rest] = m;
+    if (verdict === 'ok') {
+      if (rest.trim()) extraFlagged.push(name + ' — ' + rest.trim());
+      else live.add(name);
+    } else if (verdict === 'ignored') {
+      ignoredNames.push(name);
+    } else if (verdict !== 'FAILED') {
+      extraFlagged.push(name + ' — ' + verdict);
+    }
+  }
+  if (live.size === 0) return { error: 'لم يُقرأ سطر اختبار واحد («test … ... ok») — لا جرد يُقاس' };
+  return { passed, failed, ignored, results, status: r.status, live, ignoredNames, extraFlagged };
 }
 
 const clippy = clippyUniqueWarnings();
@@ -122,6 +157,7 @@ if (clippy.error || tests.error) {
   console.error('✗ صفر مدخل: ' + (clippy.error || tests.error));
   process.exit(2);
 }
+const liveNames = [...tests.live].sort();
 
 if (update) {
   const data = {
@@ -129,12 +165,13 @@ if (update) {
     clippy_unique_warnings: clippy.unique,
     tests_passed: tests.passed,
     tests_ignored: tests.ignored,
+    tests: liveNames,
     toolchain,
     measured_at: new Date().toISOString().slice(0, 10) + ' · ' + (process.env.HL_BASELINE_NOTE || 'قياس محلي'),
   };
   fs.writeFileSync(baselinePath, JSON.stringify(data, null, 2) + '\n');
   console.log('✓ حُدِّث خطّ الأساس: ' + baselinePath);
-  console.log(`  clippy=${clippy.unique} · tests_passed=${tests.passed} · ignored=${tests.ignored}`);
+  console.log(`  clippy=${clippy.unique} · tests_passed=${tests.passed} · ignored=${tests.ignored} · جرد=${liveNames.length} اسماً`);
   console.log('  الأداة: ' + toolchain.clippy);
   process.exit(0);
 }
@@ -150,6 +187,17 @@ try { base = JSON.parse(fs.readFileSync(baselinePath, 'utf8')); } catch (e) {
 for (const k of ['clippy_unique_warnings', 'tests_passed']) {
   if (typeof base[k] !== 'number') { console.error('✗ صفر مدخل: حقل «' + k + '» مفقود من خطّ الأساس'); process.exit(2); }
 }
+/** **جرد الأسماء شرط قياس لا زيادة**: بلا `tests` لا تُقاس المجموعة، فيبقى الثقب
+ *  الذي أغلقته هذه النسخة مفتوحاً («اختبار تافه مكان الحارس» يمرّ). فلا يُقبل
+ *  خطّ أساس قديم بصمت — يُسمّى ويُطلب `--update`. */
+let baseNames = null;
+if (Array.isArray(base.tests)) {
+  if (base.tests.some((n) => typeof n !== 'string') || base.tests.length === 0) {
+    console.error('✗ صفر مدخل: حقل «tests» في خطّ الأساس ليس جرداً صالحاً (‏' + base.tests.length + ' مدخلاً)');
+    process.exit(2);
+  }
+  baseNames = new Set(base.tests);
+}
 
 const reasons = [];
 if (clippy.unique > base.clippy_unique_warnings) {
@@ -159,9 +207,28 @@ if (tests.failed > 0) reasons.push(`اختبارات فاشلة: ${tests.failed}
 if (tests.passed < base.tests_passed) {
   reasons.push(`اختبارات ناجحة: ${tests.passed} < الأساس ${base.tests_passed} — نقصٌ لا يُقبل بلا تفسير (اختبارات حُذفت أو أُهملت؟)`);
 }
+/** ② **المقارنة بالاسم**: الغائب يسقط · والجديد يُصرَّح به. */
+const missing = baseNames ? base.tests.filter((n) => !tests.live.has(n)) : [];
+const added = baseNames ? liveNames.filter((n) => !baseNames.has(n)) : [];
+if (baseNames && missing.length) {
+  reasons.push(`اختبارات غابت عن التشغيل: ${missing.length} من ${base.tests.length} في الأساس` +
+    ' — اختبار مفقود يعني حارساً نُزع أو أُهمل أو أُبدل باسم آخر؛ لا يُقبل بلا تفسير');
+}
+if (tests.extraFlagged.length) {
+  reasons.push(`اختبارات نُفِّذت بعَلَم لا «ok» عارياً: ${tests.extraFlagged.length} — راجعها بالاسم أدناه`);
+}
 
 if (reasons.length) {
   for (const r of reasons) console.error('✗ ' + r);
+  if (missing.length) {
+    console.error('  الأسماء الغائبة (أوّل ٢٠):');
+    for (const n of missing.slice(0, 20)) console.error('   · ' + n);
+    if (missing.length > 20) console.error('   … و' + (missing.length - 20) + ' غيرها');
+  }
+  if (tests.extraFlagged.length) {
+    console.error('  اختبارات بأعلام (أوّل ١٠):');
+    for (const n of tests.extraFlagged.slice(0, 10)) console.error('   · ' + n);
+  }
   if (clippy.unique > base.clippy_unique_warnings) {
     console.error('  مواضع clippy المقيسة (راجع الجديد منها):');
     for (const k of clippy.keys) console.error('   · ' + k);
@@ -171,7 +238,20 @@ if (reasons.length) {
 }
 if (!quiet) {
   console.log(`✓ خطّ أساس بوّابات Rust سليم: clippy ${clippy.unique}/${base.clippy_unique_warnings} موضعاً فريداً · ` +
-    `اختبارات ${tests.passed} ناجح (الأساس ${base.tests_passed}) · ${tests.failed} فاشل · ${tests.ignored} مُهمَل`);
+    `اختبارات ${tests.passed} ناجح (الأساس ${base.tests_passed}) · ${tests.failed} فاشل · ${tests.ignored} مُهمَل · ` +
+    (baseNames ? `الجرد ${tests.live.size}/${base.tests.length} اسماً والغائب صفر` : 'الجرد غير موجود في الأساس'));
+  if (tests.ignoredNames.length) {
+    console.log('  مُهمَل بالاسم: ' + tests.ignoredNames.join(' · '));
+  }
+  if (!baseNames) {
+    console.log('  ⚠ خطّ الأساس بلا جرد أسماء ⇒ المقارنة بالعدد وحده، وثقب «اختبار تافه مكان الحارس» مفتوح.' +
+      '\n     حدِّثه بـ--update ليكتب الجرد (‏' + liveNames.length + ' اسماً مقيساً الآن).');
+  }
+  if (added.length) {
+    console.log(`  ＋ اختبارات جديدة لم تكن في الأساس: ${added.length} — مقبولة، وحدِّث بـ--update ليثبت الجرد الجديد:`);
+    for (const n of added.slice(0, 10)) console.log('     · ' + n);
+    if (added.length > 10) console.log('     … و' + (added.length - 10) + ' غيرها');
+  }
   if (base.toolchain?.clippy && base.toolchain.clippy !== toolchain.clippy) {
     console.log(`  ⚠ الأداة مختلفة عن التي قِيس عليها الأساس:\n     الأساس: ${base.toolchain.clippy}\n     الآن  : ${toolchain.clippy}` +
       '\n     ⇒ رقم أعلى قد يكون **لينتاً جديداً في الأداة** لا عطلاً في الشيفرة: راجع الفرق ثم حدِّث بـ--update.');
