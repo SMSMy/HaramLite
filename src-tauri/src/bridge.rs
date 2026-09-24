@@ -491,13 +491,20 @@ fn write_request(url: &str, watch: bool, mode: Option<&str>) -> Result<String, S
         "url": url,
         "ts": nanos,
     });
-    // Temp watch-listens ride the same file so old hosts/clients interoperate:
-    // absent mode means full-save (backward compatible both directions).
+    // البعدان معاً — الوجهة (`watch`) والاختيار (`song`/`clip`) حقلان مستقلان
+    // (عطب المالك 2026-09-24: `if watch { mode="watch" }` كان يُسقط الاختيار
+    // الصريح من ملف الطلب، فيقع `handle_request` على `s.watch_mode`
+    // وافتراضيّه `"song"` بينما المعروض `clip`).
+    // و`mode:"watch"` تُكتب فقط بلا اختيار صريح — لتبقى ملفاتنا مقروءة عند قراء
+    // قدامى لا يعرفون حقل `watch` (وجهة مؤقّتة + احتياطي الإعدادات كما اليوم).
     if watch {
-        body["mode"] = serde_json::json!("watch");
-    } else if let Some(m) = mode {
-        // The popup's per-request choice (song/clip) travels the same field.
+        body["watch"] = serde_json::json!(true);
+    }
+    if let Some(m) = mode {
+        // اختيار صريح من الإضافة (`song`/`clip`) يسافر بحقله كما هو.
         body["mode"] = serde_json::json!(m);
+    } else if watch {
+        body["mode"] = serde_json::json!("watch");
     }
     let body = serde_json::to_vec(&body).unwrap_or_default();
     // Atomic write (tmp + rename): notify fires on file CREATE — a direct
@@ -2264,6 +2271,74 @@ mod tests {
             .try_recv()
             .expect("full job must be queued");
         assert!(!got2.watch);
+        teardown(&base);
+    }
+
+    /// عطب المالك 2026-09-24 («المعروض `clip` والمُنفَّذ `song`»): زرّ المشاهدة
+    /// يرسل `{watch:true, mode:"clip"}`، وكان `write_request` يكتب `mode:"watch"`
+    /// وحده فيُسقط الاختيار، فيقع `handle_request` على `s.watch_mode`
+    /// (وافتراضيّه `"song"`). فالحارس يقيس **الملف ثم المُنفَّذ**: الملف يحمل
+    /// البعدين معاً، والمهمّة المُرسَلة مشاهدةٌ بوضع مقطوعة، والمحلول وضعٌ صريح
+    /// لا احتياطي الإعدادات — حتى و`watch_mode` إعدادُه `"song"`.
+    ///
+    /// **مُفسَده**: إعادة `if watch { mode="watch" } else if mode` ⇒ يسقط على
+    /// أول ادّعاء (الملف بلا `watch:true` ويحمل `mode:"watch"` بدل `"clip"`).
+    #[test]
+    fn watch_with_explicit_clip_keeps_both_dimensions() {
+        let _guard = test_serial().lock().unwrap_or_else(|p| p.into_inner());
+        let base = isolated_base("watchclip");
+        let (ctx, _pending) = ctx_with();
+        let url = format!("https://example.invalid/watchclip_{}", nanos());
+
+        // (١) الكتابة تحمل البعدين: الوجهة علماً والاختيار وضعاً.
+        let written = write_request(&url, true, Some("clip")).expect("request must be filed");
+        let raw = std::fs::read_to_string(&written).expect("request file must be readable");
+        let filed: serde_json::Value =
+            serde_json::from_str(&raw).expect("request file must be JSON");
+        assert_eq!(
+            filed.get("watch"),
+            Some(&serde_json::json!(true)),
+            "علم المشاهدة يجب أن يُكتب"
+        );
+        assert_eq!(
+            filed.get("mode"),
+            Some(&serde_json::json!("clip")),
+            "الاختيار الصريح يجب أن ينجو من الكتابة"
+        );
+
+        // (٢) والإرسال يقرأ البعدين: مشاهدةٌ بوضع مقطوعة في الوجهة المؤقّتة.
+        dispatch_file(Path::new(&written), &ctx);
+        let got = ctx
+            .job_rx
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .try_recv()
+            .expect("watch+clip job must be queued");
+        assert_eq!(
+            got,
+            Job {
+                url: url.clone(),
+                watch: true,
+                mode: Some(Mode::Clip),
+            }
+        );
+        assert_eq!(
+            job_out_dir(got.watch),
+            page_audio_dir(),
+            "وجهة المشاهدة المجلد المؤقّت لا مجلد المستخدم"
+        );
+
+        // (٣) والمُنفَّذ `Clip` لا احتياطي الإعدادات — حتى وإعداد المراقبة `"song"`.
+        let s = Settings {
+            watch_mode: "song".into(),
+            ..Default::default()
+        };
+        let resolved = got.mode.unwrap_or(if s.watch_mode == "clip" {
+            Mode::Clip
+        } else {
+            Mode::Song
+        });
+        assert_eq!(resolved, Mode::Clip, "وضعٌ صريح يغلب `watch_mode` مهما كان");
         teardown(&base);
     }
 
