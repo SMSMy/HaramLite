@@ -598,8 +598,10 @@ export function wireTelegram(): void {
     release = null;
   };
   openBtn.addEventListener('click', () => {
-    // The settings dropdown is a narrow strip — get it out of the way.
-    document.getElementById('settings-menu')?.classList.add('hidden');
+    // **لم يبقَ ما يُزاح**: كان السطر يُخفي «شريط الإعدادات المنسدل» ليفسح
+    // للوحة تلغرام (`settings-menu`)، والآن الإعدادات **شاشةٌ في نافذة مستقلة**
+    // ولوحة تلغرام جزءٌ منها (`data-tab="telegram"`) — فإخفاؤها هنا كان سيُخفي
+    // الشاشة كلها على من فتح لوحة تلغرام من داخلها.
     overlay.classList.remove('hidden');
     if (release === null) release = trapFocus(overlay);
     void refresh(true);

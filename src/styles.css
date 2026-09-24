@@ -36,6 +36,47 @@
 .lv-DEBUG { color: #c9c6c2; }
 .lv-ts { color: #93a1bd; }
 
+/* ── شاشة الإعدادات (نافذة مستقلة) ─────────────────────────────────────────
+ * الحاوية `#settings-menu` معرّفها تاريخي، ودورها الآن **شاشة** لا منسدلة:
+ * في نافذة `settings` تُفرَد على مساحة النافذة (‏`body.settings-mode`)، وفي
+ * الرئيسية تبقى مخفيّة دائماً (يفرضه `settingsScreen.ts` ولا يملك أي زرّ
+ * إظهارها) ⇒ فلا مسار ثانٍ.
+ * والقواعد هنا **هندسة عرضٍ فقط**: لا خصيصة عنصر تحكّم تغيّرت، ولا لون. */
+body.settings-mode #settings-menu {
+  position: fixed;
+  inset: 0;
+  width: auto;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  padding: 1.5rem;
+  gap: 1rem;
+  overflow-y: auto;
+}
+/* الرأس يبقى (فيه زرّ اللغة وشارة الإصدار)، والمحتوى الرئيسي يُخفى. */
+body.settings-mode main {
+  display: none;
+}
+body.settings-mode .settings-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.settings-tab {
+  font: inherit;
+  color: var(--hl-on-surface-variant, #c9c6c2);
+  padding: 0.25rem 0.6rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.settings-tab:hover { color: #da7756; }
+.settings-tab[aria-selected="true"] {
+  color: #da7756;
+  border-color: #da7756;
+}
+
+
 /* ─── Thmanyah font stylistic sets ─── */
 .mursala-text {
   font-feature-settings: "salt" 1;
