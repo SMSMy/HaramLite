@@ -295,6 +295,12 @@ const RAW_READS = [
     file: 'background.js', n: 1, re: /chrome\.runtime\.lastError\.message/,
     why: 'خطأ المتصفّح عند انقطاع منفذ المضيف — لا نصّ حمولة',
   },
+  /* ويُقدَّم على `e.message` العامّ عمداً: المطابقة تأخذ **أوّل إعلان** يطابق السياق،
+   * فالإعلان الأخصّ يجب أن يسبق الأعمّ وإلا حُسبت قراءتان على مدخل الستّة فسقط العدّ. */
+  {
+    file: 'background.js', n: 2, re: /\(err && err\.message\)/,
+    why: 'خطأ `contextMenus` من المتصفّح نفسه (`chrome.runtime.lastError` في `removeAll` و`create`) — لا نصّ حمولة؛ ويُقرأ **داخل النداء الراجع** لئلا يبقى «غير مُلتقَط»، ويُعلَن في السجلّ (`console.error`) ولا يُكتَم — وهو إصلاح عطل «Cannot create item with duplicate id» الميداني',
+  },
   {
     file: 'background.js', n: 2, re: /msg\.message/,
     why: 'حقل **الطلب** (`msg.message`) لا الخطأ: الرسالة المُرسَلة إلى المضيف',

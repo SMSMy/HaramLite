@@ -90,14 +90,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  *  تقع بالمفتاح الصحيح. والقراءة **تزامنية** كما ينصّ العقد المُعلَن في الشيمين
  *  (‏`content.js`/`popup.js` كلاهما بأسلوب النداء الراجع)، فيبقى القياس الحيّ
  *  لترتيب الربط الثابت صالحاً كما كان. */
-function storageShim(store, writes, listeners) {
+function storageShim(store, writes, listeners, delayMs) {
   return {
     local: {
       get: (keys, cb) => {
+        // `delayMs` يُحاكي **القراءة غير المتزامنة** في المتصفّح (‏`chrome.storage`
+        // لا يردّ تزامناً) — وبها يُقاس سباق «نقرة قبل وصول التفضيل».
         const list = Array.isArray(keys) ? keys : (typeof keys === 'string' ? [keys] : Object.keys(keys || {}));
         const out = {};
         for (const k of list) if (k in store) out[k] = store[k];
-        if (typeof cb === 'function') cb(out);
+        const fire = () => { if (typeof cb === 'function') cb(out); };
+        if (delayMs) setTimeout(fire, delayMs); else fire();
       },
       set: (obj, cb) => {
         Object.assign(store, obj);
@@ -323,7 +326,7 @@ function renderContent(jsSrc, languages, replyFn, opts) {
       },
       onMessage: { addListener: () => {} },
     },
-    storage: storageShim(store, writes, listeners),
+    storage: storageShim(store, writes, listeners, (opts && opts.storageDelayMs) || 0),
   };
   /* ── محاكاة Trusted Types (يوتيوب يفرضها) ────────────────────────────────────
    * **العطل الميداني المقيس**: في كروم 153 على يوتيوب حقيقي، `menu.innerHTML = …`
@@ -582,6 +585,43 @@ async function contentFetchReply(jsSrc, languages, resultReply) {
   return { text: el ? el.textContent : null, dir: el ? el.style.direction : null };
 }
 
+/** **السيناريو الثاني للمالك**: يُغيَّر المخزَّن **من تبويب آخر** (يبثّه المتصفّح عبر
+ *  \`storage.onChanged\` إلى كل تبويب مفتوح) ثم يُبدأ بلا لمس ⇒ المعروض والمُرسَل معاً. */
+async function contentModeFromOtherTab(jsSrc, languages, before, after) {
+  let w = null;
+  const store = { 'hl.popup.mode': before };
+  try { w = renderContent(jsSrc, languages, REPLY_START, { store }); } catch (e) { return { why: 'تنفيذ content.js رمى: ' + (e && e.message ? e.message : e) }; }
+  w.dispatchEvent(new w.Event('yt-navigate-finish'));
+  await sleep(320);
+  const shownBefore = textOf(w, '#haramlite-yt-mode');
+  // كتابة تبويب آخر: نُغيّر المخزَّن ثم نبثّ الحدث كما يفعله المتصفّح.
+  store['hl.popup.mode'] = after;
+  w.__fireStorage({ 'hl.popup.mode': { newValue: after } });
+  await sleep(60);
+  const shownAfter = textOf(w, '#haramlite-yt-mode');
+  const btn = w.document.getElementById('haramlite-yt-proc');
+  if (!btn) return { why: 'زرّ المعالجة غير مُحقن' };
+  btn.click();
+  await sleep(200);
+  const links = w.__sent.filter((m) => m && m.type === 'link');
+  return { shownBefore, shownAfter, payload: links[0] || null, why: links.length ? null : 'لا طلب أُرسل' };
+}
+
+/** **سباق أول قراءة**: تخزين **غير متزامن** والنقرة تقع قبل وصوله ⇒ يجب أن يُرسَل
+ *  المخزَّن لا الافتراضيّ المكتوب في الكود (وهو ما ينتظره \`prefsReady\`). */
+async function contentEarlyClick(jsSrc, languages, stored) {
+  let w = null;
+  try { w = renderContent(jsSrc, languages, REPLY_START, { store: { 'hl.popup.mode': stored }, storageDelayMs: 600 }); } catch (e) { return { why: 'تنفيذ content.js رمى: ' + (e && e.message ? e.message : e) }; }
+  w.dispatchEvent(new w.Event('yt-navigate-finish'));   // مسار الحقن الحقيقي (200 مللي)
+  await sleep(280);                                     // الزرّ موجود، والقراءة (600) لم تصل
+  const btn = w.document.getElementById('haramlite-yt-proc');
+  if (!btn) return { why: 'زرّ المعالجة غير مُحقن (النقرة المبكرة)' };
+  btn.click();                       // **قبل** وصول القراءة
+  await sleep(900);                  // الإرسال ينتظر القراءة ثم يُرسل
+  const links = w.__sent.filter((m) => m && m.type === 'link');
+  return { payload: links[0] || null, why: links.length ? null : 'لا طلب أُرسل' };
+}
+
 const attrOf = (w, sel, at) => { const n = w.document.querySelector(sel); return n ? n.getAttribute(at) : null; };
 
 /** قياس مبدّل اللغة: يُنشئ النافذة بتفضيل مخزَّن ولغة متصفّح مُمرَّرين. */
@@ -741,6 +781,25 @@ async function measureX1(src, report) {
         report(`[save/${which}/${entry}] و**بلا علم مشاهدة** ⇒ مسار الحفظ الكامل في مجلد المستخدم`,
           !('watch' in p), 'الحمولة=' + JSON.stringify(p));
       }
+    }
+    /* **السيناريو الثاني للمالك**: اختار الوضع في مقطع/تبويب سابق، ثم بدأ في تبويب
+       مفتوح بلا لمس ⇒ هل يصل التغيير إلى التبويب المفتوح؟ */
+    for (const [before, after] of [['clip', 'song'], ['song', 'clip']]) {
+      const t = await contentModeFromOtherTab(contentJs, ['en-US', 'ar'], before, after);
+      if (!t.payload) { report(`[othertab/${before}→${after}] صفر مدخل: طلب أُرسل`, false, t.why || 'لا طلب'); continue; }
+      report(`[othertab/${before}→${after}] المعروض قبل التغيير ${before}`,
+        t.shownBefore === I18N.en['btn.mode.' + before], 'وُجد ' + JSON.stringify(t.shownBefore));
+      report(`[othertab/${before}→${after}] **وتغيير تبويب آخر يعيد الرسم** ⇒ المعروض ${after}`,
+        t.shownAfter === I18N.en['btn.mode.' + after], 'وُجد ' + JSON.stringify(t.shownAfter));
+      report(`[othertab/${before}→${after}] **ويُرسَل الجديد** mode:"${after}" بلا لمس القائمة`,
+        t.payload.mode === after, 'الحمولة=' + JSON.stringify(t.payload));
+    }
+    /* **سباق أول قراءة**: تخزين غير متزامن ونقرة قبله ⇒ المخزَّن لا الافتراضيّ. */
+    for (const stored of ['song', 'clip']) {
+      const e = await contentEarlyClick(contentJs, ['en-US', 'ar'], stored);
+      if (!e.payload) { report(`[early/${stored}] صفر مدخل: طلب أُرسل`, false, e.why || 'لا طلب'); continue; }
+      report(`[early/${stored}] نقرة **قبل** وصول أول قراءة ⇒ mode:"${stored}" (المخزَّن لا افتراضيّ الكود)`,
+        e.payload.mode === stored, 'الحمولة=' + JSON.stringify(e.payload));
     }
     const rp = await contentReprocess(contentJs, ['en-US', 'ar']);
     if (!rp.payload) {
@@ -975,6 +1034,11 @@ async function main() {
     ['㉘ وافتراضيّ مُثبَّت في مسار المشاهدة (`mode: \'clip\'` دائماً) ⇒ المعروض `song` لا يُرسَل',
       { content: sub(CONTENT.js, /: \{ type: 'link', url: location\.href, watch: true, mode: MODE \};/,
         ": { type: 'link', url: location.href, watch: true, mode: 'clip' };") }, 'fall'],
+    ['㉚ التبويب المفتوح لا يستمع لتغيّر المخزَّن ⇒ يبقى على وضعه القديم ويرسله (حالة المالك)',
+      { content: sub(CONTENT.js, /          applyPrefs\(next\);\n        \}\n        prefsFinished\(\);/,
+        "          prefsFinished();\n        }") }, 'fall'],
+    ['㉛ الإرسال لا ينتظر أول قراءة ⇒ نقرة مبكرة تُرسل افتراضيّ الكود لا المخزَّن',
+      { content: sub(CONTENT.js, /[ \t]*try \{ await prefsReady; \}[^\n]*\n/, '') }, 'fall'],
     /* ㉙ النافذة بالمصدر نفسه: المُرسَل يفقد الحالة فيُثبَّت افتراضيّ ثانٍ. */
     ['㉙ النافذة ترسل افتراضيّاً ثابتاً (`mode: \'clip\'`) بدل الحالة المعروضة',
       { popup: { ...SHIPPED, js: sub(SHIPPED.js, /chrome\.runtime\.sendMessage\(\{ type: 'send', url, mode \},/,

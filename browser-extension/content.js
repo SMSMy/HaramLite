@@ -86,7 +86,7 @@
       'bridge.noResponse': 'فشل الاتصال',
       // بدء المعالجة
       'start.sendFailed': 'فشل الإرسال',
-      'start.received': '✓ استُلم الرابط — بدء التنزيل...',
+      'start.received': '✓ استُلم الرابط — بدء التنزيل (الوضع المُرسَل: {m})',
       'cancel.done': '⏹ أُلغيت المعالجة — اضغط للبدء من جديد',
       // نتيجة الاستطلاع
       'poll.ok': 'تم التجهيز ✓ — شاهد بعد إزالة الموسيقى ▶',
@@ -144,7 +144,7 @@
       'foreign.bar': 'Another copy of the HaramLite extension is enabled and owns this player’s buttons — disable it in chrome://extensions, then reload the page; otherwise cancel and mode will not work from this copy',
       'bridge.noResponse': 'Connection failed',
       'start.sendFailed': 'Send failed',
-      'start.received': '✓ Link received — starting the download...',
+      'start.received': '✓ Link received — starting the download (mode sent: {m})',
       'cancel.done': '⏹ Processing cancelled — press to start again',
       'poll.ok': 'Ready ✓ — watch without music ▶',
       'poll.failed': 'Processing failed',
@@ -291,18 +291,35 @@
     if (m === 'song' || m === 'clip') MODE = m;
     paintModeBtn();
   }
-  readPrefs(['hl.lang', 'hl.popup.mode'], applyPrefs);
+  /* **وعد جهوز التفضيلات** — والسبب عطل من صنف «الحالة لا الحدث» قِيس على الشجرة:
+   * أول قراءة من `chrome.storage` **غير متزامنة**، فلو ضغط المستخدم الزرّ قبل وصولها
+   * لبقي `MODE` على الافتراضيّ **المكتوب في الكود** (`'clip'`) بينما المخزَّن شيء آخر
+   * (‏`song`) ⇒ **يُرسَل غير ما اختاره المستخدم**، ويُعرض غير ما سيُنفَّذ. فالإرسال
+   * **ينتظر** هذا الوعد. ولا مهلة إضافية: الوعد يُحلّ دائماً — من ردّ `chrome.storage`
+   * أو من فرع غياب الواجهة في `readPrefs`، ومن `onChanged` أيضاً (تغييرٌ وصل يعني
+   * أنّ التخزين مقروء). */
+  const prefsState = { done: false, resolve: null };
+  const prefsReady = new Promise((res) => { prefsState.resolve = res; });
+  function prefsFinished() {
+    if (prefsState.done) return;
+    prefsState.done = true;
+    prefsState.resolve();
+  }
+  readPrefs(['hl.lang', 'hl.popup.mode'], (got) => { applyPrefs(got); prefsFinished(); });
   try {
     if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
       chrome.storage.onChanged.addListener((changes) => {
-        // النافذة غيّرت اللغة ⇒ الصفحة تتبعها فوراً (بلاغ المالك: المبدّل «يتبعه
-        // content.js أيضاً»). و`applyPrefs` تتجاهل ما لم يتغيّر فعلاً.
+        // تغييرٌ من **تبويب آخر** أو من النافذة: المتصفّح يبثّه إلى كل مستمعي
+        // `storage.onChanged` — ومنهم سكربتات المحتوى في التبويبات المفتوحة — فالصفحة
+        // تتبع التغيير بلا إعادة تحميل. (وهو ما يحلّ حالة المالك: اختار `clip` في
+        // مقطع سابق، فهل يصل اختياره إلى تبويب مفتوح؟ — يُقاس صراحةً في الحارس.)
         if (changes && (changes['hl.lang'] || changes['hl.popup.mode'])) {
           const next = {};
           if (changes['hl.lang']) next['hl.lang'] = changes['hl.lang'].newValue;
           if (changes['hl.popup.mode']) next['hl.popup.mode'] = changes['hl.popup.mode'].newValue;
           applyPrefs(next);
         }
+        prefsFinished();
       });
     }
   } catch (e) { /* بلا `chrome.storage` — لا تتبّع، ولا انهيار */ }
@@ -750,6 +767,9 @@
     const pv = pageVideo();
     if (pv) { try { pv.pause(); } catch { /* gone */ } }
     SENT_URL = location.href;
+    // **الوضع من الحالة لحظة الإرسال، بعد انتظار أول قراءة** — وإلا أُرسل الافتراضيّ
+    // المكتوب في الكود قبل وصول المخزَّن (التعليل في تعليق `prefsReady`).
+    try { await prefsReady; } catch (e) { /* لا يُرمي: الوعد يُحلّ دائماً */ }
     let r = null;
     try {
       // **العقدان** (التعليل في تعليق `startFull`): المشاهدة بعلمها، والحفظ باختياره —
@@ -779,7 +799,9 @@
     }
     BUSY = true;
     setProc('working', 0);
-    toast(t('start.received'));
+    // **والوضع المُرسَل يُطبع في التوست** (بلاغ المالك: «المعروض `clip` ويُعالج كـ`song`» —
+    // فصار ما أُرسل فعلاً مقروءاً على جهاز المستخدم لحظة البدء، لا عندنا فقط).
+    toast(fill(t('start.received'), { m: MODE }));
     poll();
   }
 
