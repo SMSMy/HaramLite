@@ -16,7 +16,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { t } from './i18n';
-import { trapFocus } from './util';
+import { openSettingsWindow } from './settingsScreen';
 import { groupModeFrom, notifyWatchUiChanged, pushSettings, type RustSettings } from './settings';
 import { showCudaHint, updateCudaBanner, refreshProviderLine, type CudaStatus } from './cuda';
 import { askAutostartOnce, refreshAutostart, refreshBridgeExt } from './integration';
@@ -149,40 +149,19 @@ export function wireSettings(): void {
   }
 
   if (btnSettings && menu) {
-    let menuRelease: (() => void) | null = null;
-    const closeMenu = (): void => {
-      menu.classList.add('hidden');
-      menuRelease?.();
-      menuRelease = null;
-    };
-    btnSettings.setAttribute('aria-expanded', menu.classList.contains('hidden') ? 'false' : 'true');
+    // **الزرّ يفتح نافذة مستقلة** (قرار المالك 2026-09-23: «القائمة المنسدلة
+    // أصبحت طويلة») — ولم يبقَ مسار ثانٍ: الزرّ **لا** يُظهر `#settings-menu`
+    // في النافذة الرئيسية أبداً؛ فالحاوية صارت **شاشة** تعيش في نافذة `settings`
+    // وحدها (`src/settingsScreen.ts` يقرّر الوضع من اللابل، وفي الرئيسية يفرض
+    // عليها `hidden`). فحُذف من هنا فتحُ القائمة وإغلاقها بالنقر خارجها وبـESC
+    // وحَبْسُ التركيز فيها (`trapFocus`) — لأن لا قائمة تُحصر.
+    btnSettings.setAttribute('aria-expanded', 'false');
     btnSettings.addEventListener('click', (e) => {
       e.stopPropagation();
-      const willOpen = menu.classList.contains('hidden');
-      if (willOpen) {
-        menu.classList.remove('hidden');
-        if (menuRelease === null) menuRelease = trapFocus(menu);
-        // ن-٣: المزوّد الفعّال يُقرأ عند **فتح** اللوحة لا عند الإقلاع وحده —
-        // فآخر جلسة فصل قد تكون وقعت بعد الإقلاع (وقد تكون جرت من CLI).
-        void refreshProviderLine();
-      } else {
-        closeMenu();
-      }
-      btnSettings.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
-    });
-    document.addEventListener('click', (e) => {
-      if (!menu.contains(e.target as Node) && !btnSettings.contains(e.target as Node)) {
-        closeMenu();
-        btnSettings.setAttribute('aria-expanded', 'false');
-      }
-    });
-    // the settings popup counts as one of the app's dialogs — ESC closes it
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !menu.classList.contains('hidden')) {
-        closeMenu();
-        btnSettings.setAttribute('aria-expanded', 'false');
-        btnSettings.focus();
-      }
+      // ن-٣: المزوّد الفعّال يُقرأ عند الطلب لا عند الإقلاع وحده — فآخر جلسة
+      // فصل قد تكون وقعت بعده. (وتقرؤه نافذة الإعدادات أيضاً عند فتحها.)
+      void refreshProviderLine();
+      void openSettingsWindow();
     });
   }
 
@@ -204,6 +183,17 @@ export function wireSettings(): void {
       localStorage.setItem('hl.notify', s.notify ? '1' : '0');
       const cb = document.getElementById('setting-notify') as HTMLInputElement | null;
       if (cb) cb.checked = s.notify;
+    }
+    // **سقف الفصول المتزامنة** (م١): كان يُضبط والإعدادات في **النافذة نفسها**
+    // فلم تلزم مرآة؛ وبنافذة الإعدادات المستقلة صار للواجهتين **سياقا JS
+    // منفصلان** ⇒ بلا هذا الفرع يبقى صندوق الرئيسية على قيمته القديمة حتى
+    // إعادة الإقلاع (وهو نقضٌ لـ«مصدر حالة واحد»). والمفتاح من `settings.ts`
+    // نفسه (`hl.max_jobs` ↔ `max_concurrent_jobs`)، لا نسخة ثانية.
+    if (typeof s.max_concurrent_jobs === 'number') {
+      const v = String(s.max_concurrent_jobs);
+      localStorage.setItem('hl.max_jobs', v);
+      const sel = document.getElementById('max-jobs') as HTMLSelectElement | null;
+      if (sel && sel.value !== v) sel.value = v;
     }
     if (typeof s.watch_enabled === 'boolean') {
       localStorage.setItem('hl.watch', s.watch_enabled ? '1' : '0');

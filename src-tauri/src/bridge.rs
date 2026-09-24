@@ -362,7 +362,90 @@ pub const E_DOWNLOAD_CANCELLED: &str = "download_cancelled";
 /// عطل داخلي في العامل (نجا من `catch_unwind`) — إعادة المحاولة مفيدة.
 pub const E_INTERNAL: &str = "internal_error";
 /// فشل من المحرّك/الشبكة/نظام الملفات، ونصّه الخام (`e.to_string()`) هو التفصيل.
+///
+/// **ومعه رمز فرعي**: انظر كتلة `SUB_ENGINE_*` أدناه — الرمز الواحد لا يقول
+/// **أيّ** عطل، فيضطر العميل إلى عرض النصّ الخام (عربي داخل جملة إنجليزية).
 pub const E_ENGINE: &str = "engine_error";
+
+// ── **رموز أعطال المحرّك الفرعية** (ط-١٢ · البند ٤) ─────────────────────────
+//
+// **العطل المقيس**: جملة `code.engine_error` تحمل `error` = **تفصيل المحرّك الخام**
+// (عربي غالباً) ⇒ عربيةٌ داخل جملة إنجليزية في الإضافة وفي واجهة التطبيق، ولا
+// سبيل للعميل أن يترجمها لأن الرمز الواحد `engine_error` لا يقول أيّ عطل.
+//
+// **والعلاج**: رمز فرعي **مصدره الواحد هذه الكتلة**، يُصدَّر في حمولة الفشل **مع**
+// `code`، و**السبب لا يُفقد**: النصّ الخام يبقى في `error` كما كان ويُضاف `detail`
+// صريحاً — فالعميل الذي يعرف الرمز يعرض جملة مترجمة، ومن لا يعرفه يعرض النصّ كما
+// كان. **ولا رمز `code` قائم يتغيّر** (الإضافة وواجهة التطبيق تعتمدانها، وبوّابة
+// `pnpm bridge:codes` تحرسها) — والرموز الفرعية **حقل جديد** لا يمسّها.
+/// طلب المستخدم إلغاء المعالجة (وصل نصّه مسارَ المحرّك لا مسار الإلغاء).
+pub const SUB_ENGINE_CANCELLED: &str = "engine_cancelled";
+/// نموذج الفصل غير موجود في مجلد `models` (أشهر عطل أول تشغيل).
+pub const SUB_ENGINE_MODEL_MISSING: &str = "engine_model_missing";
+/// أداة مفقودة (`ffmpeg`/`ffprobe`/`yt-dlp`) — تُحلّ من `bin`.
+pub const SUB_ENGINE_TOOL_MISSING: &str = "engine_tool_missing";
+/// الملف قيد المعالجة في مهمّة أخرى (تخطٍّ صريح لا عطل).
+pub const SUB_ENGINE_BUSY: &str = "engine_busy";
+/// مدخل غير صالح (ملف غير مقروء أو ليس ستيريو بعد التوحيد).
+pub const SUB_ENGINE_BAD_INPUT: &str = "engine_bad_input";
+/// خطأ ملفات (قراءة/كتابة على مسار الفصل).
+pub const SUB_ENGINE_IO: &str = "engine_io";
+/// فشل نداء الاستدلال نفسه (جلسة ONNX أو تشغيل النموذج).
+pub const SUB_ENGINE_INFERENCE: &str = "engine_inference";
+/// انتظار فتحة الفصل لم يكتمل (مهلة أو رفض تراكبي).
+pub const SUB_ENGINE_SLOT_WAIT: &str = "engine_slot_wait";
+/// عطل محرّك لم يُصنَّف (يبقى النصّ الخام هو التفصيل).
+pub const SUB_ENGINE_OTHER: &str = "engine_other";
+
+// **مراسي التصنيف** — نصوصٌ من **مصدرها** حيث أمكن (ثوابت `pipeline`/`separator`/
+// `proc`)، والثلاثة الباقية **من `Display` النوع المُنتج** لأن المُنتج
+// (`media.rs`) ليس ملفّي — **وكلٌّ منها مُثبَّت باختبار** يقابلها بـ`Display` النوع
+// نفسه (`the_classifier_anchors_are_pinned_to_their_producers`)، فلو تغيّر نصّ
+// المُنتج **سقط الحارس** بدل أن يصير التصنيف صامتاً خاطئاً.
+const ANCHOR_TOOL_MISSING: &str = "أداة مفقودة";
+const ANCHOR_BAD_INPUT: &str = "مدخل غير صالح";
+const ANCHOR_IO: &str = "خطأ ملفات";
+const ANCHOR_INFERENCE: &str = "خطأ استدلال النموذج";
+/// **مُصدَّر للداخل**: اختبار `slots` يُثبّته على **نصّي المهلة والرفض التراكبي**
+/// المُنتَجين هناك. وهو **أوسع المراسي عمداً** («الفصل») لأنه يُفحَص **أخيراً**:
+/// المراسي الأخصّ (`مدخل غير صالح` · `خطأ ملفات` · `خطأ استدلال`) تسبقه، فلا
+/// يسرق تصنيفها.
+pub(crate) const ANCHOR_SLOT_WAIT: &str = "الفصل";
+
+/// **تصنيف عطل المحرّك إلى رمز فرعي**.
+///
+/// **والشرط على نصّ الرسالة — وهذا حدٌّ مُعلَن لا اختيار**: `slots::run_separation`
+/// يُرجع `String` (نوع الخطأ يُمحى عند حدّه، لأن الخطأ من مصدرين: الفتحة والمحرّك)،
+/// فالنصّ هو الحامل الوحيد عند الجسر. **وما يجعله مقبولاً**: المراسي **من مصدرها**
+/// (ثوابت) أو **مُثبَّتة باختبار على `Display` منتجها** — وتصنيفٌ خاطئ لا يُسكِت
+/// السبب: النصّ الخام يبقى في `error` و`detail` دائماً.
+fn engine_subcode(msg: &str) -> &'static str {
+    if msg.contains(crate::pipeline::CANCELLED_BY_USER) || msg == crate::proc::CANCELLED {
+        return SUB_ENGINE_CANCELLED;
+    }
+    if msg.contains(crate::separator::MODEL_FILENAME) {
+        return SUB_ENGINE_MODEL_MISSING;
+    }
+    if msg.contains(ANCHOR_TOOL_MISSING) {
+        return SUB_ENGINE_TOOL_MISSING;
+    }
+    if msg == crate::pipeline::LOCK_BUSY {
+        return SUB_ENGINE_BUSY;
+    }
+    if msg.contains(ANCHOR_BAD_INPUT) {
+        return SUB_ENGINE_BAD_INPUT;
+    }
+    if msg.contains(ANCHOR_IO) {
+        return SUB_ENGINE_IO;
+    }
+    if msg.contains(ANCHOR_INFERENCE) {
+        return SUB_ENGINE_INFERENCE;
+    }
+    if msg.contains(ANCHOR_SLOT_WAIT) {
+        return SUB_ENGINE_SLOT_WAIT;
+    }
+    SUB_ENGINE_OTHER
+}
 /// رسالة بروتوكول بنوع غير معروف (لا تُعرض للمستخدم في المسار العادي).
 pub const E_UNKNOWN_MESSAGE: &str = "unknown_message";
 /// طلب غير قابل للتنفيذ: إطار مشوّه · JSON غير مقروء · رابط فارغ · لا مخرج مكتمل.
@@ -371,14 +454,28 @@ pub const E_BAD_INPUT: &str = "bad_input";
 /// حمولة `last` الفاشلة في الحالة (يقرأها `status`): النصّ `error` **كما هو** + `code`.
 /// وترتيب الوسائط (`code` أولاً) هو نفسه في `reply_err` عمداً: يحرسه
 /// `scripts/check-bridge-codes.cjs` فيتأكّد أن **كل موضع خطأ يمرّر رمزاً معلَناً**.
+///
+/// **وزيادة ط-١٢**: لعطل المحرّك وحده يُضاف **رمز فرعي** (`subcode`) و**تفصيل
+/// صريح** (`detail`) — فالرمز الفرعي هو ما يترجمه العميل، و`error`/`detail`
+/// يبقيان النصّ الخام (فلا يُفقد سبب)، و`code` القائم **لم يتغيّر**.
 fn err_last(code: &str, name: &str, msg: &str) -> serde_json::Value {
-    serde_json::json!({ "name": name, "ok": false, "error": msg, "code": code })
+    let mut v = serde_json::json!({ "name": name, "ok": false, "error": msg, "code": code });
+    if code == E_ENGINE {
+        v["subcode"] = serde_json::json!(engine_subcode(msg));
+        v["detail"] = serde_json::json!(msg);
+    }
+    v
 }
 
 /// ردّ رسالة بروتوكول فاشلة: الحمولة نفسها على قناة Native Messaging
 /// (‏`ok:false` + `error` كما هو + `code`) — ولا تغيير في `error` القائم.
 fn reply_err(code: &str, msg: &str) {
-    reply_ok(serde_json::json!({ "ok": false, "error": msg, "code": code }));
+    let mut v = serde_json::json!({ "ok": false, "error": msg, "code": code });
+    if code == E_ENGINE {
+        v["subcode"] = serde_json::json!(engine_subcode(msg));
+        v["detail"] = serde_json::json!(msg);
+    }
+    reply_ok(v);
 }
 
 fn write_request(url: &str, watch: bool, mode: Option<&str>) -> Result<String, String> {
@@ -814,10 +911,32 @@ struct Job {
     mode: Option<Mode>,
 }
 
-/// Pure mode parse (unit-tested): only an explicit `"watch"` opts into the
-/// temp path — old clients send no mode and stay full-save.
+/// Pure watch parse (unit-tested). **الوجهة المؤقّتة تُؤخذ من طريقين لا من
+/// الوضع وحده**:
+/// * `mode: "watch"` — العميل القديم (عقد قائم، يُحفظ كما هو)،
+/// * `watch: true` — **علم صريح لزرّ المشاهدة** (قرار المالك 2026-09-23: «يُعاد
+///   المسار المؤقّت لزرّ المشاهدة، ويبقى الحفظ للأوضاع الصريحة») — لأن جعل
+///   `mode` وحدها تحمل الأمر جعل **ناتجاً يتراكم لكل مشاهدة** في
+///   `~/Videos/HaramLite` بلا كنس.
+///
+/// **والعلم لا يُخلط بـ`mode`**: `mode` يبقى لاختيار `song|clip` (‏[`job_mode_of`])،
+/// وهذا العلم للوجهة وحدها — فطلب `{mode:"song", watch:true}` مشاهدةٌ بوضع أغنية.
+/// والغياب/الفُساد/`false` ⇒ حفظٌ كامل (فالاتجاهان متوافقان).
 fn job_watch_of(msg: &serde_json::Value) -> bool {
     msg.get("mode").and_then(|v| v.as_str()) == Some("watch")
+        || msg.get("watch").and_then(|v| v.as_bool()) == Some(true)
+}
+
+/// **وجهة ناتج الطلب** — دالّة صريحة لتُقاس **الوجهة** لا العلم وحده (كانت
+/// `if watch { … } else { … }` مدفونةً داخل `handle_request` فلا سبيل لقياسها):
+/// المشاهدة ⇒ مجلد الصوت المؤقّت المُدار (`page-audio`، يُكنس عند كل اكتمال فلا
+/// يتراكم شيء في مجلد المستخدم)، وغيرها ⇒ مجلد الحفظ.
+fn job_out_dir(watch: bool) -> PathBuf {
+    if watch {
+        page_audio_dir()
+    } else {
+        dirs::video_dir().unwrap_or_default().join("HaramLite")
+    }
 }
 
 /// Pure per-request mode (unit-tested): the popup sends `song` or `clip`;
@@ -1064,11 +1183,8 @@ fn handle_request(
     // Field #3: temp watch-listens process audio-only inside the managed
     // page-audio dir — nothing is ever saved to the user folder, and each
     // completion sweeps the previous temp (deleted when no longer wanted).
-    let out_dir = if watch {
-        page_audio_dir()
-    } else {
-        dirs::video_dir().unwrap_or_default().join("HaramLite")
-    };
+    // الوجهة في دالّة صريحة (`job_out_dir`) لتُقاس بالاختبار لا بالقراءة.
+    let out_dir = job_out_dir(watch);
     let url_label = url.to_string();
     let name_label = url_label.clone();
     let queued = pending.load(Ordering::SeqCst).saturating_sub(1);
@@ -1835,8 +1951,8 @@ mod tests {
         teardown(&base);
     }
 
-    /// Field #3: only an explicit `"watch"` mode takes the temp path —
-    /// missing/garbage modes stay full-save (both directions compatible).
+    /// العميل **القديم**: `mode:"watch"` وحدها كانت تأخذ المسار المؤقّت —
+    /// مسطرةٌ قائمة تُحفظ كما هي (والعلم الصريح أُضيف **فوقها** لا بدلاً منها).
     #[test]
     fn watch_mode_parses_explicit_only() {
         use serde_json::json;
@@ -1846,6 +1962,226 @@ mod tests {
         assert!(!job_watch_of(&json!({ "type": "link", "mode": "" })));
         assert!(!job_watch_of(&json!({ "type": "link", "mode": 7 })));
         assert!(!job_watch_of(&json!({})));
+    }
+
+    /// **قرار المالك (2026-09-23)**: «يُعاد المسار المؤقّت لزرّ المشاهدة، ويبقى
+    /// الحفظ للأوضاع الصريحة» — لأن المسار السابق (‏`mode` وحدها) جعل **ناتجاً
+    /// يتراكم لكل مشاهدة** في `~/Videos/HaramLite` بلا كنس.
+    ///
+    /// ويقيس **الوجهة** لا العلم وحده: العلم الصريح ⇒ مجلد الصوت المؤقّت (يُكنس
+    /// عند كل اكتمال)، والوضع الصريح ⇒ مجلد الحفظ. والعلم **لا يُخلط بـ`mode`**.
+    ///
+    /// **رموز أعطال المحرّك الفرعية (ط-١٢)** — ثلاثة حرّاس في واحد:
+    ///
+    /// ١. **الوصول بالرمز لا بالنصّ الخام**: كل عطل معروف يبلغ رمزه الفرعي،
+    ///    فالعميل يعرض جملة مترجمة بدل عربيةٍ داخل جملة إنجليزية.
+    /// ٢. **المراسي مُثبَّتة على مُنتجيها**: تُقابَل بـ`Display` النوع الذي ينتج
+    ///    النصّ فعلاً (`media::MediaError` · `separator::SepError`) وبثوابت
+    ///    `pipeline`/`proc` — فلو تغيّر نصّ مُنتج **سقط الحارس** بدل أن يصير
+    ///    التصنيف صامتاً خاطئاً.
+    /// ٣. **الحمولة تحمل الرمز والتفصيل معاً**: `code` القائم لم يتغيّر،
+    ///    و`subcode` جديد، و`detail` = النصّ الخام (فلا يُفقد سبب).
+    ///
+    /// **مُفسَده**: جعل `engine_subcode` تُرجع النصّ الخام (أو `SUB_ENGINE_OTHER`
+    /// دائماً) ⇒ يسقط الادّعاءان الأول والثالث.
+    #[test]
+    fn engine_subcodes_are_reached_by_code_and_the_raw_reason_is_kept() {
+        use crate::media::MediaError;
+        use crate::separator::SepError;
+
+        // (٢) **تثبيت المراسي على مُنتجيها** — لا نسخة نصّية هنا.
+        assert!(
+            MediaError::ToolMissing("ffmpeg".into())
+                .to_string()
+                .contains(ANCHOR_TOOL_MISSING),
+            "مرسى «الأداة المفقودة» لم يبق في نصّ `MediaError::ToolMissing`"
+        );
+        assert!(
+            SepError::InvalidInput("x".into())
+                .to_string()
+                .contains(ANCHOR_BAD_INPUT),
+            "مرسى «المدخل غير الصالح» لم يبق في نصّ `SepError::InvalidInput`"
+        );
+        assert!(
+            SepError::Io("x".into()).to_string().contains(ANCHOR_IO),
+            "مرسى «خطأ الملفات» لم يبق في نصّ `SepError::Io`"
+        );
+        assert!(
+            SepError::Inference("x".into())
+                .to_string()
+                .contains(ANCHOR_INFERENCE),
+            "مرسى «خطأ الاستدلال» لم يبق في نصّ `SepError::Inference`"
+        );
+        assert!(
+            SepError::ModelMissing
+                .to_string()
+                .contains(crate::separator::MODEL_FILENAME),
+            "مرسى النموذج المفقود لم يبق في نصّ `SepError::ModelMissing`"
+        );
+
+        // (١) **الوصول بالرمز** — من النصّ الذي ينتجه النوع نفسه.
+        let cases: [(String, &str); 8] = [
+            (SepError::ModelMissing.to_string(), SUB_ENGINE_MODEL_MISSING),
+            (
+                MediaError::ToolMissing("ffmpeg".into()).to_string(),
+                SUB_ENGINE_TOOL_MISSING,
+            ),
+            (crate::pipeline::LOCK_BUSY.to_string(), SUB_ENGINE_BUSY),
+            (
+                SepError::InvalidInput("x".into()).to_string(),
+                SUB_ENGINE_BAD_INPUT,
+            ),
+            (SepError::Io("x".into()).to_string(), SUB_ENGINE_IO),
+            (
+                SepError::Inference("x".into()).to_string(),
+                SUB_ENGINE_INFERENCE,
+            ),
+            (
+                crate::pipeline::CANCELLED_BY_USER.to_string(),
+                SUB_ENGINE_CANCELLED,
+            ),
+            (crate::proc::CANCELLED.to_string(), SUB_ENGINE_CANCELLED),
+        ];
+        for (msg, want) in &cases {
+            assert_eq!(
+                engine_subcode(msg),
+                *want,
+                "عطل «{msg}» لم يُصنَّف إلى رمزه الفرعي"
+            );
+            // **والرمز ليس نصّاً خاماً**: كل الرموز الفرعية معرَّفة في هذه الكتلة.
+            assert!(
+                ALL_ENGINE_SUBCODES.contains(want),
+                "الرمز {want} ليس من كتلة `SUB_ENGINE_*` المعلَنة"
+            );
+        }
+        // وحدّ مصرَّح به: ما لا يُعرف يقع في `other` (ولا يُخترع تصنيف).
+        assert_eq!(engine_subcode("عطلٌ لم يُصنَّف"), SUB_ENGINE_OTHER);
+
+        // (٣) **الحمولة**: الرمز القائم كما هو + الفرعي + التفصيل الخام.
+        let payload = err_last(E_ENGINE, "u55.mp4", &cases[0].0);
+        assert_eq!(payload["code"], serde_json::json!(E_ENGINE));
+        assert_eq!(
+            payload["subcode"],
+            serde_json::json!(SUB_ENGINE_MODEL_MISSING)
+        );
+        assert_eq!(payload["detail"], serde_json::json!(cases[0].0));
+        assert_eq!(
+            payload["error"],
+            serde_json::json!(cases[0].0),
+            "النصّ الخام باقٍ في `error` كما كان (لا فقدان سبب)"
+        );
+        // **والرمز الفرعي لا يُدسّ في `code`**: رموز `code` القائمة لم تُمسّ.
+        assert_ne!(
+            payload["code"], payload["subcode"],
+            "الرمز الفرعي حقل مستقلّ، و`code` يبقى `engine_error`"
+        );
+        // وردّ البروتوكول يحمل الزيادة نفسها.
+        let reply = {
+            let mut v = serde_json::json!({ "ok": false, "error": cases[1].0, "code": E_ENGINE });
+            v["subcode"] = serde_json::json!(engine_subcode(&cases[1].0));
+            v
+        };
+        assert_eq!(reply["subcode"], serde_json::json!(SUB_ENGINE_TOOL_MISSING));
+    }
+
+    /// **مُفسَد هجوم «النصّ الخام رمزاً»**: لو أُعيد النصّ الخام في حقل الرمز
+    /// الفرعي (أو صار التصنيف `other` دائماً) سقط الحارس أعلاه — وهذا الاختبار
+    /// يقيس **الحالة المضادّة** صراحةً: الرمز الفرعي يجب أن يكون **من الكتلة**.
+    #[test]
+    fn a_raw_message_is_never_a_valid_subcode() {
+        for raw in [
+            crate::separator::SepError::ModelMissing.to_string(),
+            crate::pipeline::LOCK_BUSY.to_string(),
+            "أي نصّ خام".to_string(),
+        ] {
+            assert!(
+                !ALL_ENGINE_SUBCODES.contains(&raw.as_str()),
+                "نصٌّ خام دخل مجموعة الرموز المعلَنة: {raw}"
+            );
+            // **والأهمّ**: المصنّف نفسه لا يُرجع نصّاً خاماً رمزاً — فلو أُعيد
+            // النصّ في الحقل (مُفسَد «النصّ الخام رمزاً») سقط هذا السطر.
+            let got = engine_subcode(&raw);
+            assert!(
+                ALL_ENGINE_SUBCODES.contains(&got),
+                "المصنّف أرجع ما ليس من الكتلة المعلَنة على مدخل خام: {got:?}"
+            );
+        }
+        assert!(
+            ALL_ENGINE_SUBCODES.iter().all(|c| c.starts_with("engine_")),
+            "كل رمز فرعي يبدأ بـ`engine_` (شكل واحد للعائلة)"
+        );
+    }
+
+    /// **مجموعة الرموز الفرعية المعلَنة** — تُقرأ من الكتلة نفسها.
+    const ALL_ENGINE_SUBCODES: [&str; 9] = [
+        SUB_ENGINE_CANCELLED,
+        SUB_ENGINE_MODEL_MISSING,
+        SUB_ENGINE_TOOL_MISSING,
+        SUB_ENGINE_BUSY,
+        SUB_ENGINE_BAD_INPUT,
+        SUB_ENGINE_IO,
+        SUB_ENGINE_INFERENCE,
+        SUB_ENGINE_SLOT_WAIT,
+        SUB_ENGINE_OTHER,
+    ];
+
+    /// **مُفسَده**: إزالة فرع `watch:true` من `job_watch_of` ⇒ يسقط الادّعاءان
+    /// الأول والثاني (والثالث في اختبار الوضع القديم).
+    #[test]
+    fn the_watch_flag_takes_the_temp_dir_and_explicit_modes_keep_saving() {
+        use serde_json::json;
+        // `page_audio_dir` تحلّ مجلد بيانات التطبيق ⇒ نفس قفل `paths.rs` الذي
+        // تستعمله الاختبارات التي تبدّل `HARAMLITE_DATA_DIR` (فلا يُقاس مسار
+        // على بيئة يبدّلها غيرنا في اللحظة نفسها).
+        let _serial = crate::paths::serial_guard();
+        let temp = page_audio_dir();
+        let save = dirs::video_dir().unwrap_or_default().join("HaramLite");
+        assert_ne!(temp, save, "المساران مختلفان — وإلا فالقياس بلا معنى");
+
+        // (١) **العلم الصريح ⇒ مشاهدة ⇒ الوجهة المؤقّتة** (لا تراكم في مجلد المستخدم).
+        let by_flag = json!({ "type": "link", "watch": true });
+        assert!(job_watch_of(&by_flag), "`watch:true` يُقرأ مشاهدة");
+        assert_eq!(
+            job_out_dir(job_watch_of(&by_flag)),
+            temp,
+            "زرّ المشاهدة يجب أن يكتب في مجلد الصوت المؤقّت"
+        );
+
+        // (٢) **والوضع الصريح ليس مشاهدة ⇒ وجهة الحفظ**.
+        let by_clip = json!({ "type": "link", "mode": "clip" });
+        assert!(!job_watch_of(&by_clip), "`mode:\"clip\"` ليس مشاهدة");
+        assert_eq!(
+            job_out_dir(job_watch_of(&by_clip)),
+            save,
+            "الوضع الصريح يبقى على مسار الحفظ"
+        );
+
+        // (٣) **والعلم لا يُخلط بالوضع**: الاثنان معاً ⇒ مشاهدةٌ (وجهة مؤقّتة)
+        //     **و**`mode` يبقى لاختيار أغنية/مقطوعة كما هو.
+        let both = json!({ "type": "link", "mode": "song", "watch": true });
+        assert!(job_watch_of(&both), "العلم يحكم الوجهة ولو مع وضع صريح");
+        assert_eq!(
+            job_mode_of(&both),
+            Some(Mode::Song),
+            "و`mode` لم يُلمس: العلم للوجهة والوضع للاختيار"
+        );
+        assert_eq!(job_out_dir(job_watch_of(&both)), temp);
+
+        // (٤) **ولا يُصدَّق غير المنطقي**: `as_bool` لا تُحوّل نصّاً ولا عدداً
+        //     (وإلا صار `watch:"false"` مشاهدةً — وهو عكس المقصود).
+        for bad in [
+            json!({ "type": "link", "watch": "true" }),
+            json!({ "type": "link", "watch": false }),
+            json!({ "type": "link", "watch": 1 }),
+            json!({ "type": "link", "watch": null }),
+        ] {
+            assert!(!job_watch_of(&bad), "علمٌ غير منطقي لا يُقرأ مشاهدة: {bad}");
+        }
+
+        // (٥) **والقديم يبقى**: `mode:"watch"` ⇒ الوجهة المؤقّتة (عقد الإضافة).
+        let legacy = json!({ "type": "link", "mode": "watch" });
+        assert!(job_watch_of(&legacy));
+        assert_eq!(job_out_dir(job_watch_of(&legacy)), temp);
     }
 
     /// A stale "last call" record must never be read as "the extension is here":

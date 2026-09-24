@@ -39,6 +39,10 @@ const i18n = {
     // مجموعة الإعدادات: عناوين الأقسام الخمسة (الترتيب مقصود: الأداء ← المراقبة ← التكامل ← النظام ← الأدوات)
     settings_title: 'الإعدادات',
     set_group_perf: 'الأداء والمعالجة',
+    // تبويبات الشاشة المستقلة (نافذة الإعدادات) — والمفاتيح القائمة تُعاد
+    // استعمالها حيث تطابق المعنى، وهذا المفتاح وحده جديد (لا مقابل له).
+    set_tab_engine: 'الفصل والمزوّد',
+    set_tab_update: 'التحديث والصيانة',
     set_group_watch: 'المراقبة التلقائية',
     set_group_integration: 'التكامل',
     set_group_system: 'النظام',
@@ -374,6 +378,8 @@ const i18n = {
     set_notify: 'Completion notifications + sound',
     settings_title: 'Settings',
     set_group_perf: 'Performance & processing',
+    set_tab_engine: 'Separation & provider',
+    set_tab_update: 'Updates & maintenance',
     set_group_watch: 'Automatic watching',
     set_group_integration: 'Integration',
     set_group_system: 'System',

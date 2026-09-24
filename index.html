@@ -31,6 +31,21 @@
 <div id="settings-menu" class="hidden absolute end-0 top-full mt-2 w-64 max-h-[75vh] overflow-y-auto overscroll-contain bg-coal-surface/95 backdrop-blur-md border border-border-muted rounded-lg shadow-xl p-stack-md flex flex-col gap-stack-sm z-50 fade-in-up" role="dialog" aria-modal="false" data-i18n-aria="settings_title">
     <h3 class="font-label-md text-clay-accent border-b border-border-muted pb-2 mb-2" data-i18n="settings_title">الإعدادات</h3>
 
+    <!-- ═══ تبويبات شاشة الإعدادات (نافذة مستقلة) ═══════════════════════════
+         سبعة أزرار، وسبع حاويات `data-tab` تُغلّف المجموعات **القائمة نفسها**
+         (لا عنصر تحكّم نُقل ولا خصيصة تغيّرت). التبديل في `src/settingsScreen.ts`،
+         والتبويب النشط يُعلَن بـ`aria-selected` و`hidden` على البقية. -->
+    <nav id="settings-tabs" class="flex flex-wrap gap-unit border-b border-border-muted pb-2" role="tablist" aria-label="settings">
+        <button type="button" class="settings-tab" role="tab" data-tab-btn="performance" aria-selected="true" data-i18n="set_group_perf">الأداء والمعالجة</button>
+        <button type="button" class="settings-tab" role="tab" data-tab-btn="engine" aria-selected="false" data-i18n="set_tab_engine">الفصل والمزوّد</button>
+        <button type="button" class="settings-tab" role="tab" data-tab-btn="watch" aria-selected="false" data-i18n="set_group_watch">المراقبة التلقائية</button>
+        <button type="button" class="settings-tab" role="tab" data-tab-btn="bridge" aria-selected="false" data-i18n="set_group_integration">التكامل</button>
+        <button type="button" class="settings-tab" role="tab" data-tab-btn="telegram" aria-selected="false" data-i18n="tg_title">بوت تيليجرام</button>
+        <button type="button" class="settings-tab" role="tab" data-tab-btn="update" aria-selected="false" data-i18n="set_tab_update">التحديث والصيانة</button>
+        <button type="button" class="settings-tab" role="tab" data-tab-btn="about" aria-selected="false" data-i18n="btn_about">حول البرنامج</button>
+    </nav>
+
+    <div class="settings-tab-panel" data-tab="performance">
     <!-- ⚙️ الأداء والمعالجة -->
     <div class="flex flex-col gap-stack-sm">
         <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_perf">الأداء والمعالجة</h4>
@@ -41,6 +56,9 @@
         <div id="cuda-hint" class="hidden flex flex-col gap-unit bg-tertiary/10 border border-tertiary/30 rounded p-unit mt-1">
             <span id="cuda-hint-text" class="font-label-sm text-label-sm text-tertiary leading-relaxed"></span>
         </div>
+    </div>
+
+    <div class="settings-tab-panel" data-tab="engine" hidden>
         <!-- ن-٣: المزوّد الفعّال. سطح **حالة** لا تلميح عابر (فـ#cuda-hint يكتب
              عليه التنزيل والأخطاء ويُمحى)، ومصدره `provider.json` الذي يُكتب في
              كل جلسة فصل. النصّ الابتدائي هو «غير معروف» — حالة صادقة قبل أي
@@ -63,6 +81,7 @@
         </div>
     </div>
 
+    <div class="settings-tab-panel" data-tab="watch" hidden>
     <!-- 📁 المراقبة التلقائية -->
     <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
         <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_watch">المراقبة التلقائية</h4>
@@ -88,6 +107,7 @@
         </div>
     </div>
 
+    <div class="settings-tab-panel" data-tab="bridge" hidden>
     <!-- 🔗 التكامل -->
     <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
         <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_integration">التكامل</h4>
@@ -102,6 +122,9 @@
             <span class="material-symbols-outlined text-sm" data-icon="extension">extension</span>
             <span data-i18n="bridge_page_link">صفحة إضافة المتصفح — التثبيت والشرح</span>
         </button>
+    </div>
+
+    <div class="settings-tab-panel" data-tab="telegram" hidden>
         <button id="btn-telegram" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer w-full">
             <span class="material-symbols-outlined text-sm" data-icon="smart_toy">smart_toy</span>
             <span class="font-body-sm" data-i18n="tg_title">بوت تيليجرام</span>
@@ -151,6 +174,7 @@
         </div>
     </div>
 
+    <div class="settings-tab-panel" data-tab="update" hidden>
     <!-- 🖥️ النظام -->
     <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
         <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_system">النظام</h4>
@@ -201,6 +225,10 @@
             <span class="material-symbols-outlined text-sm" data-icon="build">build</span>
             <span class="font-body-sm" data-i18n="btn_repair">فحص وإصلاح المكونات</span>
         </button>
+    </div>
+    </div>
+
+    <div class="settings-tab-panel" data-tab="about" hidden>
         <button id="btn-report" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
             <span class="material-symbols-outlined text-sm" data-icon="bug_report">bug_report</span>
             <span class="font-body-sm" data-i18n="btn_report">الإبلاغ عن مشكلة</span>

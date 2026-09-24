@@ -1306,6 +1306,45 @@ fn cleanup_crash_leftovers() {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// **يفتح نافذة الإعدادات المستقلة** (قرار المالك 2026-09-23: «القائمة المنسدلة
+/// أصبحت طويلة» ⇒ نافذة مستقلة بشاشة إعدادات كاملة).
+///
+/// **والإنشاء من الرست لا من JS — أضيق نطاقاً بالبناء**: مسار `WebviewWindow`
+/// في JS يقتضي صلاحية `core:webview:allow-create-webview-window`؛ وهذا المسار
+/// **لا يقتضي صلاحية جديدة** (صفر إضافة)، وكل ما يلزم أن يكون **لابل** النافذة
+/// داخل قدرة قائمة (`capabilities/default.json`) وإلا رُفض كل `invoke` منها.
+///
+/// **والإخفاء عند الإغلاق قائمٌ أصلاً** في `on_window_event` أدناه (المعالج عامّ
+/// لكل النوافذ: `prevent_close` + `hide`) ⇒ فلا دمار ولا إعادة بناء، والعودة
+/// بـ`show`+`set_focus` تعيد النافذة بحالتها (تبويبها وتمريرها ومدخلاتها).
+///
+/// **والصفحة نفسها**: `index.html` — لا صفحة ثانية ولا مدخل بناء ثانٍ؛ والوضع
+/// يقرؤه `src/settingsScreen.ts` من **لابل النافذة** (`settings`).
+///
+/// **والأمر عامٌّ على الزمن التشغيلي** (`R: Runtime`) ليكون **قابلاً للقياس** في
+/// `tauri::test::mock_runtime` (اختبار «النافذة تُفتح» أدناه) بدل أن يبقى مقروءاً
+/// بالنصّ — و`AppHandle<Wry>` في الإنتاج يطابق `R` بلا تغيير في موضع النداء.
+#[tauri::command]
+fn open_settings<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
+    // **إن وُجدت فلا تُبنى ثانية**: إعادة الفتح تُظهرها وتُركّزها (وإلا صار لكل
+    // نقرة نافذةٌ جديدة على اللابل نفسه، وهي أخطاء tauri في اللوغ لا نوافذ).
+    if let Some(w) = app.get_webview_window("settings") {
+        let _ = w.unminimize();
+        w.show().map_err(|e| e.to_string())?;
+        w.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    let win = tauri::WebviewWindowBuilder::new(&app, "settings", tauri::WebviewUrl::default())
+        .title("HaramLite — الإعدادات")
+        .inner_size(980.0, 760.0)
+        .min_inner_size(720.0, 560.0)
+        .build()
+        .map_err(|e| e.to_string())?;
+    win.set_focus().map_err(|e| e.to_string())?;
+    tracing::info!(target: "app", "فُتحت نافذة الإعدادات المستقلة");
+    Ok(())
+}
+
 pub fn run() {
     // CUDA_RUNTIME_PLAN (الشرط 2): مسار بحث DLL قبل أي خيط وأي تهيئة ORT
     cuda_runtime::ensure_dll_path();
@@ -1332,7 +1371,19 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
-                tracing::info!(target: "app", "أُخفيت النافذة إلى الشريط — البرنامج يعمل في الخلفية (الإغلاق الكامل من قائمة الأيقونة)");
+                // **والسطر يميّز النافذة**: نافذة الإعدادات المستقلة تُخفى
+                // أيضاً (قرار التكليف: تُخفى ولا تُدمَّر)، لكن نصّ «إلى الشريط…
+                // يعمل في الخلفية» يخصّ النافذة الرئيسية — فقولُه عن نافذة
+                // الإعدادات وعدٌ في غير موضعه.
+                if window.label() == "main" {
+                    tracing::info!(target: "app", "أُخفيت النافذة إلى الشريط — البرنامج يعمل في الخلفية (الإغلاق الكامل من قائمة الأيقونة)");
+                } else {
+                    tracing::info!(
+                        target: "app",
+                        "أُخفيت نافذة «{}» (لا تُدمَّر: العودة إليها بنفس حالتها)",
+                        window.label()
+                    );
+                }
             }
         })
         .setup(move |app| {
@@ -1462,6 +1513,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             ping,
+            open_settings,
             get_recent_logs,
             push_log,
             open_folder,
@@ -2036,5 +2088,106 @@ mod open_file_tests {
         if provider.is_none() {
             assert!(!v.to_string().contains("CPU"), "لا ادّعاء CPU بلا قياس: {v}");
         }
+    }
+
+    /// **حارس «النافذة تُفتح» — قياسٌ لا قراءة** (المطلوب ٦-أ في تكليف النافذة):
+    /// الأمر نفسه عبر **طبقة IPC** في تطبيق مصنوع، ثم **تُفحَص النافذة نفسها**
+    /// (`get_webview_window("settings")`) لا مجرّد قيمة إرجاع. وهذا أقوى من حارس
+    /// نصّي: لو نُزع بناء النافذة وبقي الأمر يُرجع `Ok(())` **سقط هذا الاختبار**.
+    ///
+    /// **ولا يُقاس هنا**: WebView2 ولا رسم الصفحة (‏`mock_runtime` لا يرسم) —
+    /// رسمُ الشاشة وتكافؤ عناصرها يقيسه `settingsScreen.test.ts` في jsdom.
+    #[test]
+    fn open_settings_creates_the_settings_window_over_ipc_and_reuses_it() {
+        let app = tauri::test::mock_builder()
+            .invoke_handler(tauri::generate_handler![open_settings])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app");
+        assert!(
+            app.get_webview_window("settings").is_none(),
+            "لا نافذة إعدادات قبل الطلب"
+        );
+        let caller = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("mock main webview");
+
+        let invoke = || {
+            tauri::test::get_ipc_response(
+                &caller,
+                tauri::webview::InvokeRequest {
+                    cmd: "open_settings".into(),
+                    callback: tauri::ipc::CallbackFn(0),
+                    error: tauri::ipc::CallbackFn(1),
+                    url: "http://tauri.localhost".parse().unwrap(),
+                    body: tauri::ipc::InvokeBody::default(),
+                    headers: Default::default(),
+                    invoke_key: tauri::test::INVOKE_KEY.to_string(),
+                },
+            )
+        };
+        invoke().expect("open_settings يجب أن يُجيب عبر IPC بلا خطأ");
+        let first = app
+            .get_webview_window("settings")
+            .expect("النافذة المستقلة وُجدت فعلاً بعد النداء (‏`settings`)");
+        assert_eq!(first.label(), "settings", "اللابل هو ما تقرؤه الواجهة");
+        // **والنداء الثاني لا يبني ثانية**: نفس النافذة (لابل واحد لا يتكرّر).
+        invoke().expect("النداء الثاني يُظهر القائمة لا يفشل");
+        let again = app
+            .get_webview_window("settings")
+            .expect("النافذة باقية بعد النداء الثاني");
+        assert_eq!(again.label(), "settings");
+        eprintln!(
+            "open_settings (IPC): النافذة «{}» أُنشئت ثم أُعيد استخدامها",
+            again.label()
+        );
+    }
+
+    /// **القدرة تشمل اللابل الجديد** — وإلا رُفض كل `invoke` من نافذة الإعدادات
+    /// (‏tauri يرفض النافذة خارج أي قدرة) فتبدو النافذة مفتوحة وهي صمّاء.
+    ///
+    /// **قارئٌ للقدرة نفسها** (`capabilities/default.json`) لا نسخة منها: يُقرأ
+    /// الملف ويُحكم على مصفوفة `windows` — و**لا صلاحية جديدة تُطلب** (نفس
+    /// `permissions` السبعة)، وهو أضيق نطاقاً (المطلوب ٥).
+    #[test]
+    fn the_capability_covers_the_settings_window_with_no_new_permission() {
+        let raw = include_str!("../capabilities/default.json");
+        let v: serde_json::Value = serde_json::from_str(raw).expect("قدرة مقروءة");
+        let windows: Vec<&str> = v["windows"]
+            .as_array()
+            .expect("مصفوفة نوافذ")
+            .iter()
+            .filter_map(|w| w.as_str())
+            .collect();
+        assert!(
+            windows.contains(&"main"),
+            "النافذة الرئيسية باقية: {windows:?}"
+        );
+        assert!(
+            windows.contains(&"settings"),
+            "لابل نافذة الإعدادات غير مشمول بالقدرة — كل invoke منها سيُرفض: {windows:?}"
+        );
+        let perms: Vec<&str> = v["permissions"]
+            .as_array()
+            .expect("مصفوفة صلاحيات")
+            .iter()
+            .filter_map(|p| p.as_str())
+            .collect();
+        assert_eq!(
+            perms,
+            vec![
+                "core:default",
+                "opener:default",
+                "opener:allow-open-path",
+                "opener:allow-open-url",
+                "dialog:default",
+                "notification:default",
+                "updater:default"
+            ],
+            "توسيع صلاحيات بلا سبب مقيس: {perms:?}"
+        );
+        assert!(
+            !perms.iter().any(|p| p.contains("webview:allow-create")),
+            "الإنشاء من الرست لا يقتضي صلاحية إنشاء نوافذ من JS: {perms:?}"
+        );
     }
 }

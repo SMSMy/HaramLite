@@ -20,6 +20,7 @@ import { autoHealthCheck, wireRepair } from './repair';
 import { updateCudaBanner, refreshProviderLine } from './cuda';
 import { silentUpdateCheck, wireAbout, wireReport, wireUpdateCheck } from './aboutUpdate';
 import { wireSettings } from './settingsPanel';
+import { wireSettingsScreen } from './settingsScreen';
 
 
 /* ── production hardening: silence the WebView default context menu ── */
@@ -210,6 +211,9 @@ function wire(): void {
   startLongtaskWatch();
   wireContextMenu();
   wireLang();
+  // **وضع الشاشة قبل ربط اللوحة**: نافذة `settings` تُظهر شاشة الإعدادات وحدها،
+  // والرئيسية تُبقيها مخفيّة **دائماً** (لا مسار ثانٍ للقائمة القديمة).
+  wireSettingsScreen();
   wireSettings();
 
   window.addEventListener('error', (ev) =>
