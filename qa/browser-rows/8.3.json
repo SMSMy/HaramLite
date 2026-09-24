@@ -97,11 +97,11 @@
     },
     {
       "path": "src-tauri/src/bridge.rs",
-      "sha256": "397e79e29037b803494f93753803b8a16b2ef2456f7210c808b6e39537eee8f3"
+      "sha256": "6e5e5f804a8991de94aed9e549372830887307b7ec66dcfcd6cf9754c67e44b1"
     },
     {
       "path": "src-tauri/src/pipeline.rs",
-      "sha256": "4406663e39a894af0da8cf2611a2f438ef70456c10327bc53c6bf3e3d258d6fb"
+      "sha256": "9af42c603c1cd5db99dcac9f825994f44a21f7fd75be44401381d2efc4a7cdb0"
     },
     {
       "path": "src-tauri/src/m6b_clip_guard.rs",
