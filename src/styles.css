@@ -66,6 +66,13 @@ body.settings-mode #settings-menu {
   inset: 0;
   width: auto;
   max-height: none;
+  /* هامش الشاشة صفر: مع `position: fixed; inset: 0` كان `mt-2` من الترميز
+     (‏0.5rem) يُزيحها للأسفل — **مقيس** في متصفّح حقيقي: `#settings-menu`
+     top=8 · height=792، وبعده top=0 · height=800 (الأمر والرقم في
+     ARCHIVE/settings2-report.md §٤). و«y=23» المسجَّل في تعليق القاعدة أعلاه
+     يخصّ **حالة الانكماش 67.2px** (كتلة حاوية على الرأس)، لا حاشية `mt-2`.
+     والقاعدة لا تمسّ الهندسة خارج وضع الإعدادات. */
+  margin: 0;
   border: 0;
   border-radius: 0;
   padding: 1.5rem;
