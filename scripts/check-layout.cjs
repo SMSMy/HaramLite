@@ -21,6 +21,18 @@
  * window widths. This makes the guard general: any floating element that leaves
  * the window fails it, not just the settings panel that motivated it.
  *
+ * It then measures a SEVENTH state the box sweep cannot see: the settings
+ * SCREEN in settings mode (`body.settings-mode`, entered from `#settings`).
+ * There it asserts four conditions — no intersection between the screen's tab
+ * bar and the log card; every tab button drawn with a non-empty label; the
+ * container not scrolling unintentionally (`scrollHeight == clientHeight`); and
+ * the frame holding its own tab bar and its panels as DIRECT children (siblings,
+ * never nested) — plus, for each of the seven tabs, that activating it draws
+ * every id the DECLARED map in `src/settingsTabMap.ts` assigns to that tab at
+ * `getBoundingClientRect().height > 0`, and that `<main>` (display:none in this
+ * mode) holds none of them. Read `runSettingsProbe` for why that state had to
+ * exist: nested tab panels passed every other check.
+ *
  * WHAT IT IS NOT
  * --------------
  * It never builds anything; `dist/` must exist (`pnpm build:web`). It measures
@@ -85,6 +97,7 @@ const crypto = require('node:crypto');
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
 const I18N_TS = path.join(ROOT, 'src', 'i18n.ts');
+const SETTINGS_TAB_MAP_TS = path.join(ROOT, 'src', 'settingsTabMap.ts');
 
 /* ── CLI ──────────────────────────────────────────────────────────────── */
 
@@ -601,8 +614,76 @@ function loadI18nTable() {
   return null;
 }
 
-/* ── the in-page probe (runs inside the browser) ──────────────────────── */
+/* ── the declared settings-tab map (read from the product source) ──────── */
 
+/**
+ * Brace/bracket-match an `Object.freeze({…})` / `Object.freeze([…])` literal
+ * that follows `marker`, skipping strings and comments, then evaluate it.
+ * Returns null (never throws) when it cannot be recovered.
+ */
+function extractFrozenLiteral(src, marker) {
+  const at = src.indexOf(marker);
+  if (at < 0) return null;
+  const fz = src.indexOf('Object.freeze(', at);
+  if (fz < 0) return null;
+  let i = src.indexOf('(', fz) + 1;
+  while (i < src.length && /\s/.test(src[i])) i++;
+  const openCh = src[i];
+  if (openCh !== '{' && openCh !== '[') return null;
+  const stack = [openCh === '{' ? '}' : ']'];
+  let quote = null;
+  for (i += 1; i < src.length; i++) {
+    const c = src[i];
+    if (quote) {
+      if (c === '\\') { i++; continue; }
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') { quote = c; continue; }
+    if (c === '/' && src[i + 1] === '/') { const nl = src.indexOf('\n', i); i = nl < 0 ? src.length : nl; continue; }
+    if (c === '/' && src[i + 1] === '*') { const end = src.indexOf('*/', i); i = end < 0 ? src.length : end + 1; continue; }
+    if (c === '{') stack.push('}');
+    else if (c === '[') stack.push(']');
+    else if (c === '}' || c === ']') {
+      if (stack[stack.length - 1] !== c) return null;
+      stack.pop();
+      if (!stack.length) {
+        try {
+          // eslint-disable-next-line no-new-func
+          return new Function(`return (${src.slice(src.indexOf('(', fz) + 1, i + 1)});`)();
+        } catch { return null; }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Read the DECLARED settings-tab contract out of `src/settingsTabMap.ts`.
+ *
+ * The contract has to come from the product source, not from the page: a guard
+ * that derives "which tab should hold #max-jobs" from the page can only ever
+ * confirm that the page agrees with itself. Returns null when unreadable and
+ * the caller turns that into a loud failure.
+ */
+function loadSettingsTabMap() {
+  let src;
+  try { src = fs.readFileSync(SETTINGS_TAB_MAP_TS, 'utf8'); } catch { return null; }
+  // الأنماط تبدأ بـ`export const`: الاسم وحده يظهر في تعليق الملف قبل تصريحه،
+  // فالبحث بالاسم المجرّد يلتقط التعليق ثم يقرأ `Object.freeze(` التالي (وهو
+  // خريطة أخرى) ⇒ فشل استخراج كاذب. (وقع فعلاً في أول تشغيل: FAIL عند الإقلاع.)
+  const map = extractFrozenLiteral(src, 'export const SETTINGS_TAB_MAP');
+  const chrome = extractFrozenLiteral(src, 'export const SETTINGS_MENU_CHROME');
+  const outside = extractFrozenLiteral(src, 'export const SETTINGS_OUTSIDE_TABS');
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return null;
+  if (!Array.isArray(chrome) || !Array.isArray(outside)) return null;
+  const ids = Object.keys(map);
+  if (ids.length < 40 || chrome.length < 3 || outside.length < 20) return null; // vacuity gate
+  if (!outside.every((o) => o && typeof o.id === 'string' && typeof o.why === 'string')) return null;
+  return { map, chrome, outside, ids };
+}
+
+/* ── the in-page probe (runs inside the browser) ──────────────────────── */
 /**
  * `runProbe` is stringified and evaluated in the page. It is deliberately
  * self-contained (no closures) so `Runtime.evaluate` can carry it.
@@ -914,6 +995,294 @@ function runProbe(args) {
   })();
 }
 
+/* ── the seventh state: the settings SCREEN in settings mode ──────────── */
+
+/**
+ * `runSettingsProbe` is stringified and evaluated in the page, exactly like
+ * `runProbe` — self-contained, no closures.
+ *
+ * WHY A SEVENTH STATE
+ * -------------------
+ * Every state `runProbe` measures un-hides `#settings-menu` and measures it as
+ * the 256px DROPDOWN it used to be. The screen the owner actually uses —
+ * `body.settings-mode`, `position: fixed; inset: 0` — was measured by nothing.
+ * That is how a screen whose seven tab panels were NESTED (each one a child of
+ * the previous, so activating any tab hid the whole subtree) passed every
+ * guard: the boxes were all inside the window, and "the element exists in the
+ * DOM" was read as "the tab shows its controls".
+ *
+ * WHAT IT ASSERTS (the four conditions, plus the per-tab geometry)
+ *   (أ) the screen's tab bar and the event-log card do not intersect;
+ *   (ب) every one of the seven tab buttons is rendered, > minTabHeight tall,
+ *       and carries a non-empty label;
+ *   (ج) the container does not scroll unintentionally (scrollHeight == clientHeight);
+ *   (د) the frame holds its own bar and its panels: #settings-tabs and every
+ *       .settings-tab-panel sit inside #settings-menu, the panels are DIRECT
+ *       children (siblings — not nested), and the frame is not a degenerate
+ *       strip (this is the 67.2px failure: `backdrop-filter` on <header> makes
+ *       it the containing block of `position: fixed`, so `inset: 0` resolved
+ *       against the 76.2px header and the screen became a 67.2px band whose
+ *       tabs and panels fell OUTSIDE it and were clipped by `overflow: auto`).
+ *   (هـ) per tab: activating it leaves exactly one panel shown, that panel has
+ *       height > 0, and **every** id the declared map assigns to that tab has
+ *       `getBoundingClientRect().height > 0` and its nearest
+ *       `.settings-tab-panel` is that tab. Ids suppressed by a *state gate*
+ *       strictly below the active panel (`hidden` on `#watch-options` before
+ *       watching is on, on `#update-status` before an update check, …) are
+ *       revealed for the measurement and restored immediately after; how many
+ *       were revealed is reported. An id suppressed by a TAB panel can never be
+ *       revealed this way, because the gates considered stop at the active panel.
+ *
+ * It never fixes anything and never writes to the page except the temporary
+ * gate reveal described above, which is restored before the next tab.
+ */
+function runSettingsProbe(args) {
+  return (async () => {
+    const { map, tabs, dir, lang, table, minTabHeight, minScreenHeight } = args;
+    const problems = [];
+    const out = {
+      dir, lang, problems, notes: [],
+      menuRect: null, tabsBarRect: null, logcardRect: null,
+      menuClientHeight: null, menuScrollHeight: null,
+      menuTop: null, tabsBarTop: null, drawnTabs: [], perTab: [], mainIds: [],
+      revealedByStateGate: [], filledEmptySurfaces: [], panelParents: [],
+    };
+    const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+    const box = (el) => {
+      const b = el.getBoundingClientRect();
+      return {
+        left: +b.left.toFixed(2), top: +b.top.toFixed(2),
+        right: +b.right.toFixed(2), bottom: +b.bottom.toFixed(2),
+        width: +b.width.toFixed(2), height: +b.height.toFixed(2),
+      };
+    };
+    const intersects = (a, b) =>
+      a.width > 0 && a.height > 0 && b.width > 0 && b.height > 0 &&
+      a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+    const nameOf = (el) => (el.id ? `#${el.id}` : (el.dataset && el.dataset.tab ? `[data-tab=${el.dataset.tab}]` : el.tagName.toLowerCase()));
+
+    document.documentElement.setAttribute('dir', dir);
+    document.documentElement.setAttribute('lang', lang);
+    if (table) {
+      const dict = table[lang] || {};
+      document.querySelectorAll('[data-i18n]').forEach((el) => {
+        const k = el.getAttribute('data-i18n');
+        if (dict[k] !== undefined) el.innerHTML = String(dict[k]);
+      });
+    }
+
+    if (!document.body.classList.contains('settings-mode')) {
+      problems.push('(تمهيد) body.settings-mode غير مفعّلة — الشاشة ليست في وضع الإعدادات، فالقياس كله باطل');
+      return out;
+    }
+    const menu = document.getElementById('settings-menu');
+    const tabsBar = document.getElementById('settings-tabs');
+    const logcard = document.getElementById('logcard');
+    const main = document.querySelector('main');
+    if (!menu || !tabsBar) {
+      problems.push(`(تمهيد) ${!menu ? '#settings-menu' : '#settings-tabs'} غير موجود في DOM`);
+      return out;
+    }
+
+    // Deterministic measurement point: entry animations done (.fade-in-up moves
+    // the screen 15px for 0.6s), then the rects stop changing.
+    try {
+      if (document.getAnimations) {
+        const anims = document.getAnimations();
+        if (anims.length) {
+          await Promise.race([
+            Promise.allSettled(anims.map((a) => a.finished)).then(() => true),
+            sleep(5000),
+          ]);
+        }
+      }
+    } catch { /* best-effort */ }
+    let prev = null;
+    for (let i = 0; i < 40; i++) {
+      const snap = [menu, tabsBar, logcard, document.querySelector('.settings-tab-panel:not([hidden])')]
+        .map((e) => (e ? JSON.stringify(box(e)) : '-')).join('|');
+      if (snap === prev) break;
+      prev = snap;
+      await sleep(60);
+    }
+
+    out.menuRect = box(menu);
+    out.tabsBarRect = box(tabsBar);
+    out.logcardRect = logcard ? box(logcard) : null;
+    out.menuClientHeight = menu.clientHeight;
+    out.menuScrollHeight = menu.scrollHeight;
+    out.menuTop = out.menuRect.top;
+    out.tabsBarTop = out.tabsBarRect.top;
+
+    /* (أ) لا تقاطع بين شريط تبويبات الشاشة وبطاقة سجلّ الأحداث */
+    if (out.logcardRect && intersects(out.tabsBarRect, out.logcardRect)) {
+      problems.push(
+        `(أ) شريط التبويبات يتقاطع مع بطاقة السجلّ: tabs=${JSON.stringify(out.tabsBarRect)} logcard=${JSON.stringify(out.logcardRect)}`,
+      );
+    }
+
+    /* (ب) تبويب ظاهر: الأزرار السبعة مرسومة بارتفاع كافٍ ونصّ غير فارغ */
+    const btns = Array.from(document.querySelectorAll('[data-tab-btn]'));
+    out.drawnTabs = btns.map((b) => ({
+      tab: b.dataset.tabBtn,
+      height: box(b).height,
+      display: getComputedStyle(b).display,
+      text: (b.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 30),
+    }));
+    if (btns.length !== tabs.length) {
+      problems.push(`(ب) عدد أزرار التبويب ${btns.length} لا ${tabs.length}`);
+    }
+    const badTabs = out.drawnTabs.filter((t) => t.display === 'none' || t.height <= minTabHeight || !t.text);
+    if (badTabs.length) {
+      problems.push(
+        `(ب) ${badTabs.length} زرّ تبويب غير مرسوم/فارغ: ${badTabs.map((t) => `${t.tab}(h=${t.height},display=${t.display},نصّ="${t.text}")`).join(' · ')}`,
+      );
+    }
+
+    /* (ج) لا سمرولة غير مقصودة: scrollHeight == clientHeight للحاوية */
+    if (out.menuScrollHeight !== out.menuClientHeight) {
+      problems.push(
+        `(ج) حاوية الشاشة تُمرَّر بلا قصد: scrollHeight=${out.menuScrollHeight} ≠ clientHeight=${out.menuClientHeight}`,
+      );
+    }
+
+    /* (د) الإطار يحوي شريطه وحاوياته، وليس شريطاً منكمشاً */
+    const panels = Array.from(document.querySelectorAll('.settings-tab-panel'));
+    out.panelParents = panels.map((p) => ({
+      tab: p.dataset.tab || '(بلا data-tab)',
+      parent: p.parentElement ? `${p.parentElement.tagName.toLowerCase()}${p.parentElement.id ? '#' + p.parentElement.id : ''}` : '(بلا أب)',
+      directChildOfFrame: p.parentElement === menu,
+    }));
+    const notDirect = out.panelParents.filter((p) => !p.directChildOfFrame);
+    if (notDirect.length) {
+      problems.push(
+        `(د) ${notDirect.length} حاوية تبويب ليست ابناً مباشراً للشاشة (حاويات متداخلة): ` +
+        notDirect.map((p) => `${p.tab} داخل ${p.parent}`).join(' · '),
+      );
+    }
+    if (!menu.contains(tabsBar)) problems.push('(د) شريط التبويبات ليس داخل #settings-menu');
+    const outsideFrame = panels.filter((p) => !menu.contains(p)).map((p) => p.dataset.tab);
+    if (outsideFrame.length) problems.push(`(د) حاويات خارج #settings-menu: ${outsideFrame.join(', ')}`);
+    if (out.menuRect.height < minScreenHeight) {
+      problems.push(
+        `(د) الشاشة شريطٌ منكمش: ارتفاعها ${out.menuRect.height}px < ${minScreenHeight}px ` +
+        `(هندسة «67.2px»: كتلة حاوية لـposition:fixed على الرأس أو ما يشبهها)`,
+      );
+    }
+    if (out.tabsBarRect.top < out.menuRect.top - 0.5 || out.tabsBarRect.bottom > out.menuRect.bottom + 0.5) {
+      problems.push(
+        `(د) شريط التبويبات خارج حدود الشاشة: bar=[${out.tabsBarRect.top}…${out.tabsBarRect.bottom}] frame=[${out.menuRect.top}…${out.menuRect.bottom}]`,
+      );
+    }
+
+    /* (هـ) الهندسة لكل تبويب: كل معرّف في خريطته بارتفاع > 0 */
+    for (const t of tabs) {
+      const btn = btns.find((b) => b.dataset.tabBtn === t);
+      const ids = Object.keys(map).filter((id) => map[id] === t);
+      const entry = { tab: t, ids: ids.length, measured: 0, zero: [], revealed: [], filled: [] };
+      if (!btn) {
+        problems.push(`(هـ) لا زرّ تبويب «${t}»`);
+        out.perTab.push(entry);
+        continue;
+      }
+      btn.click();
+      await sleep(60);
+      const shown = panels.filter((p) => !p.hidden);
+      if (shown.length !== 1 || shown[0].dataset.tab !== t) {
+        problems.push(
+          `(هـ) تفعيل «${t}»: المعروض ${shown.map((p) => p.dataset.tab).join(',') || 'لا شيء'} — والمطلوب حاوية واحدة باسم التبويب`,
+        );
+      }
+      const panel = document.querySelector(`.settings-tab-panel[data-tab="${t}"]`);
+      if (!panel) { problems.push(`(هـ) لا حاوية للتبويب «${t}»`); out.perTab.push(entry); continue; }
+      const panelBox = box(panel);
+      if (panelBox.height <= 0) {
+        problems.push(`(هـ) حاوية «${t}» بارتفاع ${panelBox.height}px بعد تفعيلها ⇒ التبويب فارغ`);
+      }
+      for (const id of ids) {
+        const all = document.querySelectorAll(`#${CSS.escape(id)}`);
+        if (all.length !== 1) {
+          problems.push(`(هـ) ${id}: ${all.length} نسخة في DOM (المطلوب واحدة)`);
+          continue;
+        }
+        const el = all[0];
+        const owner = el.closest('.settings-tab-panel');
+        if (!owner || owner.dataset.tab !== t) {
+          problems.push(`(هـ) ${id}: داخل «${owner ? owner.dataset.tab : 'لا حاوية تبويب'}» والمتوقَّع «${t}»`);
+          continue;
+        }
+        if (main && main.contains(el)) {
+          problems.push(`(هـ) ${id}: داخل <main> وهي display:none في وضع الإعدادات ⇒ لا يُرى`);
+          continue;
+        }
+        // (١) بوّابات الحالة **دون** الحاوية النشطة (لا تُلمس حاوية تبويب أبداً):
+        // `hidden` على `#watch-options` قبل تفعيل المراقبة، وعلى `#update-status`
+        // قبل أول فحص… تُزال للقياس ثم تُعاد. ولو أُزيلت بوّابة **حاوية تبويب**
+        // لكان الحارس يُصلح العطب بيده ويمرّ — ولذلك يتوقف المسح عند `panel`.
+        const gates = [];
+        for (let p = el; p && p !== panel; p = p.parentElement) {
+          if (typeof HTMLElement === 'undefined' || !(p instanceof HTMLElement)) continue;
+          if (p.hasAttribute('hidden') || p.classList.contains('hidden')) gates.push(p);
+        }
+        const savedGates = gates.map((g) => ({ g, attr: g.hasAttribute('hidden'), cls: g.classList.contains('hidden') }));
+        for (const { g } of savedGates) { g.removeAttribute('hidden'); g.classList.remove('hidden'); }
+        if (savedGates.length) await sleep(0);
+        let b = box(el);
+        // (٢) **سطح حالة فارغ**: `#cuda-hint-text` · `#watch-path` · `#tg-badge`
+        // · `#update-status`… عناصر نصّية يملؤها الكود عند الحالة، فالفارغ منها
+        // **ارتفاعه صفر بحق** (لا صندوق لعنصر بلا محتوى) — وهذا ليس عطلاً.
+        // فبدل تخفيف الشرط يُكتب فيه محرف قياس مؤقّت: إن ظهر صندوقه فالسطح
+        // موجود ويُرسم؛ وإن بقي صفراً فالعطب في الوعاء لا في الفراغ.
+        // **وترتيب العمليتين مقصود**: كشف البوّابة أولاً ثم المحرف — وقياسُ
+        // المحرف بعد إعادة البوّابة كان يعطي صفراً كاذباً (وقع في أول تشغيل:
+        // خمسة معرّفات بقيت 0 لأن أباها أُعيد إلى `hidden` قبل القياس).
+        const emptySurface =
+          el.children.length === 0 &&
+          (el.textContent || '').trim() === '' &&
+          !/^(INPUT|SELECT|TEXTAREA|BUTTON|IMG)$/.test(el.tagName);
+        let probeNode = null;
+        if (b.height <= 0 && emptySurface) {
+          probeNode = document.createTextNode('x');
+          el.appendChild(probeNode);
+          await sleep(0);
+          b = box(el);
+        }
+        if (probeNode) probeNode.remove();
+        for (const { g, attr, cls } of savedGates) {
+          if (attr) g.setAttribute('hidden', '');
+          if (cls) g.classList.add('hidden');
+        }
+        if (b.height > 0) {
+          entry.measured += 1;
+          if (savedGates.length) { entry.revealed.push(id); out.revealedByStateGate.push(id); }
+          if (probeNode) { entry.filled.push(id); out.filledEmptySurfaces.push(id); }
+          continue;
+        }
+        entry.zero.push(
+          `${id}(height=${b.height}` +
+          `${savedGates.length ? `، أُظهرت ${savedGates.length} بوّابة حالة` : ''}` +
+          `${emptySurface ? '، وكُتب فيه محرف قياس' : ''}` +
+          `${!savedGates.length && !emptySurface ? '، وبلا بوّابة حالة ⇒ محجوب بحاوية تبويب' : ''})`,
+        );
+      }
+      out.perTab.push(entry);
+      if (entry.zero.length) {
+        problems.push(`(هـ) «${t}»: ${entry.zero.length} معرّف بارتفاع صفر — ${entry.zero.join(' · ')}`);
+      }
+    }
+
+    /* و<main> لا تحوي أي معرّف من الخريطة */
+    out.mainIds = main
+      ? Object.keys(map).filter((id) => { const el = document.getElementById(id); return el !== null && main.contains(el); })
+      : [];
+    if (out.mainIds.length) {
+      problems.push(`<main> تحوي ${out.mainIds.length} معرّفاً من الخريطة (تختفي معها): ${out.mainIds.join(', ')}`);
+    }
+
+    return out;
+  })();
+}
+
 /* ── main ─────────────────────────────────────────────────────────────── */
 
 async function main() {
@@ -961,11 +1330,26 @@ async function main() {
     }
   }
 
+  // العقد المعلَن لتبويبات الإعدادات: يُقرأ من مصدر المنتج لا من الصفحة. بلا
+  // خريطة لا يمكن السؤال «هل #max-jobs في تبويبه؟» — والمقارنة بالصفحة نفسها
+  // تُصادق على أي ترتيب. فغيابه فشل صريح لا تخطٍّ صامت.
+  const tabContract = loadSettingsTabMap();
+  if (!tabContract) {
+    fatal(
+      `cannot read the settings-tab contract from ${SETTINGS_TAB_MAP_TS} ` +
+      '(SETTINGS_TAB_MAP / SETTINGS_MENU_CHROME / SETTINGS_OUTSIDE_TABS) — measuring the ' +
+      'settings screen without a declared map cannot fail, so this run is refused.',
+      1,
+    );
+  }
+  const TAB_NAMES = ['performance', 'engine', 'watch', 'bridge', 'telegram', 'update', 'about'];
+
   log('HaramLite layout guard');
   log(`  browser : ${exe}`);
   log(`  dist    : ${DIST}`);
   log(`  windows : ${opts.widths.join(', ')} x ${opts.height}   dirs: ${opts.dirs.join(', ')}`);
   log(`  i18n    : ${i18nNote}`);
+  log(`  tabs    : ${tabContract.ids.length} mapped id(s) over ${TAB_NAMES.length} tab(s), read from src/settingsTabMap.ts`);
   if (preScript) log(`  pre-script: ${preScript.length} byte(s) of page JS will run before measurement`);
   log('');
 
@@ -973,6 +1357,7 @@ async function main() {
   let browser = null;
   let cdp = null;
   const allRows = [];
+  const settingsStates = [];
   const problems = [];
   let driverError = null;
   let cleanupReport = null;
@@ -1117,6 +1502,78 @@ async function main() {
         }
       }
     }
+
+    /* ── الحالة السابعة: **شاشة الإعدادات في وضع الإعدادات فعلاً** ──────────
+     * كل حالات الأعلى تقيس `#settings-menu` وهي **منسدلة** 256px (تُزال عنها
+     * `hidden` وحدها). أما الوضع الذي يستعمله المالك — `body.settings-mode`
+     * و`position: fixed; inset: 0` — فلم يكن يقيسه شيء، وهو الموضع الذي مرّ منه
+     * عطب «التبويبات فارغة» وعطب «الشاشة 67.2px». والوضع يُفعَّل من `#settings`
+     * (بديل الاختبار المعلَن في `src/settingsScreen.ts`)، لا بحقن صنف. */
+    for (const width of opts.widths) {
+      for (const dir of opts.dirs) {
+        const target = await cdp.send('Target.createTarget', { url: 'about:blank' });
+        const { sessionId } = await cdp.send('Target.attachToTarget', { targetId: target.targetId, flatten: true });
+        try {
+          await cdp.send('Page.enable', {}, sessionId);
+          await cdp.send('Runtime.enable', {}, sessionId);
+          await cdp.send('Network.enable', {}, sessionId);
+          await cdp.send('Emulation.setDeviceMetricsOverride', {
+            width, height: opts.height, deviceScaleFactor: 1, mobile: false,
+          }, sessionId);
+          await cdp.send('Network.setBlockedURLs',
+            { urls: ['*://fonts.googleapis.com/*', '*://fonts.gstatic.com/*'] }, sessionId);
+
+          const loaded = cdp.once(`${sessionId}:Page.loadEventFired`, opts.timeoutMs);
+          await cdp.send('Page.navigate', { url: `${origin}/index.html#settings` }, sessionId);
+          await loaded;
+          await cdp.send('Runtime.evaluate', {
+            expression: 'document.fonts && document.fonts.ready ? document.fonts.ready.then(()=>true) : true',
+            awaitPromise: true, returnByValue: true,
+          }, sessionId, opts.timeoutMs);
+          await sleep(120);
+
+          const probeArgs = {
+            map: tabContract.map,
+            tabs: TAB_NAMES,
+            chrome: tabContract.chrome,
+            dir,
+            lang: dir === 'rtl' ? 'ar' : 'en',
+            table,
+            minTabHeight: 20,
+            minScreenHeight: 200,
+          };
+          const res = await cdp.send('Runtime.evaluate', {
+            expression: `(${runSettingsProbe.toString()})(${JSON.stringify(probeArgs)})`,
+            returnByValue: true,
+            awaitPromise: true,
+          }, sessionId, opts.timeoutMs);
+          if (res.exceptionDetails) {
+            throw new Error(`in-page settings probe threw: ${res.exceptionDetails.text} ${JSON.stringify((res.exceptionDetails.exception && res.exceptionDetails.exception.description) || '')}`);
+          }
+          const data = res.result.value;
+          if (!data) throw new Error('in-page settings probe returned nothing');
+
+          settingsStates.push({ width, dir, data });
+          log(`── settings screen · ${dir} @ ${width}x${opts.height} ──`);
+          log(`   frame #settings-menu  top=${data.menuTop} height=${data.menuRect.height}  clientHeight=${data.menuClientHeight} scrollHeight=${data.menuScrollHeight}`);
+          log(`   tabs  #settings-tabs  top=${data.tabsBarTop} height=${data.tabsBarRect.height}`);
+          log(`   logcard ${data.logcardRect ? JSON.stringify(data.logcardRect) : '(not in DOM)'}`);
+          for (const t of data.perTab) {
+            log(`   tab ${t.tab.padEnd(12)} ${String(t.measured).padStart(2)}/${String(t.ids).padStart(2)} drawn` +
+              (t.revealed.length ? `  (state gate revealed: ${t.revealed.join(', ')})` : '') +
+              (t.filled.length ? `  (empty surface filled for measurement: ${t.filled.join(', ')})` : '') +
+              (t.zero.length ? `  ZERO: ${t.zero.join(', ')}` : ''));
+          }
+          note(`tab buttons drawn: ${data.drawnTabs.map((t) => `${t.tab}(${t.height})`).join(' ')}`);
+          if (data.mainIds.length) note(`mapped ids inside <main>: ${data.mainIds.join(', ')}`);
+
+          for (const p of data.problems) problems.push(`settings@${width}/${dir}: ${p}`);
+          log('');
+        } finally {
+          try { await cdp.send('Target.closeTarget', { targetId: target.targetId }); } catch { /* ignore */ }
+        }
+      }
+    }
   } catch (err) {
     driverError = String((err && err.message) || err);
   } finally {
@@ -1143,7 +1600,7 @@ async function main() {
   }
 
   if (opts.json) {
-    log(JSON.stringify({ ok: !driverError && problems.length === 0, driverError, problems, notFound, probes, cleanup: cleanupReport, rows: allRows }, null, 2));
+    log(JSON.stringify({ ok: !driverError && problems.length === 0, driverError, problems, notFound, probes, cleanup: cleanupReport, rows: allRows, settingsStates }, null, 2));
   } else if (driverError) {
     // عدّ القياس لا يُطبَع حين لم يكتمل القياس: كان «measured 0 floating
     // box(es)» يُطبَع قبل FAIL فيُقرأ كأن الصفحة بلا صناديق (تفسير «صفر صندوق»).
@@ -1152,6 +1609,22 @@ async function main() {
     const tauriMin = 820;
     if (opts.widths.includes(tauriMin)) log(`tauri minWidth ${tauriMin} was covered.`);
     log(`measured ${allRows.length} floating box(es) across ${opts.widths.length * opts.dirs.length} window state(s).`);
+    // الحالة السابعة تُعدّ **وحدها** ولا تُخلط بعدد الحالات الستّ: ذاك الرقم
+    // (١٢ صندوقاً) يقيس المنسدلة، وهذا يقيس الشاشة — وخلطهما يجعل الرقمين كذبة.
+    if (settingsStates.length) {
+      const idsDrawn = settingsStates.reduce((n, s) => n + s.data.perTab.reduce((m, t) => m + t.measured, 0), 0);
+      const idsTotal = settingsStates.reduce((n, s) => n + s.data.perTab.reduce((m, t) => m + t.ids, 0), 0);
+      const revealed = settingsStates.reduce((n, s) => n + s.data.revealedByStateGate.length, 0);
+      const filled = settingsStates.reduce((n, s) => n + s.data.perTab.reduce((m, t) => m + t.filled.length, 0), 0);
+      log(
+        `settings screen (body.settings-mode): ${settingsStates.length} state(s) measured · ` +
+        `${idsDrawn}/${idsTotal} tab-id measurement(s) drawn (height > 0)` +
+        (revealed ? `, ${revealed} after revealing a state gate (restored)` : '') +
+        (filled ? `, ${filled} empty status surface(s) given a probe character (restored)` : '') +
+        ` · frame heights ${settingsStates.map((s) => s.data.menuRect.height).join('/')}` +
+        ` · frame top ${settingsStates.map((s) => s.data.menuRect.top).join('/')}`,
+      );
+    }
     if (cleanupReport) {
       log(
         `cleanup: killed ${cleanupReport.killed.length} process(es) [byProfile ${cleanupReport.byProfile.length}, byPort ${cleanupReport.byPort.length}], ` +
@@ -1177,7 +1650,7 @@ async function main() {
     for (const p of problems) console.error(`  - ${p}`);
     process.exit(1);
   }
-  log('\nOK: every measured floating box stayed inside the window.');
+  log('\nOK: every measured floating box stayed inside the window, and the settings screen held its own tab bar and panels.');
   process.exit(0);
 }
 
