@@ -1018,6 +1018,82 @@ CASES.push({
  *    يحمل «6/6 حالة»، ثم رسبت على مطابقة **الرتّاب** — والدرس أن تُقاس المخرجات
  *    بترتيبها أو لا تُقاس به. ────────────────────────────────────────────────── */
 
+/* ═══ ٦) حارس «لا معرّف مكرَّر في الترميز» ═══════════════════════════════════
+ * وُلد من عطل مقيس في هذه الجلسة: دمجُ فرعٍ **متخلّفٍ لا متقدّم** مرّ **بلا علامة
+ * تعارض** ثم ترك الشجرة المدمجة بـ**نسختين من `#cuda-provider`** وبحاويتي
+ * `engine` بنفس `data-tab`. فالدرس: **غياب علامات التعارض ليس دليل صحّة**،
+ * والصحة تُقاس بنيوياً — وهذا الحارس يثبّت ذلك دائماً بدل أن يبقى انتباهاً يدوياً.
+ *
+ * **ومُفسَداته تُقاس على العطل نفسه لا على شبيهه**:
+ *   ① تكرار معرّف حقيقي (نفس ما وقع) ⇒ سقوط مسمّى بالمعرّف والأسطر.
+ *   ② معرّف مذكور **في تعليق** مرّتين ⇒ **يجب أن يمرّ**، وهذا هو حدّ «قيمة لا
+ *      تمثيل» المعلَن: العدّ بعد تجريد التعليقات. (وضابط سالبٌ ثالث يكسر هذا
+ *      التجريد يُثبت أن الفرق مقيس: تكرار حقيقي واحد ⇒ يسقط.)
+ *   ③ صفر مدخل: `index.html` غائب ⇒ سقوط، لا نجاح على لا شيء.
+ */
+/** أسماء معرّفات واقعية بترتيب ثابت — فالبيئة المصنوعة قابلة لإعادة الإنتاج. */
+const DUP_ID_NAMES = [
+  'setting-cuda', 'cuda-hint', 'cuda-hint-text', 'cuda-provider', 'max-jobs', 'setting-notify',
+  'setting-watch', 'watch-options', 'btn-watch-folder', 'watch-path', 'watch-mode', 'watch-status',
+  'btn-watch-cancel', 'watch-max-size', 'watch-rescan', 'setting-bridge', 'bridge-ext-status',
+  'bridge-ext-link', 'btn-telegram', 'tg-badge', 'tg-group-mode', 'tg-token', 'tg-owner',
+  'tg-status', 'tg-pair-code', 'setting-autostart', 'btn-update-check', 'update-status',
+  'setting-ytdlp-auto', 'btn-repair-open', 'btn-report', 'about-body', 'settings-menu',
+  'settings-close', 'settings-tabs', 'btn-settings', 'lang-toggle', 'main-view', 'logcard',
+  'log-view', 'dropzone', 'btn-download', 'dl-progress', 'pl-file-btn', 'btn-separate',
+  'sep-result', 'batch-list', 'stop-bar', 'btn-stop-all', 'media-path', 'toast', 'tg-overlay',
+  'repair-overlay', 'autostart-overlay', 'media-verdict', 'stop-count',
+];
+/**
+ * ترميز مصنوع بعدد معرّفات محدَّد، مع ثلاث حالات تُغيّر النتيجة وحدها:
+ *   `duplicate: [ids]`     ⇒ نسخة ثانية حقيقية من كل معرّف ⇒ يجب أن يسقط الحارس.
+ *   `commentTwice: id`     ⇒ المعرّف **في تعليق** مرّتين + عنصر حقيقي واحد ⇒ يمرّ.
+ *   بلا خيارات            ⇒ سليم تماماً.
+ */
+function htmlFixture(n, opts = {}) {
+  const ids = DUP_ID_NAMES.slice(0, n);
+  const lines = ['<!doctype html><html><body>'];
+  if (opts.commentTwice) {
+    lines.push(`<!-- كان #${opts.commentTwice} هنا، و#${opts.commentTwice} نُقل إلى تبويب الأداء -->`);
+  }
+  for (const id of ids) lines.push(`<div id="${id}"></div>`);
+  for (const id of (opts.duplicate || [])) {
+    lines.push(`<div id="${id}">نسخة ثانية لا يحدّثها شيء</div>`);
+  }
+  lines.push('</body></html>');
+  return lines.join('\n') + '\n';
+}
+CASES.push({
+  name: 'check-no-duplicate-ids.cjs',
+  script: S('check-no-duplicate-ids.cjs'),
+  build(dir) {
+    /* الترميز المصنوع **بحجم يشبه الحقيقي** (‏56 معرّفاً مقابل حدّ الحارس 50):
+       لو صغّرتُه اصطدم بشرط «مدخل غير فارغ» — وهو الشرط الذي يجعل حارساً على
+       مدخلٍ فارغ يسقط بدل أن يمرّ كذباً. فالمُفسَدات أدناه تُبنى على هذا الأساس
+       نفسه، فلا يقيس أيٌّ منها انهياراً سببُه حجم البيئة. */
+    mk(dir, 'index.html', htmlFixture(56));
+    mk(dir, 'browser-extension/popup.html',
+      '<!doctype html><html><body><button id="btn-go"></button><span id="status"></span></body></html>\n');
+  },
+  controlArgs: (dir) => ['--root', dir],
+  saw: (dir, res) => { const m = res.out.match(/✓ لا معرّف مكرَّر: (\d+) سمة/); return m ? Number(m[1]) : 0; },
+  sawExpected: 58,
+  mutants: [
+    { label: 'نسخة ثانية من معرّف حقيقي (العطل المقيس: #cuda-provider مرّتين) ⇒ يسقط ويسمّي المعرّف',
+      apply: (dir) => mk(dir, 'index.html', htmlFixture(56, { duplicate: ['cuda-provider', 'setting-cuda'] })),
+      mustMatch: /cuda-provider.*مكرَّر|«cuda-provider» مكرَّر/ },
+    { label: 'معرّف في تعليق مرّتين + عنصر حقيقي واحد ⇒ **يمرّ** (تجريد التعليقات؛ لا إسقاط على كود سليم)',
+      apply: (dir) => mk(dir, 'index.html', htmlFixture(56, { commentTwice: 'setting-cuda' })),
+      expectPass: true,
+      mustMatch: /✓ لا معرّف مكرَّر/ },
+    { label: 'الترميز تقلّص إلى 3 معرّفات (ماسحٌ لم يقرأ أو ملفٌّ فرغ) ⇒ يسقط',
+      apply: (dir) => mk(dir, 'index.html', htmlFixture(3)),
+      mustMatch: /معرّفاً فقط والمتوقَّع/ },
+  ],
+  zero: { label: 'index.html غائب (المدخل الإلزامي مفقود)',
+    apply: (dir) => fs.rmSync(path.join(dir, 'index.html'), { force: true }) },
+});
+
 /* ═══ التشغيل ═══════════════════════════════════════════════════════════════ */
 
 const results = [];   // { case, kind, label, ok, detail }
