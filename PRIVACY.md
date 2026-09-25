@@ -19,6 +19,7 @@ to that local application, and to show the processing controls on the page being
 | Item | Where it goes |
 |---|---|
 | Two user preferences — the preferred processing mode (Song / Clip) and the interface language (Arabic / English) | Stored locally in `chrome.storage.local` on the user's own device, so the last choice persists. Never transmitted anywhere. |
+| The same processing-mode preference, kept in one further place | The chosen processing mode is **also** written to YouTube's own `localStorage` on the same device, so a choice made in an earlier version of the extension still works. Nothing is transmitted anywhere. |
 | The URL of the page/link the user explicitly chose to process, plus the selected mode | Sent over the **local Native Messaging channel** to the HaramLite application installed on the same machine. |
 | Short status messages (for example: "link received", "processing started") | Exchanged with that same local application, so the page can show progress. |
 
@@ -31,9 +32,11 @@ the user's own folders on the user's own machine. No part of that data reaches t
 - **`storage`** — to keep the two local preferences above.
 - **`contextMenus`** — to add the right-click entries ("Send link", "Send page", "Send video", "Song mode", "Clip mode").
 - **`activeTab`** — to read the current tab's URL only at the moment the user clicks the extension.
-- **Host permission `*://*.youtube.com/*`** — the content script runs **only** on YouTube and YouTube Music, to place
+- **Content script match pattern `*://*.youtube.com/*`** — the content script runs **only** on YouTube and YouTube Music, to place
   the processing controls in the player bar and to play back audio that the user's own machine produced locally.
-  It is inactive on every other site.
+  It is inactive on every other site. This pattern is declared under `content_scripts`, not under `host_permissions`:
+  **the manifest declares no `host_permissions` at all**, so the extension holds no standing host access beyond that
+  content-script scope.
 
 ## Children
 
