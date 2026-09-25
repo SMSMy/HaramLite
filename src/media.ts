@@ -5,11 +5,14 @@
  *   - validatePath() وrunProbe() — التحقق قبل أي نداء للخلفية ثم الفحص
  *   - outDirOf() — مجلد المسار (يستعمله الفصل والتنزيل وفتح المجلد)
  * لم يتغيّر أي معرّف DOM (#media-verdict، #sep-result، #media-path،
- * #btn-separate، #kind-video، #kind-audio، .kind-card.selected، #q-wrap،
- * #quality-select) ولا أي أمر (`path_exists`، `path_is_dir`، `probe_media`،
+ * #btn-separate، #kind-video، #kind-audio، .kind-card.selected) ولا أي أمر
+ * (`path_exists`، `path_is_dir`، `probe_media`،
  * `push_log`) ولا نصّ رسالة ولا مفتاح ترجمة (err_not_found، err_is_dir،
  * err_no_audio، probe_flag_disguised، probe_flag_cover، quality_same،
  * out_type_label، out_video، out_audio). الوحيد المضاف: `export`.
+ * (وكان في القائمة معرّفا `#q-wrap` و`#quality-select` — وهما **غير موجودين في
+ * `index.html`**، وحُذف ربطهما الميت من `src/queue.ts` في الجولة الرابعة، فسُحبا
+ * من هذا التعليق كي لا يُبحث عن معرّف غير موجود.)
  */
 
 import { invoke } from '@tauri-apps/api/core';

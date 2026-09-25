@@ -27,7 +27,6 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import indexHtml from '../../index.html?raw';
-import mainTs from '../main.ts?raw';
 import {
   SETTINGS_GROUP_HEADING_KEYS,
   SETTINGS_MENU_CHROME,
@@ -35,6 +34,17 @@ import {
   SETTINGS_TAB_MAP,
 } from '../settingsTabMap';
 import { SETTINGS_TABS } from '../settingsScreen';
+
+/**
+ * **كل** وحدات `src/*.ts` كنصّ — لأن حارس «لا مسار ميت» يجب أن يرى الوحدة كلها
+ * لا `main.ts` وحده. والمسح الشامل هو ما كشف `q-wrap`/`quality-select` في
+ * `queue.ts` (ولم يكن `main.ts` ليراه).
+ */
+const SRC_MODULES = import.meta.glob('../*.ts', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+}) as Record<string, string>;
 
 /** DOM التطبيق المشحون (بلا تنفيذ سكربتات: `innerHTML` لا يُنفّذ `script`). */
 function mountApp(): void {
@@ -303,28 +313,77 @@ describe('لا مسار ميت · لا لوحة إعدادات بلا عنصر،
     ).toBe(0);
   });
 
-  it('كل getElementById في src/main.ts يشير إلى معرّف موجود — بلا أي قائمة استثناء', async () => {
+  it('كل getElementById في src/*.ts يشير إلى معرّف موجود — بلا أي قائمة استثناء', async () => {
     await mountInSettingsMode();
-    const ids = [
-      ...new Set(
-        [...mainTs.matchAll(/getElementById\(\s*'([^']+)'\s*\)/g)].map((m) => m[1]),
-      ),
-    ];
-    // عدم البطلان: استخراج صفر معرّف يجعل «لا مسار ميت» صحيحة بلا معنى.
-    // والحدّ **مقيس**: بعد حذف مسار «المعاينة السريعة» بقي في الملف ٦ معرّفات
-    // فريدة — فالحدّ ٦ لا رقمٌ مُدوَّر. ونقصانه يعني أن مساراً أُزيل، فيُحدَّث
-    // الرقم عمداً بدل أن يمرّ الفحص بلا معنى.
-    expect(ids.length, 'مسارات getElementById المقروءة من main.ts').toBeGreaterThanOrEqual(6);
+    const files = Object.keys(SRC_MODULES).sort();
+    // عدم البطلان: لو لم تُقرأ الوحدات لمرّ الفحص بلا معنى.
+    expect(files.length, 'وحدات src/*.ts المقروءة كنصّ').toBeGreaterThanOrEqual(15);
+    expect(
+      files.some((f) => f.endsWith('/main.ts')),
+      'main.ts داخل المسح (وإلا اتّسع النطاق وضاع ما كان محروساً)',
+    ).toBe(true);
+    expect(files.some((f) => f.endsWith('/queue.ts')), 'queue.ts داخل المسح').toBe(true);
 
-    // **ولا قائمة استثناء** — وكانت هنا واحدة. الملف كان ينادي ثلاثة معرّفات لا
-    // وجود لها (`preview-toggle` · `preview-duration` · `preview-hint` —
-    // «المعاينة السريعة»)، فحُذف المسار نفسه في الجولة الثالثة **وحُذفت القائمة
-    // معه**: قائمة استثناء تبقى بعد زوال سببها تصير **غطاءً لعطب قادم**. فالمطلوب
-    // اليوم: صفر معرّف غير موجود، وصفر استثناء.
-    const missing = ids.filter((id) => document.getElementById(id) === null);
+    const missing: string[] = [];
+    const perFile: string[] = [];
+    let total = 0;
+    for (const f of files) {
+      const ids = [
+        ...new Set(
+          [...SRC_MODULES[f].matchAll(/getElementById\(\s*'([^']+)'\s*\)/g)].map((m) => m[1]),
+        ),
+      ];
+      total += ids.length;
+      const bad = ids.filter((id) => document.getElementById(id) === null);
+      perFile.push(`  ${f.replace('../', '').padEnd(20)} ${String(ids.length).padStart(2)} id(s)${bad.length ? `  MISSING -> ${bad.join(', ')}` : '  all resolve'}`);
+      for (const id of bad) missing.push(`${f.replace('../', '')}: ${id}`);
+    }
+    // eslint-disable-next-line no-console
+    console.log('  وحدة                 مسارات');
+    for (const r of perFile) {
+      // eslint-disable-next-line no-console
+      console.log(r);
+    }
+
+    // **الحدّ مقيس لا مُدوَّر**: عدد المعرّفات الفريدة التي تُحلّ فعلاً في
+    // `src/*.ts` (‏مقيس 2026-09-25 بعد تنظيف الجولتين الثالثة والرابعة: ١٣٧).
+    // ونقصانه يعني أن مساراً أُزيل، فيُحدَّث الرقم عمداً بدل أن يمرّ الفحص بلا معنى.
+    expect(total, 'عدد مسارات getElementById المقروءة من src/*.ts').toBeGreaterThanOrEqual(137);
+
+    // **ولا قائمة استثناء** — وكانت هنا واحدة على `main.ts`. وثلاثتها حُذفت
+    // (`preview-toggle` · `preview-duration` · `preview-hint`)، **والقائمة معها**:
+    // قائمة استثناء تبقى بعد زوال سببها تصير **غطاءً لعطب قادم**. ثم وُسِّع النطاق
+    // إلى كل `src/*.ts`، وهو ما كشف `q-wrap` · `quality-select` في `queue.ts`.
     expect(
       missing,
-      `مسارات ميتة في src/main.ts (تنادي عناصر غير موجودة في index.html): ${missing.join(' · ')}`,
+      `مسارات ميتة في src/*.ts (تنادي عناصر غير موجودة في index.html): ${missing.join(' · ')}`,
     ).toEqual([]);
+  });
+
+  /* الأثر المقيس لحذف ربط `#q-wrap`/`#quality-select`: **صفر** — وهذا يقيسه
+   * سلوكياً لا بالقراءة. الفرضية أولاً (`المعرّفان غير موجودين`)، ثم الأثر الحيّ
+   * الوحيد (`تعتيم #kind-video`) يعمل في الاتجاهين. ولو حُذف التعتيم مع الميت
+   * لسقط هذا — وهو إصلاح عطب مسجَّل في `docs/AUDIT.md:243` ولم يكن له حارس. */
+  it('updateQualityOptions: الأثر الحيّ (تعتيم #kind-video) يعمل، ولا سطح جودة يُنشأ', async () => {
+    await mountInSettingsMode();
+    // **الفرضية**: المفتاحان غائبان ⇒ كان `if (!wrap || !sel) return;` يحقّق دائماً
+    // ⇒ سلّم الجودة و`sel.replaceChildren` لم يُنفَّذا قطّ.
+    expect(document.getElementById('q-wrap'), '#q-wrap').toBeNull();
+    expect(document.getElementById('quality-select'), '#quality-select').toBeNull();
+
+    const videoCard = document.getElementById('kind-video');
+    expect(videoCard, '#kind-video موجود').not.toBeNull();
+    videoCard!.classList.remove('dimmed');
+
+    const { updateQualityOptions } = await import('../queue');
+    updateQualityOptions(null); // ملف صوتيّ: لا ارتفاع ⇒ البطاقة تُعتَّم
+    expect(videoCard!.classList.contains('dimmed'), 'ملف صوتيّ ⇒ معتمة').toBe(true);
+    updateQualityOptions(1080); // فيديو حقيقيّ ⇒ تُرفع العتمة
+    expect(videoCard!.classList.contains('dimmed'), 'فيديو ⇒ غير معتمة').toBe(false);
+
+    // ولا يُنشأ سطح جودة من العدم، ولا يُضاف خيار إلى قائمة أخرى.
+    expect(document.getElementById('q-wrap'), 'بعد النداء').toBeNull();
+    expect(document.getElementById('quality-select'), 'بعد النداء').toBeNull();
+    expect(document.querySelectorAll('#kind-video option').length, 'لا خيارات داخل بطاقة النوع').toBe(0);
   });
 });
