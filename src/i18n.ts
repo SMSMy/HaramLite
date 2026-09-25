@@ -41,7 +41,9 @@ const i18n = {
     set_group_perf: 'الأداء والمعالجة',
     // تبويبات الشاشة المستقلة (نافذة الإعدادات) — والمفاتيح القائمة تُعاد
     // استعمالها حيث تطابق المعنى، وهذا المفتاح وحده جديد (لا مقابل له).
-    set_tab_engine: 'الفصل والمزوّد',
+    // وقيمته صارت «الفصل والصيغة» بعد نقل سطر المزوّد الفعّال إلى تبويب
+    // «الأداء والمعالجة» (فلم يبقَ في التبويب مزوّد، وبقي الفصل والصيغة).
+    set_tab_engine: 'الفصل والصيغة',
     set_tab_update: 'التحديث والصيانة',
     settings_back: 'رجوع',
     set_group_watch: 'المراقبة التلقائية',
@@ -379,7 +381,7 @@ const i18n = {
     set_notify: 'Completion notifications + sound',
     settings_title: 'Settings',
     set_group_perf: 'Performance & processing',
-    set_tab_engine: 'Separation & provider',
+    set_tab_engine: 'Separation & format',
     set_tab_update: 'Updates & maintenance',
     settings_back: 'Back',
     set_group_watch: 'Automatic watching',
