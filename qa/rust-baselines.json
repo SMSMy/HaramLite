@@ -137,12 +137,12 @@
     "open_file_tests::cuda_status_command_answers_over_ipc_with_an_honest_provider_field",
     "open_file_tests::cuda_status_payload_reports_unknown_without_claiming_cpu",
     "open_file_tests::open_file_refuses_a_missing_path_before_any_launch",
-    "open_file_tests::open_settings_creates_the_settings_window_over_ipc_and_reuses_it",
-    "open_file_tests::the_capability_covers_the_settings_window_with_no_new_permission",
-    "open_file_tests::the_close_action_hides_every_window_and_never_closes_for_real",
+    "open_file_tests::the_capability_covers_one_window_only_with_no_new_permission",
+    "open_file_tests::the_close_action_hides_the_window_and_never_closes_for_real",
     "open_file_tests::the_handed_path_stays_plain_and_absolute",
     "open_file_tests::the_open_handoff_is_the_os_file_manager",
     "open_file_tests::the_open_handoff_never_goes_through_a_command_interpreter",
+    "open_file_tests::the_process_has_exactly_one_window_and_no_settings_label",
     "p2_tests::a_failed_settings_write_never_reaches_memory",
     "p2_tests::the_player_scratch_dir_survives_no_failure",
     "p2_tests::tracked_download_taken_exactly_once",
@@ -427,5 +427,5 @@
     "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
     "clippy": "clippy 0.1.95 (59807616e1 2026-04-14)"
   },
-  "measured_at": "2026-09-24 · قياس محلي"
+  "measured_at": "2026-09-25 · قياس محلي"
 }
