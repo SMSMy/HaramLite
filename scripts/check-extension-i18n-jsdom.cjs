@@ -352,6 +352,15 @@ function renderContent(jsSrc, languages, replyFn, opts) {
   w.__fireStorage = (changes) => { for (const fn of listeners) { try { fn(changes); } catch (e) { /* مستمع رمى */ } } };
   w.__store = store;
   w.__storeWrites = writes;
+  /* ── مصرف السجلّ (ط-١٢/البند ٤) ─────────────────────────────────────────────
+   * `errText` تُصدِر **التفصيل الخام** في `console.warn` حين يكون عربياً وقارئُنا
+   * غير عربي: المعروض جملة إنجليزية، **والسبب مُصدَر لا مفقود**. فهذا المصرف
+   * يسمح بقياس «لا فقدان معلومة» **حيّاً** بدل ادّعائه. */
+  const warns = [];
+  try {
+    w.console.warn = (...args) => { warns.push(args.map((a) => String(a)).join(' ')); };
+  } catch (e) { /* console غير قابل للاستبدال: يبقى السجلّ على مخرَج Node */ }
+  w.__warns = warns;
   w.eval(jsSrc);
   OPEN_WINDOWS.push(w);
   return w;
@@ -582,7 +591,7 @@ async function contentFetchReply(jsSrc, languages, resultReply) {
   watch.click();
   await sleep(200);
   const el = w.document.getElementById('haramlite-toast');
-  return { text: el ? el.textContent : null, dir: el ? el.style.direction : null };
+  return { text: el ? el.textContent : null, dir: el ? el.style.direction : null, warns: w.__warns || [] };
 }
 
 /** **السيناريو الثاني للمالك**: يُغيَّر المخزَّن **من تبويب آخر** (يبثّه المتصفّح عبر
@@ -716,17 +725,75 @@ async function measureX1(src, report) {
       stored === I18N.en['btn.mode.song'], 'وُجد ' + JSON.stringify(stored));
   }
 
-  /* (ج) فشل `result_file` المسمّى + غياب الردّ فعلاً. */
+  /* (ج) فشل `result_file` المسمّى + غياب الردّ فعلاً.
+   *
+   * ── وط-١٢/البند ٤: الطبقة **الفرعية** (`subcode`) تُقاس هنا حيّاً ──────────
+   * كان هذا الموضع يقيس **العطب نفسه** ادّعاءً: `code.engine_error` وحده، ويُتوقَّع
+   * أن يظهر `Engine failed: <نصّ عربي خام>`. وهو بالضبط ما يمنعه البند ⇒ استُبدل
+   * بـ**أربعة** قياسات أقوى: (١) رمز فرعي معروف ⇒ جملته المترجَمة و**صفر محرف
+   * عربي** في التوست كله · (٢) رمز مجهول (تطبيق أحدث) ⇒ وقوع إنجليزي ولا
+   * `undefined` · (٣) تفصيل عربي بلا رمز ⇒ جملة إنجليزية **والسبب مُصدَر في
+   * السجلّ** (لا مفقود) · (٤) القارئ العربي يحصل على العربية كما كان (توافق خلفي).
+   * و(١) يقيس **مرور الرمز من `bridgeError`** أيضاً: لو أُسقط هناك لوصل
+   * `code.engine_error` وحده فسقط الفحص. */
+  const AR_CH = /[\u0600-\u06FF\u0750-\u077F]/;
+
+  /* (١) رمز فرعي **معروف** ⇒ جملة الرمز الفرعي بلغة القارئ، وصفر عربية. */
+  const subEn = await contentFetchReply(contentJs, ['en-US', 'ar'], {
+    ok: false, code: 'engine_error', subcode: 'engine_model_missing',
+    error: RUST_NO_PAGE_AUDIO_MSG, detail: RUST_NO_PAGE_AUDIO_MSG,
+  });
+  const wantSubEn = '✗ ' + I18N.en['sub.engine_model_missing'];
+  if (!subEn.text) {
+    report('[en] صفر مدخل: زرّ المشاهدة نُقر وردّ `result_file` فاشلاً فظهر توست', false, subEn.why);
+  } else {
+    report('[en] `engine_error` + `subcode` معروف ⇒ جملة **الرمز الفرعي** المترجَمة (لا النصّ الخام)',
+      subEn.text === wantSubEn, 'وُجد ' + JSON.stringify(subEn.text) + ' · المتوقَّع ' + JSON.stringify(wantSubEn));
+    report('[en] وصفر **محرف عربي** في التوست كله (مانع الإطلاق: قارئ إنجليزي لا يرى عربية)',
+      !AR_CH.test(subEn.text), 'وُجد ' + JSON.stringify(subEn.text));
+    report('[en] واتجاه التوست يبقى `ltr` (اتجاه اللغة لا اتجاه النصّ)',
+      subEn.dir === 'ltr', 'وُجد ' + JSON.stringify(subEn.dir));
+  }
+
+  /* (٢) رمز فرعي **مجهول** (تطبيق أحدث من الإضافة) ⇒ وقوع، ولا `undefined`. */
+  const futureEn = await contentFetchReply(contentJs, ['en-US', 'ar'], {
+    ok: false, code: 'engine_error', subcode: 'engine_from_the_future',
+    error: RUST_NO_PAGE_AUDIO_MSG, detail: RUST_NO_PAGE_AUDIO_MSG,
+  });
+  report('[en] `subcode` مجهول (تطبيق أحدث) ⇒ وقوع إنجليزي بلا عربية ولا `undefined`',
+    !!futureEn.text && !AR_CH.test(futureEn.text) && !/undefined/.test(futureEn.text),
+    'وُجد ' + JSON.stringify(futureEn.text));
+
+  /* (٣) تفصيل عربي **بلا** رمز فرعي ⇒ جملة إنجليزية **والسبب مُصدَر** لا مفقود. */
   const failEn = await contentFetchReply(contentJs, ['en-US', 'ar'], { ok: false, code: 'engine_error', error: RUST_NO_PAGE_AUDIO_MSG });
-  const wantEngine = '✗ ' + I18N.en['code.engine_error'].replace('{e}', RUST_NO_PAGE_AUDIO_MSG);
+  const wantUntranslated = '✗ ' + I18N.en['err.engine_untranslated'];
   if (!failEn.text) {
     report('[en] صفر مدخل: زرّ المشاهدة نُقر وردّ `result_file` فاشلاً فظهر توست', false, failEn.why);
   } else {
-    report('[en] فشل `result_file` المسمّى (`engine_error`) ⇒ نصّ الرمز المترجَم لا «رد فارغ»',
-      failEn.text === wantEngine, 'وُجد ' + JSON.stringify(failEn.text));
+    report('[en] تفصيل عربي بلا رمز فرعي ⇒ جملة الوقوع الإنجليزية (لا النصّ الخام)',
+      failEn.text === wantUntranslated, 'وُجد ' + JSON.stringify(failEn.text));
+    report('[en] وصفر **محرف عربي** في المعروض',
+      !AR_CH.test(failEn.text), 'وُجد ' + JSON.stringify(failEn.text));
+    report('[en] **والسبب لا يُفقد**: النصّ الخام عربيٌّ كما هو في سجلّ الصفحة',
+      (failEn.warns || []).some((s) => s.includes(RUST_NO_PAGE_AUDIO_MSG)),
+      'سجلّ الصفحة: ' + JSON.stringify((failEn.warns || []).slice(0, 2)));
     report('[en] ولا يظهر نصّ `fetch.emptyReply` على ردٍّ مسمّى',
       failEn.text !== '✗ ' + I18N.en['fetch.emptyReply'], 'ظهر «رد فارغ» على ردّ يحمل رمزاً');
   }
+
+  /* (٤) القارئ **العربي**: السلوك **لم يتغيّر حرفياً** — `code.engine_error`
+     بقالبه مملوءاً بالنصّ الخام (وهو ما كان قبل ط-١٢)، ورمز فرعي معروف ⇒ جملته
+     العربية. وهذا يمنع «إصلاحاً» يُلغي السبب على القارئ العربي أيضاً. */
+  const rawAr = await contentFetchReply(contentJs, ['ar-SA', 'en'], { ok: false, code: 'engine_error', error: RUST_NO_PAGE_AUDIO_MSG });
+  const wantRawAr = '✗ ' + I18N.ar['code.engine_error'].replace('{e}', RUST_NO_PAGE_AUDIO_MSG);
+  report('[ar] تفصيل عربي بلا رمز فرعي ⇒ السلوك السابق حرفياً (قالب الرمز + النصّ الخام)',
+    rawAr.text === wantRawAr, 'وُجد ' + JSON.stringify(rawAr.text) + ' · المتوقَّع ' + JSON.stringify(wantRawAr));
+  const subAr = await contentFetchReply(contentJs, ['ar-SA', 'en'], {
+    ok: false, code: 'engine_error', subcode: 'engine_tool_missing', error: RUST_NO_PAGE_AUDIO_MSG,
+  });
+  report('[ar] و`subcode` معروف ⇒ جملته العربية المترجَمة',
+    subAr.text === '✗ ' + I18N.ar['sub.engine_tool_missing'], 'وُجد ' + JSON.stringify(subAr.text));
+
   const emptyEn = await contentFetchReply(contentJs, ['en-US', 'ar'], {});
   report('[en] وغياب الردّ فعلاً (لا `file` أصلاً) ⇒ `fetch.emptyReply` كما كان',
     emptyEn.text === '✗ ' + I18N.en['fetch.emptyReply'], 'وُجد ' + JSON.stringify(emptyEn.text));

@@ -21,6 +21,33 @@
  *      الجدول بلا رمز في الرست ⇒ سقوط** (اختيار مُعلَن: مدخل ميت يوهم بتغطية غير
  *      قائمة، وهو حكم `check-extension-i18n.cjs` نفسه على المفاتيح الميتة).
  *
+ * **وطبقة ثانية: الرموز الفرعية (`subcode` — ط-١٢ · البند ٤)**
+ * **العطل الذي وُلدت لأجله**: `code.engine_error` وحده لا يقول **أيّ** عطل، فكان
+ * `{e}` يُملأ بـ`detail` الخام — وهو **عربي دائماً** (التطبيق يصوغه) ⇒ «Engine
+ * failed: أداة مفقودة: ffmpeg» عربيةٌ داخل جملة إنجليزية. والرست يُصدر معه
+ * **`subcode`** من تسعة (`SUB_ENGINE_*`) و`detail` صريحاً. وهذا الحارس يقيس
+ * الطبقة كما يقيس الأولى:
+ *   · من `bridge.rs`: كتلة `pub const SUB_ENGINE_*` ومُصنِّفها `engine_subcode`
+ *     — كل رمز معلَن **يُرجعه المُصنِّف** (وإلا فعقد وهمي)، ولا ثابت يُرجعه بلا
+ *     إعلان · و`subcode`/`detail` **تحت `code == E_ENGINE` وحده** (فلا يُدّعى
+ *     تصنيف لعطل ليس عطل محرّك، ولا يُفقد السبب).
+ *   · من الجدولين: مدخلات **`sub.*`** — **مساحة أسماء ثانية لا `code.*`** عمداً:
+ *     إدخال التسعة في `code.*` كان سيخالف الثابت ③ أعلاه (الرموز التسعة ليست
+ *     `code` مُصدَراً) فيُرخيه أو يُخالقه. ويُقاس فيها نفس التقابل في الاتجاهين.
+ *   · وخريطة **`SUB_TEXT`** الثابتة: تغطّي التسعة، وقيمها نداءاتٌ بمفاتيح
+ *     **حرفية** (`() => t('sub.…')`) — لا `t(subKey)` محسوباً: المحسوب يخالف §٢٦
+ *     **ويُسقط حارس «لا مفتاح بلا مستهلك»** فيعدّ التسعة ميتة (قِيس ذلك فعلاً عند
+ *     أول تطبيق، والمُفسَد Ⓛ′ يمنع الرجوع إليه).
+ *   · وأن `errText` **تستهلك** `subcode` فعلاً — الحالة والمفاتيح قد تقوم جميعاً
+ *     وتبقى `return fill(t('code.engine_error'), {e: raw})` فتعود العربية.
+ *   · ومفتاح الوقوع `err.engine_untranslated` (تفصيل عربي بلا رمز فرعي وقارئ غير
+ *     عربي) قائم في اللغتين **ونصّه الإنجليزي بلا محرف عربي**.
+ *
+ * **وما يقيسه القياس الحيّ لا هذا الحارس**: أن الرمز **يصل** إلى `errText` —
+ * فموضع الربط `bridgeError` في الإضافة كان ينسخ `code` وحده و**يُسقط
+ * `subcode`/`detail`**، فمرّت كل الفحوص البنيوية هنا وضاع الرمز عند أول حدّ.
+ * ذاك يقيسه `check-extension-i18n-jsdom.cjs` في DOM حقيقي (وهو ما كشفه).
+ *
  * **وما لا يقيسه**: جودة الترجمة (يشترط الوجود والتكافؤ لا المعنى)، ولا أن التطبيق
  * يعرض النصّ فعلاً — ذاك يقيسه `check-extension-i18n-jsdom.cjs` على DOM حقيقي.
  *
@@ -28,7 +55,9 @@
  * ضابط (الشجرة المشحونة تمرّ، **وقد رأى مدخلاً غير صفري**) · مُفسَد رمز جديد في
  * `bridge.rs` بلا جدول ⇒ يسقط · مُفسَد مدخل محذوف من الجدول ⇒ يسقط · مُفسَد مدخل
  * زائد في الجدول بلا رمز ⇒ يسقط · مُفسَد موضع خطأ يمرّر نصّاً بدل الرمز ⇒ يسقط ·
- * وصفر مدخل (bridge.rs مفقود أو فارغ) ⇒ فشل بنيوي مسمّى (2).
+ * وخمسة على طبقة `subcode` (مدخل محذوف · مدخل زائد · رمز غائب من `SUB_TEXT` ·
+ * حالة لا تستهلك الرمز · قيمة رمز مُبدَّلة في الرست) · وصفر مدخل (bridge.rs مفقود
+ * أو فارغ) ⇒ فشل بنيوي مسمّى (2).
  *
  * بلا اعتماديات npm: `node:fs` · `node:os` · `node:path` · `node:child_process`،
  * ومُحلِّل جدول الترجمة من `check-extension-i18n.cjs` (المصدر نفسه، لا نسخة ثانية).
@@ -62,6 +91,13 @@ const RAW_READ_RE = /\.\s*(?:error|message)\b(?!\s*\()/g;
 const CODE_RE = /^[a-z][a-z0-9_]*$/;
 /** ثابت الرمز في الرست: `pub const E_X: &str = "value";` */
 const CONST_RE = /pub const (E_[A-Z0-9_]+)\s*:\s*&str\s*=\s*"([^"]*)";/g;
+/** ثابت **الرمز الفرعي**: `pub const SUB_ENGINE_X: &str = "engine_x";`
+ *  (ط-١٢/البند ٤) — مساحة أسماء ثانية، ويقابلها في الإضافة `sub.*` لا `code.*`. */
+const SUB_CONST_RE = /pub const (SUB_ENGINE_[A-Z0-9_]+)\s*:\s*&str\s*=\s*"([^"]*)";/g;
+/** مُصنِّف الرمز الفرعي في الرست. */
+const SUB_CLASSIFIER = 'engine_subcode';
+/** مفتاح النصّ الاحتياطي حين يكون `detail` عربياً ولا رمز فرعي معروف. */
+const UNTRANSLATED_KEY = 'err.engine_untranslated';
 /** مواضع بناء حمولة الخطأ — الوحيدان المسموحان بهما. */
 const CALL_NAMES = ['err_last', 'reply_err'];
 
@@ -176,6 +212,23 @@ function readBridgeCodes(src) {
     order.push(m[1]);
   }
 
+  /* الرموز **الفرعية** (ط-١٢): كتلة `SUB_ENGINE_*` — تُقرأ كما تُقرأ `E_*`. */
+  const subDeclared = new Map();
+  const subOrder = [];
+  SUB_CONST_RE.lastIndex = 0;
+  while ((m = SUB_CONST_RE.exec(clean)) !== null) {
+    if (subDeclared.has(m[1])) throw new GuardError(`ثابت الرمز الفرعي ${m[1]} معرَّف مرتين في ${BRIDGE_REL}`);
+    subDeclared.set(m[1], m[2]);
+    subOrder.push(m[1]);
+  }
+
+  /* ومُصنِّفها: أيُّ ثابت **يُرجعه** فعلاً — رمزٌ معلَن ولا يُرجعه المُصنِّف
+     عقدٌ وهمي (يُلزم الإضافة بترجمة لا تُعرض)، وثابتٌ يُرجعه ولا إعلان له خطأ. */
+  const classifier = rustFnBody(clean, SUB_CLASSIFIER);
+  const subReturned = classifier
+    ? [...new Set([...classifier.matchAll(/\b(SUB_ENGINE_[A-Z0-9_]+)\b/g)].map((x) => x[1]))]
+    : null;
+
   const sites = [];
   for (const fn of CALL_NAMES) {
     const re = new RegExp('\\b' + fn + '\\s*\\(', 'g');
@@ -188,7 +241,7 @@ function readBridgeCodes(src) {
       sites.push({ fn, arg: firstArg(clean, open), line: lineOf(src, c.index) });
     }
   }
-  return { declared, order, sites };
+  return { declared, order, sites, subDeclared, subOrder, subReturned };
 }
 
 /** رقم السطر (1-based) لإزاحة في النصّ الأصلي. */
@@ -215,15 +268,45 @@ function readTableCodes(src) {
   const enKeys = pick(I18N.en);
   if (!arKeys || !enKeys) throw new GuardError('جدول الترجمة بلا القسمين `ar` و`en` معاً');
   const codesOf = (keys) => keys.filter((k) => /^code\.[a-z][a-z0-9_]*$/.test(k)).map((k) => k.slice('code.'.length));
+  const subsOf = (keys) => keys.filter((k) => /^sub\.[a-z][a-z0-9_]*$/.test(k)).map((k) => k.slice('sub.'.length));
   const textOf = (row, code) => {
     const v = row['code.' + code];
     return typeof v === 'string' ? v : null;
   };
+  const subTextOf = (row, sub) => {
+    const v = row['sub.' + sub];
+    return typeof v === 'string' ? v : null;
+  };
+  const anyOf = (row, key) => (typeof row[key] === 'string' ? row[key] : null);
   return {
     ar: codesOf(arKeys),
     en: codesOf(enKeys),
+    subAr: subsOf(arKeys),
+    subEn: subsOf(enKeys),
     text: { ar: (c) => textOf(I18N.ar, c), en: (c) => textOf(I18N.en, c) },
+    subText: { ar: (s) => subTextOf(I18N.ar, s), en: (s) => subTextOf(I18N.en, s) },
+    untranslated: { ar: anyOf(I18N.ar, UNTRANSLATED_KEY), en: anyOf(I18N.en, UNTRANSLATED_KEY) },
   };
+}
+
+/** خريطة `const SUB_TEXT = { <رمز فرعي>: () => t('<مفتاح>') }` — **جدول ثابت
+ *  بمفاتيح حرفية**. تُقرأ بالنصّ (لا بتقييم الملف): الملف كله IIFE بمتغيّرات
+ *  متصفّح فلا يُقيَّم في Node، و`findTable` وحدها هي التي تُقيَّم لعزلها.
+ *
+ *  **ولماذا الدالّة لا المفتاح نصّاً**: `t(subKey)` مفتاحٌ محسوب يخالف §٢٦
+ *  ويُسقط حارس «لا مفتاح بلا مستهلك» (فيدّعي أن التسعة ميتة) — قِيس ذلك فعلاً
+ *  عند أول تطبيق. فالقيمة نداءٌ بمفتاح حرفيّ: يُستهلك المفتاح **ويُرى**. */
+function readSubMap(src) {
+  const at = /const\s+SUB_TEXT\s*=\s*\{/.exec(src);
+  if (!at) return null;
+  const open = src.indexOf('{', at.index);
+  const blk = balancedBlock(src, open);
+  if (!blk) return null;
+  const map = new Map();
+  for (const m of blk.body.matchAll(/([a-z][a-z0-9_]*)\s*:\s*\(\s*\)\s*=>\s*t\('([^']+)'\)/g)) {
+    map.set(m[1], m[2]);
+  }
+  return map;
 }
 
 /** حالات `switch` داخل `errText` — من النصّ لا من الجدول. */
@@ -344,7 +427,7 @@ function audit(root, log) {
   const runtimeSrc = {};
   for (const rel of RUNTIME_RELS) runtimeSrc[rel] = read(root, rel);
 
-  const { declared, order, sites } = readBridgeCodes(bridgeSrc);
+  const { declared, order, sites, subDeclared, subOrder, subReturned } = readBridgeCodes(bridgeSrc);
 
   /* صفر مدخل: رموز معلَنة ومواضع خطأ — وإلا فالحارس يمرّ لأنه لم ينظر. */
   if (declared.size === 0) {
@@ -363,6 +446,18 @@ function audit(root, log) {
         `صفر مدخل: لا موضع خطأ يستعمل \`${fn}(\` في ${BRIDGE_REL} — نصف العقد غير مقيس`
       );
     }
+  }
+  /* وصفر مدخل في طبقة الرموز الفرعية: كتلة `SUB_ENGINE_*` ومُصنِّفها — وإلا
+     كان «كل رمز فرعي له ترجمة» صحيحاً بلا معنى (المجموعة فارغة). */
+  if (subDeclared.size === 0) {
+    throw new GuardError(
+      `صفر مدخل: لا ثابت رمز فرعي واحد (\`pub const SUB_ENGINE_X: &str = "…";\`) في ${BRIDGE_REL} — لا شيء يُقاس`
+    );
+  }
+  if (subReturned === null) {
+    throw new GuardError(
+      `صفر مدخل: دالّة \`${SUB_CLASSIFIER}\` غير مقروءة في ${BRIDGE_REL} — نصف العقد (التصنيف) غير مقيس`
+    );
   }
 
   /* ① شكل الرمز وقيمته غير المكرّرة. */
@@ -413,6 +508,51 @@ function audit(root, log) {
     builders.map((n) => `${n} لا يُصدر الحقلين`).join(' · ')
   );
 
+  /* ══ ④ب طبقة الرموز الفرعية (ط-١٢ · البند ٤) ══════════════════════════════
+   * **العطل الذي وُلدت لأجله**: `code.engine_error` وحده لا يقول **أيّ** عطل،
+   * فكان `{e}` يُملأ بـ`detail` الخام العربي ⇒ عربيةٌ داخل جملة إنجليزية. فالحرس
+   * هنا يقيس الطبقة الثانية كما يقيس الأولى: تسعة رموز في الرست ⇄ مدخلات
+   * `sub.*` في جدولَي الإضافة **بالاتجاهين** ⇄ خريطة `SUB_KEYS` الثابتة. */
+
+  /* شكل الرمز الفرعي وقيمته غير المكرّرة. */
+  const badSubShape = subOrder.filter((n) => !CODE_RE.test(subDeclared.get(n)));
+  ok(
+    `شكل كل رمز فرعي ASCII بـsnake_case (${subDeclared.size} رمزاً)`,
+    badSubShape.length === 0,
+    badSubShape.map((n) => `${n} = "${subDeclared.get(n)}"`).join(' · ')
+  );
+  const subValues = subOrder.map((n) => subDeclared.get(n));
+  const dupSubValues = subValues.filter((v, i) => subValues.indexOf(v) !== i);
+  ok('لا قيمة رمز فرعي مكرَّرة بين ثابتين', dupSubValues.length === 0, dupSubValues.join(' · '));
+
+  /* وكل رمز فرعي معلَن **يُرجعه المُصنِّف** — وإلا فعقدٌ وهمي. */
+  const neverReturned = subOrder.filter((n) => !subReturned.includes(n));
+  ok(
+    `كل رمز فرعي معلَن يُرجعه \`${SUB_CLASSIFIER}\` فعلاً (${subOrder.length} رمزاً)`,
+    neverReturned.length === 0,
+    neverReturned.map((n) => `${n} معلَن ولا يُرجعه المُصنِّف`).join(' · ')
+  );
+  /* والعكس: لا ثابت يُرجعه المُصنِّف بلا إعلان (خطأ تصريف أصلاً، لكن يُسمّى). */
+  const returnedUndeclared = subReturned.filter((n) => !subDeclared.has(n));
+  ok(
+    `ولا ثابت يُرجعه المُصنِّف بلا إعلان (${subReturned.length} مُرجَعاً)`,
+    returnedUndeclared.length === 0,
+    returnedUndeclared.join(' · ')
+  );
+
+  /* و`subcode`/`detail` يُضافان **لعطل المحرّك وحده**: لو أُضيفا لكل رمز لصار
+   * الرمز الفرعي يدّعي تصنيفاً لا معنى له، ولو حُذفا لضاع السبب. */
+  const subUnderEngine = CALL_NAMES.filter((n) => {
+    const body = rustFnBody(bridgeSrc, n);
+    if (!body) return true;
+    return !/if\s+code\s*==\s*E_ENGINE\s*\{[\s\S]*?"subcode"[\s\S]*?"detail"[\s\S]*?\}/.test(body);
+  });
+  ok(
+    `حمولتا ${CALL_NAMES.join(' و')} تُضيفان \`subcode\` و\`detail\` تحت \`code == E_ENGINE\` وحده`,
+    subUnderEngine.length === 0,
+    subUnderEngine.map((n) => `${n} لا يقيّد الحقلين بـE_ENGINE`).join(' · ')
+  );
+
   /* ⑤ التقابل في الاتجاهين: الرست ⇄ جدول الإضافة ⇄ حالات `errText`. */
   const codes = emitted.map((n) => declared.get(n));
   const tables = [];
@@ -456,6 +596,85 @@ function audit(root, log) {
       !Array.isArray(chunks) || chunks.length === 0
         ? 'دالّة `errText` أو حالاتها غير مقروءة'
         : silent.map((c) => `الحالة \`${c.code}\` لا تُرجع \`t('code.${c.code}')\``).join(' · ')
+    );
+
+    /* ── ④د طبقة الرموز الفرعية: الرست ⇄ `sub.*` ⇄ خريطة `SUB_KEYS` ────────── */
+    const subCodes = subOrder.map((n) => subDeclared.get(n));
+    ok(
+      `[${short}] لكل رمز فرعي مُرجَع مدخل \`sub.<رمز>\` في الجدول (${subCodes.length} رمزاً)`,
+      diff(subCodes, t.subAr).length === 0,
+      'ينقص الجدول: ' + (diff(subCodes, t.subAr).join(' · ') || '—')
+    );
+    ok(
+      `[${short}] ولا مدخل \`sub.*\` بلا رمز فرعي في الرست (زائد = سقوط)`,
+      diff(t.subAr, subCodes).length === 0,
+      'مدخل بلا رمز في الرست: ' + (diff(t.subAr, subCodes).join(' · ') || '—')
+    );
+    ok(
+      `[${short}] مدخل الرمز الفرعي قائم في اللغتين (ar/en)`,
+      sameSet(t.subAr, t.subEn),
+      'فرق: ' + (diff(t.subAr, t.subEn).concat(diff(t.subEn, t.subAr)).join(' · ') || '—')
+    );
+
+    /* وخريطة `SUB_TEXT`: مفاتيحها هي الرموز، وقيمها مفاتيح نصّ **حرفية** قائمة
+     * فعلاً — فلا رمزٌ بلا مدخل في الخريطة، ولا قيمة تشير إلى مفتاح غير موجود
+     * (تُرجع `undefined` فتُعرض فاضلة في واجهة المستخدم)، ولا مفتاح محسوب. */
+    const subMap = readSubMap(tableSrc[rel]);
+    ok(
+      `[${short}] خريطة \`SUB_TEXT\` الثابتة تغطّي الرموز التسعة (${subCodes.length})`,
+      subMap !== null && sameSet([...subMap.keys()], subCodes),
+      subMap === null
+        ? 'خريطة `SUB_TEXT` غير مقروءة'
+        : 'فرق: ' + (diff(subCodes, [...subMap.keys()]).concat(diff([...subMap.keys()], subCodes)).join(' · ') || '—')
+    );
+    const dangling = subMap
+      ? [...subMap.entries()].filter(([code, key]) => key !== `sub.${code}` || !t.subAr.includes(code))
+      : [];
+    ok(
+      `[${short}] وكل قيمة في \`SUB_TEXT\` مفتاحها \`sub.<رمزها>\` وهو قائم في الجدول`,
+      subMap !== null && dangling.length === 0,
+      dangling.map(([k, v]) => `${k} ⇒ ${v}`).join(' · ') || (subMap === null ? 'خريطة `SUB_TEXT` غير مقروءة' : '—')
+    );
+    /* وكل مفتاح `sub.*` **يُستهلك فعلاً** بمفتاح حرفيّ في الملف — وإلا فهو مدخل
+     * ميت يوهم بتغطية غير قائمة (وهو ما كان سيقع لو كُتبت القيمة `t(subKey)`). */
+    const noCom = stripComments(tableSrc[rel]);
+    const unread = t.subAr.filter((code) => !noCom.includes(`t('sub.${code}')`));
+    ok(
+      `[${short}] وكل مفتاح \`sub.*\` يُستهلك بنداء \`t('sub.<رمز>')\` حرفيّ (${t.subAr.length} مفتاحاً)`,
+      unread.length === 0,
+      'بلا مستهلك: ' + (unread.join(' · ') || '—')
+    );
+
+    /* و`errText` **تستهلك** الرمز الفرعي فعلاً: الحالة قائمة والمدخلات قائمة،
+     * لكن لو بقيت `case 'engine_error': return fill(t('code.engine_error'), {e: raw})`
+     * لمرّ كل ما سبق والعربية تعود إلى الواجهة الإنجليزية — وهو العطب نفسه. */
+    const engineChunk = (chunks || []).find((c) => c.code === 'engine_error');
+    const consumes = !!engineChunk
+      && /\bsubcode\b/.test(engineChunk.body)
+      && /\bSUB_TEXT\b/.test(engineChunk.body)
+      && engineChunk.body.includes(`t('code.engine_error')`);
+    ok(
+      `[${short}] حالة \`engine_error\` تستهلك \`subcode\` عبر \`SUB_TEXT\` (وتبقي النصّ الخام احتياطاً)`,
+      consumes,
+      !engineChunk
+        ? 'لا حالة `engine_error` في `errText`'
+        : 'الحالة لا تقرأ `subcode`/`SUB_TEXT`، أو أسقطت `t(\'code.engine_error\')` الاحتياطية'
+    );
+
+    /* ومفتاح الوقوع الاحتياطي (تفصيل عربي بلا رمز ⇒ جملة إنجليزية) قائم في
+     * اللغتين — وإلا عرضت الحالة مفتاحاً غير معرَّف فسقطت إلى العربية. */
+    ok(
+      `[${short}] مفتاح الوقوع \`${UNTRANSLATED_KEY}\` قائم في اللغتين`,
+      typeof t.untranslated.ar === 'string' && t.untranslated.ar !== ''
+        && typeof t.untranslated.en === 'string' && t.untranslated.en !== '',
+      `ar=${JSON.stringify(t.untranslated.ar)} en=${JSON.stringify(t.untranslated.en)}`
+    );
+    /* والقيمة الإنجليزية **بلا محرف عربي**: هي بعينها الجملة التي تُعرض لقارئ
+     * إنجليزي حين لا رمز فرعي — فلو حملت عربية لعاد العطل من بابه الرابع. */
+    ok(
+      `[${short}] ونصّها الإنجليزي بلا محرف عربي`,
+      typeof t.untranslated.en === 'string' && !/[\u0600-\u06FF]/.test(t.untranslated.en),
+      `en=${JSON.stringify(t.untranslated.en)}`
     );
   }
 
@@ -766,6 +985,102 @@ function selfcheck() {
         EXIT.FAIL,
         res,
         ['✗ فشل حارس رموز الجسر', 'غير مُعلَنة', 'last.error']
+      );
+    }
+
+    /* ── طبقة الرموز الفرعية (`subcode` — ط-١٢ · البند ٤) ─────────────────────
+     * أربعة مُفسَدات تقابل الأربعة التي تحرسها الطبقة: ناقص · زائد · خريطة
+     * ناقصة · وحالة لا تستهلك الرمز. ولولاها لكان التوسيع **زينة**: يمرّ على
+     * الشجرة السليمة ولا يرى عطباً. */
+
+    /* Ⓘ مُفسَد (ي): مدخل `sub.engine_io` محذوف من جدول content.js والرمز ما زال
+       يُرجعه المُصنِّف ⇒ يسقط بالاتجاه الأول (الرست ⇐ الجدول). */
+    {
+      const dir = writeFixture(path.join(work, 'mutant-drop-sub'));
+      edit(dir, TABLE_RELS[0], "      'sub.engine_io': 'خطأ ملفات أثناء الفصل',\n", '');
+      const res = runChild(dir);
+      add(
+        'Ⓘ مُفسَد (ي): مدخل `sub.*` محذوف من الجدول ⇒ يسقط (رمز فرعي بلا مقابل)',
+        EXIT.FAIL,
+        res,
+        ['✗ فشل حارس رموز الجسر', 'ينقص الجدول', 'engine_io']
+      );
+    }
+
+    /* Ⓙ مُفسَد (ك): مدخل `sub.ghost_probe` زائد بلا رمز فرعي في الرست ⇒ يسقط
+       (مدخل ميت يوهم بتغطية غير قائمة). */
+    {
+      const dir = writeFixture(path.join(work, 'mutant-extra-sub'));
+      edit(dir, TABLE_RELS[0], "      'sub.engine_other': 'عطل محرّك غير مصنَّف',",
+        "      'sub.engine_other': 'عطل محرّك غير مصنَّف',\n      'sub.ghost_probe': 'مدخل بلا رمز',");
+      const res = runChild(dir);
+      add(
+        'Ⓙ مُفسَد (ك): مدخل `sub.*` زائد بلا رمز فرعي في الرست ⇒ يسقط',
+        EXIT.FAIL,
+        res,
+        ['✗ فشل حارس رموز الجسر', 'مدخل بلا رمز في الرست', 'ghost_probe']
+      );
+    }
+
+    /* Ⓚ مُفسَد (ل): رمز غاب من خريطة `SUB_TEXT` ⇒ يسقط مسمّياً الرمز. */
+    {
+      const dir = writeFixture(path.join(work, 'mutant-sub-map'));
+      edit(dir, TABLE_RELS[0], "    engine_io: () => t('sub.engine_io'),\n", '');
+      const res = runChild(dir);
+      add(
+        'Ⓚ مُفسَد (ل): رمز فرعي غائب من خريطة `SUB_TEXT` ⇒ يسقط مسمّياً',
+        EXIT.FAIL,
+        res,
+        ['✗ فشل حارس رموز الجسر', 'SUB_TEXT', 'engine_io']
+      );
+    }
+
+    /* Ⓛ مُفسَد (م): الحالة تعود إلى `{ e: raw }` فلا تستهلك الرمز الفرعي —
+       **وهو العطب الأصلي بعينه** (عربية داخل جملة إنجليزية). كل الفحوص الأخرى
+       تمرّ عليه: المدخلات قائمة والخريطة قائمة والحالات قائمة. */
+    {
+      const dir = writeFixture(path.join(work, 'mutant-sub-unused'));
+      edit(dir, TABLE_RELS[0],
+        "        const say = SUB_TEXT[String((err && err.subcode) || '')];\n        if (say) return say();\n",
+        '');
+      const res = runChild(dir);
+      add(
+        'Ⓛ مُفسَد (م): حالة `engine_error` لا تستهلك `subcode` (العطب الأصلي) ⇒ يسقط',
+        EXIT.FAIL,
+        res,
+        ['✗ فشل حارس رموز الجسر', 'تستهلك']
+      );
+    }
+
+    /* Ⓛ′ مُفسَد (م′): الخريطة موجودة والمفاتيح قائمة، لكن قيمةً صارت `t(subKey)`
+       **مفتاحاً محسوباً** — وهي الصيغة التي كُتبت أولاً وسقطت على §٢٦ وحارس
+       المفتاح الميت. فهذا مُفسَد دائم يمنع الرجوع إليها. */
+    {
+      const dir = writeFixture(path.join(work, 'mutant-sub-computed'));
+      edit(dir, TABLE_RELS[0],
+        "    engine_io: () => t('sub.engine_io'),",
+        "    engine_io: () => t('sub.' + 'engine_io'),");
+      const res = runChild(dir);
+      add(
+        'Ⓛ′ مُفسَد (م′): قيمة الخريطة بمفتاح محسوب ⇒ يسقط (مفتاح غير مستهلك + §٢٦)',
+        EXIT.FAIL,
+        res,
+        ['✗ فشل حارس رموز الجسر']
+      );
+    }
+
+    /* Ⓜ مُفسَد (ن): قيمة رمز فرعي في الرست مُبدَّلة بحرف ⇒ يسقط (الرست ⇄ الجدول
+       يُقاس **بالقيمة** لا بالاسم، وإلا مرّ تبديل قيمة صامتاً). */
+    {
+      const dir = writeFixture(path.join(work, 'mutant-sub-value'));
+      edit(dir, BRIDGE_REL, 'pub const SUB_ENGINE_IO: &str = "engine_io";',
+        'pub const SUB_ENGINE_IO: &str = "engine_io_probe";');
+      const res = runChild(dir);
+      add(
+        'Ⓜ مُفسَد (ن): قيمة رمز فرعي مُبدَّلة في الرست ⇒ يسقط (القياس بالقيمة)',
+        EXIT.FAIL,
+        res,
+        ['✗ فشل حارس رموز الجسر', 'engine_io_probe']
       );
     }
   } catch (e) {

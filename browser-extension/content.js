@@ -119,6 +119,28 @@
       'code.engine_error': 'فشل المحرّك: {e}',
       'code.unknown_message': 'رسالة غير معروفة بين الإضافة والتطبيق',
       'code.bad_input': 'طلب غير صالح',
+      // ── **الرموز الفرعية لعطل المحرّك** (`subcode` — ط-١٢ · البند ٤) ──────────
+      // **العطل المقيس**: `code.engine_error` وحده لا يقول **أيّ** عطل، فكان
+      // `{e}` يُملأ بـ`detail` الخام من المحرّك — وهو **عربي دائماً** (التطبيق
+      // يصوغه) ⇒ فالقارئ الإنجليزي يرى «Engine failed: أداة مفقودة: ffmpeg».
+      // والرموز التسعة مصدرها كتلة `SUB_ENGINE_*` في `src-tauri/src/bridge.rs`،
+      // وتُقابلها هنا **في مساحة أسماء ثانية** (`sub.*` لا `code.*`) لأن حارس
+      // `scripts/check-bridge-codes.cjs` يفرض تقابلاً **تامّاً** بين `code.*`
+      // والرموز المُصدَرة من الرست — وإدخال التسعة فيه كان سيُرخي ذلك الثابت أو
+      // يخالقه. ويحرس التقابلَ في `sub.*` الحارس نفسه، في الاتجاهين.
+      'sub.engine_cancelled': 'أُلغيت المعالجة من قبل المستخدم',
+      'sub.engine_model_missing': 'نموذج الفصل غير موجود في مجلد النماذج',
+      'sub.engine_tool_missing': 'أداة مطلوبة مفقودة (ffmpeg أو ffprobe أو yt-dlp)',
+      'sub.engine_busy': 'الملف قيد المعالجة في مهمّة أخرى',
+      'sub.engine_bad_input': 'مدخل غير صالح — الملف غير مقروء أو ليس ستيريو',
+      'sub.engine_io': 'خطأ ملفات أثناء الفصل',
+      'sub.engine_inference': 'فشل نداء الاستدلال (جلسة ONNX أو تشغيل النموذج)',
+      'sub.engine_slot_wait': 'لم تتيسّر فتحة الفصل (مهلة أو رفض تراكبي)',
+      'sub.engine_other': 'عطل محرّك غير مصنَّف',
+      // و**وقوعٌ بلا رمز فرعي معروف**: الرمز مجهول (تطبيق أحدث من الإضافة) أو
+      // غائب، والتفصيل عربي، والقارئ غير عربي ⇒ جملة إنجليزية، **والسبب لا
+      // يُفقد**: يُصدَر في سجلّ الصفحة وفي سجلّ التطبيق (انظر `errText`).
+      'err.engine_untranslated': 'فشل المحرّك — التفصيل في سجلّ التطبيق',
     },
     en: {
       'btn.proc.idle': 'Process this video',
@@ -169,6 +191,16 @@
       'code.engine_error': 'Engine failed: {e}',
       'code.unknown_message': 'Unknown message between the extension and the app',
       'code.bad_input': 'Invalid request',
+      'sub.engine_cancelled': 'Processing was cancelled by the user',
+      'sub.engine_model_missing': 'The separation model is missing from the models folder',
+      'sub.engine_tool_missing': 'A required tool is missing (ffmpeg, ffprobe or yt-dlp)',
+      'sub.engine_busy': 'The file is already being processed by another job',
+      'sub.engine_bad_input': 'Invalid input — the file is unreadable or not stereo',
+      'sub.engine_io': 'A file error occurred during separation',
+      'sub.engine_inference': 'The inference call failed (ONNX session or model run)',
+      'sub.engine_slot_wait': 'The separation slot never became available (timeout or overlap refused)',
+      'sub.engine_other': 'An unclassified engine fault',
+      'err.engine_untranslated': 'Engine failed — the app reported the reason in Arabic; the full text is in the app log and the page console',
     },
   };
 
@@ -219,6 +251,29 @@
   /** {pct} · {s} — استبدال موضعي لنصّ **من الجدول**، بلا تركيب نصّ جديد. */
   const fill = (s, vars) => s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
 
+  /** **الرموز الفرعية التسعة ⇒ نصّها.** جدول **ثابت** لا `'sub.' + subcode`
+   *  محسوباً، **وكل قيمة نداءٌ بمفتاح حرفيّ** (`() => t('sub.…')`) لا مفتاحاً
+   *  محسوباً: `t(subKey)` كان سيخالف §٢٦ (مفتاح محسوب يُخفي النصّ عن الحارس)
+   *  ويُسقط حارس «لا مفتاح بلا مستهلك» فيعدّ التسعة **ميتة** — وهو بعينه ما
+   *  يجعل المفتاح المحسوب عطباً لا اختصاراً. والرموز مصدرها كتلة `SUB_ENGINE_*`
+   *  في `src-tauri/src/bridge.rs`، ويحرس التقابلَ في الاتجاهين
+   *  `scripts/check-bridge-codes.cjs` (ناقص ⇒ سقوط · زائد ⇒ سقوط). */
+  const SUB_TEXT = {
+    engine_cancelled: () => t('sub.engine_cancelled'),
+    engine_model_missing: () => t('sub.engine_model_missing'),
+    engine_tool_missing: () => t('sub.engine_tool_missing'),
+    engine_busy: () => t('sub.engine_busy'),
+    engine_bad_input: () => t('sub.engine_bad_input'),
+    engine_io: () => t('sub.engine_io'),
+    engine_inference: () => t('sub.engine_inference'),
+    engine_slot_wait: () => t('sub.engine_slot_wait'),
+    engine_other: () => t('sub.engine_other'),
+  };
+  /** محارف عربية (النطاقان الأساسي والإضافي). يقيس **هل النصّ عربي** لا **هل
+   *  القارئ عربي**: الثاني يقرّره `RTL` من اللغة المُختارة، والأول يقرّر أيّ
+   *  جملة تُعرض حين لا رمز فرعي معروف. */
+  const ARABIC = /[\u0600-\u06FF\u0750-\u077F]/;
+
   /* نصّ خطأ التطبيق: **الترجمة برمزه المستقرّ** `code`، وإلا فالنصّ الخام كما هو.
    *
    * والعقد (م٦-ج): التطبيق يُصدر `{ ok:false, error:<نصّه كما هو>, code:<رمز> }`،
@@ -233,7 +288,18 @@
    *
    * والاتجاه **لا يُشتقّ من هذا النصّ** بل من `RTL` (اللغة المُختارة)، فالعربية
    * الخام في واجهة إنجليزية تبقى `ltr` — القاعدة المُعلَنة، لا استنتاج من المحتوى.
-   */
+   *
+   * ── وط-١٢/البند ٤: طبقة **`subcode`** فوق `code` ──────────────────────────
+   * **العطل المقيس**: `code.engine_error` وحده لا يقول **أيّ** عطل، فكان `{e}`
+   * يُملأ بـ`detail` الخام — وهو **عربي دائماً** لأن التطبيق يصوغه ⇒ «Engine
+   * failed: أداة مفقودة: ffmpeg» عربيةٌ داخل جملة إنجليزية. والرست يُصدر معه
+   * **`subcode`** من تسعة (`bridge.rs` — كتلة `SUB_ENGINE_*`) و`detail` صريحاً.
+   *   · `subcode` **معروف** ⇒ جملة مترجَمة بلغة القارئ (`sub.*`).
+   *   · `subcode` **غائب أو مجهول** (تطبيق أحدث من الإضافة) ⇒ `detail` الخام
+   *     حرفياً كما كان — **إلا** أن يكون عربياً وقارئُنا غير عربي: فحينها جملة
+   *     إنجليزية، **والسبب لا يُفقد** (يُصدَر في سجلّ الصفحة، وهو في سجلّ
+   *     التطبيق أصلاً). وهذا هو **الحدّ المعلَن**: لا ترجمة آليّة لنصّ حرّ، ولا
+   *     عربية على سطح إنجليزي، ولا سبب يُكتَم. */
   function errText(err, fallback) {
     const raw = String((err && (err.message || err.error)) || fallback || '');
     switch ((err && err.code) || '') {
@@ -241,7 +307,22 @@
       case 'cancelled_by_user': return t('code.cancelled_by_user');
       case 'download_cancelled': return t('code.download_cancelled');
       case 'internal_error': return t('code.internal_error');
-      case 'engine_error': return fill(t('code.engine_error'), { e: raw });
+      case 'engine_error': {
+        // ① **الرمز الفرعي أولاً**: جملة مترجَمة، والسبب يبقى في الحمولة
+        //    (`error` و`detail` كما يصوغهما الرست — لم يُمسّا).
+        const say = SUB_TEXT[String((err && err.subcode) || '')];
+        if (say) return say();
+        // ② بلا رمز فرعي معروف. والتفصيل يُقرأ بنفس ترتيب `raw` أعلاه
+        //    (`message` أولاً: `bridgeError` يبني `Error` فالنصّ في `message`).
+        const detail = String((err && (err.detail || err.message || err.error)) || fallback || '');
+        if (LANG !== 'ar' && ARABIC.test(detail)) {
+          try {
+            console.warn('[HaramLite] engine_error — raw detail kept:', detail);
+          } catch (_) { /* console مقيَّد في صفحة غريبة: لا يُسقط العرض */ }
+          return t('err.engine_untranslated');
+        }
+        return fill(t('code.engine_error'), { e: detail });
+      }
       case 'unknown_message': return t('code.unknown_message');
       case 'bad_input': return t('code.bad_input');
       default: return raw;
@@ -408,10 +489,18 @@
     return !!va && va === vb;
   }
 
-  /** خطأ الجسر: النصّ كما هو ومعَه رمزه المستقرّ `code` إن حمله الردّ. */
+  /** خطأ الجسر: النصّ كما هو ومعَه رمزه المستقرّ `code` إن حمله الردّ.
+   *
+   * **و`subcode`/`detail` يُحملان معه** (ط-١٢/البند ٤): كان هذا الموضع ينسخ
+   * `code` وحده، فتمرّ الطبقة الفرعية وتضيع عند **أول حدّ** — `errText` تقرأ
+   * `e.subcode` فلا تجده، فتعود إلى النصّ الخام العربي. فالعطل لم يكن في
+   * `errText` وحدها: **حاملُ الرمز كان يُسقطه**، وهذا ما كشفه القياس الحيّ
+   * (`check-extension-i18n-jsdom.cjs`) بعد أن مرّ كل فحص بنيوي. */
   function bridgeError(resp) {
     const e = new Error((resp && resp.error) || t('bridge.noResponse'));
     if (resp && typeof resp.code === 'string') e.code = resp.code;
+    if (resp && typeof resp.subcode === 'string') e.subcode = resp.subcode;
+    if (resp && typeof resp.detail === 'string') e.detail = resp.detail;
     return e;
   }
 
