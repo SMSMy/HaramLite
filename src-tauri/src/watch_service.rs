@@ -303,7 +303,6 @@ fn process_watched(
         opts.keep_inst,
         true,
         opts.cuda,
-        None,
         &|pct| {
             emit(
                 "watch-progress",

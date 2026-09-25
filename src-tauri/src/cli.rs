@@ -311,7 +311,6 @@ fn run_files(o: &CliOpts) -> i32 {
             o.keep_both || o.keep_inst_only,
             !o.keep_inst_only,
             o.cuda,
-            None,
             &|p| {
                 let pct = (p * 100.0) as u32;
                 if pct > last_pct.get() + 4 {

@@ -4,11 +4,13 @@
  * `autostart_asked`، ومؤقّت المزامنة، وcollectSettings() وpushSettings()
  * وseedSettings().
  * لا تغيير في أي مفتاح أو صيغة localStorage: 'hl.cuda'، 'hl.notify'،
- * 'hl.preview'، 'hl.preview_seconds'، 'hl.keep_inst'، 'hl.bridge'، 'hl.tg'،
+ * 'hl.keep_inst'، 'hl.bridge'، 'hl.tg'،
  * 'hl.tg_owner'، 'hl.tg_audio'، 'hl.tg_local'، 'hl.tg_api_id'، 'hl.watch'،
  * 'hl.watch_path'، 'hl.watch_mode'، 'hl.watch_max_mb'، 'hl.watch_rescan' —
  * ولا في مهلة pushSettings (300ms)، ولا في الأمرين (`get_settings`،
  * `set_settings`)، ولا في أسماء حقول RustSettings العشرين.
+ * (وكان في القائمة مفتاحا 'hl.preview' و'hl.preview_seconds' — سُحبا في جولة
+ * settings2 الرابعة مع حذف «المعاينة السريعة» من `Settings` في الرست ومن هنا.)
  * الوحيد المضاف: `export` ومُعيِّنات/مُوصِّلات صريحة لحالة كانت متغيّرات في
  * main.ts — لا منطق جديد ولا تغيير سلوك.
  */
@@ -95,8 +97,8 @@ export function collectSettings(): RustSettings {
     lang: currentLang(),
     cuda: localStorage.getItem('hl.cuda') === '1',
     notify: localStorage.getItem('hl.notify') === '1',
-    preview: localStorage.getItem('hl.preview') === '1',
-    preview_seconds: Number(localStorage.getItem('hl.preview_seconds')) || 15,
+    // (`preview` و`preview_seconds` حُذفا مع «المعاينة السريعة» — جولة settings2
+    // الرابعة: حُذف الحقلان من `Settings` في الرست أيضاً، فلا يُرسل ما لا يقبله.)
     keep_instrumental: localStorage.getItem('hl.keep_inst') === '1',
     bridge_enabled: localStorage.getItem('hl.bridge') === '1',
     // Sprint T1: Telegram bot (token + pairing live in Rust settings too).
@@ -154,7 +156,7 @@ export async function seedSettings(): Promise<void> {
     // 1.10: seed the autostart_asked mirror from backend truth (Rust-only field).
     if (typeof s.autostart_asked === 'boolean') autostartAsked = s.autostart_asked;
     const bools: [keyof RustSettings, string][] = [
-      ['cuda', 'hl.cuda'], ['notify', 'hl.notify'], ['preview', 'hl.preview'],
+      ['cuda', 'hl.cuda'], ['notify', 'hl.notify'],
       ['keep_instrumental', 'hl.keep_inst'], ['watch_enabled', 'hl.watch'],
       ['bridge_enabled', 'hl.bridge'],
       ['telegram_enabled', 'hl.tg'], ['telegram_audio_only', 'hl.tg_audio'],
@@ -181,7 +183,7 @@ export async function seedSettings(): Promise<void> {
       localStorage.setItem('hl.tg_group_mode', groupModeFrom(s.telegram_group_mode));
     }
     const nums: [keyof RustSettings, string][] = [
-      ['preview_seconds', 'hl.preview_seconds'], ['watch_max_size_mb', 'hl.watch_max_mb'],
+      ['watch_max_size_mb', 'hl.watch_max_mb'],
       ['watch_rescan_secs', 'hl.watch_rescan'],
       ['max_concurrent_jobs', 'hl.max_jobs'],
     ];

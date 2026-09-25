@@ -138,6 +138,75 @@ export const SETTINGS_GROUP_HEADING_KEYS: readonly string[] = Object.freeze([
  */
 
 /**
+ * **العقد: كل حقل في `Settings` (الرست) له سطح تحكّم في الواجهة.**
+ *
+ * **لماذا وُجد هذا الحارس**: كان في `Settings` حقلان (`preview` · `preview_seconds`)
+ * لواجهة «المعاينة السريعة» **لا وجود لها** — فكان تحرير `settings.json` يدوياً
+ * يُغيّر ما ينفّذه `pipeline.rs` (قصّ الصوت إلى N ثانية + وسم `_preview`) بلا أي
+ * سطح يضبطه المستخدم: **لغم لا ميزة**. وحُذف الحقلان ومستهلكوهما (جولة settings2
+ * الرابعة). وهذا الحارس يمنع تكرار الصنف: حقل جديد في الرست بلا سطح ⇒ **يسقط**.
+ *
+ * **وكيف يُقاس**: يُقرأ `pub <field>:` من `src-tauri/src/settings.rs` نصّاً، فيجب
+ * أن يكون كل حقل إمّا في `SETTINGS_FIELD_CONTROL` (ومعرّفه **موجود فعلاً** في
+ * `index.html`)، وإمّا في `SETTINGS_FIELDS_WITHOUT_CONTROL` **بسبب مكتوب**.
+ */
+export const SETTINGS_FIELD_CONTROL: Readonly<Record<string, string>> = Object.freeze({
+  // الشريط العلوي: اللغة (زرّ التبديل) وسجلّ الأحداث (زرّ الطيّ)
+  lang: 'lang-toggle',
+  log_open: 'log-toggle',
+  // الأداء والمعالجة
+  cuda: 'setting-cuda',
+  notify: 'setting-notify',
+  max_concurrent_jobs: 'max-jobs',
+  // الفصل والصيغة
+  keep_instrumental: 'keep-inst',
+  // المراقبة
+  watch_enabled: 'setting-watch',
+  watch_path: 'watch-path',
+  watch_mode: 'watch-mode',
+  watch_max_size_mb: 'watch-max-size',
+  watch_rescan_secs: 'watch-rescan',
+  // التكامل
+  bridge_enabled: 'setting-bridge',
+  // التحديث والصيانة
+  ytdlp_auto_update: 'setting-ytdlp-auto',
+  // تيليجرام (اللوحة المنبثقة يفتحها `#btn-telegram` من تبويبها)
+  telegram_enabled: 'setting-telegram',
+  telegram_token: 'tg-token',
+  telegram_user_id: 'tg-owner',
+  telegram_audio_only: 'tg-audio-only',
+  telegram_api_id: 'tg-api-id',
+  telegram_api_hash: 'tg-api-hash',
+  telegram_local_url: 'tg-local-url',
+  telegram_group_mode: 'tg-group-mode',
+  telegram_bot_identity: 'tg-bot-identity',
+});
+
+/**
+ * حقول `Settings` **بلا سطح** — ولكلٍّ سبب مكتوب. وهي **ليست** إذناً عامّاً:
+ * أي حقل جديد لا يجد مدخلاً هنا ⇒ يسقط الحارس. ومقصورة على حالتين:
+ */
+export const SETTINGS_FIELDS_WITHOUT_CONTROL: readonly { field: string; why: string }[] =
+  Object.freeze([
+    {
+      field: 'autostart_asked',
+      why:
+        'ليست تفضيلاً بل **حالة داخلية مرّة واحدة**: يكتبها التطبيق نفسه ' +
+        '(`askAutostartOnce` في integration.ts:820) كي لا يُسأل المستخدم عن التشغيل ' +
+        'مع النظام مرتين. ولا معنى لسطح يضبطها.',
+    },
+    {
+      field: 'watch_out_kind',
+      why:
+        'عطب قائم **مُعلَن** (اكتُشف بهذا الحارس، ولم يُصلَح ولم يُخفَ): يقرأه ' +
+        '`watch_service.rs:468,519` ليقرّر نوع إخراج ملفّ المراقبة، ولا سطح له، ' +
+        'و`settings.ts:133` يرسل القيمة `auto` **ثابتة** في كل دفع ⇒ فتحرير ' +
+        'settings.json لا يدوم (الدفعة التالية تُعيدها). فهو إعداد بلا سطح ' +
+        '**وبلا أثر دائم** — مرشّح للحذف أو لسطح حقيقي، والقرار للمالك.',
+    },
+  ]);
+
+/**
  * معرّفات **خارج** الشاشة عن قصد — ولكلٍّ سببه. والحارس يشترط:
  *   • ألّا يكون أيٌّ منها داخل `<main>` (وهي مخفيّة في وضع الإعدادات)،
  *   • وألّا يتقاطع مع `SETTINGS_TAB_MAP` (فلا عنصر يفلت من التصنيف بصمت).

@@ -355,20 +355,13 @@ fn ext_lower(path: &Path) -> String {
 
 /// Always produce the clean 44.1 kHz stereo WAV the separation engine
 /// consumes, whatever mess came in (drops fake/cover video streams).
-/// (Exercised by tests; the pipeline uses [`normalize_for_engine_limited`].)
-#[cfg(test)]
+///
+/// **وحُذف منه `max_seconds`** (جولة settings2 الرابعة): كان يقصّ الصوت إلى أوّل
+/// N ثانية لأجل «المعاينة السريعة» عبر `ffmpeg -t`. وبعد حذف الميزة صار **كل**
+/// مستدعٍ يمرّر `None` (‏`pipeline.rs` و`lib.rs:690`) ⇒ معاملٌ لا يضبطه أحد =
+/// مسار ميت، فحُذف ووُحِّدت الدالتان في واحدة (كانت `normalize_for_engine`
+/// غلافاً لـ`_limited` بالمعامل `None`، وهي مقيدة بـ`cfg(test)`).
 pub fn normalize_for_engine(input: &Path, work_dir: &Path) -> Result<PathBuf, MediaError> {
-    normalize_for_engine_limited(input, work_dir, None)
-}
-
-/// Same as [`normalize_for_engine`] but optionally truncated to the first
-/// `max_seconds` of audio (Sprint B1 — quick preview). The ffmpeg `-t`
-/// limit sits before the output argument so only the head is decoded.
-pub fn normalize_for_engine_limited(
-    input: &Path,
-    work_dir: &Path,
-    max_seconds: Option<f32>,
-) -> Result<PathBuf, MediaError> {
     let ffmpeg = resolve_tool("ffmpeg")?;
     std::fs::create_dir_all(work_dir).map_err(|e| MediaError::SpawnFailed(e.to_string()))?;
     let stem = input
@@ -382,14 +375,10 @@ pub fn normalize_for_engine_limited(
     let input_str = input.to_string_lossy().into_owned();
     let out_str = out.to_string_lossy().into_owned();
 
-    let t_arg = max_seconds.map(|s| format!("{s:.3}"));
-    let mut args: Vec<&str> = vec!["-y", "-v", "error", "-i", &input_str];
-    if let Some(t) = &t_arg {
-        args.push("-t");
-        args.push(t.as_str());
-    }
-    args.extend_from_slice(&["-vn", "-ac", "2", "-ar", "44100", "-c:a", "pcm_s16le"]);
-    args.push(&out_str);
+    let args: Vec<&str> = vec![
+        "-y", "-v", "error", "-i", &input_str, "-vn", "-ac", "2", "-ar", "44100", "-c:a",
+        "pcm_s16le", &out_str,
+    ];
 
     run_ffmpeg(&ffmpeg, &args)?;
     if !out.is_file() {

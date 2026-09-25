@@ -27,7 +27,11 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import indexHtml from '../../index.html?raw';
+import settingsRs from '../../src-tauri/src/settings.rs?raw';
+import { i18n } from '../i18n';
 import {
+  SETTINGS_FIELD_CONTROL,
+  SETTINGS_FIELDS_WITHOUT_CONTROL,
   SETTINGS_GROUP_HEADING_KEYS,
   SETTINGS_MENU_CHROME,
   SETTINGS_OUTSIDE_TABS,
@@ -45,6 +49,63 @@ const SRC_MODULES = import.meta.glob('../*.ts', {
   import: 'default',
   eager: true,
 }) as Record<string, string>;
+
+/** كل وحدات `src/**` (ومعها الاختبارات) — لمستهلكي مفاتيح الترجمة. */
+const ALL_SRC_MODULES = import.meta.glob('../**/*.ts', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+}) as Record<string, string>;
+
+/**
+ * يُزيل التعليقات كي لا يُحسَب **ذكر** المفتاح في نصّ شرحٍ مستهلكاً له.
+ *
+ * **ويتوقّف عن الإزالة داخل نصوص المحارف**: نسخة أولى كانت تُزيل من `//` إلى
+ * آخر السطر **دون نظرٍ إلى السياق**، فقصّت `https://github.com/…` داخل قالب
+ * نصّي في `aboutUpdate.ts` ومحَت معها `${t('about_dev_rest')}` ⇒ أعلنت مفتاحاً
+ * **مستعمَلاً** يتيماً. ولم يكشفه إلا `tsc` (‏`t()` مقيَّدة بمجموعة المفاتيح).
+ * فالقاعدة هنا: داخل `'`/`"`/`` ` `` لا تعليقات.
+ */
+function stripComments(text: string, isHtml: boolean): string {
+  let out = '';
+  let quote: string | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    const d = text[i + 1];
+    if (quote) {
+      out += c;
+      if (c === '\\') {
+        out += d ?? '';
+        i += 1;
+        continue;
+      }
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') {
+      quote = c;
+      out += c;
+      continue;
+    }
+    if (isHtml && c === '<' && d === '!') {
+      const e = text.indexOf('-->', i);
+      i = e < 0 ? text.length : e + 2;
+      continue;
+    }
+    if (c === '/' && d === '/') {
+      const e = text.indexOf('\n', i);
+      i = e < 0 ? text.length : e;
+      continue;
+    }
+    if (c === '/' && d === '*') {
+      const e = text.indexOf('*/', i);
+      i = e < 0 ? text.length : e + 1;
+      continue;
+    }
+    out += c;
+  }
+  return out;
+}
 
 /** DOM التطبيق المشحون (بلا تنفيذ سكربتات: `innerHTML` لا يُنفّذ `script`). */
 function mountApp(): void {
@@ -385,5 +446,91 @@ describe('لا مسار ميت · لا لوحة إعدادات بلا عنصر،
     expect(document.getElementById('q-wrap'), 'بعد النداء').toBeNull();
     expect(document.getElementById('quality-select'), 'بعد النداء').toBeNull();
     expect(document.querySelectorAll('#kind-video option').length, 'لا خيارات داخل بطاقة النوع').toBe(0);
+  });
+});
+
+/* ── ٤) لا إعداد بلا سطح، ولا مفتاح ترجمة بلا مستهلك ────────────────────────
+ *
+ * **الأول** يمنع الصنف الذي جاءت منه هذه الجولة كلها: كان في `Settings` حقلان
+ * (`preview` · `preview_seconds`) بلا أي سطح في الواجهة، فكان تحرير
+ * `settings.json` يُغيّر ما ينفّذه `pipeline.rs` — **لغم لا ميزة**. ويُقاس بقراءة
+ * `pub <field>:` من `src-tauri/src/settings.rs` نصّاً (نفس نمط قراءة `lib.rs`
+ * في `settingsScreen.test.ts`).
+ *
+ * **والثاني** يمنع تراكم نصوص ترجمة لا يعرضها أحد: قياس الجولة الرابعة وجد
+ * **٢٧** مفتاحاً بلا مستهلك (٥ منها من جولاتنا، و٢٢ من عهود سابقة) — وحُذفت
+ * كلها، وهذا الحارس يمنع عودتها. و«مستهلك» = `data-i18n*` في `index.html` أو
+ * ذكر المفتاح في أي وحدة `src/**` **بعد إزالة التعليقات** (وإلا لكفى شرحٌ يذكره
+ * ليُبقيه حيّاً)، و`src/i18n.ts` نفسه ليس مستهلكاً لمفاتيحه.
+ */
+describe('لا إعداد بلا سطح · ولا مفتاح ترجمة بلا مستهلك', () => {
+  it('كل حقل في Settings له سطح تحكّم موجود في index.html', async () => {
+    await mountInSettingsMode();
+    // `pub <field>:` في جسم `struct Settings` وحده.
+    const body = settingsRs.slice(
+      settingsRs.indexOf('pub struct Settings'),
+      settingsRs.indexOf('impl Default for Settings'),
+    );
+    const fields = [...new Set([...body.matchAll(/^\s*pub\s+([a-z0-9_]+)\s*:/gm)].map((m) => m[1]))];
+    expect(fields.length, 'حقول Settings المقروءة من settings.rs').toBeGreaterThanOrEqual(24);
+
+    const declaredNoControl = SETTINGS_FIELDS_WITHOUT_CONTROL.map((x) => x.field);
+    const unmapped: string[] = [];
+    const missingControl: string[] = [];
+    let withControl = 0;
+    for (const f of fields) {
+      const id = SETTINGS_FIELD_CONTROL[f];
+      if (!id) {
+        if (!declaredNoControl.includes(f)) unmapped.push(f);
+        continue;
+      }
+      withControl += 1;
+      if (document.getElementById(id) === null) missingControl.push(`${f} -> #${id} غير موجود`);
+    }
+    // eslint-disable-next-line no-console
+    console.log(
+      `  حقول Settings: ${fields.length} · لها سطح: ${withControl} · بلا سطح مُعلَنة: ${declaredNoControl.length}`,
+    );
+    expect(
+      unmapped,
+      `حقول Settings بلا سطح تحكّم وبلا سبب معلَن (أضِفها إلى SETTINGS_FIELD_CONTROL أو SETTINGS_FIELDS_WITHOUT_CONTROL): ${unmapped.join(' · ')}`,
+    ).toEqual([]);
+    expect(missingControl, `سطح معلَن وغير موجود في index.html: ${missingControl.join(' · ')}`).toEqual([]);
+    // وعدم البطلان: الأغلبية لها سطح فعلاً، فلا يمرّ الحارس بقائمة «بلا سطح» ضخمة.
+    expect(withControl, 'حقول لها سطح').toBeGreaterThanOrEqual(20);
+
+    // والأسباب مكتوبة فعلاً (لا سطر فارغ يُسكِت الحارس).
+    const thin = SETTINGS_FIELDS_WITHOUT_CONTROL.filter((x) => x.why.trim().length < 40);
+    expect(thin.map((x) => x.field), 'حقول بلا سطح بسبب غير مقنع').toEqual([]);
+
+    // والاستثناءان مُستعملان: لو حُذف الحقل من الرست صار السبب قديماً ⇒ يُضاف.
+    const stale = declaredNoControl.filter((f) => !fields.includes(f));
+    expect(stale, `حقول في SETTINGS_FIELDS_WITHOUT_CONTROL لم تبقَ في Settings — أزلها: ${stale.join(' · ')}`).toEqual([]);
+  });
+
+  it('كل مفتاح ترجمة له مستهلك واحد على الأقل', async () => {
+    await mountInSettingsMode();
+    const keys = Object.keys(i18n.ar);
+    expect(keys.length, 'مفاتيح جدول ar').toBeGreaterThanOrEqual(200);
+    expect(Object.keys(i18n.en).length, 'تساوي en').toBe(keys.length);
+
+    // المستهلكون: index.html (بلا تعليقاته) + كل وحدات src/** عدا جدول الترجمة.
+    const sources: { f: string; t: string }[] = [
+      { f: 'index.html', t: stripComments(indexHtml, true) },
+      ...Object.entries(ALL_SRC_MODULES)
+        .filter(([f]) => !f.endsWith('/i18n.ts'))
+        .map(([f, t]) => ({ f, t: stripComments(t, false) })),
+    ];
+    expect(sources.length, 'ملفات المستهلكين المقروءة').toBeGreaterThanOrEqual(15);
+
+    const orphans: string[] = [];
+    for (const k of keys) {
+      const re = new RegExp(`(^|[^A-Za-z0-9_])${k}([^A-Za-z0-9_]|$)`);
+      if (!sources.some((s) => re.test(s.t))) orphans.push(k);
+    }
+    expect(
+      orphans,
+      `مفاتيح ترجمة بلا مستهلك (لا data-i18n في index.html ولا ذكر في src/** بعد إزالة التعليقات): ${orphans.join(' · ')}`,
+    ).toEqual([]);
   });
 });

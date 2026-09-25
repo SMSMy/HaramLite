@@ -467,7 +467,11 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run' | 'cancelled'
       item.querySelector('.batch-pct')?.classList.add('hidden');
       item.querySelector('.batch-prog-wrap')?.classList.add('hidden');
       if (statusSpan) {
-          statusSpan.textContent = session.getPreviewEnabled() ? t('sep_done_preview') : t('sep_done_short');
+          // (كان: `session.getPreviewEnabled() ? t('sep_done_preview') : t('sep_done_short')`
+          // — وحُذف الفرع الأول مع «المعاينة السريعة» في جولة settings2 الرابعة:
+          // `getPreviewEnabled()` كانت `false` دائماً، فالمعروض ما كان إلا
+          // `sep_done_short` أصلاً.)
+          statusSpan.textContent = t('sep_done_short');
           statusSpan.className = 'status-text font-label-sm text-label-sm text-tertiary relative z-10 flex-1';
       }
       if (actionsDiv && resultPath) {
@@ -840,7 +844,8 @@ async function runSeparationFor(path: string, keepInst: boolean, o: SepOpts): Pr
     format: o.advFmt ?? null,
     keepInstrumental: keepInst,
     useCuda: useCuda,
-    previewSeconds: session.getPreviewEnabled() ? session.getPreviewSeconds() : null,
+    // (كان هنا `previewSeconds: …` — وحُذف مع «المعاينة السريعة»: كان `null`
+    // دائماً، والرست لم يعد يقبل الحقل أصلاً.)
   });
   return res;
 }

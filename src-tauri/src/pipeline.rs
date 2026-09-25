@@ -812,7 +812,6 @@ pub fn process_file(
     keep_instrumental: bool,
     keep_vocals: bool,
     use_cuda: bool,
-    preview_seconds: Option<f32>,
     cancel: &CancelToken,
     progress: &dyn Fn(f32) -> bool,
     stage: &dyn Fn(&str, f32),
@@ -852,21 +851,18 @@ pub fn process_file(
         stage(name, p);
     };
     let work_dir = out_dir.join("_haramlite_work");
-    // Sprint B1: preview = quality sample of the first N seconds; every
-    // output file carries the `_preview` tag so it can never be mistaken
-    // for the final artifact.
-    let name_tag = if preview_seconds.is_some() {
-        "_preview"
-    } else {
-        ""
-    };
+    // (كان هنا `name_tag = if preview_seconds.is_some() { "_preview" } else { "" }`
+    // لأجل «المعاينة السريعة» — حُذف مع الميزة في جولة settings2 الرابعة: لم يكن
+    // يتحقّق قطّ (`None` في كل المسارات)، فوسم `_preview` لم يظهر في اسم ملف.
+    // ومرشّح مجلد المراقبة `watch_service.rs:130` يُبقي فرعه `_preview` **لأنه
+    // يمنع إعادة التقاط ملفٍ **للمستخدم** اسمه يحمل `_preview`، لا لأجلنا.)
 
     // Stage 1 — repair & normalize whatever came in (Sprint C2: visible stages)
     stage("normalize", 0.0);
     checkpoint(0.02)?;
     // Audit 2026-09-03: scratch must not outlive a failed run (tens of MB
     // per failure used to accumulate in the user's output folder).
-    let normalized = media::normalize_for_engine_limited(input, &work_dir, preview_seconds)
+    let normalized = media::normalize_for_engine(input, &work_dir)
         .map_err(|e| {
             let _ = std::fs::remove_dir_all(&work_dir);
             media_err(e)
@@ -1047,14 +1043,14 @@ pub fn process_file(
         .unwrap_or_else(|| "audio".into());
     {
         let new_vocals =
-            vocals_path.with_file_name(format!("{orig_stem}_(Vocals)_haramlite{name_tag}.wav"));
+            vocals_path.with_file_name(format!("{orig_stem}_(Vocals)_haramlite.wav"));
         if new_vocals != vocals_path {
             std::fs::rename(&vocals_path, &new_vocals).map_err(err)?;
             vocals_path = new_vocals;
         }
         if let Some(ip) = &mut instrumental_path {
             let new_i = ip.with_file_name(format!(
-                "{orig_stem}_(Instrumental)_haramlite{name_tag}.wav"
+                "{orig_stem}_(Instrumental)_haramlite.wav"
             ));
             if new_i != *ip {
                 std::fs::rename(&*ip, &new_i).map_err(err)?;
@@ -1084,7 +1080,7 @@ pub fn process_file(
         OutKind::Video { max_height } => {
             checkpoint(0.97)?;
             stage("encode", 0.0);
-            let vid_target = out_dir.join(format!("{orig_stem}_(Clean)_haramlite{name_tag}.mp4"));
+            let vid_target = out_dir.join(format!("{orig_stem}_(Clean)_haramlite.mp4"));
             let ranges_for_video: &[(f64, f64)] = if matches!(mode, Mode::Song) {
                 &kept_ranges
             } else {
@@ -1770,7 +1766,6 @@ mod tests {
             false,
             true,
             false,
-            None,
             &CancelToken::new(),
             &|_| true,
             &|_, _| {},
@@ -2000,7 +1995,6 @@ mod tests {
                 false,
                 true,
                 false,
-                None,
                 cancel,
                 &|_| true,
                 &|_, _| {},
