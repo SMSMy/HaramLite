@@ -15,7 +15,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { t } from './i18n';
+import { errText, t } from './i18n';
 import { openSettingsScreen } from './settingsScreen';
 import { groupModeFrom, notifyWatchUiChanged, pushSettings, type RustSettings } from './settings';
 import { showCudaHint, updateCudaBanner, refreshProviderLine, type CudaStatus } from './cuda';
@@ -44,7 +44,7 @@ export function wireSettings(): void {
       // Show the backend's own explanation (e.g. "not published yet").
       localStorage.setItem('hl.cuda', '0');
       if (cb) cb.checked = false;
-      showCudaHint(ev.payload.error || t('cuda_download_failed'));
+      showCudaHint(errText(ev.payload) || t('cuda_download_failed'));
       invoke('push_log', { level: 'error', message: `فشل تنزيل CUDA: ${ev.payload.error}` });
     }
     if (cb) cb.disabled = false;

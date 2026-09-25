@@ -11,7 +11,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { t } from './i18n';
+import { errText, t } from './i18n';
 import { notify, showToast, trapFocus } from './util';
 
 /* ── repair wizard (Sprint C1) ──────────────────────────────────────── */
@@ -65,7 +65,7 @@ export async function repairOne(key: string): Promise<void> {
     await renderRepairList();
   } catch (e) {
     if (res) {
-      res.textContent = `✗ ${String(e).slice(0, 200)}`;
+      res.textContent = `✗ ${errText(e).slice(0, 200)}`;
       res.className = 'font-body-sm text-sm text-error';
       res.classList.remove('hidden');
     }

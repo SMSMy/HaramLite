@@ -348,6 +348,25 @@ const i18n = {
     autostart_failed: 'تعذر تغيير التشغيل مع النظام:',
     toggle_pause: '⏸ إيقاف',
     toggle_cancel: '⏹ إلغاء',
+    // ── رموز خطأ الخلفية (ط-٤) ────────────────────────────────────────────
+    // **العطل**: التطبيق يصوغ أخطاءه بالعربية، فكان نصّ الخطأ يصل قارئ الواجهة
+    // الإنجليزية **عربياً خاماً** (‏`src/integration.ts` يعرض `payload.error`
+    // كما هو). وهذا **نفس صنف م٦-ج** في الإضافة، وعلاجه نفسه: **رمز مستقرّ
+    // `code`** يُصدره الرست مع كل حمولة خطأ (`src-tauri/src/bridge.rs`:
+    // `err_last` و`reply_err`)، وجدولُ ترجمته هنا — **لا جدول ثانٍ متوازٍ**:
+    // `errText` (أسفل هذا الملف) تقرأ هذا الجدول وحده.
+    // والمفاتيح هي **حرفياً** قيم ثوابت `pub const E_*` في `bridge.rs`، ويحرس
+    // التقابلَ في الاتجاهين اختبارُ `src/__tests__/errorTextSurface.test.ts`
+    // (رمز في الرست بلا مدخل = نصّ عربي يعود صامتاً؛ ومدخل بلا رمز = تغطية
+    // وهمية). و`{e}` هو **التفصيل الخام** كما يصوغه المحرّك: يبقى بلغته بعد
+    // الجملة المترجَمة — وهو **حدّ معلَن** (بند ط-١٢ في `BACKLOG-0.3.md`).
+    'code.duplicate_link': 'هذا الرابط طُلب من قبل في هذه الجلسة — تخطي المكرر',
+    'code.cancelled_by_user': 'أُلغيت المعالجة من قبل المستخدم',
+    'code.download_cancelled': 'أُلغي التنزيل من قبل المستخدم',
+    'code.internal_error': 'عطل داخلي — أعد المحاولة',
+    'code.engine_error': 'فشل المحرّك: {e}',
+    'code.unknown_message': 'رسالة غير معروفة بين الإضافة والتطبيق',
+    'code.bad_input': 'طلب غير صالح',
   },
   en: {
     actions_title: 'Diagnostics',
@@ -634,6 +653,16 @@ const i18n = {
     autostart_failed: 'Could not change startup:',
     toggle_pause: '⏸ Stop',
     toggle_cancel: '⏹ Cancel',
+    // Backend error codes (ط-٤) — same seven entries and the same wording as the
+    // Arabic block above, so one `code` reads identically in both surfaces
+    // (the extension carries the same `code.*` contract since م٦-ج).
+    'code.duplicate_link': 'This link was already requested in this session — skipping the duplicate',
+    'code.cancelled_by_user': 'Processing was cancelled by the user',
+    'code.download_cancelled': 'The download was cancelled by the user',
+    'code.internal_error': 'Internal error — try again',
+    'code.engine_error': 'Engine failed: {e}',
+    'code.unknown_message': 'Unknown message between the extension and the app',
+    'code.bad_input': 'Invalid request',
   },
 } as const;
 
@@ -644,6 +673,63 @@ export function t(key: keyof (typeof i18n)['ar'], vars?: Record<string, string |
   if (!vars) return s;
   return s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 }
+
+/** **النصّ المعروض لخطأ آتٍ من الخلفية — الموضع الوحيد الذي يقرأ الخطأ الخام.**
+ *
+ * **العطل الذي وُلدت لأجله** (بند ط-٤ في `docs/BACKLOG-0.3.md`): التطبيق يصوغ
+ * أخطاءه بالعربية، وكانت `src/integration.ts:695,704` تعرض `payload.error`
+ * **خاماً** ⇒ قارئ الواجهة الإنجليزية يرى **نصّاً عربياً** بلا ترجمة. وهذا نفس
+ * صنف عطل م٦-ج الذي أُغلق في الإضافة (رمز مستقرّ `code` + جدول ترجمة) وبقي في
+ * واجهة التطبيق.
+ *
+ * **الترتيب مقصود — والرمز أولاً**:
+ *   ① `code` معلوم في جدول `i18n` ⇒ **النصّ المترجَم بلغة القارئ**، و`{e}`
+ *      يُستبدل بالتفصيل الخام (فلا يُفقد سبب العطل).
+ *   ② رمز **مجهول** أو **غائب** (تطبيق أقدم لا يُصدر `code`، أو خطأ ليس من
+ *      حمولات الجسر: `String(e)` من أمرٍ رجع نصّاً) ⇒ **النصّ الخام كما هو
+ *      حرفياً** — توافق خلفي: الإصلاح لا يُخفي رسالة لا يعرف ترجمتها.
+ *
+ * **ولماذا هنا لا في جدول ثانٍ**: `i18n` هو جدول الترجمة الوحيد في الواجهة،
+ * فمدخلات `code.*` أعلاه تسكنه وحدها. ولا `switch` على الرموز: المدخل في
+ * الجدول هو المصدر، فرمزٌ جديد يُترجَم بمدخل واحد ولا يفترق مدخلٌ عن حالة.
+ *
+ * **وحدّها المعلَن**: هي **الموضع الوحيد** الذي يقرأ `.error` — وحراستها بنيوية
+ * في `src/__tests__/errorTextSurface.test.ts`: **لا قراءة `.error`/`.message`
+ * خارجها** في `src/**` إلا بما هو مُعلَن بالاسم والعدد والتعليل (قراءات
+ * التشخيص والسجلّ). ولذلك النصّ الخام يُقرأ **داخلها** لا في دالّة مساعدة:
+ * دالّةٌ ثانية تقرأ `.error` تعني سطحاً ثانياً بلا إعلان. */
+export function errText(err: unknown): string {
+  // ① النصّ الخام أولاً — الفرعان أدناه يعيدان ما كان الكود القديم يعرضه
+  //    **بالحرف**، فهو موضع التوافق الخلفي:
+  //      • كائن يحمل الحقل `error` (حمولات `bridge-done` · `check_update` ·
+  //        `cuda-install-done`) ⇒ قيمته، و`null`/`undefined` تعطي `''` — وهي
+  //        بعينها دلالة `String(p.error ?? '')` في `integration.ts:695,704`.
+  //      • غيره (نصّ مُرمى · `Error` · أي شيء آخر) ⇒ `String(err)` كما كان.
+  //    وفحص وجود الحقل (`'error' in err`) ليس تفصيلاً: قراءة `.error` بلا فحص
+  //    على `Error` تعطي `undefined` فيُكتب `"undefined"` مكان الرسالة.
+  let raw: string;
+  if (err !== null && typeof err === 'object' && 'error' in err) {
+    const value: unknown = (err as { error?: unknown }).error;
+    raw = value === null || value === undefined ? '' : String(value);
+  } else {
+    raw = String(err);
+  }
+
+  // ② والرمز المعلوم يسبقه: نصٌّ مترجَم بلغة القارئ، و`{e}` = التفصيل الخام.
+  const code = (err as { code?: unknown } | null | undefined)?.code;
+  if (typeof code === 'string' && code !== '') {
+    const row = i18n[lang] as unknown as Record<string, string>;
+    const key = `code.${code}`;
+    // `hasOwnProperty` لا `in`: جدول `as const` كائنٌ عادي، و`in` يرى
+    // `toString` ونحوها من `Object.prototype` فيُترجم رمزاً اسمه `constructor`.
+    if (Object.prototype.hasOwnProperty.call(row, key)) {
+      return row[key].replace(/\{e\}/g, raw);
+    }
+  }
+  // ③ رمز مجهول أو غائب ⇒ النصّ الخام حرفياً (توافق خلفي).
+  return raw;
+}
+
 export function applyLang(): void {
   document.documentElement.lang = lang;
   document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';

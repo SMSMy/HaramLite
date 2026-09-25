@@ -37,7 +37,7 @@
 
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import { currentLang, t } from './i18n';
+import { currentLang, errText, t } from './i18n';
 import { STAGE_NAMES, hideStageLine } from './cuda';
 import { fileBaseName, notify, showToast } from './util';
 import type { SepResult } from './types';
@@ -775,7 +775,7 @@ async function stopAllJobs(): Promise<void> {
     write(n ? t('stop_all_result', { n }) : t('stop_all_none'), n ? 'ok' : 'warn');
     invoke('push_log', { level: n ? 'warn' : 'info', message: `cancel_all_jobs → ${n}` });
   } catch (e) {
-    write(t('stop_all_failed', { error: String(e) }), 'error');
+    write(t('stop_all_failed', { error: errText(e) }), 'error');
     invoke('push_log', { level: 'error', message: `cancel_all_jobs failed: ${e}` });
   }
 }
@@ -978,7 +978,7 @@ export function wireSeparate(): void {
           invoke('push_log', { level: 'info', message: `batch item cancelled by user: ${f}` });
         } else {
           markBatchItem(f, 'fail');
-          failures.push(`${f} — ${e}`);
+          failures.push(`${f} — ${errText(e)}`);
           invoke('push_log', { level: 'error', message: `batch item failed: ${f}: ${e}` });
           void notify(t('notify_fail'), fileBaseName(f));
         }
@@ -1064,7 +1064,7 @@ async function runOne(
     // الإلغاء ليس فشلاً: النصّ موجود أصلاً في هذا المسار (`sep_cancelled`)،
     // والناقص كان **الحالة والسجلّ** — كان يُوسم `fail` ويُسجَّل ERROR.
     const cancelled = isCancellation(e);
-    result.textContent = cancelled ? t('sep_cancelled') : `${t('sep_failed')} ${e}`;
+    result.textContent = cancelled ? t('sep_cancelled') : `${t('sep_failed')} ${errText(e)}`;
     result.classList.remove('hidden');
     markBatchItem(path, cancelled ? 'cancelled' : 'fail');
     invoke('push_log', {
@@ -1113,7 +1113,7 @@ export function wireUrlDownload(): void {
       res.classList.remove('hidden');
       await ingestFiles([file]); // auto-fill + probe the downloaded file
     } catch (e) {
-      res.textContent = `${t('dl_failed')} ${e}`;
+      res.textContent = `${t('dl_failed')} ${errText(e)}`;
       res.classList.remove('hidden');
     } finally {
       bar.style.inlineSize = '100%';
