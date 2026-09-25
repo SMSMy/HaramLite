@@ -46,31 +46,28 @@ function wireContextMenu(): void {
 
 /* ── wiring ─────────────────────────────────────────────────────────── */
 
-function wireSecretSettings(): void {
-  const badge = document.getElementById('version-badge');
-  if (!badge) return;
-  let taps = 0;
-  let firstTapAt = 0;
-
-  badge.addEventListener('click', () => {
-    const now = Date.now();
-    if (now - firstTapAt > 4000) {
-      taps = 0;
-      firstTapAt = now;
-    }
-    taps += 1;
-    if (taps === 3 && badge) {
-      badge.style.opacity = '0.55';
-      setTimeout(() => (badge.style.opacity = ''), 250);
-    }
-    if (taps >= 6) {
-      taps = 0;
-      const advContainer = document.getElementById('advanced-panel-container');
-      advContainer?.classList.toggle('open');
-      invoke('push_log', { level: 'warn', message: 'DEV PANEL toggled (hidden settings)' });
-    }
-  });
-
+/* ربط «الاحتفاظ بالموسيقى» (`#keep-inst`) — وهو اليوم كل ما في هذه الدالة.
+ *
+ * **وكان معه مسار ثانٍ** (واسم الدالة `wireSecretSettings`): عدّاد ستّ نقرات على
+ * `#version-badge` يفتح لوحة «الإعدادات المتقدمة» (`#advanced-panel-container`
+ * بـ`.spring-panel`) وفيها `#keep-inst` · `#fmt-select` · `#watch-max-size` ·
+ * `#watch-rescan`. وعناصرها الأربعة انتقلت إلى تبويبي «الفصل والصيغة» و«المراقبة»
+ * في شاشة الإعدادات، فبقي الصندوق بعنوانه بلا عنصر.
+ * **فحُذف المسار كاملاً** (قرار المالك، جولة settings2): الترميز في `index.html`،
+ * والعدّاد هنا، وقواعد `.spring-panel` في `src/styles.css` ⇒ **لا مسار يفتح لوحة
+ * غير موجودة، ولا عدّاد نقرات على الشارة**. والشارة نفسها باقية: `init()` يعرض
+ * عليها الإصدار من `ping` (`#version-badge`).
+ * **وحرّاسه** في `src/__tests__/settingsTabs.test.ts` ⇒ «لا مسار ميت»: (١) كل
+ * `getElementById` في هذا الملف يشير إلى معرّف موجود في `index.html` — وهو الحارس
+ * الذي يمنع عودة عدّادٍ يفتح لوحة غير موجودة؛ (٢) لا عنصر للوحة في DOM.
+ *
+ * **وحدّ مُعلَن**: ثلاث دقائق **قائمة قبلي** في هذا الملف تشير إلى معرّفات غير
+ * موجودة (`preview-toggle` · `preview-duration` · `preview-hint` — `refreshPreviewHint`
+ * و`wirePreview`)، ومسجَّلة في `docs/AUDIT.md:647` («الـ`dist` خالٍ من
+ * `preview-toggle` مؤكد»). **لم أحذفها**: مسار «المعاينة السريعة» ليس لوحة
+ * `#advanced-panel`، وحذفه تغيير سلوك لم يُطلب. وهي معلَنة بالاسم في
+ * `PRE_EXISTING_DEAD_MAIN_TS_IDS` كي لا يمرّ **مسار ميت جديد** بصمت. */
+function wireKeepInstrumental(): void {
   const cb = document.getElementById('keep-inst') as HTMLInputElement | null;
   if (cb) {
     cb.checked = localStorage.getItem('hl.keep_inst') === '1';
@@ -249,7 +246,7 @@ async function init(): Promise<void> {
   applyLang();
 
   wire();
-  wireSecretSettings();
+  wireKeepInstrumental();
   restoreBatchState();
   try {
     const info = await invoke<{ app: string; version: string }>('ping');

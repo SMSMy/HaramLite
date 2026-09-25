@@ -33,8 +33,9 @@ export const SETTINGS_TAB_MAP: Readonly<Record<string, SettingsTab>> = Object.fr
   'max-jobs': 'performance',
   'setting-notify': 'performance',
 
-  // الفصل والصيغة: خيارا الفصل والإخراج. كانا في «الإعدادات المتقدمة» داخل
-  // `<main>` (لوحة `spring-panel` لا تُفتح إلا بستّ نقرات على شارة الإصدار).
+  // الفصل والصيغة: خيارا الفصل والإخراج. كانا في لوحة «الإعدادات المتقدمة»
+  // داخل `<main>` — صندوق لا يُفتح إلا بستّ نقرات على شارة الإصدار، وحُذف مساره
+  // كاملاً (ترميزه ومعالجه وأنماطه) بعد نقل عناصره إلى هنا.
   'keep-inst': 'engine',
   'fmt-select': 'engine',
 
@@ -91,6 +92,47 @@ export const SETTINGS_MENU_CHROME: readonly string[] = Object.freeze([
   'settings-menu',
   'settings-close',
   'settings-tabs',
+]);
+
+/**
+ * مفاتيح ترجمة **تُعنوِن حاوية إعدادات** — بها يُميَّز «صندوق إعدادات» من غيره،
+ * فيسأل الحارس: هل في هذه الحاوية **عنصر واحد على الأقل من الخريطة**؟
+ *
+ * **ولماذا قائمة معلَنة**: الترميز لا يعطي إشارة بنيوية تفصل «لوحة إعدادات» من
+ * أي `<div>` آخر (`#about-overlay` مثلاً عنوانُه `about_title` وليس لوحة إعدادات).
+ * فالقائمة تقول أي العناوين تعدّ لوحةً — و**حارس عدم البطلان** يشترط وجود ٦ منها
+ * فعلاً، فلا تُسكَت بحذف العنوان.
+ *
+ * **و`dlg_advanced` في القائمة عن قصد**: هو عنوان اللوحة المحذوفة. فإن أُعيدت
+ * كتلة `#advanced-panel` وحدها (بلا عناصر) عاد عنوانُها، فصارت حاويةً مُعنونة
+ * **بلا أي معرّف من الخريطة** ⇒ يسقط الحارس. (ولو حُذف المفتاح معها لسقط
+ * `i18nParity` لاحقاً لأن `index.html` يطلبه.)
+ */
+export const SETTINGS_GROUP_HEADING_KEYS: readonly string[] = Object.freeze([
+  'set_group_perf',
+  'set_tab_engine',
+  'set_group_watch',
+  'set_group_integration',
+  'set_group_system',
+  'set_group_tools',
+  'dlg_advanced',
+]);
+
+/**
+ * مسارات **ميتة قائمة قبلي** في `src/main.ts`: معرّفات يناديها الملف ولا وجود
+ * لها في `index.html` — بقايا «المعاينة السريعة» (`refreshPreviewHint` ·
+ * `wirePreview`)، ومسجَّلة في `docs/AUDIT.md:647` («الـ`dist` خالٍ من
+ * `preview-toggle` مؤكد»). **لم تُحذف في جولة settings2** لأنها ليست مسار لوحة
+ * `#advanced-panel`، وحذفها تغيير سلوك لم يُطلب.
+ *
+ * **وهي معلَنة لا مسكوت عنها**: الحارس يشترط أن يكون **كل** مسار ميت آخر
+ * مُصرَّحاً به، **ويشترط أيضاً** ألّا يبقى معرّف في هذه القائمة موجوداً في
+ * `index.html` — فإن عاد الترميز يوماً صارت القائمة قديمة ووجب تضييقها.
+ */
+export const PRE_EXISTING_DEAD_MAIN_TS_IDS: readonly string[] = Object.freeze([
+  'preview-toggle',
+  'preview-duration',
+  'preview-hint',
 ]);
 
 /**

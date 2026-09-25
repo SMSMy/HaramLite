@@ -4,10 +4,13 @@
  * التكامل/تيليجرام/النظام/الأدوات، وأحداث cuda-install وcuda-status و
  * settings-changed وtg-*، ونداء refreshAutostart/askAutostartOnce.
  * لم يتغيّر أي معرّف DOM (#settings-menu، #btn-settings، #setting-*،
- * #advanced-panel-container، #version-badge، #cuda-*، #tg-*، #btn-*)، ولا
+ * #version-badge، #cuda-*، #tg-*، #btn-*)، ولا
  * أي مفتاح localStorage، ولا أي أمر (`cuda_install`، `cuda_status`،
  * `autostart_status`، `get_settings`، `push_log`، `tg_*`)، ولا أي مفتاح
  * ترجمة. الوحيد المضاف: `export`.
+ * (وكان في القائمة معرّف `#advanced-panel-container` — لوحة «الإعدادات
+ * المتقدمة» التي حُذف مسارها كاملاً في جولة settings2، فسُحب من هذا التعليق
+ * كي لا يُبحث عن معرّف غير موجود.)
  * وم٤ أضاف: عنصر `#tg-group-mode` ومفتاح `hl.tg_group_mode` بمفتاحَي ترجمة
  * (`settings_group_mode` · `..._hint`) — والربط أدناه على نمط `#max-jobs` (م١)
  * حرفياً: التطبيع من `groupModeFrom` في settings.ts، لا نسخة ثانية هنا.

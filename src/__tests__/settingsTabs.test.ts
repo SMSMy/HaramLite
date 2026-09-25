@@ -27,7 +27,10 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import indexHtml from '../../index.html?raw';
+import mainTs from '../main.ts?raw';
 import {
+  PRE_EXISTING_DEAD_MAIN_TS_IDS,
+  SETTINGS_GROUP_HEADING_KEYS,
   SETTINGS_MENU_CHROME,
   SETTINGS_OUTSIDE_TABS,
   SETTINGS_TAB_MAP,
@@ -222,5 +225,91 @@ describe('حارس الظهور · تفعيل تبويب يُظهر كل معر�
     }
     expect(bad, `استثناءات غير صالحة: ${bad.join(' · ')}`).toEqual([]);
     expect(SETTINGS_OUTSIDE_TABS.length, 'قائمة الاستثناءات معلَنة').toBeGreaterThan(20);
+  });
+});
+
+/* ── ٣) لا مسار ميت: لا لوحة إعدادات بلا عنصر، ولا نداء إلى عنصر غير موجود ────
+ *
+ * **العلّة التي وُلد منها**: لوحة «الإعدادات المتقدمة» (`#advanced-panel-container`
+ * بـ`.spring-panel`) كانت تُفتح بستّ نقرات على شارة الإصدار، وفيه أربعة عناصر.
+ * وبعد نقلها إلى تبويبات الشاشة بقيت **صندوقاً بعنوان بلا عنصر**، وبقي معالج
+ * النقر الستّ ينادي عنصراً لا معنى له. وهي «صفحة ميتة»: سطح موجود للمستخدم لا
+ * يفعل شيئاً. وحُذف المسار كاملاً (ترميزه في `index.html`، ومعالجه في
+ * `src/main.ts`، وأنماطه في `src/styles.css`).
+ *
+ * **وما يقيسه هذا القسم** (ثلاثة، ولا واحد منها يكفي وحده):
+ *   ١) **لا حاوية إعدادات مُعنونة بلا عنصر**: كل عنوان من `SETTINGS_GROUP_HEADING_KEYS`
+ *      يجب أن يكون في حاويته **معرّف واحد على الأقل من الخريطة** ⇒ إعادة كتلة
+ *      `#advanced-panel` وحدها تُسقطه (عنوان `dlg_advanced` بلا عناصر).
+ *   ٢) **لا عنصر للوحة المحذوفة في DOM** ⇒ إعادة الكتلة تُسقطه أيضاً.
+ *   ٣) **لا نداء إلى عنصر غير موجود في `src/main.ts`**: كل `getElementById('…')`
+ *      فيه يجب أن يجد معرّفه في `index.html` ⇒ إعادة معالج النقر الستّ **وحده**
+ *      (ينادي `advanced-panel-container`) تُسقطه، وكذلك أي مسار ميت جديد.
+ *      والثلاثة القائمة قبلي معلَنة بالاسم، والقائمة نفسها تُفحَص ضد التقادم.
+ */
+describe('لا مسار ميت · لا لوحة إعدادات بلا عنصر، ولا نداء إلى عنصر غير موجود', () => {
+  it('لا حاوية إعدادات مُعنونة بلا أي معرّف من الخريطة', async () => {
+    await mountInSettingsMode();
+    const headings = Array.from(document.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6')).filter(
+      (h) => SETTINGS_GROUP_HEADING_KEYS.includes(h.getAttribute('data-i18n') ?? ''),
+    );
+    // عدم البطلان: لو حُذفت العناوين كلها لمرّ الفحص بلا معنى.
+    expect(
+      headings.length,
+      'عناوين مجموعات الإعدادات الموجودة في index.html',
+    ).toBeGreaterThanOrEqual(6);
+
+    const dead = headings
+      .filter((h) => {
+        const box = h.parentElement;
+        if (!box) return true;
+        return !Array.from(box.querySelectorAll<HTMLElement>('[id]')).some((el) =>
+          MAP_IDS.includes(el.id),
+        );
+      })
+      .map((h) => {
+        const box = h.parentElement;
+        const where = box ? `<${box.tagName.toLowerCase()}${box.id ? `#${box.id}` : ''}>` : '(بلا أب)';
+        return `${h.getAttribute('data-i18n')} داخل ${where} بلا أي معرّف من الخريطة`;
+      });
+    expect(dead, `لوحات إعدادات ميتة (عنوان بلا عنصر): ${dead.join(' · ')}`).toEqual([]);
+  });
+
+  it('لا عنصر للوحة المحذوفة في DOM (ولا صنفها)', async () => {
+    await mountInSettingsMode();
+    expect(document.getElementById('advanced-panel'), 'element #advanced-panel').toBeNull();
+    expect(
+      document.getElementById('advanced-panel-container'),
+      'element #advanced-panel-container',
+    ).toBeNull();
+    expect(
+      document.querySelectorAll('.spring-panel, .spring-panel-content').length,
+      'عناصر .spring-panel في DOM',
+    ).toBe(0);
+  });
+
+  it('كل getElementById في src/main.ts يشير إلى معرّف موجود (عدا الميت المعلَن)', async () => {
+    await mountInSettingsMode();
+    const ids = [
+      ...new Set(
+        [...mainTs.matchAll(/getElementById\(\s*'([^']+)'\s*\)/g)].map((m) => m[1]),
+      ),
+    ];
+    // عدم البطلان: استخراج صفر معرّف يجعل «لا مسار ميت» صحيحة بلا معنى.
+    expect(ids.length, 'مسارات getElementById المقروءة من main.ts').toBeGreaterThanOrEqual(8);
+
+    const missing = ids.filter((id) => document.getElementById(id) === null);
+    const undeclared = missing.filter((id) => !PRE_EXISTING_DEAD_MAIN_TS_IDS.includes(id));
+    expect(
+      undeclared,
+      `مسارات ميتة في src/main.ts (تنادي عناصر غير موجودة في index.html): ${undeclared.join(' · ')}`,
+    ).toEqual([]);
+
+    // والقائمة المعلَنة لا تتقادم: معرّف فيها صار موجوداً ⇒ ضيّقها.
+    const stale = PRE_EXISTING_DEAD_MAIN_TS_IDS.filter((id) => document.getElementById(id) !== null);
+    expect(
+      stale,
+      `معرّفات في PRE_EXISTING_DEAD_MAIN_TS_IDS صارت موجودة في index.html — ضيّق القائمة: ${stale.join(' · ')}`,
+    ).toEqual([]);
   });
 });

@@ -95,8 +95,9 @@
     </div>
 
     <div class="settings-tab-panel" data-tab="engine" hidden>
-    <!-- ⚙️ خيارات الفصل والصيغة — نُقلت من «الإعدادات المتقدمة» في <main>، وكانت
-         لا تُرى إلا بستّ نقرات على شارة الإصدار (`#advanced-panel-container`).
+    <!-- ⚙️ خيارات الفصل والصيغة — نُقلت من لوحة «الإعدادات المتقدمة» في <main>
+         (صندوق `spring-panel` لا يُفتح إلا بستّ نقرات على شارة الإصدار؛ حُذف
+         المسار كاملاً في جولة settings2).
          والعنصر نفسه (لا نسخة ثانية): `#keep-inst` يقرأه main.ts وqueue.ts،
          و`#fmt-select` يقرأه queue.ts — بالمعرّف نفسه، فلا مصدر حالة ثانٍ. -->
     <div class="flex flex-col gap-stack-sm">
@@ -311,22 +312,14 @@
 <p class="font-label-sm text-xs mt-2 opacity-80 text-center leading-relaxed text-on-surface-variant" data-i18n="mode_clip_desc">للمقاطع التي تحتوي على متحدثين: لن يقطع الصمت، وسيزيل الموسيقى فقط.</p>
 </button>
 </div>
-<!-- Advanced Settings Panel — **فارغة الآن عن قصد**: عناصرها الأربعة
-     (`#keep-inst` · `#fmt-select` · `#watch-max-size` · `#watch-rescan`) نُقلت
-     إلى شاشة الإعدادات (تبويبا «الفصل والصيغة» و«المراقبة») لأنها **خيارات
-     إعدادات** كانت لا تُرى إلا بستّ نقرات على شارة الإصدار. والهيكل والزرّ
-     السريّ باقيان كما هما (لم يُحذف مسار)، فمن نقرهما يرى الصندوق بعنوانه
-     بلا عناصر. حذف المسار كاملاً تغيير سلوك لم يُطلب — مذكور في التقرير. -->
-<div class="spring-panel" id="advanced-panel-container">
-<div class="spring-panel-content">
-<div class="glass-effect border border-border-muted rounded-lg p-stack-lg flex flex-col gap-stack-md shadow-lg" id="advanced-panel">
-<h3 class="font-label-md text-label-md text-cream-text flex items-center gap-unit">
-<span class="material-symbols-outlined text-sm text-clay-accent" data-icon="tune">tune</span>
-            <span data-i18n="dlg_advanced">إعدادات متقدمة</span>
-        </h3>
-</div>
-</div>
-</div>
+<!-- لوحة «الإعدادات المتقدمة» (`#advanced-panel-container` · `.spring-panel`) كانت
+     هنا: صندوق لا يُفتح إلا بستّ نقرات على شارة الإصدار، وفيه `#keep-inst` ·
+     `#fmt-select` · `#watch-max-size` · `#watch-rescan`. وعناصرها نُقلت إلى تبويبي
+     «الفصل والصيغة» و«المراقبة»، فبقي صندوق بعنوان بلا عنصر.
+     **وحُذف المسار كاملاً** (قرار المالك، جولة settings2): الترميز هنا، ومعالج
+     النقر الستّ في `src/main.ts`، وقواعد `.spring-panel` في `src/styles.css` —
+     **لا عنصر ميت ولا مسار يفتح لوحة غير موجودة**. وحارسه في
+     `src/__tests__/settingsTabs.test.ts` ⇒ «لا مسار ميت». -->
 <!-- File Dropzone Card -->
 <div class="glass-effect border border-border-muted rounded-lg p-stack-lg flex flex-col gap-stack-md fade-in-up delay-100 hover:shadow-xl transition-shadow duration-300">
 <div class="border-2 border-dashed border-border-muted rounded-lg p-margin-desktop flex flex-col items-center justify-center gap-stack-md hover:border-clay-accent transition-all duration-300 apple-ease cursor-pointer bg-coal-surface/30 group" id="dropzone" role="button" tabindex="0" data-i18n-aria="dropzone_label">
