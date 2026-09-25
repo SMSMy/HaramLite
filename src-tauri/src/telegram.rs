@@ -6734,7 +6734,13 @@ fn run_job(
                     .set(cfg, download_status_text(f64::from(p) * 100.0), false);
                 !stop.load(Ordering::SeqCst)
             };
-            match crate::yt_dlp::download_media(url, &dir, &dl, &cancel) {
+            match crate::yt_dlp::download_media(
+                url,
+                &dir,
+                &dl,
+                &cancel,
+                crate::yt_dlp::Source::Telegram,
+            ) {
                 Ok(p) => p,
                 Err(e) => {
                     status.borrow_mut().end(cfg, format!("✗ فشل التنزيل: {e}"));

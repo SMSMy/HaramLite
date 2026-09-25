@@ -903,7 +903,12 @@ function relTestNames(n, extra) {
   if (extra) names[n - 1] = extra;
   return names;
 }
-function relFakeCargo(dir, { warnings, passed, failed = 0, ignored = 4, silent = false, names = null }) {
+/* **والأداة المزيّفة تحمل قدرتَي الطرفين المدموجين معاً** — وهذا مقصود لا تجميلي:
+ *   · `names`  ⇒ جرد الأسماء (من هذه الشجرة): يُمكّن مُفسَدَي G5 وG3.
+ *   · `errors` · `clippyExit` · `buildOk` ⇒ أبواب clippy الثلاثة (من `agent/dl2`).
+ * فإسقاط أحدهما في الحلّ كان سيُعمي نصف المُفسَدات — وهو الإرخاء بعينه. */
+function relFakeCargo(dir, { warnings, passed, failed = 0, ignored = 4, silent = false, names = null,
+  errors = 0, clippyExit = 0, buildOk = true }) {
   const jsonLines = [];
   for (let i = 0; i < warnings; i++) {
     jsonLines.push(JSON.stringify({
@@ -914,6 +919,18 @@ function relFakeCargo(dir, { warnings, passed, failed = 0, ignored = 4, silent =
       },
     }));
   }
+  /* **أخطاء clippy** (`level:"error"`) — الثقب المقيس: البوّابة كانت تعدّ `warning` وحده
+     فيمرّ كودٌ **يرفضه** clippy أخضر. والنصّ والموضع مقصودان كي يُقاس **التسمية** لا السقوط فقط. */
+  for (let i = 0; i < errors; i++) {
+    jsonLines.push(JSON.stringify({
+      reason: 'compiler-message',
+      message: {
+        level: 'error', code: { code: 'clippy::invisible_characters' },
+        message: 'invisible character detected',
+        spans: [{ is_primary: true, file_name: 'src\\yt_dlp.rs', line_start: 2899, column_start: 61 }],
+      },
+    }));
+  }
   const lines = [
     '@echo off',
     'if "%1"=="--version" ( echo cargo 1.95.0-probe & exit /b 0 )',
@@ -921,7 +938,10 @@ function relFakeCargo(dir, { warnings, passed, failed = 0, ignored = 4, silent =
     'if "%1"=="clippy" (',
   ];
   if (!silent) for (const l of jsonLines) lines.push('  echo ' + l.replace(/\^/g, '^^').replace(/[<>|&]/g, '^$&'));
-  lines.push('  exit /b 0', ')');
+  /* **الطرفان معاً**: سطر نهاية البناء (`build-finished.success`) ورمز الخروج من `dl2`،
+   * ثم سطور الاختبارات الفردية التي يُبنى عليها جرد الأسماء من هذه الشجرة. */
+  lines.push('  echo ' + JSON.stringify({ reason: 'build-finished', success: buildOk }));
+  lines.push('  exit /b ' + clippyExit, ')');
   /* سطور الاختبارات الفردية: هي ما يُبنى عليه الجرد. أسماء ASCII بلا محارف صدفة. */
   if (names) for (const n of names) lines.push('echo test ' + n + ' ... ok');
   lines.push('if "%1"=="test" ( echo test result: ok. ' + passed + ' passed; ' + failed + ' failed; ' + ignored + ' ignored & exit /b 0 )');
@@ -963,6 +983,11 @@ CASES.push({
     { label: 'نقص اختبارات عن الأساس (حُذفت) ⇒ يسقط ولا يمرّ صامتاً',
       apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 340, names: relTestNames(340) }); },
       mustMatch: /اختبارات ناجحة: 340 < الأساس 349/ },
+    /* الثقب المقيس: حارسٌ يُنزَع بـ`#[ignore]` واختبارٌ تافه يُضاف مكانه ⇒ العدد الكلي
+       و«٠ فاشل» كما هما، والزيادة في `tests_ignored` وحدها — وكانت **غير مقارَنة**. */
+    { label: 'حارس صار #[ignore] (واختبار تافه مكانه) ⇒ يسقط بالزيادة في المُهمَل',
+      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 349, ignored: 5 }); },
+      mustMatch: /اختبارات مُهمَلة: 5 > الأساس 4/ },
     { label: 'صفر تشخيص (لا JSON) ⇒ صفر مدخل لا نجاح فارغ',
       apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 349, silent: true, names: relTestNames(349) }); },
       mustMatch: /صفر مدخل/ },
@@ -1001,6 +1026,19 @@ CASES.push({
       apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 349, names: relTestNames(349) }); },
       expectPass: true,
       mustMatch: /الجرد 349\/349 اسماً والغائب صفر/ },
+    /* ── **وأبواب clippy الثلاثة** (ثمرة دمج `agent/dl2`؛ الثقب كشفه وكيل `dl2` من قياسه هو):
+       البوّابة كانت تقبل `level === "warning"` وحده ⇒ `error: invisible character detected`
+       من محرف `U+200B` قائم في الشجرة مرّ **أخضر** بينما `cargo clippy --all-targets` **exit 1**.
+       فالمُفسَدات الثلاثة تُغلق الأبواب الثلاثة، **وتُضاف إلى مُفسَدات الجرد أعلاه لا بدلاً منها**. */
+    { label: 'clippy أخرج error ⇒ تسقط البوّابة وتسمّي الرمز والموضع',
+      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 349, names: relTestNames(349), errors: 1 }); },
+      mustMatch: /clippy::invisible_characters @ src\\yt_dlp\.rs:2899:61 — invisible character detected/ },
+    { label: 'clippy انتهى برمز ١ بلا تشخيص مفصَّل ⇒ تسقط البوّابة',
+      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 349, names: relTestNames(349), clippyExit: 1 }); },
+      mustMatch: /clippy انتهى برمز خروج 1/ },
+    { label: 'البناء فشل (build-finished.success=false) ⇒ تسقط البوّابة',
+      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 349, names: relTestNames(349), buildOk: false }); },
+      mustMatch: /build-finished\.success === false/ },
   ],
   zero: { label: 'لا cargo ولا بديل ⇒ صفر مدخل',
     apply: (dir) => fs.rmSync(path.join(dir, 'fakebin'), { recursive: true, force: true }) },

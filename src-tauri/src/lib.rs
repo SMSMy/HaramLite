@@ -379,7 +379,7 @@ async fn download_media_cmd(
                 let _ = app.emit("dl-progress", p.clamp(0.0, 1.0));
             }
             true
-        }, &cancel)
+        }, &cancel, yt_dlp::Source::Local)
         .map_err(|e| e.to_string())?;
         tracing::info!(target: "ytdlp", "program-path download finished ({})", throttle::emit_4hz().report("dl-progress"));
         // P2: remember auto-fetched sources so a later successful separation can

@@ -1220,9 +1220,21 @@ fn handle_request(
         tracing::info!(target: "bridge", "watch-temp request: audio-only into {}", out_dir.display());
     }
     let downloaded = if watch {
-        crate::yt_dlp::download_audio(url, &out_dir, &dl_progress, &cancel_flag())
+        crate::yt_dlp::download_audio(
+            url,
+            &out_dir,
+            &dl_progress,
+            &cancel_flag(),
+            crate::yt_dlp::Source::Local,
+        )
     } else {
-        crate::yt_dlp::download_media(url, &out_dir, &dl_progress, &cancel_flag())
+        crate::yt_dlp::download_media(
+            url,
+            &out_dir,
+            &dl_progress,
+            &cancel_flag(),
+            crate::yt_dlp::Source::Local,
+        )
     };
     match downloaded {
         Ok(file) => {

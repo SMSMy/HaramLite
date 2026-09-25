@@ -24,6 +24,17 @@
  *      يُمكن كشفه بالجرد، ولم أدّعِ خلافه). المقياس الذي يراه هو البوّابة السلبية
  *      `scripts/check-rust-mutants.cjs`: تُحقن تحويلة في الشيفرة التي يحرسها الاختبار ويُشترط
  *      **سقوطه**؛ فالاختبار المُعطَّل يمرّ عليها ⇒ تُسمّى ثقباً.
+ *   ④ **والاختبارات المُهمَلة** (`tests_ignored`): كان الرقم يُكتَب ويُطبَع **ولا يُقارَن** ⇒ حارسٌ يُنزَع
+ *      بـ`#[ignore]` واختبارٌ تافه يُضاف مكانه يعطي العدد نفسه و«٠ فاشل» فيمرّ **أخضر وحارسُه لا يعمل**
+ *      (الثقب قِيس في بيئة مصنوعة، وكشفه جاسوس مستقلّ). فيُسقط الآن **زيادةُ** المُهمَل عن الأساس.
+ *   ⑤ **وأخطاء clippy** (`level:"error"`): كان العدّ يقبل `level === "warning"` **وحده** ويُسقط ما سواه
+ *      ⇒ كودٌ يرفضه clippy (لا تحذيراً عليه) يمرّ **أخضر**. والثقب المقيس: `error: invisible character
+ *      detected` من محرف `U+200B` قائم في الشجرة، و`pnpm rust:gates` قال «✓ سليم» بينما
+ *      `cargo clippy --all-targets` **exit 1** (كشفه وكيل `dl2` من قياسه هو). فيُسقط الآن:
+ *      (أ) **أي** تشخيص `level:"error"` — **ويُسمّى** رمزُه وموضعُه ونصُّه · (ب) و**رمز خروج clippy
+ *      غير الصفر** (فخطأُ بناءٍ بلا تشخيص مفصَّل يسقط أيضاً) · (ج) و`build-finished.success === false`.
+ *      (**وهذا البند ⑤ هو ثمرة دمج `agent/dl2`** — وقد جُمع مع ② لا بدلاً منه: الطرفان يقيسان
+ *      عطلين مختلفين، فإسقاط أحدهما كان سيُرخي حارساً لا يُقوّيه.)
  *
  * `--update` يكتب خطّ الأساس من التشغيل الحالي (تعديل واعٍ يُراجَع في الالتزام، لا صمت).
  * و`--baseline=<path>` للاختبار (فيُقاس الحارس نفسه على خطّ أساس مُصطنع).
@@ -91,27 +102,42 @@ const toolchain = (() => {
 
 /* ── ① تحذيرات clippy: مواضع فريدة من JSON ───────────────────────────────── */
 /** **بلا `--quiet`**: التشخيصات تُكتب JSON على stdout، و`--quiet` جُرِّب فأعطى رقماً خاطئاً (١٢ بدل ١٥)
- *  — والقياس الموثوق يُكتب إلى **ملف** ثم يُقرأ، لا عبر أنبوب مع `--quiet`. */
+ *  — والقياس الموثوق يُكتب إلى **ملف** ثم يُقرأ، لا عبر أنبوب مع `--quiet`.
+ *
+ *  **والمخرَج الخام يُقرأ لا الملخّص**: كل سطر JSON على حدة، ولا حكم من سطرَي cargo الختاميّين.
+ *  وتُجمَع **الأخطاء** (`level:"error"`) بأسمائها — لا تُطوى في العدّ. */
 function clippyUniqueWarnings() {
   const r = cargoRun(['clippy', '--all-targets', '--manifest-path', MANIFEST, '--message-format=json'],
     { maxBuffer: 512 * 1024 * 1024 });
   if (r.error) return { error: r.error.message };
   const out = r.stdout || '';
   const seen = new Map();
+  const errors = [];
   let parsed = 0;
+  let sawDiagnostic = 0;
+  let buildOk = null;
   for (const line of out.split(/\r?\n/)) {
     const t = line.trim();
     if (!t.startsWith('{')) continue;
     let j; try { j = JSON.parse(t); } catch { continue; }
+    if (j.reason === 'build-finished') { buildOk = j.success !== false; continue; }
     if (j.reason !== 'compiler-message' || !j.message) continue;
-    if (j.message.level !== 'warning') continue;
-    parsed++;
+    sawDiagnostic++;
     const code = j.message.code?.code || '(بلا رمز)';
     const span = (j.message.spans || []).find((s) => s.is_primary) || (j.message.spans || [])[0] || {};
-    seen.set(`${code}|${span.file_name || '?'}|${span.line_start || 0}|${span.column_start || 0}`, true);
+    const where = `${span.file_name || '?'}:${span.line_start || 0}:${span.column_start || 0}`;
+    if (j.message.level === 'error') {
+      // **يُسمّى**: الرمز + الموضع + نصّ الخطأ (أول سطر منه) — لا «فشل clippy» مبهمة.
+      const first = String(j.message.message || '').split('\n')[0].trim();
+      errors.push(`${code} @ ${where} — ${first}`);
+      continue;
+    }
+    if (j.message.level !== 'warning') continue;
+    parsed++;
+    seen.set(`${code}|${where}`, true);
   }
-  if (parsed === 0) return { error: 'لم يُقرأ تشخيص واحد من clippy (لا JSON في المخرَج)' };
-  return { unique: seen.size, keys: [...seen.keys()].sort(), raw: parsed, status: r.status };
+  if (sawDiagnostic === 0) return { error: 'لم يُقرأ تشخيص واحد من clippy (لا JSON في المخرَج)' };
+  return { unique: seen.size, keys: [...seen.keys()].sort(), raw: parsed, status: r.status, errors, buildOk };
 }
 
 /* ── ② اختبارات Rust: مجموع نتائج كل الأهداف + **جرد الأسماء** ───────────── */
@@ -160,6 +186,12 @@ if (clippy.error || tests.error) {
 const liveNames = [...tests.live].sort();
 
 if (update) {
+  // **ولا يُكتَب خطّ أساس على شجرة يرفضها clippy**: وإلا صار الخطأُ نفسه هو «المرجع» المُقارَن به.
+  if ((clippy.errors && clippy.errors.length) || clippy.buildOk === false || clippy.status !== 0) {
+    console.error('✗ لا يُحدَّث خطّ الأساس: clippy أخرج أخطاءً أو انتهى برمز غير صفر');
+    for (const e of (clippy.errors || []).slice(0, 10)) console.error('   · ' + e);
+    process.exit(1);
+  }
   const data = {
     why: 'خطّ أساس مقيس لبوّابات Rust — يُحدَّث بـ--update بعد مراجعة السبب، ولا يُخفَّض لتُمرَّر بوّابة.',
     clippy_unique_warnings: clippy.unique,
@@ -184,7 +216,7 @@ let base;
 try { base = JSON.parse(fs.readFileSync(baselinePath, 'utf8')); } catch (e) {
   console.error('✗ صفر مدخل: خطّ الأساس غير مقروء: ' + e.message); process.exit(2);
 }
-for (const k of ['clippy_unique_warnings', 'tests_passed']) {
+for (const k of ['clippy_unique_warnings', 'tests_passed', 'tests_ignored']) {
   if (typeof base[k] !== 'number') { console.error('✗ صفر مدخل: حقل «' + k + '» مفقود من خطّ الأساس'); process.exit(2); }
 }
 /** **جرد الأسماء شرط قياس لا زيادة**: بلا `tests` لا تُقاس المجموعة، فيبقى الثقب
@@ -200,6 +232,19 @@ if (Array.isArray(base.tests)) {
 }
 
 const reasons = [];
+/* **أخطاء clippy تسقط البوّابة أولاً** (البند ④): بوّابةٌ تُخضرّ على كودٍ يرفضه clippy ليست بوّابة.
+ * والثلاثة معاً: تشخيصات `level:"error"` بأسمائها · رمز خروج clippy · و`build-finished.success`. */
+if (clippy.errors && clippy.errors.length) {
+  reasons.push(`clippy أخرج **${clippy.errors.length} خطأ** (‏level:"error") — كودٌ يرفضه clippy لا يمرّ:\n` +
+    clippy.errors.slice(0, 10).map((e) => '     · ' + e).join('\n') +
+    (clippy.errors.length > 10 ? `\n     · … و${clippy.errors.length - 10} أخرى` : ''));
+}
+if (clippy.buildOk === false) {
+  reasons.push('clippy: `build-finished.success === false` — البناء نفسه فشل (وأي تشخيص مفصَّل مذكور أعلاه إن وُجد)');
+}
+if (clippy.status !== 0) {
+  reasons.push(`clippy انتهى برمز خروج ${clippy.status} (المطلوب ٠) — حتى بلا تشخيص مُفصَّل لا تُقبَل البوّابة`);
+}
 if (clippy.unique > base.clippy_unique_warnings) {
   reasons.push(`تحذيرات clippy: ${clippy.unique} موضعاً فريداً > الأساس ${base.clippy_unique_warnings} — تحذير جديد لم يُراجَع`);
 }
@@ -216,6 +261,14 @@ if (baseNames && missing.length) {
 }
 if (tests.extraFlagged.length) {
   reasons.push(`اختبارات نُفِّذت بعَلَم لا «ok» عارياً: ${tests.extraFlagged.length} — راجعها بالاسم أدناه`);
+}
+/* **والاختبارات المُهمَلة تُقارَن أيضاً** (ثقب قائم قبل هذا العمل، كشفه جاسوس مستقلّ):
+ * البوّابة كانت تكتب `tests_ignored` و**تطبعه** ولا **تقارنه** ⇒ حارسٌ يُنزَع بـ`#[ignore]`
+ * واختبارٌ تافه يُضاف مكانه يعطي العدد نفسه و«٠ فاشل» ⇒ **أخضر مع حارسٍ لا يعمل**.
+ * والمقارنة هنا **بالزيادة فقط**: نقصُ المُهمَل (تشغيلُ اختبار كان مُهمَلاً) تحسّنٌ لا خرق.
+ * (**ثمرة دمج `agent/dl2`**: أُضيف هذا الشرط إلى مقارنة الأسماء أعلاه لا بدلاً منها.) */
+if (tests.ignored > base.tests_ignored) {
+  reasons.push(`اختبارات مُهمَلة: ${tests.ignored} > الأساس ${base.tests_ignored} — حارسٌ نُزع بـ#[ignore] بلا مراجعة (العدد الكلي يبقى سليماً فيمرّ صامتاً)`);
 }
 
 if (reasons.length) {
@@ -243,6 +296,9 @@ if (!quiet) {
   if (tests.ignoredNames.length) {
     console.log('  مُهمَل بالاسم: ' + tests.ignoredNames.join(' · '));
   }
+  /* **وضبط المُهمَل يُطبع صراحةً** (ثمرة `agent/dl2`): الرقم وحده لا يقول هل قُورن بالأساس،
+   * والمقارنة هي الحارس — فتُعلَن لا تُفترَض. */
+  console.log(`  والمُهمَل مُقابَل بالأساس: ${tests.ignored} ≤ ${base.tests_ignored} (الزيادة تُسقط)`);
   if (!baseNames) {
     console.log('  ⚠ خطّ الأساس بلا جرد أسماء ⇒ المقارنة بالعدد وحده، وثقب «اختبار تافه مكان الحارس» مفتوح.' +
       '\n     حدِّثه بـ--update ليكتب الجرد (‏' + liveNames.length + ' اسماً مقيساً الآن).');
@@ -256,7 +312,7 @@ if (!quiet) {
     console.log(`  ⚠ الأداة مختلفة عن التي قِيس عليها الأساس:\n     الأساس: ${base.toolchain.clippy}\n     الآن  : ${toolchain.clippy}` +
       '\n     ⇒ رقم أعلى قد يكون **لينتاً جديداً في الأداة** لا عطلاً في الشيفرة: راجع الفرق ثم حدِّث بـ--update.');
   }
-  if (clippy.unique < base.clippy_unique_warnings || tests.passed > base.tests_passed) {
+  if (clippy.unique < base.clippy_unique_warnings || tests.passed > base.tests_passed || tests.ignored < base.tests_ignored) {
     console.log('  (تحسّن عن الأساس — حدِّثه بـ--update ليصير الوضع الجديد هو المرجع)');
   }
 }
