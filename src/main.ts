@@ -6,10 +6,7 @@ import { applyLang, t, wireLang } from './i18n';
 import { pushLogLine, refresh, wireLogToggle } from './log';
 import type { LogLine } from './types';
 import { startLongtaskWatch, startStallDetector } from './diagnostics';
-import {
-  pushSettings,
-  seedSettings,
-} from './settings';
+import { seedSettings } from './settings';
 import { wireWatchSettings } from './watch';
 import * as session from './session';
 import { outDirOf, setVerdictHtml, verdictHtml } from './media';
@@ -20,6 +17,7 @@ import { autoHealthCheck, wireRepair } from './repair';
 import { updateCudaBanner, refreshProviderLine } from './cuda';
 import { silentUpdateCheck, wireAbout, wireReport, wireUpdateCheck } from './aboutUpdate';
 import { wireSettings } from './settingsPanel';
+import { wireHiddenAdvancedPanel } from './hiddenPanel';
 import { wireSettingsScreen } from './settingsScreen';
 
 
@@ -46,41 +44,6 @@ function wireContextMenu(): void {
 
 /* ── wiring ─────────────────────────────────────────────────────────── */
 
-function wireSecretSettings(): void {
-  const badge = document.getElementById('version-badge');
-  if (!badge) return;
-  let taps = 0;
-  let firstTapAt = 0;
-
-  badge.addEventListener('click', () => {
-    const now = Date.now();
-    if (now - firstTapAt > 4000) {
-      taps = 0;
-      firstTapAt = now;
-    }
-    taps += 1;
-    if (taps === 3 && badge) {
-      badge.style.opacity = '0.55';
-      setTimeout(() => (badge.style.opacity = ''), 250);
-    }
-    if (taps >= 6) {
-      taps = 0;
-      const advContainer = document.getElementById('advanced-panel-container');
-      advContainer?.classList.toggle('open');
-      invoke('push_log', { level: 'warn', message: 'DEV PANEL toggled (hidden settings)' });
-    }
-  });
-
-  const cb = document.getElementById('keep-inst') as HTMLInputElement | null;
-  if (cb) {
-    cb.checked = localStorage.getItem('hl.keep_inst') === '1';
-    cb.addEventListener('change', () => {
-      localStorage.setItem('hl.keep_inst', cb.checked ? '1' : '0');
-      pushSettings();
-      invoke('push_log', { level: 'info', message: `keep_instrumental = ${cb.checked}` });
-    });
-  }
-}
 
 function wireModes(): void {
   const cards = document.querySelectorAll<HTMLElement>('.mode-card');
@@ -95,47 +58,25 @@ function wireModes(): void {
         sepLabel.innerHTML = t(key);
       }
       invoke('push_log', { level: 'info', message: `mode → ${session.getCurrentMode()}` });
-      refreshPreviewHint();
     });
   });
 }
 
-/* ── quick preview controls (Sprint B1) ─────────────────────────────── */
-function refreshPreviewHint(): void {
-  const toggle = document.getElementById('preview-toggle') as HTMLInputElement | null;
-  const sel = document.getElementById('preview-duration') as HTMLSelectElement | null;
-  const hint = document.getElementById('preview-hint');
-  if (!toggle || !sel || !hint) return;
-  sel.classList.toggle('hidden', !toggle.checked);
-  hint.textContent = toggle.checked
-    ? (session.getCurrentMode() === 'song' ? t('preview_hint_song') : t('preview_hint_clip'))
-    : '';
-}
-function wirePreview(): void {
-  const toggle = document.getElementById('preview-toggle') as HTMLInputElement | null;
-  const sel = document.getElementById('preview-duration') as HTMLSelectElement | null;
-  if (!toggle || !sel) return;
-  toggle.addEventListener('change', () => {
-    session.setPreviewEnabled(toggle.checked);
-    localStorage.setItem('hl.preview', session.getPreviewEnabled() ? '1' : '0');
-    pushSettings();
-    refreshPreviewHint();
-  });
-  sel.addEventListener('change', () => {
-    session.setPreviewSeconds(Number(sel.value) || 15);
-    localStorage.setItem('hl.preview_seconds', String(session.getPreviewSeconds()));
-    pushSettings();
-  });
-  // restore persisted state
-  toggle.checked = localStorage.getItem('hl.preview') === '1';
-  session.setPreviewEnabled(toggle.checked);
-  const saved = Number(localStorage.getItem('hl.preview_seconds'));
-  if (saved === 10 || saved === 15 || saved === 30) {
-    sel.value = String(saved);
-    session.setPreviewSeconds(saved);
-  }
-  refreshPreviewHint();
-}
+/* ── «المعاينة السريعة»: ربط DOM محذوف ─────────────────────────────────
+ * كان هنا `refreshPreviewHint()` و`wirePreview()` يعملان على `#preview-toggle`
+ * و`#preview-duration` و`#preview-hint` — و**المعرّفات الثلاثة غير موجودة**:
+ * لا في `index.html` (مقيس: `git grep preview index.html` = صفر) ولا في `dist/`
+ * المبنيّ، ولا يُنشئها أي مسار (`createElement`/`innerHTML` في `src/**` = صفر).
+ * فهما كانتا **تُرجعان مبكراً دائماً** (`if (!toggle || !sel) return`)، ولم
+ * يُنادَ `session.setPreviewEnabled`/`setPreviewSeconds` قطّ ⇒ `queue.ts:854`
+ * يرسل `previewSeconds: null` دائماً، و`queue.ts:481` يعرض `sep_done_short`
+ * دائماً. فحُذف المسار (قرار المالك، الجولة الثالثة) و**الأثر المقيس للحذف صفر**.
+ *
+ * **ولم تُمَسّ القيمة ولا مستهلكوها**: `hl.preview` · `hl.preview_seconds` في
+ * `settings.ts` (‏`collectSettings` · `seedSettings` · `applySettings`)، وحقلا
+ * `Settings.preview`/`preview_seconds` في الرست (`settings.rs:19,73`)، والقراءة
+ * الفعلية في `queue.ts:481,854` ← `pipeline.rs:815,858,869`. ودفعُها يبقى ممكناً
+ * من `settings.json`، ومتى عاد لها سطحٌ في الواجهة عملت كما هي. */
 
 function wireKinds(): void {
   const cards = document.querySelectorAll<HTMLElement>('.kind-card');
@@ -229,7 +170,6 @@ function wire(): void {
   wireUrlDownload();
   wireLogToggle();
   wireOpenFolder();
-  wirePreview();
   wireAbout();
   wireReport();
   wireRepair();
@@ -249,7 +189,7 @@ async function init(): Promise<void> {
   applyLang();
 
   wire();
-  wireSecretSettings();
+  wireHiddenAdvancedPanel();
   restoreBatchState();
   try {
     const info = await invoke<{ app: string; version: string }>('ping');

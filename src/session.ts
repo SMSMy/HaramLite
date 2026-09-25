@@ -18,9 +18,10 @@ let batchQueue: string[] = [];
 let batchRunning = false;
 let singleRunning = false; // F-4: the separate button doubles as cancel
 
-/* ── quick preview (Sprint B1) ──────────────────────────────────────── */
-let previewEnabled = false;
-let previewSeconds = 15;
+/* (كان هنا `previewEnabled` و`previewSeconds` لـ«المعاينة السريعة» — جولة
+ * settings2 الرابعة: حُذفا مع الميزة كلها. وكانا **ميتين قبل الحذف**: لا شيء
+ * يرفع `previewEnabled` عن `false`، فـ`queue.ts` كان يرسل `previewSeconds: null`
+ * دائماً. فالحذف لا يغيّر سلوكاً مرصوداً.) */
 let appVersion = '';
 
 // Coalesce high-frequency backend events to one DOM paint per frame.
@@ -132,22 +133,6 @@ export function endRun(kind: RunKind): void {
   if (kind === 'batch') batchRunning = false;
   else singleRunning = false;
   if (activeRun === kind) activeRun = null;
-}
-
-export function getPreviewEnabled(): boolean {
-  return previewEnabled;
-}
-
-export function setPreviewEnabled(next: boolean): void {
-  previewEnabled = next;
-}
-
-export function getPreviewSeconds(): number {
-  return previewSeconds;
-}
-
-export function setPreviewSeconds(next: number): void {
-  previewSeconds = next;
 }
 
 export function getAppVersion(): string {

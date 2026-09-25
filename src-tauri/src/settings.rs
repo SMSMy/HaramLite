@@ -15,8 +15,14 @@ pub struct Settings {
     pub lang: String, // "ar" | "en"
     pub cuda: bool,
     pub notify: bool,
-    pub preview: bool,
-    pub preview_seconds: u32, // 10 | 15 | 30
+    // (**حُذف `preview` و`preview_seconds`** — جولة settings2 الرابعة: كانا
+    // إعدادَي «المعاينة السريعة»، ولا سطح لهما في الواجهة أصلاً، وكانا يقرأهما
+    // `pipeline.rs` فيُقصّ الصوت إلى أوّل N ثانية ويُوسَم الناتج `_preview` عند
+    // تحرير `settings.json` يدوياً. وقياس الجولة: كل مسارات الإنتاج والاختبار
+    // تمرّر `None` (‏`lib.rs:575` · `bridge.rs:1261` · `cli.rs:314` ·
+    // `telegram.rs:6888` · `watch_service.rs:306`) فلا سلوك مرصود يتغيّر.
+    // وملف قديم يحمل المفتاحين **يُحمَّل كما هو**: `serde` يتجاهل الحقول
+    // المجهولة، والاختبار `removed_preview_keys_in_an_old_file_still_load` يقيسه.)
     pub keep_instrumental: bool,
     pub log_open: bool,
     // م١: سقف الفصول المتزامنة على الجهاز. **إعداد بطاقةٍ لا تفضيل**: قياس
@@ -69,8 +75,6 @@ impl Default for Settings {
             lang: "ar".into(),
             cuda: false,
             notify: false,
-            preview: false,
-            preview_seconds: 15,
             keep_instrumental: false,
             log_open: true,
             max_concurrent_jobs: crate::slots::DEFAULT_LIMIT,
@@ -316,6 +320,33 @@ mod tests {
         assert!(!needs_sealing(&dir));
         std::fs::write(path(&dir), "{ not json").unwrap();
         assert!(!needs_sealing(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **حذف `preview` و`preview_seconds` لا يكسر ملفاً قديماً**: `#[serde(default)]`
+    /// يعني أن المفتاح الغائب يأخذ الافتراضيّ، والحقل **المجهول** في الملف
+    /// يُتجاهَل (لا `deny_unknown_fields`) ⇒ فلا خطأ تحميل ولا حاجة إلى ترحيل.
+    /// وهذا يقيسه هذا الاختبار: ملف كتبه بناء سابق يحمل المفتاحين يُحمَّل، وبقيّة
+    /// قيمه تصل سليمة، وإعادة الحفظ تُسقط المفتاحين وحدهما.
+    #[test]
+    fn removed_preview_keys_in_an_old_file_still_load() {
+        let dir = tmp("removed_preview");
+        std::fs::write(
+            path(&dir),
+            r#"{"lang":"en","cuda":true,"preview":true,"preview_seconds":30,"notify":true}"#,
+        )
+        .unwrap();
+        let s = load(&dir);
+        assert_eq!(s.lang, "en", "بقيّة القيم تُقرأ كما هي");
+        assert!(s.cuda && s.notify);
+        // وإعادة الحفظ تُنتج ملفاً بلا المفتاحين (والباقي سليم).
+        save(&dir, &s).unwrap();
+        let raw = std::fs::read_to_string(path(&dir)).unwrap();
+        assert!(
+            !raw.contains("\"preview\""),
+            "المفتاح المحذوف يجب ألّا يُكتب ثانيةً: {raw}"
+        );
+        assert!(raw.contains("\"notify\""), "وبقيّة الحقول تُكتب");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

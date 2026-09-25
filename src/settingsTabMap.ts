@@ -33,10 +33,9 @@ export const SETTINGS_TAB_MAP: Readonly<Record<string, SettingsTab>> = Object.fr
   'max-jobs': 'performance',
   'setting-notify': 'performance',
 
-  // الفصل والصيغة: خيارا الفصل والإخراج. كانا في «الإعدادات المتقدمة» داخل
-  // `<main>` (لوحة `spring-panel` لا تُفتح إلا بستّ نقرات على شارة الإصدار).
-  'keep-inst': 'engine',
-  'fmt-select': 'engine',
+  // (وكان هنا `keep-inst` و`fmt-select` في تبويب «الفصل والصيغة» — أُعيدا إلى
+  // اللوحة المتقدّمة خلف ٦ نقرات بقرار المالك، وصار التبويب بلا معرّف فحُذف.
+  // وهما الآن في `SETTINGS_HIDDEN_SURFACES` لا في خريطة التبويبات.)
 
   // المراقبة التلقائية بخياراتها — ومنها حدّ الحجم وفاصل المسح
   // (`watch_size_label` · `watch_rescan_label` يقرأهما `watch.ts`).
@@ -49,6 +48,9 @@ export const SETTINGS_TAB_MAP: Readonly<Record<string, SettingsTab>> = Object.fr
   'btn-watch-cancel': 'watch',
   'watch-max-size': 'watch',
   'watch-rescan': 'watch',
+  // سطح `watch_out_kind`: أُضيف في جولة settings2 الرابعة بعد أن أثبت القياس أن
+  // للحقل أثراً حقيقياً (`watch_service.rs:519` ⇒ `audio` ينتج MP3) وكان بلا سطح.
+  'watch-out-kind': 'watch',
 
   // التكامل مع المتصفح
   'setting-bridge': 'bridge',
@@ -79,7 +81,8 @@ export const SETTINGS_TAB_MAP: Readonly<Record<string, SettingsTab>> = Object.fr
   'btn-report': 'update',
 
   // عن البرنامج
-  'btn-about': 'about',
+  // «حول البرنامج»: العنوان والمتن يُعرضان مباشرة في التبويب (#about-body).
+  'about-body': 'about',
 });
 
 /**
@@ -94,6 +97,138 @@ export const SETTINGS_MENU_CHROME: readonly string[] = Object.freeze([
 ]);
 
 /**
+ * **أسطح مخفيّة مقصودة** — عناصر تحكّم **ليست في أي تبويب** وليست مسارات ميتة:
+ * قرار المالك (جولة settings2) أن `#keep-inst` (الاحتفاظ بالموسيقى) و
+ * `#fmt-select` (صيغة الصوت) يبقيان **خلف ٦ نقرات على شارة الإصدار** في لوحة
+ * «الإعدادات المتقدمة» — وهي سياسة البرنامج منذ البداية بنصّ قراره.
+ *
+ * **ولماذا هذا التصريح لا استثناء في حارس الميتات**: المعرّفان **موجودان فعلاً**
+ * في `index.html`، فـ`getElementById` عليهما **يُحلّ** ولا حاجة إلى أي قائمة
+ * استثناء في حارس «لا مسار ميت» (وقد بقي ذلك الحارس **بصفر استثناء**). وهذا
+ * التصريح يضيف ما هو أقوى من الاستثناء: **أين يجب أن يكونا** (داخل اللوحة، لا
+ * داخل الشاشة)، **وأن يُفتحا بالنقر الستّ فعلاً** — فلا يتحوّل التصريح إلى غطاء.
+ */
+export const SETTINGS_HIDDEN_SURFACES: readonly {
+  id: string;
+  container: string;
+  why: string;
+}[] = Object.freeze([
+  {
+    id: 'keep-inst',
+    container: 'advanced-panel-container',
+    why: 'خيار «الاحتفاظ بالموسيقى» — مخفيّ خلف ٦ نقرات بقرار المالك. يقرأه main.ts وqueue.ts بالمعرّف نفسه، فلا نسخة ثانية.',
+  },
+  {
+    id: 'fmt-select',
+    container: 'advanced-panel-container',
+    why: 'خيار «صيغة الصوت» (MP3/WAV/FLAC) — مخفيّ خلف ٦ نقرات بقرار المالك. يقرأه queue.ts بالمعرّف نفسه.',
+  },
+]);
+
+/**
+ * مفاتيح ترجمة **تُعنوِن حاوية إعدادات** — بها يُميَّز «صندوق إعدادات» من غيره،
+ * فيسأل الحارس: هل في هذه الحاوية **عنصر واحد على الأقل من الخريطة**؟
+ *
+ * **ولماذا قائمة معلَنة**: الترميز لا يعطي إشارة بنيوية تفصل «لوحة إعدادات» من
+ * أي `<div>` آخر (`#about-overlay` مثلاً عنوانُه `about_title` وليس لوحة إعدادات).
+ * فالقائمة تقول أي العناوين تعدّ لوحةً — و**حارس عدم البطلان** يشترط وجود ٦ منها
+ * فعلاً، فلا تُسكَت بحذف العنوان.
+ *
+ * **و`dlg_advanced` في القائمة عن قصد**: هو عنوان اللوحة المحذوفة. فإن أُعيدت
+ * كتلة `#advanced-panel` وحدها (بلا عناصر) عاد عنوانُها، فصارت حاويةً مُعنونة
+ * **بلا أي معرّف من الخريطة** ⇒ يسقط الحارس. (ولو حُذف المفتاح معها لسقط
+ * `i18nParity` لاحقاً لأن `index.html` يطلبه.)
+ */
+export const SETTINGS_GROUP_HEADING_KEYS: readonly string[] = Object.freeze([
+  'set_group_perf',
+  'set_group_watch',
+  'set_group_integration',
+  'set_group_system',
+  'set_group_tools',
+  'dlg_advanced',
+]);
+
+/**
+ * **ولا قائمة استثناء للمسارات الميتة** — عن قصد، وكانت هنا واحدة.
+ *
+ * كان في `src/main.ts` ثلاثة معرّفات يناديها ولا وجود لها في `index.html`
+ * (`preview-toggle` · `preview-duration` · `preview-hint` — بقايا «المعاينة
+ * السريعة»، ومسجَّلة في `docs/AUDIT.md:647`). فنُقلت في الجولة الثانية معلَنةً
+ * في `PRE_EXISTING_DEAD_MAIN_TS_IDS` بدل حذفها، وصار الحارس يميّز «ميت معلَن»
+ * من «ميت جديد».
+ * **وفي الجولة الثالثة حُذف المسار نفسه** (قرار المالك) **وحُذفت القائمة معه**:
+ * قائمة استثناء تبقى بعد زوال سببها تصير **غطاءً لعطب قادم**. فالحارس اليوم
+ * يشترط أن يكون **كل** `getElementById` في `src/main.ts` موجوداً في `index.html`
+ * — و`src/main.ts` خالٍ من أي مسار ميت (مقيس: ٩ معرّفات، كلها تُحلّ).
+ *
+ * **وحدّ مُعلَن**: الحارس على `src/main.ts` وحده كما طُلب. ومسحُ `src/*.ts` كله
+ * (‏`ARCHIVE/settings2-allsrc-ids.cjs`) يكشف **مسارين ميتين قائمين قبلي في
+ * `src/queue.ts`** (`q-wrap` · `quality-select` — موجودان في `2181817` أيضاً ولا
+ * وجود لهما في `index.html`)، **ولم يُمَسّا**: خارج نطاق جولة «المعاينة السريعة».
+ */
+
+/**
+ * **العقد: كل حقل في `Settings` (الرست) له سطح تحكّم في الواجهة.**
+ *
+ * **لماذا وُجد هذا الحارس**: كان في `Settings` حقلان (`preview` · `preview_seconds`)
+ * لواجهة «المعاينة السريعة» **لا وجود لها** — فكان تحرير `settings.json` يدوياً
+ * يُغيّر ما ينفّذه `pipeline.rs` (قصّ الصوت إلى N ثانية + وسم `_preview`) بلا أي
+ * سطح يضبطه المستخدم: **لغم لا ميزة**. وحُذف الحقلان ومستهلكوهما (جولة settings2
+ * الرابعة). وهذا الحارس يمنع تكرار الصنف: حقل جديد في الرست بلا سطح ⇒ **يسقط**.
+ *
+ * **وكيف يُقاس**: يُقرأ `pub <field>:` من `src-tauri/src/settings.rs` نصّاً، فيجب
+ * أن يكون كل حقل إمّا في `SETTINGS_FIELD_CONTROL` (ومعرّفه **موجود فعلاً** في
+ * `index.html`)، وإمّا في `SETTINGS_FIELDS_WITHOUT_CONTROL` **بسبب مكتوب**.
+ */
+export const SETTINGS_FIELD_CONTROL: Readonly<Record<string, string>> = Object.freeze({
+  // الشريط العلوي: اللغة (زرّ التبديل) وسجلّ الأحداث (زرّ الطيّ)
+  lang: 'lang-toggle',
+  log_open: 'log-toggle',
+  // الأداء والمعالجة
+  cuda: 'setting-cuda',
+  notify: 'setting-notify',
+  max_concurrent_jobs: 'max-jobs',
+  // الفصل والصيغة
+  keep_instrumental: 'keep-inst',
+  // المراقبة
+  watch_enabled: 'setting-watch',
+  watch_path: 'watch-path',
+  watch_mode: 'watch-mode',
+  watch_max_size_mb: 'watch-max-size',
+  watch_rescan_secs: 'watch-rescan',
+  watch_out_kind: 'watch-out-kind',
+  // التكامل
+  bridge_enabled: 'setting-bridge',
+  // التحديث والصيانة
+  ytdlp_auto_update: 'setting-ytdlp-auto',
+  // تيليجرام (اللوحة المنبثقة يفتحها `#btn-telegram` من تبويبها)
+  telegram_enabled: 'setting-telegram',
+  telegram_token: 'tg-token',
+  telegram_user_id: 'tg-owner',
+  telegram_audio_only: 'tg-audio-only',
+  telegram_api_id: 'tg-api-id',
+  telegram_api_hash: 'tg-api-hash',
+  telegram_local_url: 'tg-local-url',
+  telegram_group_mode: 'tg-group-mode',
+  telegram_bot_identity: 'tg-bot-identity',
+});
+
+/**
+ * حقول `Settings` **بلا سطح** — ولكلٍّ سبب مكتوب. وهي **ليست** إذناً عامّاً:
+ * أي حقل جديد لا يجد مدخلاً هنا ⇒ يسقط الحارس. ومقصورة على حالتين:
+ */
+export const SETTINGS_FIELDS_WITHOUT_CONTROL: readonly { field: string; why: string }[] =
+  Object.freeze([
+    {
+      field: 'autostart_asked',
+      why:
+        'ليست تفضيلاً بل **حالة داخلية مرّة واحدة**: يكتبها التطبيق نفسه ' +
+        '(`askAutostartOnce` في integration.ts:820) كي لا يُسأل المستخدم عن التشغيل ' +
+        'مع النظام مرتين. ولا معنى لسطح يضبطها.',
+    },
+  ]);
+
+/**
  * معرّفات **خارج** الشاشة عن قصد — ولكلٍّ سببه. والحارس يشترط:
  *   • ألّا يكون أيٌّ منها داخل `<main>` (وهي مخفيّة في وضع الإعدادات)،
  *   • وألّا يتقاطع مع `SETTINGS_TAB_MAP` (فلا عنصر يفلت من التصنيف بصمت).
@@ -101,11 +236,10 @@ export const SETTINGS_MENU_CHROME: readonly string[] = Object.freeze([
 export const SETTINGS_OUTSIDE_TABS: readonly { id: string; why: string }[] = Object.freeze([
   { id: 'lang-toggle', why: 'زرّ لغة الواجهة في الشريط العلوي: ليس قيمة إعداد (لا حقل له في `Settings`)، ويجب أن يبقى ظاهراً في الوضعين — نقله إلى تبويب «عن البرنامج» يحجبه ما لم تُفتح الشاشة (انظر styles.css: الرأس يبقى في وضع الإعدادات).' },
 
-  { id: 'about-overlay', why: 'نافذة «حول» المنبثقة — تُفتح بـ`#btn-about` وتبقى خارج الشاشة.' },
-  { id: 'about-title', why: 'عنوان نافذة «حول» المنبثقة.' },
-  { id: 'about-close', why: 'زرّ إغلاق نافذة «حول» المنبثقة.' },
-  { id: 'about-body', why: 'جسم نافذة «حول» المنبثقة (يملؤه aboutUpdate.ts).' },
-  { id: 'about-ok', why: 'زرّ تأكيد نافذة «حول» المنبثقة.' },
+  // (وكانت هنا خمسة معرّفات لمودال «حول البرنامج»: `about-overlay` ·
+  // `about-title` · `about-close` · `about-body` · `about-ok`. وقد حُذف المودال
+  // بقرار المالك فانتقل `about-body` **إلى تبويب «حول البرنامج»** في الخريطة،
+  // وزال الأربعة الآخرون مع المودال — فلا يُصرَّح بمعرّف غير موجود.)
 
   { id: 'autostart-overlay', why: 'نافذة سؤال التشغيل مع النظام — تُعرض مرّة واحدة عند الإقلاع، لا من الإعدادات.' },
   { id: 'autostart-ask-title', why: 'عنوان نافذة سؤال التشغيل مع النظام.' },

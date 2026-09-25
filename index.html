@@ -44,7 +44,6 @@
          والتبويب النشط يُعلَن بـ`aria-selected` و`hidden` على البقية. -->
     <nav id="settings-tabs" class="flex flex-wrap gap-unit border-b border-border-muted pb-2" role="tablist" aria-label="settings">
         <button type="button" class="settings-tab" role="tab" data-tab-btn="performance" aria-selected="true" data-i18n="set_group_perf">الأداء والمعالجة</button>
-        <button type="button" class="settings-tab" role="tab" data-tab-btn="engine" aria-selected="false" data-i18n="set_tab_engine">الفصل والمزوّد</button>
         <button type="button" class="settings-tab" role="tab" data-tab-btn="watch" aria-selected="false" data-i18n="set_group_watch">المراقبة التلقائية</button>
         <button type="button" class="settings-tab" role="tab" data-tab-btn="bridge" aria-selected="false" data-i18n="set_group_integration">التكامل</button>
         <button type="button" class="settings-tab" role="tab" data-tab-btn="telegram" aria-selected="false" data-i18n="tg_title">بوت تيليجرام</button>
@@ -106,28 +105,6 @@
     </div>
     </div>
 
-    <div class="settings-tab-panel" data-tab="engine" hidden>
-    <!-- ⚙️ خيارات الفصل والصيغة — نُقلت من «الإعدادات المتقدمة» في <main>، وكانت
-         لا تُرى إلا بستّ نقرات على شارة الإصدار (`#advanced-panel-container`).
-         والعنصر نفسه (لا نسخة ثانية): `#keep-inst` يقرأه main.ts وqueue.ts،
-         و`#fmt-select` يقرأه queue.ts — بالمعرّف نفسه، فلا مصدر حالة ثانٍ. -->
-    <div class="flex flex-col gap-stack-sm">
-        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_tab_engine">الفصل والصيغة</h4>
-        <label class="flex items-center gap-stack-sm cursor-pointer group">
-            <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent focus:ring-offset-coal-surface transition-all duration-200 group-hover:border-clay-accent group-active:scale-90" id="keep-inst" type="checkbox"/>
-            <span class="font-body-md text-cream-text transition-colors duration-200 group-hover:text-white" data-i18n="keep_inst">الاحتفاظ بالموسيقى (Keep Instrumental)</span>
-        </label>
-        <div class="flex items-center gap-stack-sm">
-            <span class="font-label-md text-on-surface-variant" data-i18n="audio_format">صيغة الصوت:</span>
-            <select id="fmt-select" class="form-select bg-coal-surface border border-border-muted rounded px-stack-md py-stack-sm text-cream-text focus:outline-none focus:border-clay-accent focus:ring-1 focus:ring-clay-accent font-body-md transition-all duration-300 apple-ease hover:border-on-surface-variant cursor-pointer">
-                <option value="mp3">MP3</option>
-                <option value="wav">WAV</option>
-                <option value="flac">FLAC</option>
-            </select>
-        </div>
-    </div>
-    </div>
-
     <div class="settings-tab-panel" data-tab="watch" hidden>
     <!-- 📁 المراقبة التلقائية -->
     <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
@@ -149,6 +126,20 @@
                     <option value="clip" data-i18n="watch_mode_clip">مقطع عادي</option>
                 </select>
             </div>
+            <!-- سطح `watch_out_kind`: كان الحقل يُقرأ في `watch_service.rs:519`
+                 (فيقرّر `OutKind` لكل ملف يراقبه) و`collectSettings` يرسل `auto`
+                 **ثابتة** ⇒ إعداد بلا سطح. وأثبت قياس الجولة أن لأثره فرقاً
+                 حقيقياً (`audio` ⇒ MP3)، فأُضيف له سطحه هنا، والقيمة تمرّ
+                 بـ`watchOutKindFrom` في settings.ts (مصدر وحيد للتطبيع). -->
+            <div class="flex items-center gap-stack-sm">
+                <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="watch_out_kind_label">نوع الإخراج:</span>
+                <select id="watch-out-kind" class="form-select bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent cursor-pointer">
+                    <option value="auto" data-i18n="watch_out_kind_auto">تلقائي</option>
+                    <option value="video" data-i18n="watch_out_kind_video">فيديو</option>
+                    <option value="audio" data-i18n="watch_out_kind_audio">صوت فقط (MP3)</option>
+                </select>
+            </div>
+            <span class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="watch_out_kind_hint">«تلقائي» و«فيديو» ينتجان فيديو، ويسقط المحرّك ذكيّاً إلى MP3 إن كان الملف صوتياً. «صوت فقط» ينتج MP3 دائماً.</span>
             <span id="watch-status" class="font-label-sm text-label-sm text-on-surface-variant"></span>
             <button id="btn-watch-cancel" class="hidden text-error hover:text-red-400 font-label-sm text-label-sm p-unit rounded hover:bg-surface-variant/30 cursor-pointer transition-colors" data-i18n="watch_cancel"><span class="material-symbols-outlined text-sm" data-icon="close">close</span> إلغاء الملف الجاري</button>
         </div>
@@ -293,10 +284,13 @@
     </div>
 
     <div class="settings-tab-panel" data-tab="about" hidden>
-        <button id="btn-about" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
-            <span class="material-symbols-outlined text-sm" data-icon="info">info</span>
-            <span class="font-body-sm" data-i18n="btn_about">حول البرنامج</span>
-        </button>
+        <!-- «حول البرنامج» **يُعرض مباشرة** في تبويبه (قرار المالك، جولة settings2):
+             لا زرّ `#btn-about` ولا مودال `#about-overlay`. والمحتوى يملؤه
+             `fillAbout()` في `src/aboutUpdate.ts` عند الإقلاع، والروابط
+             `data-open-url` تعمل بالمُوصِّل المفوَّض على `#about-body` نفسه —
+             فلا تتغيّر آلية الفتح، يتغيّر موضعها فقط. -->
+        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="about_title">حول HaramLite</h4>
+        <div id="about-body" class="flex flex-col gap-unit font-body-sm text-sm text-cream-text leading-relaxed"></div>
     </div>
     </div>
 </div>
@@ -323,12 +317,24 @@
 <p class="font-label-sm text-xs mt-2 opacity-80 text-center leading-relaxed text-on-surface-variant" data-i18n="mode_clip_desc">للمقاطع التي تحتوي على متحدثين: لن يقطع الصمت، وسيزيل الموسيقى فقط.</p>
 </button>
 </div>
-<!-- Advanced Settings Panel — **فارغة الآن عن قصد**: عناصرها الأربعة
-     (`#keep-inst` · `#fmt-select` · `#watch-max-size` · `#watch-rescan`) نُقلت
-     إلى شاشة الإعدادات (تبويبا «الفصل والصيغة» و«المراقبة») لأنها **خيارات
-     إعدادات** كانت لا تُرى إلا بستّ نقرات على شارة الإصدار. والهيكل والزرّ
-     السريّ باقيان كما هما (لم يُحذف مسار)، فمن نقرهما يرى الصندوق بعنوانه
-     بلا عناصر. حذف المسار كاملاً تغيير سلوك لم يُطلب — مذكور في التقرير. -->
+<!-- لوحة «الإعدادات المتقدمة» (`#advanced-panel-container` · `.spring-panel`) كانت
+     هنا: صندوق لا يُفتح إلا بستّ نقرات على شارة الإصدار، وفيه `#keep-inst` ·
+     `#fmt-select` · `#watch-max-size` · `#watch-rescan`. وعناصرها نُقلت إلى تبويبي
+     «الفصل والصيغة» و«المراقبة»، فبقي صندوق بعنوان بلا عنصر.
+     **وحُذف المسار كاملاً** (قرار المالك، جولة settings2): الترميز هنا، ومعالج
+     النقر الستّ في `src/main.ts`، وقواعد `.spring-panel` في `src/styles.css` —
+     **لا عنصر ميت ولا مسار يفتح لوحة غير موجودة**. وحارسه في
+     `src/__tests__/settingsTabs.test.ts` ⇒ «لا مسار ميت». -->
+<!-- Advanced Settings Panel — **مقصودة خلف ٦ نقرات** (قرار المالك، جولة settings2
+     الرابعة، بعد أن كانت أُزيلت ثم أُعيدت بقراره): لوحة «الإعدادات المتقدمة»
+     تُفتح بستّ نقرات متتابعة على شارة الإصدار (`#version-badge`) خلال ٤ ثوانٍ
+     (المعالج في `src/main.ts` ⇒ `wireHiddenAdvancedPanel`). وهي **يخفي**
+     `#keep-inst` (الاحتفاظ بالموسيقى) و`#fmt-select` (صيغة الصوت) عن الواجهة
+     العادية عن قصد — سياسة البرنامج منذ البداية (قرار المالك). والعنصر نفسه
+     (لا نسخة ثانية): `#keep-inst` يقرأه `main.ts` و`queue.ts`، و`#fmt-select`
+     يقرأه `queue.ts` — بالمعرّف نفسه.
+     **والحارس**: `src/__tests__/settingsTabs.test.ts` ⇒ «لا مسار ميت» يشترط أن
+     تبقى هذه اللوحة **هي** الحاملة لهذين المعرّفين وأن تُفتح بالنقر الستّ فعلاً. -->
 <div class="spring-panel" id="advanced-panel-container">
 <div class="spring-panel-content">
 <div class="glass-effect border border-border-muted rounded-lg p-stack-lg flex flex-col gap-stack-md shadow-lg" id="advanced-panel">
@@ -336,6 +342,20 @@
 <span class="material-symbols-outlined text-sm text-clay-accent" data-icon="tune">tune</span>
             <span data-i18n="dlg_advanced">إعدادات متقدمة</span>
         </h3>
+<div class="flex flex-col gap-stack-md">
+<label class="flex items-center gap-stack-sm cursor-pointer group">
+<input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent focus:ring-offset-coal-surface transition-all duration-200 group-hover:border-clay-accent group-active:scale-90" id="keep-inst" type="checkbox"/>
+<span class="font-body-md text-cream-text transition-colors duration-200 group-hover:text-white" data-i18n="keep_inst">الاحتفاظ بالموسيقى (Keep Instrumental)</span>
+</label>
+<div class="flex items-center gap-stack-sm">
+<span class="font-label-md text-on-surface-variant" data-i18n="audio_format">صيغة الصوت:</span>
+<select id="fmt-select" class="form-select bg-coal-surface border border-border-muted rounded px-stack-md py-stack-sm text-cream-text focus:outline-none focus:border-clay-accent focus:ring-1 focus:ring-clay-accent font-body-md transition-all duration-300 apple-ease hover:border-on-surface-variant cursor-pointer">
+<option value="mp3">MP3</option>
+<option value="wav">WAV</option>
+<option value="flac">FLAC</option>
+</select>
+</div>
+</div>
 </div>
 </div>
 </div>
@@ -519,19 +539,9 @@
 </div>
 </div>
 
-<!-- About modal (Sprint B3) -->
-<div id="about-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="about-title">
-<div class="glass-effect border border-border-muted rounded-xl p-stack-lg w-96 max-w-[90vw] flex flex-col gap-stack-md fade-in-up" style="animation-duration: 0.25s;">
-<div class="flex justify-between items-center">
-<h3 id="about-title" class="font-label-md text-label-md text-clay-accent" data-i18n="about_title">حول HaramLite</h3>
-<button id="about-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit rounded cursor-pointer" title="إغلاق" data-i18n-title="dlg_close" data-i18n-aria="dlg_close">
-<span class="material-symbols-outlined text-sm" data-icon="close">close</span>
-</button>
-</div>
-<div id="about-body" class="flex flex-col gap-unit font-body-sm text-sm text-cream-text leading-relaxed"></div>
-<button id="about-ok" class="self-end bg-surface-container text-cream-text border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high transition-all duration-300 font-label-sm text-label-sm cursor-pointer" data-i18n="about_ok">حسناً</button>
-</div>
-</div>
+<!-- (حُذف مودال «حول البرنامج» `#about-overlay` بقرار المالك في جولة settings2:
+     محتواه صار يُعرض **داخل تبويب «حول البرنامج»** نفسه — `#about-body` هناك.
+     فلم يبقَ مودال لهذا السطح، ولا زرّ `#btn-about` يفتحه.) -->
 <!-- Telegram bot panel (Sprint T1) — its own window on purpose: the settings
      dropdown is too narrow, and hiding the token field behind its own toggle
      made the feature impossible to switch on (real field defect, 2026-09-11). -->

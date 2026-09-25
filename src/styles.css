@@ -189,6 +189,11 @@ body.settings-mode .settings-tab-panel:not([hidden]) {
     animation: shimmer 2s infinite;
 }
 
+/* لوحة «الإعدادات المتقدمة»: مطويّة افتراضياً (`grid-template-rows: 0fr` +
+   `opacity: 0`) و`.open` يفتحها — والفتح **بستّ نقرات على `#version-badge`**
+   (`src/main.ts` ⇒ `wireHiddenAdvancedPanel`). **أُعيدت هذه القواعد مع اللوحة**
+   بقرار المالك: بلا `grid-template-rows: 0fr` لظهر `#keep-inst` و`#fmt-select`
+   في `<main>` دائماً، وهو عكس الإخفاء المقصود. */
 .spring-panel {
     transition: grid-template-rows 0.5s cubic-bezier(0.4, 0, 0.2, 1), margin 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease;
     display: grid;

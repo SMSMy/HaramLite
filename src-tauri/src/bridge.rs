@@ -1258,7 +1258,6 @@ fn handle_request(
                 if watch { false } else { s.keep_instrumental },
                 true,
                 s.cuda,
-                None,
                 &|p| {
                     let _ = app.emit("sep-progress", p.clamp(0.0, 1.0));
                     !cancel_flag().load(Ordering::SeqCst)

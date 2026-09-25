@@ -82,8 +82,6 @@ export async function ingestFiles(files: string[]): Promise<void> {
 }
 
 export function updateQualityOptions(srcHeight: number | null): void {
-  const wrap = document.getElementById('q-wrap');
-  const sel = document.getElementById('quality-select') as HTMLSelectElement | null;
   const videoCard = document.getElementById('kind-video');
 
   // Video kind only makes sense for real video inputs; dim it otherwise.
@@ -92,27 +90,18 @@ export function updateQualityOptions(srcHeight: number | null): void {
   // skipped the dimming entirely and let users pick MP4 video for audio-only
   // files (guaranteed ffmpeg failure).
   if (videoCard) videoCard.classList.toggle('dimmed', srcHeight === null);
-  if (!wrap || !sel) return;
 
-  if (srcHeight === null) {
-    sel.replaceChildren();
-    return;
-  }
-
-  const ladder = [srcHeight, 1080, 720, 480, 360]
-    .filter((h) => h > 0 && h <= srcHeight)
-    .filter((h, i, arr) => arr.indexOf(h) === i)
-    .sort((a, b) => b - a);
-
-  sel.replaceChildren(
-    ...ladder.map((h, idx) => {
-      const o = document.createElement('option');
-      o.value = String(h);
-      o.textContent = idx === 0 ? t('quality_same', { h }) : `${h}p`;
-      return o;
-    }),
-  );
-  sel.value = String(ladder[0] ?? '');
+  /* **وما بعد هذا كان ميتاً فحُذف** (الجولة الرابعة): بناء «سلّم الجودة» في
+   * `#quality-select` داخل `#q-wrap` — والمعرّفان **غير موجودين**: لا في
+   * `index.html` (ولا كلمة `quality` فيه إطلاقاً) ولا في `dist/`، ولا يُنشئهما
+   * أي مسار (`createElement`/`innerHTML` في `src/**` = صفر). فكان
+   * `if (!wrap || !sel) return;` **يعود دائماً**، والسلّم و`sel.replaceChildren`
+   * و`sel.value` **لا تُنفَّذ قطّ**.
+   * ⇒ فالأثر الحيّ الوحيد لهذه الدالة هو تعتيم بطاقة `#kind-video` أعلاه، وهو
+   * محفوظ **حرفياً وفي موضعه نفسه** — وهو إصلاح عطب مسجَّل في `docs/AUDIT.md:243`
+   * (التعتيم كان يُتخطّى لأن `sel` دائماً `null`)، وصار له **حارس سلوكي** في
+   * `src/__tests__/settingsTabs.test.ts` ⇒ «لا مسار ميت».
+   * **ومفتاح الترجمة `quality_same` صار بلا مستعمِل** — نصٌّ لا مسار، تُرك معلَناً. */
 }
 
 /* ── batch engine (F5): sequential, continue-on-fail ────────────────── */
@@ -478,7 +467,11 @@ function markBatchItem(file: string, status: 'ok' | 'fail' | 'run' | 'cancelled'
       item.querySelector('.batch-pct')?.classList.add('hidden');
       item.querySelector('.batch-prog-wrap')?.classList.add('hidden');
       if (statusSpan) {
-          statusSpan.textContent = session.getPreviewEnabled() ? t('sep_done_preview') : t('sep_done_short');
+          // (كان: `session.getPreviewEnabled() ? t('sep_done_preview') : t('sep_done_short')`
+          // — وحُذف الفرع الأول مع «المعاينة السريعة» في جولة settings2 الرابعة:
+          // `getPreviewEnabled()` كانت `false` دائماً، فالمعروض ما كان إلا
+          // `sep_done_short` أصلاً.)
+          statusSpan.textContent = t('sep_done_short');
           statusSpan.className = 'status-text font-label-sm text-label-sm text-tertiary relative z-10 flex-1';
       }
       if (actionsDiv && resultPath) {
@@ -851,7 +844,8 @@ async function runSeparationFor(path: string, keepInst: boolean, o: SepOpts): Pr
     format: o.advFmt ?? null,
     keepInstrumental: keepInst,
     useCuda: useCuda,
-    previewSeconds: session.getPreviewEnabled() ? session.getPreviewSeconds() : null,
+    // (كان هنا `previewSeconds: …` — وحُذف مع «المعاينة السريعة»: كان `null`
+    // دائماً، والرست لم يعد يقبل الحقل أصلاً.)
   });
   return res;
 }
@@ -929,8 +923,13 @@ export function wireSeparate(): void {
     const advFmt = (document.getElementById('fmt-select') as HTMLSelectElement)?.value;
     const kindSel = document.querySelector<HTMLElement>('.kind-card.selected');
     const outKind = (kindSel?.dataset.kind as 'audio' | 'video') ?? 'audio';
-    const qSel = document.getElementById('quality-select') as HTMLSelectElement | null;
-    const quality = outKind === 'video' && qSel?.value ? Number(qSel.value) : undefined;
+    /* «الجودة» لكل تشغيل: مصدرها الوحيد كان `#quality-select` وهو غير موجود،
+       فكانت `qSel?.value` دائماً `undefined` ⇒ `quality` **دائماً `undefined`**.
+       ولا قيمة إعداد هنا: **لا حقل `quality` في `Settings`/`settings.json`**
+       (مقيس: صفر مطابقة في `settings.ts` · `session.ts` · `settings.rs`)، وإنما
+       هو خيار لكل تشغيل في `SepOpts`. والحقل **باقٍ كما هو** (`quality?: number`)
+       فيبقى ما يُرسل إلى الرست بايتاً بايتاً كما كان: `o.quality ?? null` = `null`. */
+    const quality: number | undefined = undefined;
 
     // single-file fast path
     if (session.getBatchQueue().length <= 1) {

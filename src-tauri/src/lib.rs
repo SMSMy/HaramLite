@@ -546,7 +546,6 @@ async fn separate_file(
     format: Option<String>,
     keep_instrumental: Option<bool>,
     use_cuda: Option<bool>,
-    preview_seconds: Option<f32>,
 ) -> Result<serde_json::Value, String> {
     // Reset cancel flag before starting (fast path — never blocked).
     state.cancel_flag.store(false, Ordering::SeqCst);
@@ -572,7 +571,7 @@ async fn separate_file(
 
         // م١: الفصل يمرّ بالمدخل الواحد `slots::run_separation` فيأخذ فتحة جهاز
         // (والوسم "gui" يظهر في سِجلّ المهامّ)، وإلا بقي هذا المدخل خارج المحدِّد.
-        let out = slots::run_separation("gui", Path::new(&path), Path::new(&out_dir), mode, kind, keep_inst, true, cuda_enabled, preview_seconds, &|p| {
+        let out = slots::run_separation("gui", Path::new(&path), Path::new(&out_dir), mode, kind, keep_inst, true, cuda_enabled, &|p| {
             if throttle::emit_4hz().allow("sep-progress") {
                 let _ = app.emit("sep-progress", p.clamp(0.0, 1.0));
             }
@@ -687,7 +686,7 @@ fn read_normalized_mix(input: &Path) -> Result<(Vec<f32>, Vec<f32>, u32), String
     let work = std::env::temp_dir().join(format!("hl_player_{}", std::process::id()));
     let _scratch = crate::scratch::ScratchGuard::new(&work);
     let normalized =
-        media::normalize_for_engine_limited(input, &work, None).map_err(|e| e.to_string())?;
+        media::normalize_for_engine(input, &work).map_err(|e| e.to_string())?;
     separator::read_wav_stereo(&normalized).map_err(|e| e.to_string())
 }
 

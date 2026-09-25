@@ -107,7 +107,7 @@ const REQUIRED: ReadonlyArray<readonly [string, readonly string[], string?]> = [
       'btn-repair-open',
     ],
   ],
-  ['عن البرنامج', ['btn-report', 'btn-about']],
+  ['عن البرنامج', ['btn-report', 'about-body']],
 ];
 
 /** المجموعات المطلوبة **خارج** الحاوية: لوحة تلغرام والإصلاح وزرّ اللغة. */
@@ -143,9 +143,9 @@ const ALL_REQUIRED: readonly string[] = [
 ];
 
 // **والقائمة تُشتقّ من الخريطة المعلَنة**، فلا تُكتب التبويبات مرّتين في هذا
-// الملف (كانت مكتوبة نصّاً فبقيت سبعة بعد أن صارت في الشجرة سبعة فعلاً — والنسخة
-// النصّية هي أول ما يتقادم). والترتيب يأتي من ترتيب المفاتيح في الخريطة، ووجوده
-// في واجهة المستخدم يقيسه `settingsTabs.test.ts` مقابل `[data-tab-btn]` الحقيقي.
+// الملف ولا تتقادم نسخةٌ نصّية منه صامتة (وقد تقادمت فعلاً: كان هنا سبعة بعد أن
+// صارت في الشجرة ستّة، فكشفها الدمج). والترتيب يأتي من ترتيب مفاتيح الخريطة،
+// ووجوده في واجهة المستخدم يقيسه `settingsTabs.test.ts` مقابل `[data-tab-btn]`.
 const TABS: readonly SettingsTab[] = [...new Set(Object.values(SETTINGS_TAB_MAP))];
 
 /**
@@ -155,15 +155,19 @@ const TABS: readonly SettingsTab[] = [...new Set(Object.values(SETTINGS_TAB_MAP)
  * والمتوقَّع `performance` — **مقيس** بـ`closest('.settings-tab-panel').dataset.tab`.
  * **مُفسَده**: نقل أيّ معرّف هنا إلى تبويب آخر ⇒ يسقط.
  *
- * ⚠ **وثلاثة أسطر من هذا الجدول صُحّحت في الدمج (لا نُقلت كما هي)**، لأن الفرع
- * المدموج كان مبنيّاً على `5e5ce0f` **قبل** `10d8dfa` الذي نقل أربعة عناصر:
- * `#cuda-provider` · `#setting-notify` · `#btn-report` (و`#max-jobs`). والقياس
- * الحرفي قبل التصحيح من `pnpm test:web`:
+ * ⚠ **وثلاثة أسطر من هذا الجدول صُحّحت في دمج `agent/x4-cancel` (لا نُقلت كما
+ * هي)**، لأن الفرع المدموج كان مبنيّاً على `5e5ce0f` **قبل** `10d8dfa` الذي نقل
+ * أربعة عناصر. والقياس الحرفي قبل التصحيح من `pnpm test:web`:
  * `عناصر في غير تبويبها: cuda-provider: متوقَّع engine · مقيس performance ·
  *  setting-notify: متوقَّع update · مقيس performance ·
  *  btn-report: متوقَّع about · مقيس update`.
- * ⇒ القيم هنا الآن **مطابقة للخريطة المعلَنة** في `src/settingsTabMap.ts`،
- * ويُشترَط ذلك صراحةً في الحارس أدناه (فلا يعود جدولٌ ثانٍ يكذب في صمت).
+ * ⚠ **وحُذف منه `'btn-about'` في دمج `agent/settings2`**: الفرع حذف مودال «حول»
+ * وزرّه `#btn-about` بقرار المالك (المحتوى يُعرض داخل التبويب)، فالمعرّف **لم يبقَ
+ * في `index.html`** — وحُذف من هنا ومن `src/settingsTabMap.ts` معه، فلا يُعلَن
+ * عنصر غير موجود.
+ * ⇒ القيم هنا الآن **مطابقة للخريطة المعلَنة**، ويُشترَط ذلك صراحةً في الحارس
+ * أدناه. **وشرطُ «معلَن في الخريطة» هو نفسه ما كشف `btn-about`** — فالحارس أثبت
+ * أنه يرى ولا يمرّ بصمت.
  */
 const EXPECTED_TAB: Record<string, string> = {
   'setting-cuda': 'performance',
@@ -180,7 +184,6 @@ const EXPECTED_TAB: Record<string, string> = {
   'setting-notify': 'performance',
   'btn-repair-open': 'update',
   'btn-report': 'update',
-  'btn-about': 'about',
 };
 
 /** يركّب DOM ويربط الشاشة (والوضع الأوّلي من الـhash — بديل الاختبار). */

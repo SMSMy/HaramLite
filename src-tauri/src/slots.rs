@@ -1422,7 +1422,6 @@ fn separation_body<'a>(
     keep_instrumental: bool,
     keep_vocals: bool,
     use_cuda: bool,
-    preview_seconds: Option<f32>,
     progress: &'a dyn Fn(f32) -> bool,
     stage: &'a dyn Fn(&str, f32),
 ) -> impl FnOnce(&CancelToken) -> Result<PipelineOutput, String> + 'a {
@@ -1435,7 +1434,6 @@ fn separation_body<'a>(
             keep_instrumental,
             keep_vocals,
             use_cuda,
-            preview_seconds,
             token,
             progress,
             stage,
@@ -1465,7 +1463,6 @@ pub fn run_separation(
     keep_instrumental: bool,
     keep_vocals: bool,
     use_cuda: bool,
-    preview_seconds: Option<f32>,
     progress: &dyn Fn(f32) -> bool,
     stage: &dyn Fn(&str, f32),
 ) -> Result<PipelineOutput, String> {
@@ -1479,7 +1476,6 @@ pub fn run_separation(
         keep_instrumental,
         keep_vocals,
         use_cuda,
-        preview_seconds,
         progress,
         stage,
     )
@@ -1500,7 +1496,6 @@ pub fn run_separation_registered(
     keep_instrumental: bool,
     keep_vocals: bool,
     use_cuda: bool,
-    preview_seconds: Option<f32>,
     progress: &dyn Fn(f32) -> bool,
     stage: &dyn Fn(&str, f32),
 ) -> Result<PipelineOutput, String> {
@@ -1516,7 +1511,6 @@ pub fn run_separation_registered(
             keep_instrumental,
             keep_vocals,
             use_cuda,
-            preview_seconds,
             progress,
             stage,
         ),
@@ -1535,7 +1529,6 @@ fn run_separation_as(
     keep_instrumental: bool,
     keep_vocals: bool,
     use_cuda: bool,
-    preview_seconds: Option<f32>,
     progress: &dyn Fn(f32) -> bool,
     stage: &dyn Fn(&str, f32),
 ) -> Result<PipelineOutput, String> {
@@ -1552,7 +1545,6 @@ fn run_separation_as(
             keep_instrumental,
             keep_vocals,
             use_cuda,
-            preview_seconds,
             progress,
             stage,
         ),
@@ -3547,7 +3539,6 @@ mod tests {
             false,
             true,
             false,
-            None,
             &|_| true,
             &|_, _| {},
         );

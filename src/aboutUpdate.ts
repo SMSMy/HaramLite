@@ -15,7 +15,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { currentLang, t } from './i18n';
-import { showToast, trapFocus } from './util';
+import { showToast } from './util';
 import * as session from './session';
 
 /* ── about + report (Sprint B3/B4) ──────────────────────────────────── */
@@ -48,20 +48,18 @@ function fillAbout(): void {
       </ul>
     </div>`;
 }
+/** **«حول البرنامج» يُعرض مباشرة في تبويبه** (قرار المالك، جولة settings2).
+ *
+ * كان مودالاً (`#about-overlay`) يُفتح بزرّ `#btn-about`، وفيه `fillAbout()`
+ * وحبسُ تركيز (trapFocus) وإغلاقٌ بـESC. والمحتوى انتقل إلى `#about-body`
+ * **داخل تبويب «حول البرنامج»** في شاشة الإعدادات، فلم يبقَ مودال ولا زرّ فتح
+ * ولا حبسُ تركيز (لا حوار يُحبس فيه التركيز).
+ *
+ * **وأثر التغيير على الفتح مقيس**: الروابط تُفتح بالمُوصِّل المفوَّض على
+ * `#about-body` نفسه، وهو باقٍ هنا كما كان — **يتغيّر موضعه لا آلية عمله**. */
 export function wireAbout(): void {
-  const overlay = document.getElementById('about-overlay');
-  let release: (() => void) | null = null;
-  const close = (): void => {
-    overlay?.classList.add('hidden');
-    release?.();
-    release = null;
-  };
-  const open = () => {
-    fillAbout();
-    overlay?.classList.remove('hidden');
-    if (overlay) release = trapFocus(overlay);
-  };
-  // External links inside the modal (dev credit, inspiring projects):
+  fillAbout();
+  // External links in the credits (dev credit, inspiring projects):
   // delegated once on the stable container — innerHTML re-renders freely.
   // data-open-url only (never raw href — href would navigate the WebView
   // itself out of the app and break it).
@@ -69,16 +67,6 @@ export function wireAbout(): void {
     const el = (e.target as HTMLElement).closest?.('[data-open-url]') as HTMLElement | null;
     const url = el?.getAttribute('data-open-url');
     if (url) void openUrl(url).catch((err) => console.error('openUrl failed', err));
-  });
-  document.getElementById('btn-about')?.addEventListener('click', open);
-  document.getElementById('about-close')?.addEventListener('click', close);
-  document.getElementById('about-ok')?.addEventListener('click', close);
-  overlay?.addEventListener('click', (e) => {
-    if (e.target === overlay) close();
-  });
-  // ESC must dismiss this dialog too (the Telegram panel already did).
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && overlay && !overlay.classList.contains('hidden')) close();
   });
 }
 export function wireReport(): void {
