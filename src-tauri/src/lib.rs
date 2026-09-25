@@ -397,10 +397,18 @@ async fn download_media_cmd(
 async fn update_ytdlp(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         use tauri::Emitter;
-        let (updated, message) = yt_dlp::ensure_updated(true, &|p| {
+        let outcome = yt_dlp::ensure_updated(true, &|p| {
             let _ = app.emit("dl-progress", p.clamp(0.0, 1.0));
         });
-        Ok(serde_json::json!({ "updated": updated, "message": message }))
+        // ط-٤/البند ٣: `code` هو ما تُترجمه الواجهة (مفاتيح `u.*`)، و`detail` هو
+        // النصّ الخام كما كان — و`message` يبقى الحقل القديم بعينه فلا ينكسر
+        // قارئ أقدم (ولا يُحذف حقل من حمولة قائمة بلا داع).
+        Ok(serde_json::json!({
+            "updated": outcome.updated,
+            "code": outcome.code,
+            "detail": outcome.detail,
+            "message": outcome.detail,
+        }))
     })
     .await
     .map_err(|e| format!("update worker failed: {e}"))?
@@ -1489,11 +1497,11 @@ pub fn run() {
                         );
                         return;
                     }
-                    let (updated, msg) = yt_dlp::ensure_updated(false, &|_| {});
-                    if updated {
-                        tracing::info!(target: "ytdlp", "{msg}");
+                    let outcome = yt_dlp::ensure_updated(false, &|_| {});
+                    if outcome.updated {
+                        tracing::info!(target: "ytdlp", "{}", outcome.detail);
                     } else {
-                        tracing::debug!(target: "ytdlp", "{msg}");
+                        tracing::debug!(target: "ytdlp", "{}", outcome.detail);
                     }
                 })
                 .ok();

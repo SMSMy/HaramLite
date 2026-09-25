@@ -14,7 +14,14 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { currentLang, t } from './i18n';
+import { currentLang, errText, t } from './i18n';
+/* **`trapFocus` أُسقط من الاستيراد في حلّ دمج `agent/texts2`** — وهو الخطّ الوحيد
+ * الذي مسّته يدي في هذا الملف. وسببه: `texts2` يستورد `trapFocus` لأن نسخته تُبقي
+ * مودال «حول» وتحبس فيه التركيز، **و`settings2` حذف المودال وحبسَ التركيز بقرار
+ * المالك** (المحتوى في `#about-body` داخل التبويب). فبقي الاستيراد **بلا مستهلك**
+ * وأسقط `tsc`: `error TS6133: 'trapFocus' is declared but its value is never read`
+ * (وقالها `pnpm exec tsc --noEmit` ⇒ exit 2). **والسلوك لا يتغيّر**: لا حوار يُحبس
+ * فيه التركيز أصلاً. (وHEAD كان يستورد `showToast` وحدها ⇒ فالملف يعود إلى ما كان.) */
 import { showToast } from './util';
 import * as session from './session';
 
@@ -133,9 +140,9 @@ async function runUpdateCheck(force: boolean): Promise<UpdateStatus | null> {
     if (st.error) {
       // مسار الفشل: بلا شبكة · بلا إصدارات منشورة · استجابة غير متوقعة · JSON مشوّه
       if (force) {
-        setUpdRow(`${t('upd_failed')} — ${st.error}`, true);
+        setUpdRow(`${t('upd_failed')} — ${errText(st)}`, true);
         setUpdDownload(null);
-        showToast(`${t('upd_failed')} — ${st.error}`);
+        showToast(`${t('upd_failed')} — ${errText(st)}`);
       }
       invoke('push_log', { level: force ? 'warn' : 'debug', message: `update check failed: ${st.error}` });
       return st;
@@ -161,7 +168,7 @@ async function runUpdateCheck(force: boolean): Promise<UpdateStatus | null> {
     return st;
   } catch (e) {
     // حتى فشل الأمر نفسه (ثنائي قديم بلا الأمر، أو خطأ داخلي) له نصّ ظاهر.
-    const msg = String(e);
+    const msg = errText(e);
     if (force) {
       setUpdRow(`${t('upd_failed')} — ${msg}`, true);
       setUpdDownload(null);
@@ -186,7 +193,7 @@ export function wireUpdateCheck(): void {
     const url = btn?.dataset.url || UPDATE_PAGE_FALLBACK;
     // فشل الفتح أيضاً لا يمرّ بصمت: نصّ في الصفّ + إشعار + سطر في السجل.
     void openUrl(url).catch((e) => {
-      setUpdRow(`${t('upd_open_failed')} — ${String(e)}`, true);
+      setUpdRow(`${t('upd_open_failed')} — ${errText(e)}`, true);
       showToast(t('upd_open_failed'));
       invoke('push_log', { level: 'warn', message: `open download page failed: ${String(e)}` });
     });

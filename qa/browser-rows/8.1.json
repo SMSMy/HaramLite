@@ -97,7 +97,7 @@
     },
     {
       "path": "browser-extension/popup.js",
-      "sha256": "72e32cf09f517fe05a88c333b5c450420019122879b2636e7c91cfae47127725"
+      "sha256": "6323ee9bd4f44c8b9fe0769dbbf62b48a6c5ee8bb8b5602cf3851b4c74b36216"
     },
     {
       "path": "browser-extension/manifest.json",

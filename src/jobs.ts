@@ -13,7 +13,14 @@
  * و`label` ∈ "gui" | "cli" | "bridge" | "watch" | "telegram"، و`path` هو **مسار
  * الإدخال** ⇒ تُطابَق عناصر الطابور بالمهامّ عبر المسار.
  *
- * **ما هذا الملف**: منطق نقيّ بلا DOM وبلا استيراد (لا `invoke` ولا `t`):
+ * **والخطأ يُقرأ بـ`errText`** (ط-٤): هذا الملف **يُخزّن** نصّ خطأ الخلفية في
+ * `CancelOutcome` ثم يُعرض بـ`t('stop_registry_failed'|'stop_cancel_failed')`.
+ * فلو خزّناه خامّاً لضاع الرمز `code` عند حدّ النوع (`error: string`) ووصل
+ * المستخدم الإنجليزي نصّاً عربياً — وهو العطل نفسه من بابه الثاني. فالمعالجة
+ * هنا، حيث ما زال الخطأ الأصلي في اليد.
+ *
+ * **ما هذا الملف**: منطق نقيّ بلا DOM وبلا `invoke` — **والاستيراد الوحيد**
+ * `errText` من `./i18n` لقراءة نصّ الخطأ بلغة القارئ (انظر أعلاه).
  * تطبيع المسار · اختيار المهمّة التي يخصّها صفّ الطابور · تحديد هدف زرّ
  * الإيقاف · قراءة السِجلّ (بحالة فشل صريحة) · طلب الإلغاء **لمهمّة واحدة**
  * · وترجمة النتيجة إلى مفتاح رسالة. وكل نداء للخلف يمرّ عبر `JobInvoker`
@@ -23,6 +30,8 @@
  * في `src/queue.ts`، والاختبار الحيّ للواجهة (نقر حقيقي على الزر في تطبيق
  * عامل) **لم يُجرَ** (لا تشغيل للتطبيق في هذه الجولة).
  */
+
+import { errText } from './i18n';
 
 /** صورة مهمّة نشطة. الحقول غير المعرّفة optional عن قصد: نسخة خلفية قديمة لا
  *  تُرسل `path`، وغيابه يجب أن يُقرأ «لا أعرف مساره» لا «يطابق كل مسار». */
@@ -148,7 +157,7 @@ export async function fetchActiveJobs(
     }
     return { ok: true, jobs: raw.map(asJobInfo).filter((j): j is JobInfo => j !== null) };
   } catch (e) {
-    return { ok: false, error: String(e) };
+    return { ok: false, error: errText(e) };
   }
 }
 
@@ -174,7 +183,7 @@ export async function cancelJobById(invoker: JobInvoker, id: number): Promise<Ca
     const ok = await invoker('cancel_job', { id });
     return { kind: 'job', id, requested: ok === true };
   } catch (e) {
-    return { kind: 'cancel-error', id, error: String(e) };
+    return { kind: 'cancel-error', id, error: errText(e) };
   }
 }
 

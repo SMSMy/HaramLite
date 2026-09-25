@@ -23,7 +23,36 @@
  * **ما لا يقيسه**: لا يشغّل التطبيق ولا Rust — النداءات وكلاء، والرسالة تُحاكى
  * بالحرف الذي قِيس في سجلّ المالك. ولا لقطة بصرية: «غير أحمر» = غياب صنف
  * `text-error`/`border-error`، لا حكم على اللون المعروض.
+ *
+ * ── مصدر العيّنة: **مربوطة بالكود، لا محفوظة من سجلّ** (ط-٤) ─────────────────
+ * الجملة أعلاه كانت مثبَّتة كـ«مقيسة في سجلّ المالك (2026-09-21)» — أي **مرجع
+ * تاريخي**: لو تغيّر نصّ الخلف لبقي الاختبار أخضر وهو يقيس نصّاً لم يعد يُصدَر.
+ * فصارت العيّنة مربوطة بمصدرها بقياس (كتلة «العيّنة مطابقة لما يبنيه الرست»):
+ *
+ * | الحدّ | الموضع | ما يبنيه |
+ * |---|---|---|
+ * | بناء الإلغاء | `src-tauri/src/separator.rs:656-662` | `if !progress(…) { return Err(SepError::Cancelled); }` |
+ * | ذراع العرض | `src-tauri/src/separator.rs:59` | `Self::Cancelled => write!(f, "{}", crate::pipeline::CANCELLED_BY_USER)` |
+ * | نصّ الثابت | `src-tauri/src/pipeline.rs:76` | `pub const CANCELLED_BY_USER: &str = "تم إلغاء المعالجة من قبل المستخدم.";` |
+ *
+ * والثالث هو `CANCEL_MSG` **حرفياً**. فالحارس يسقط **باسم الموضع** إن غُيّر أحد
+ * الحدود الثلاثة، بدل أن يشيخ بصمت.
+ *
+ * ── وكان السقوط الموعود قد وقع فعلاً (ط-٤، قياس 2026-09-25) ────────────────────
+ * جدول الحدّين أعلاه كان `SepError::Inference("<الجملة>")` + بادئة
+ * `Self::Inference(e) => write!(f, "خطأ استدلال النموذج: {e}")`، وكتبتُ عنده:
+ * «`agent/x4-cancel` يُبدّل … ⇒ يسقط هذا الحارس حين يُدمج». وقد دُمج
+ * (`rehearsal/owner-test` @ `0db0ade`) فسقط الحالتان **باسمهما**: الاشتقاق أعاد
+ * `null` لأن البناء صار `return Err(SepError::Cancelled)` بلا نصّ، والبندول
+ * `write!(f, "{}", …)` بلا بادئة. فالربط هنا **أُعيد إلى المصدر الجديد** ولم
+ * يُرخَ: ثلاثة حدود مربوطة بدل حدّين، ولا واحد منها نصٌّ مكتوب بيد.
+ *
+ * **وحدّ معلَن**: كتلة الربط تقرأ **نصّ** الملف لا سلوكه — تحويلٌ ملتوٍ (اسم
+ * مستعار، أو بناء الجملة في دالّة وسيطة) لا تراه، وهو موكول إلى المراجعة.
  */
+import { readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import indexHtml from '../../index.html?raw';
 
@@ -42,8 +71,12 @@ import * as session from '../session';
 const A = 'C:\\Music\\Album\\uitest_long.wav';
 const B = 'C:\\Music\\Album\\uitest_next.wav';
 
-/** رسالة الخلف **بالحرف المقيس** في سجلّ المالك (2026-09-21). */
-const CANCEL_MSG = 'خطأ استدلال النموذج: تم إلغاء المعالجة من قبل المستخدم.';
+/** رسالة الخلف **كما هي اليوم** — لا «كما قيست في سجلّ المالك 2026-09-21» فقط:
+ *  مُشتقّة من `src-tauri/src/separator.rs` (بناء `demix` + ذراع `Display`) ومن
+ *  `src-tauri/src/pipeline.rs` (نصّ الثابت المطبوع)، وكتلة «العيّنة مطابقة لما
+ *  يبنيه الرست» أسفل هذا الملف تُثبت التطابق عند **كل تشغيل** — فالعيّنة لا
+ *  تشيخ بصمت. */
+const CANCEL_MSG = 'تم إلغاء المعالجة من قبل المستخدم.';
 const REAL_MSG = 'ffmpeg exited with code 1';
 
 function mountApp(): void {
@@ -205,5 +238,124 @@ describe('الاستعادة: الملغى لا يُستأنَف (قرار صر�
     expect(session.getBatchQueue(), 'الفاشل وحده').toEqual([B]);
     expect(localStorage.getItem('hl.batch')).toContain('"s":"fail"');
     expect(localStorage.getItem('hl.batch')).not.toContain('cancelled');
+  });
+});
+
+/* ── ٤) العيّنة مطابقة لما يبنيه الرست (ط-٤): لا تشيخ بصمت ────────────────────
+ *
+ * **المُفسَد**: غيّر جملة الإلغاء في `src-tauri/src/separator.rs:644` (أو بادئة
+ * `Display` في `:44`) بحرف واحد ⇒ تسقط الحالتان أدناه، الأولى باسم الموضع
+ * والثانية بأن `isCancellation` لم تعد تعرف النصّ المُشتقّ.
+ *
+ * **ولماذا كتلة اختبار لا ثابت**: الثابت المكتوب بيد يشيخ بصمت — وهذا هو العطل
+ * نفسه (النصّ تغيّر والتعليق بقي تاريخياً). فالاشتقاق من الملف هو ما يجعل
+ * «كما هي اليوم» **دعوى مقيسة** لا جملة في تعليق.
+ */
+describe('العيّنة «كما هي اليوم» مُشتقّة من كود الرست', () => {
+  /** جذر المستودع — **يُحسب من مسار الملف بلا `new URL`**، ولا يُبنى عنوان
+   *  داخل حالة. وهو **ليس تجميلاً**: هذا الملف كان يستعمل
+   *  `new URL(…, import.meta.url)` وقِيس في هذه البيئة أن الشكل الواحد يعطي
+   *  ثلاثة نتائج مختلفة (‏2026-09-25 · `agent/texts2`):
+   *
+   *  | الصيغة | الموضع | المقيس |
+   *  |---|---|---|
+   *  | `new URL('../../' + RS, import.meta.url)` | متن `describe` | `file:///…/src-tauri/src/separator.rs` ✅ |
+   *  | `new URL('../../', import.meta.url)` | متن `describe` | **مخطّط غير `file`** ⇒ `fileURLToPath` يرمي |
+   *  | ``new URL(`../../src-tauri/src/${m}.rs`, import.meta.url)`` | داخل حالة | `file:///C:/src-tauri/src/pipeline.rs` ❌ |
+   *
+   *  والثالث هو العطب المقيس: الأساس المطبوع كان سليماً
+   *  (`file:///C:/Code-backup/HaramMute%20Desktop%20III/wt-texts2/src/__tests__/…`)
+   *  لكن `../../` حُسبت من `/C:/Code-backup/HaramMute` — أي أن الأساس انقطع عند
+   *  **أول فراغ** في مسار المستودع. فصار `readFileSync` يفشل بـ`ENOENT`، **وكان
+   *  `catch` يُعيد `null` صامتاً** فيظهر العطل كأنه «الحدّ تغيّر» لا كأنه «المسار
+   *  خُطئ» — وهو أسوأ ما في حارس يشيخ (وأخذ هذا التشخيص أربع تشغيلات، لأن الأثر
+   *  الظاهر كان مضلِّلاً).
+   *
+   *  **فالعلاج اثنان معاً**: المسار يُحسب من `import.meta.url` بـ`fileURLToPath`
+   *  و`path` (لا `new URL`)، **والقراءة لا تُبتلع**: فشلُها يُسقط بـ`ENOENT` يسمّي
+   *  الملف لا بـ`null` غامض. */
+  const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+  /** النصف الإنتاجي من `separator.rs` — كتلة `mod tests` تتكلّم عن الإلغاء
+   *  بالضرورة (وفيها البناء المُفسَد)، فلا تُقرأ معه. */
+  const SEPARATOR_RS = 'src-tauri/src/separator.rs';
+  const src = readFileSync(join(REPO_ROOT, SEPARATOR_RS), 'utf8');
+  const cut = src.indexOf('\nmod tests {');
+  const production = cut < 0 ? src : src.slice(0, cut);
+
+  const PIPELINE_RS = 'src-tauri/src/pipeline.rs';
+
+  /** **النصّ الذي يبنيه الرست اليوم** — مُشتقّاً من الملفات لا مكتوباً بيد.
+   *
+   * الحدود الثلاثة المربوطة (ولا رابع):
+   *   ① **بناء الإلغاء في `demix`**: البناء الذي يقول «نداء التقدّم قال توقّف»
+   *      — `if !progress(…) { … return Err(SepError::<البديل>); }`.
+   *      والربط **بالبناء لا بالجملة**: لولا `!progress` لطابقنا أول
+   *      `SepError::Io(…)` في الملف. والبديل صار **بلا نصّ** بعد `0db0ade`
+   *      (وهذا بعينه ما كان يُسقط الربط القديم)، فالالتقاط هنا **بلا وسيط**:
+   *      `return Err(SepError::([A-Za-z]+));` — فلو أُعيد النصّ إلى البناء
+   *      (وهو العطب الأصلي الذي أُصلح) لم يطابق نمطُنا ⇒ `null` ⇒ سقوط بالاسم.
+   *   ② **ذراع العرض للبديل نفسه**: `Self::<البديل> => write!(f, "{}", <مسار ثابت>)`
+   *      — بصيغة `{}` **وحدها وبلا بادئة**. فلو عادت بادئة
+   *      «خطأ استدلال النموذج: {e}» (وهي التي جعلت الإلغاء يُقرأ عطباً) لم
+   *      يطابق النمط ⇒ `null` ⇒ سقوط بالاسم.
+   *   ③ **نصّ الثابت المطبوع** في `pipeline.rs` (`pub const … : &str = "…"`)
+   *      — فالجملة تُقرأ من عرّافها لا من ذراع العرض.
+   *
+   * وتُرجع `null` إن لم يعد أحد الحدود قائماً — فيسقط الاختبار **برسالة تُسمّي
+   * ما يُعاد قياسه** بدل نجاح فارغ. */
+  function deriveCancelMessage(): { variant: string; constant: string; text: string } | null {
+    // ① موضع الإلغاء: `!progress(…)` ⇒ `return Err(SepError::<البديل>);` بلا نصّ.
+    const built = /if\s*!progress\([^)]*\)\s*\{[\s\S]{0,400}?return Err\(SepError::([A-Za-z]+)\);/
+      .exec(production);
+    if (!built) return null;
+    const variant = built[1];
+
+    // ② ذراع العرض: يطبع `{}` من مسار ثابت، بلا بادئة.
+    const arm = new RegExp(
+      `Self::${variant}\\s*=>\\s*write!\\(f,\\s*"\\{\\}"\\s*,\\s*([A-Za-z_][A-Za-z0-9_:]*)\\)`,
+    ).exec(production);
+    if (!arm) return null;
+
+    // المسار المطبوع ⇒ (وحدة، ثابت). والثابت يُشترط أن يكون باسم ثابت
+    // (`SCREAMING_SNAKE`) — وإلا لطابقنا نداء دالّة صغيرة وقرأنا منها نصّاً.
+    const path = arm[1];
+    const constant = path.split('::').pop() ?? '';
+    if (!/^[A-Z][A-Z0-9_]*$/.test(constant)) return null;
+    const modulePath = path.replace(/^crate::/, '').split('::').slice(0, -1);
+    if (modulePath.length === 0) return null;
+
+    // ③ نصّ الثابت من عرّافه. والقراءة **بلا `catch`**: مسارٌ خاطئ يجب أن يُسقط
+    //    بـ`ENOENT` يسمّي الملف، لا بـ`null` يُقرأ «الحدّ تغيّر».
+    const constSrc = readFileSync(join(REPO_ROOT, 'src-tauri/src', ...modulePath) + '.rs', 'utf8');
+    const decl = new RegExp(`pub const ${constant}\\s*:\\s*&str\\s*=\\s*"([^"]*)";`).exec(constSrc);
+    if (!decl) return null;
+
+    return { variant, constant, text: decl[1] };
+  }
+
+  it('النصّ المُشتقّ من separator.rs وpipeline.rs هو CANCEL_MSG نفسه (وإلا فقد شيخ)', () => {
+    const r = deriveCancelMessage();
+    expect(
+      r,
+      `لم يُشتقّ نصّ الإلغاء من ${SEPARATOR_RS} + ${PIPELINE_RS} — تغيّر أحد الحدود ` +
+        'الثلاثة: بناء الخطأ عند حدّ الإلغاء في `demix` (‏`!progress` ⇒ ' +
+        '`return Err(SepError::…);` بلا نصّ)، أو ذراع `Display` لبديله (‏`write!(f, ' +
+        '"{}", <مسار ثابت>)` بلا بادئة)، أو نصّ الثابت في `pipeline.rs`. ' +
+        'أعِد قراءة الملفين وحدّث CANCEL_MSG واشتقاق هذا الاختبار معه.',
+    ).not.toBeNull();
+    expect(
+      r!.text,
+      `النصّ الذي يبنيه الرست اليوم (${SEPARATOR_RS} · SepError::${r!.variant} ⇒ ` +
+        `${PIPELINE_RS} · ${r!.constant})`,
+    ).toBe(CANCEL_MSG);
+  });
+
+  it('و`isCancellation` تعرف النصّ المُشتقّ — عقد الواجهة مع الخلف', () => {
+    const r = deriveCancelMessage();
+    expect(r, `الاشتقاق من ${SEPARATOR_RS} (انظر الحالة السابقة)`).not.toBeNull();
+    // نصّ الخلف **بلا بادئة بعد `0db0ade`**، وهو نفسه ما يُصدره `pipeline` في
+    // كل مسارات الإلغاء (`CANCELLED_BY_USER` ثابتٌ واحد) ⇒ نصّ واحد يُعرف إلغاءً.
+    expect(isCancellation(r!.text), 'نصّ الخلف كما يبنيه اليوم').toBe(true);
   });
 });

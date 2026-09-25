@@ -16,7 +16,7 @@
 
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import * as dialog from '@tauri-apps/plugin-dialog';
-import { currentLang, t } from './i18n';
+import { currentLang, errText, t } from './i18n';
 import type { MediaInfo } from './types';
 
 /* ── live player surface (v1 songs scope) ─────────────────────────── */
@@ -430,7 +430,7 @@ export function wirePlayer(): void {
       await renderPlayer(plCurPos());
       invoke('push_log', { level: 'info', message: `player map ready: ${muted} muted ranges, ${rep.marked_ready} ready` });
     } catch (e) {
-      mapEl.textContent = `✗ ${e}`;
+      mapEl.textContent = `✗ ${errText(e)}`;
       mapEl.classList.remove('hidden');
     } finally {
       prepBtn.disabled = false;

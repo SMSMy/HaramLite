@@ -16,7 +16,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import { t } from './i18n';
+import { errText, t } from './i18n';
 import { sanitizePath } from './util';
 import * as session from './session';
 import type { MediaInfo } from './types';
@@ -124,7 +124,7 @@ export async function runProbe(rawPath?: string): Promise<MediaInfo | null> {
     invoke('push_log', { level: 'info', message: `probe ok: ${session.getCurrentMediaPath()}` });
     return info;
   } catch (e) {
-    setVerdict(v!, String(e), true);
+    setVerdict(v!, errText(e), true);
     invoke('push_log', { level: 'error', message: `probe failed: ${e}` });
     return null;
   }

@@ -244,10 +244,6 @@ const i18n = {
     // سطور ثابتة كانت تُقرأ كسجلّ، ومنها خطأ لم يقع.
     log_empty: 'لا سطور في السجلّ بعد.',
     log_unavailable: '⚠ تعذّر قراءة السجلّ من الخلفية — لا سطور معروضة.',
-    log_demo_info: 'yt-dlp update check: already up to date.',
-    log_demo_warn: 'Track 2 audio format might cause slight degradation.',
-    log_demo_error: 'Failed to locate model weights in ./models directory.',
-    log_demo_ready: 'Initialization complete. Ready.',
     dlg_close: 'إغلاق',
     tg_pair_new: 'رمز جديد',
     tg_pair_copy: 'نسخ',
@@ -328,6 +324,40 @@ const i18n = {
     autostart_failed: 'تعذر تغيير التشغيل مع النظام:',
     toggle_pause: '⏸ إيقاف',
     toggle_cancel: '⏹ إلغاء',
+    // ── رموز خطأ الخلفية (ط-٤) ────────────────────────────────────────────
+    // **العطل**: التطبيق يصوغ أخطاءه بالعربية، فكان نصّ الخطأ يصل قارئ الواجهة
+    // الإنجليزية **عربياً خاماً** (‏`src/integration.ts` يعرض `payload.error`
+    // كما هو). وهذا **نفس صنف م٦-ج** في الإضافة، وعلاجه نفسه: **رمز مستقرّ
+    // `code`** يُصدره الرست مع كل حمولة خطأ (`src-tauri/src/bridge.rs`:
+    // `err_last` و`reply_err`)، وجدولُ ترجمته هنا — **لا جدول ثانٍ متوازٍ**:
+    // `errText` (أسفل هذا الملف) تقرأ هذا الجدول وحده.
+    // والمفاتيح هي **حرفياً** قيم ثوابت `pub const E_*` في `bridge.rs`، ويحرس
+    // التقابلَ في الاتجاهين اختبارُ `src/__tests__/errorTextSurface.test.ts`
+    // (رمز في الرست بلا مدخل = نصّ عربي يعود صامتاً؛ ومدخل بلا رمز = تغطية
+    // وهمية). و`{e}` هو **التفصيل الخام** كما يصوغه المحرّك: يبقى بلغته بعد
+    // الجملة المترجَمة — وهو **حدّ معلَن** (بند ط-١٢ في `BACKLOG-0.3.md`).
+    'code.duplicate_link': 'هذا الرابط طُلب من قبل في هذه الجلسة — تخطي المكرر',
+    'code.cancelled_by_user': 'أُلغيت المعالجة من قبل المستخدم',
+    'code.download_cancelled': 'أُلغي التنزيل من قبل المستخدم',
+    'code.internal_error': 'عطل داخلي — أعد المحاولة',
+    'code.engine_error': 'فشل المحرّك: {e}',
+    'code.unknown_message': 'رسالة غير معروفة بين الإضافة والتطبيق',
+    'code.bad_input': 'طلب غير صالح',
+    // ── **رموز نتيجة تحديث yt-dlp** (`U_*` في `src-tauri/src/yt_dlp.rs` — ط-٤) ──
+    // **العطل المقيس**: `ensure_updated` يُرجع تسعة مواضع كلّها نصوص عربية،
+    // و`bool` يفصل حالتين ⇒ سبعة منها كانت تُعرض عربيةً لقارئ إنجليزي. وهذه
+    // مدخلاتها، **ومساحة أسماء ثانية** (`u.*` لا `code.*`) لأن `code.*` مربوطة
+    // في الاتجاهين بثوابت `E_*` في `bridge.rs`. ويحرس التقابلَ في الاتجاهين
+    // `src/__tests__/errorTextSurface.test.ts`، ويُعرض عبر `errText`.
+    'u.not_due': 'لم يحن موعد فحص التحديث بعد',
+    'u.fetch_failed': 'تعذّر فحص التحديث — تعذّر الوصول إلى بيانات الإصدار',
+    'u.already_current': 'yt-dlp محدّث بالفعل',
+    'u.sums_fetch_failed': 'تعذّر جلب ملف المجاميع الموقّعة',
+    'u.sums_no_asset': 'ملف المجاميع لا يحمل بصمة yt-dlp',
+    'u.download_failed': 'فشل تنزيل التحديث — أُبقيت النسخة العاملة',
+    'u.swap_failed': 'فشل استبدال ملف yt-dlp بالنسخة الجديدة',
+    'u.updated': 'تم تحديث yt-dlp بنجاح',
+    'u.probe_rollback': 'فشل فحص النسخة الجديدة — أُعيدت النسخة السابقة',
   },
   en: {
     autoscroll: 'Auto-scroll',
@@ -518,10 +548,6 @@ const i18n = {
     log_toggle: 'Activity Log',
     log_empty: 'No log lines yet.',
     log_unavailable: '⚠ Could not read the log from the backend — no lines shown.',
-    log_demo_info: 'yt-dlp update check: already up to date.',
-    log_demo_warn: 'Track 2 audio format might cause slight degradation.',
-    log_demo_error: 'Failed to locate model weights in ./models directory.',
-    log_demo_ready: 'Initialization complete. Ready.',
     dlg_close: 'Close',
     tg_pair_new: 'New code',
     tg_pair_copy: 'Copy',
@@ -592,6 +618,25 @@ const i18n = {
     autostart_failed: 'Could not change startup:',
     toggle_pause: '⏸ Stop',
     toggle_cancel: '⏹ Cancel',
+    // Backend error codes (ط-٤) — same seven entries and the same wording as the
+    // Arabic block above, so one `code` reads identically in both surfaces
+    // (the extension carries the same `code.*` contract since م٦-ج).
+    'code.duplicate_link': 'This link was already requested in this session — skipping the duplicate',
+    'code.cancelled_by_user': 'Processing was cancelled by the user',
+    'code.download_cancelled': 'The download was cancelled by the user',
+    'code.internal_error': 'Internal error — try again',
+    'code.engine_error': 'Engine failed: {e}',
+    'code.unknown_message': 'Unknown message between the extension and the app',
+    'code.bad_input': 'Invalid request',
+    'u.not_due': 'The update check is not due yet',
+    'u.fetch_failed': 'The update check could not reach the release data',
+    'u.already_current': 'yt-dlp is already up to date',
+    'u.sums_fetch_failed': 'Could not fetch the signed checksum file',
+    'u.sums_no_asset': 'The checksum file has no yt-dlp entry',
+    'u.download_failed': 'The update download failed — the working copy was kept',
+    'u.swap_failed': 'Could not replace the yt-dlp binary with the new copy',
+    'u.updated': 'yt-dlp was updated',
+    'u.probe_rollback': 'The new copy failed its version probe — the previous copy was restored',
   },
 } as const;
 
@@ -602,6 +647,71 @@ export function t(key: keyof (typeof i18n)['ar'], vars?: Record<string, string |
   if (!vars) return s;
   return s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 }
+
+/** **النصّ المعروض لخطأ آتٍ من الخلفية — الموضع الوحيد الذي يقرأ الخطأ الخام.**
+ *
+ * **العطل الذي وُلدت لأجله** (بند ط-٤ في `docs/BACKLOG-0.3.md`): التطبيق يصوغ
+ * أخطاءه بالعربية، وكانت `src/integration.ts:695,704` تعرض `payload.error`
+ * **خاماً** ⇒ قارئ الواجهة الإنجليزية يرى **نصّاً عربياً** بلا ترجمة. وهذا نفس
+ * صنف عطل م٦-ج الذي أُغلق في الإضافة (رمز مستقرّ `code` + جدول ترجمة) وبقي في
+ * واجهة التطبيق.
+ *
+ * **الترتيب مقصود — والرمز أولاً**:
+ *   ① `code` معلوم في جدول `i18n` ⇒ **النصّ المترجَم بلغة القارئ**، و`{e}`
+ *      يُستبدل بالتفصيل الخام (فلا يُفقد سبب العطل).
+ *   ② رمز **مجهول** أو **غائب** (تطبيق أقدم لا يُصدر `code`، أو خطأ ليس من
+ *      حمولات الجسر: `String(e)` من أمرٍ رجع نصّاً) ⇒ **النصّ الخام كما هو
+ *      حرفياً** — توافق خلفي: الإصلاح لا يُخفي رسالة لا يعرف ترجمتها.
+ *
+ * **ولماذا هنا لا في جدول ثانٍ**: `i18n` هو جدول الترجمة الوحيد في الواجهة،
+ * فمدخلات `code.*` أعلاه تسكنه وحدها. ولا `switch` على الرموز: المدخل في
+ * الجدول هو المصدر، فرمزٌ جديد يُترجَم بمدخل واحد ولا يفترق مدخلٌ عن حالة.
+ *
+ * **وحدّها المعلَن**: هي **الموضع الوحيد** الذي يقرأ `.error` — وحراستها بنيوية
+ * في `src/__tests__/errorTextSurface.test.ts`: **لا قراءة `.error`/`.message`
+ * خارجها** في `src/**` إلا بما هو مُعلَن بالاسم والعدد والتعليل (قراءات
+ * التشخيص والسجلّ). ولذلك النصّ الخام يُقرأ **داخلها** لا في دالّة مساعدة:
+ * دالّةٌ ثانية تقرأ `.error` تعني سطحاً ثانياً بلا إعلان. */
+export function errText(err: unknown): string {
+  // ① النصّ الخام أولاً — الفرعان أدناه يعيدان ما كان الكود القديم يعرضه
+  //    **بالحرف**، فهو موضع التوافق الخلفي:
+  //      • كائن يحمل الحقل `error` (حمولات `bridge-done` · `check_update` ·
+  //        `cuda-install-done`) ⇒ قيمته، و`null`/`undefined` تعطي `''` — وهي
+  //        بعينها دلالة `String(p.error ?? '')` في `integration.ts:695,704`.
+  //      • غيره (نصّ مُرمى · `Error` · أي شيء آخر) ⇒ `String(err)` كما كان.
+  //    وفحص وجود الحقل (`'error' in err`) ليس تفصيلاً: قراءة `.error` بلا فحص
+  //    على `Error` تعطي `undefined` فيُكتب `"undefined"` مكان الرسالة.
+  let raw: string;
+  if (err !== null && typeof err === 'object' && 'error' in err) {
+    const value: unknown = (err as { error?: unknown }).error;
+    raw = value === null || value === undefined ? '' : String(value);
+  } else {
+    raw = String(err);
+  }
+
+  // ② والرمز المعلوم يسبقه: نصٌّ مترجَم بلغة القارئ، و`{e}` = التفصيل الخام.
+  //
+  //    **ومساحتان لا واحدة** (ط-٤ · البند ٣): `code.*` لرموز الجسر — وهي مربوطة
+  //    في الاتجاهين بثوابت `E_*` في `bridge.rs` ويحرسها
+  //    `src/__tests__/errorTextSurface.test.ts` — و`u.*` لرموز **نتيجة تحديث
+  //    yt-dlp** (`U_*` في `yt_dlp.rs`، وهي ليست حمولات جسر). وإدخال التسعة في
+  //    `code.*` كان سيُرخي ثابت التقابل أو يُخالقه. والترتيب مقصود: `code` أولاً
+  //    فلا يتوقّف رمز جسر على غياب تصادم في `u.*`.
+  const code = (err as { code?: unknown } | null | undefined)?.code;
+  if (typeof code === 'string' && code !== '') {
+    const row = i18n[lang] as unknown as Record<string, string>;
+    for (const key of [`code.${code}`, `u.${code}`]) {
+      // `hasOwnProperty` لا `in`: جدول `as const` كائنٌ عادي، و`in` يرى
+      // `toString` ونحوها من `Object.prototype` فيُترجم رمزاً اسمه `constructor`.
+      if (Object.prototype.hasOwnProperty.call(row, key)) {
+        return row[key].replace(/\{e\}/g, raw);
+      }
+    }
+  }
+  // ③ رمز مجهول أو غائب ⇒ النصّ الخام حرفياً (توافق خلفي).
+  return raw;
+}
+
 export function applyLang(): void {
   document.documentElement.lang = lang;
   document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';

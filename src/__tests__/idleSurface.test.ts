@@ -435,10 +435,16 @@ describe('ع٣ · سجلّ الأحداث يقول الحقيقة عند الف�
     const view = doc.getElementById('log-view')!;
     expect(view.children, 'سطور ثابتة في #log-view').toHaveLength(0);
     expect(view.textContent?.trim(), 'نصّ ثابت في #log-view').toBe('');
-    // والمفاتيح التي كانت لهذه السطور باقية — تُستعمل في مواضع أخرى مشروعة.
-    for (const k of ['log_demo_info', 'log_demo_warn', 'log_demo_error', 'log_demo_ready'] as const) {
-      expect(i18n.ar[k]).toBeTruthy();
-      expect(i18n.en[k]).toBeTruthy();
+    // **والمفاتيح الأربعة التي كانت لهذه السطور حُذفت** (ط-٤ · جولة الحُزَم).
+    // وكان هنا اشتراطُ بقائها بتعليل «تُستعمل في مواضع أخرى مشروعة» — وهو تعليل
+    // **قِيس كذبه**: لا نصّ حرفيّ لها في `src/**` المشحونة ولا ربط `data-i18n*`
+    // في `index.html` ولا يغطّيها الموضع المحسوب، فكانت **مفاتيح يتيمة** تُوهم
+    // بتغطية قائمة (يقيسها `i18nConsumers.test.ts`). فحُذفت من الجدولين، وهذا
+    // الفحص يقلب الاشتراط: **يمنع عودتها** — وعودةُ سطور تجريبية ثابتة تحتاج
+    // مفاتيحها، فيُمسك الأمر من الطرفين.
+    for (const k of ['log_demo_info', 'log_demo_warn', 'log_demo_error', 'log_demo_ready']) {
+      expect(k in (i18n.ar as unknown as Record<string, unknown>), `مفتاح تجريبي عاد إلى ar: ${k}`).toBe(false);
+      expect(k in (i18n.en as unknown as Record<string, unknown>), `مفتاح تجريبي عاد إلى en: ${k}`).toBe(false);
     }
     void pkg;
   });

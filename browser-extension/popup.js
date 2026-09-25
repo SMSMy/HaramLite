@@ -139,6 +139,19 @@ const I18N = {
     'code.engine_error': 'فشل المحرّك: {e}',
     'code.unknown_message': 'رسالة غير معروفة بين الإضافة والتطبيق',
     'code.bad_input': 'طلب غير صالح',
+    // الرموز الفرعية لعطل المحرّك (`subcode`) — مساحة أسماء ثانية بمخطَّطها
+    // الخاص، لأن حارس `check-bridge-codes.cjs` يفرض تقابلاً تامّاً بين `code.*`
+    // والرموز المُصدَرة من الرست. وشرحها الكامل في `content.js` (المصدر واحد).
+    'sub.engine_cancelled': 'أُلغيت المعالجة من قبل المستخدم',
+    'sub.engine_model_missing': 'نموذج الفصل غير موجود في مجلد النماذج',
+    'sub.engine_tool_missing': 'أداة مطلوبة مفقودة (ffmpeg أو ffprobe أو yt-dlp)',
+    'sub.engine_busy': 'الملف قيد المعالجة في مهمّة أخرى',
+    'sub.engine_bad_input': 'مدخل غير صالح — الملف غير مقروء أو ليس ستيريو',
+    'sub.engine_io': 'خطأ ملفات أثناء الفصل',
+    'sub.engine_inference': 'فشل نداء الاستدلال (جلسة ONNX أو تشغيل النموذج)',
+    'sub.engine_slot_wait': 'لم تتيسّر فتحة الفصل (مهلة أو رفض تراكبي)',
+    'sub.engine_other': 'عطل محرّك غير مصنَّف',
+    'err.engine_untranslated': 'فشل المحرّك — التفصيل في سجلّ التطبيق',
   },
   en: {
     'header.sub': 'The local bridge for your browser',
@@ -194,6 +207,16 @@ const I18N = {
     'code.engine_error': 'Engine failed: {e}',
     'code.unknown_message': 'Unknown message between the extension and the app',
     'code.bad_input': 'Invalid request',
+    'sub.engine_cancelled': 'Processing was cancelled by the user',
+    'sub.engine_model_missing': 'The separation model is missing from the models folder',
+    'sub.engine_tool_missing': 'A required tool is missing (ffmpeg, ffprobe or yt-dlp)',
+    'sub.engine_busy': 'The file is already being processed by another job',
+    'sub.engine_bad_input': 'Invalid input — the file is unreadable or not stereo',
+    'sub.engine_io': 'A file error occurred during separation',
+    'sub.engine_inference': 'The inference call failed (ONNX session or model run)',
+    'sub.engine_slot_wait': 'The separation slot never became available (timeout or overlap refused)',
+    'sub.engine_other': 'An unclassified engine fault',
+    'err.engine_untranslated': 'Engine failed — the app reported the reason in Arabic; the full text is in the app log and the page console',
   },
 };
 
@@ -236,12 +259,37 @@ function t(key) {
 /** {q} · {s} · {e} — استبدال موضعي لنصّ **من الجدول**، بلا تركيب نصّ جديد. */
 const fill = (s, vars) => s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
 
+/** الرموز الفرعية التسعة ⇒ نصّها. جدول **ثابت** بمفاتيح **حرفية** في كل قيمة
+ *  (`() => t('sub.…')`) لا مفتاح محسوب: `t(subKey)` يخالف §٢٦ ويُسقط حارس
+ *  «لا مفتاح بلا مستهلك». ومصدر الرموز كتلة `SUB_ENGINE_*` في
+ *  `src-tauri/src/bridge.rs` — ويحرس التقابل في الاتجاهين
+ *  `scripts/check-bridge-codes.cjs`. */
+const SUB_TEXT = {
+  engine_cancelled: () => t('sub.engine_cancelled'),
+  engine_model_missing: () => t('sub.engine_model_missing'),
+  engine_tool_missing: () => t('sub.engine_tool_missing'),
+  engine_busy: () => t('sub.engine_busy'),
+  engine_bad_input: () => t('sub.engine_bad_input'),
+  engine_io: () => t('sub.engine_io'),
+  engine_inference: () => t('sub.engine_inference'),
+  engine_slot_wait: () => t('sub.engine_slot_wait'),
+  engine_other: () => t('sub.engine_other'),
+};
+/** محارف عربية — يقيس **هل النصّ عربي** لا **هل القارئ عربي** (الثاني `RTL`). */
+const ARABIC = /[\u0600-\u06FF\u0750-\u077F]/;
+
 /* نصّ خطأ التطبيق: **الترجمة برمزه المستقرّ** `code`، وإلا فالنصّ الخام كما هو.
  * نفس الدالّة في `content.js` حرفياً (والجدول نفسه)، لأن العقد واحد: التطبيق
  * يُصدر `{ ok:false, error:<نصّه>, code:<رمز> }`، والقارئ القديم يقرأ `error`
  * ويتجاهل ما لا يعرفه. ورمز **مجهول** (تطبيق أحدث من الإضافة) يقع على `error`
  * الخام: توافق خلفي بلا فراغ. والربط جدول ثابت بمفاتيح نصّ حرفية (§٢٦)، ويحرس
- * التقابل في الاتجاهين `scripts/check-bridge-codes.cjs`. */
+ * التقابل في الاتجاهين `scripts/check-bridge-codes.cjs`.
+ *
+ * و`subcode` (ط-١٢/البند ٤) طبقة فوق `code`: الرست يُصدر مع `engine_error`
+ * رمزاً فرعياً من تسعة و`detail` صريحاً، لأن `code` وحده لا يقول أيّ عطل فيُملأ
+ * `{e}` بنصّ المحرّك **العربي** ⇒ عربيةٌ داخل جملة إنجليزية. معروف ⇒ جملة
+ * مترجَمة، وغائب/مجهول ⇒ `detail` كما كان، إلا أن يكون عربياً والقارئ غير عربي
+ * فحينها جملة إنجليزية **والسبب يُصدَر في سجلّ الصفحة** (لا يُكتم). */
 function errText(err, fallback) {
   const raw = String((err && (err.message || err.error)) || fallback || '');
   switch ((err && err.code) || '') {
@@ -249,7 +297,18 @@ function errText(err, fallback) {
     case 'cancelled_by_user': return t('code.cancelled_by_user');
     case 'download_cancelled': return t('code.download_cancelled');
     case 'internal_error': return t('code.internal_error');
-    case 'engine_error': return fill(t('code.engine_error'), { e: raw });
+    case 'engine_error': {
+      const say = SUB_TEXT[String((err && err.subcode) || '')];
+      if (say) return say();
+      const detail = String((err && (err.detail || err.message || err.error)) || fallback || '');
+      if (LANG !== 'ar' && ARABIC.test(detail)) {
+        try {
+          console.warn('[HaramLite] engine_error — raw detail kept:', detail);
+        } catch (_) { /* console مقيَّد: لا يُسقط العرض */ }
+        return t('err.engine_untranslated');
+      }
+      return fill(t('code.engine_error'), { e: detail });
+    }
     case 'unknown_message': return t('code.unknown_message');
     case 'bad_input': return t('code.bad_input');
     default: return raw;
@@ -396,6 +455,10 @@ function ask(message) {
 function bridgeError(resp, fallback) {
   const e = new Error((resp && resp.error) || fallback);
   if (resp && typeof resp.code === 'string') e.code = resp.code;
+  // و`subcode`/`detail` يُحملان معه، وإلا ضاعت الطبقة الفرعية عند أول حدّ
+  // وعاد النصّ الخام العربي إلى الواجهة (انظر `content.js` للتفصيل).
+  if (resp && typeof resp.subcode === 'string') e.subcode = resp.subcode;
+  if (resp && typeof resp.detail === 'string') e.detail = resp.detail;
   return e;
 }
 
