@@ -16,7 +16,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { t } from './i18n';
-import { openSettingsWindow } from './settingsScreen';
+import { openSettingsScreen } from './settingsScreen';
 import { groupModeFrom, notifyWatchUiChanged, pushSettings, type RustSettings } from './settings';
 import { showCudaHint, updateCudaBanner, refreshProviderLine, type CudaStatus } from './cuda';
 import { askAutostartOnce, refreshAutostart, refreshBridgeExt } from './integration';
@@ -149,19 +149,17 @@ export function wireSettings(): void {
   }
 
   if (btnSettings && menu) {
-    // **الزرّ يفتح نافذة مستقلة** (قرار المالك 2026-09-23: «القائمة المنسدلة
-    // أصبحت طويلة») — ولم يبقَ مسار ثانٍ: الزرّ **لا** يُظهر `#settings-menu`
-    // في النافذة الرئيسية أبداً؛ فالحاوية صارت **شاشة** تعيش في نافذة `settings`
-    // وحدها (`src/settingsScreen.ts` يقرّر الوضع من اللابل، وفي الرئيسية يفرض
-    // عليها `hidden`). فحُذف من هنا فتحُ القائمة وإغلاقها بالنقر خارجها وبـESC
-    // وحَبْسُ التركيز فيها (`trapFocus`) — لأن لا قائمة تُحصر.
+    // **الزرّ يبدّل إلى شاشة الإعدادات داخل النافذة نفسها** — بعد **إلغاء النافذة
+    // المستقلة** (قرار المالك 2026-09-24: صارت هي نافذة العملية الرئيسية، وبيضاء،
+    // وبقيت عالقة بعد إغلاق التطبيق) ⇒ فلا مسار ثانٍ ولا إقلاع ثانٍ: تبديلُ وضعٍ
+    // في نفس الـDOM (`src/settingsScreen.ts`)، والحالة تبقى ما دام التطبيق يعمل.
     btnSettings.setAttribute('aria-expanded', 'false');
     btnSettings.addEventListener('click', (e) => {
       e.stopPropagation();
-      // ن-٣: المزوّد الفعّال يُقرأ عند الطلب لا عند الإقلاع وحده — فآخر جلسة
-      // فصل قد تكون وقعت بعده. (وتقرؤه نافذة الإعدادات أيضاً عند فتحها.)
+      // ن-٣: المزوّد الفعّال يُقرأ عند الطلب لا عند الإقلاع وحده — فآخر جلسة فصل
+      // قد تكون وقعت بعده.
       void refreshProviderLine();
-      void openSettingsWindow();
+      openSettingsScreen();
     });
   }
 

@@ -1,21 +1,23 @@
-/* ── شاشة الإعدادات في نافذتها المستقلة ──────────────────────────────────
- * قرار المالك (2026-09-23): «القائمة المنسدلة أصبحت طويلة» ⇒ **نافذة مستقلة**
- * فيها **شاشة إعدادات كاملة** بسبعة تبويبات.
+/* ── شاشة الإعدادات **داخل نافذة التطبيق** ────────────────────────────────
+ * قرار المالك (2026-09-23): «القائمة المنسدلة أصبحت طويلة» ⇒ شاشة كاملة.
+ * وقراره النهائي (2026-09-24): **إلغاء النافذة المستقلة** — لأنها صارت **نافذة
+ * العملية الرئيسية** (`MainWindowTitle = "HaramLite — الإعدادات"`)، وبيضاء،
+ * و**بقيت عالقة بعد إغلاق التطبيق** حتى أُنهيت عملياته يدوياً (`HaramLite = 0`).
+ * فالمسار الثاني أضاف صنف عطب كاملاً (إقلاع ثانٍ · هوية نافذة · عمرٌ لا يتبع عمر
+ * التطبيق) مقابل مكسب صفر ⇒ فالإعدادات **شاشة داخل النافذة الواحدة**.
  *
- * **والصفحة واحدة**: نافذة الإعدادات تفتح `index.html` نفسه (لا صفحة ثانية ولا
- * مدخل بناء ثانٍ)، والوضع يُقرأ من **لابل النافذة** (`apps/web` لا يلزمه IPC:
- * `getCurrentWindow().label` خاصيّة محليّة في `@tauri-apps/api/window`). فإن
- * تعذّر قراءة اللابل (بيئة اختبار أو متصفّح) رجعنا إلى `location.hash` — بديلٌ
- * صريح لا تخمين.
+ * **والوضع من حالة داخلية** (`screenOn` أدناه + زرّان)، **ولا يُقرأ لابل نافذة
+ * إطلاقاً** — و`location.hash` باقٍ **بديلاً للاختبار فقط** (‏`wireSettingsScreen`).
  *
- * **ومصدر حالة واحد**: الشاشة **هي** العناصر نفسها (`#setting-*`، `#max-jobs`،
- * `#tg-*`…) التي تربطها `settingsPanel.ts`؛ فليس هنا نسخة ثانية من أي قيمة ولا
- * من أي نداء — التبديل يظهر/يُخفي حاويات، والكتابة تمرّ من `pushSettings()`
- * القائم، والرئيسية تتحدّث بحدث `settings-changed` القائم.
+ * **ومصدر حالة واحد**: الشاشة **هي** العناصر نفسها (`#setting-*` · `#max-jobs` ·
+ * `#tg-*`…) التي تربطها `settingsPanel.ts`؛ فليس هنا نسخة ثانية من أي قيمة ولا من
+ * أي نداء — التبديل يُظهر/يُخفي، والكتابة تمرّ من `pushSettings()` القائم،
+ * والواجهة تتحدّث بحدث `settings-changed` القائم.
+ *
+ * **والحالة محفوظة ما دام التطبيق يعمل**: لا إخفاء لنافذة ولا تدمير — الشاشة
+ * تُبدَّل داخل نفس الـDOM، والتبويب المختار (`currentTab`) يُحفظ ويُعاد عند
+ * العودة، وقيمةٌ في حقل لم تُحفظ تبقى في مكانها.
  */
-
-import { invoke } from '@tauri-apps/api/core';
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 
 /** تبويبات الشاشة — **الترتيب هو ترتيب الأزرار والحاويات** (تُطابَق بالاسم). */
 export const SETTINGS_TABS = [
@@ -30,42 +32,25 @@ export const SETTINGS_TABS = [
 
 export type SettingsTab = (typeof SETTINGS_TABS)[number];
 
-/** لابل النافذة المستقلة — وهو ما يقرؤه وضع الشاشة. */
-export const SETTINGS_WINDOW_LABEL = 'settings';
+/** الوضع الداخلي — **المصدر الوحيد** لحال «أنا في الإعدادات». */
+let screenOn = false;
 
-/**
- * هل نحن في نافذة الإعدادات؟ — دالّة **خالصة** (تُقاس في jsdom بلا tauri).
- *
- * **والدلالتان تُجمعان بـ«أو» ولا تُرتَّبان**: اللابل (`settings`) **والرابط**
- * (`#settings` الذي يمرّره الرست في `open_settings`). كان اللابل يُقدَّم فيُهمَل
- * الرابط متى قُرئ — وهو **موضع العطب الميداني**: بياضُ النافذة يعني أن الوضع لم
- * يُفعَّل بينما أُخفي المحتوى الرئيسي (أو العكس). فصار **أيّهما قال «إعدادات»
- * كفى**، وسقوط أحدهما لا يُسقط الوضع.
- */
-export function isSettingsMode(label: string | null | undefined, hash?: string): boolean {
-  const byLabel = label === SETTINGS_WINDOW_LABEL;
-  const byHash = (hash ?? '').replace(/^#/, '') === SETTINGS_WINDOW_LABEL;
-  return byLabel || byHash;
+/** التبويب المختار — **محفوظ** ليعود كما كان عند إعادة الدخول. */
+let currentTab: SettingsTab = 'performance';
+
+/** هل نحن في شاشة الإعدادات الآن؟ (يُقاس في الاختبار) */
+export function settingsScreenIsOn(): boolean {
+  return screenOn;
 }
 
-/**
- * يقرأ لابل النافذة الحالية من الواجهة إن أمكن، وإلا يرجع `null` فيُستعمل
- * الـhash. **ولا يفشل**: `getCurrentWebviewWindow()` ترمي خارج tauri، والرمي هنا
- * ليس عطلاً بل «لستُ في نافذة tauri» — وهو حال الاختبار والمتصفّح.
- *
- * والقراءة من **الواجهة الرسمية** (`@tauri-apps/api/webviewWindow`، نفس ما
- * يستعمله `main.ts:181`) لا من نسخة أو من `window.__TAURI_INTERNALS__` يدوياً.
- */
-export function currentWindowLabel(): string | null {
-  try {
-    return getCurrentWebviewWindow().label;
-  } catch {
-    return null;
-  }
+/** التبويب المختار الآن (يُقاس في الاختبار) */
+export function settingsScreenTab(): SettingsTab {
+  return currentTab;
 }
 
 /** يُظهر تبويباً ويُخفي البقية، ويُعلن الحالة على الأزرار (`aria-selected`). */
 export function showTab(doc: Document, tab: SettingsTab): void {
+  currentTab = tab;
   for (const panel of Array.from(doc.querySelectorAll<HTMLElement>('.settings-tab-panel'))) {
     panel.hidden = panel.dataset.tab !== tab;
   }
@@ -75,44 +60,48 @@ export function showTab(doc: Document, tab: SettingsTab): void {
 }
 
 /**
- * يضبط الوضع: في نافذة الإعدادات **تظهر الشاشة** ويُخفى ما ليس منها؛ وفي
- * الرئيسية **لا تظهر أبداً**.
+ * يضبط الوضع: داخل الشاشة **تظهر الشاشة**، ويُخفى `<main>` بـ`settings-mode`؛
+ * وخارجها العكس.
  *
- * **ولا مسار ثانٍ**: الحاوية (`#settings-menu` — معرّف تاريخي) لا تُفتح في
- * الرئيسية بأي حال: يُفرض `hidden` هناك ولا يملك أي زرّ إظهارها.
- *
- * **وضمانة «لا نافذة فارغة»**: لا يجوز أن ينتهي الحال بـ**لا مرئيّ** — فالشاشة
- * في وضع الإعدادات **تُنزع عنها `hidden` صراحةً** ويُتحقّق من ذلك في الحال،
- * وإن تعذّر (حاوية غائبة عن الصفحة) **لا يُعلَن الوضع** فلا يُخفى المحتوى
- * الرئيسي بلا بديل. (وهذا هو صنف العطب الذي أنتج «نافذة بيضاء» ميدانياً.)
+ * **وضمانة «لا شاشة فارغة»**: لا يُضاف `settings-mode` (الذي يُخفي `<main>`) إلا
+ * إذا كانت الشاشة **ظاهرة فعلاً** — وإلا بقي العرض الرئيسي كما هو، فلا تبقى
+ * النافذة بلا مرئيّ (وهو صنف العطب الذي أُبلغ عنه ميدانياً).
  */
-export function applySettingsMode(doc: Document, inSettingsWindow: boolean): void {
+export function applySettingsMode(doc: Document, on: boolean): void {
   const body = doc.body;
   const screen = doc.getElementById('settings-menu');
   if (!screen) return;
-  if (inSettingsWindow && screen.classList.contains('hidden')) {
+  if (on) {
     screen.classList.remove('hidden');
-  }
-  // **التحقّق قبل الإعلان**: لا يُضاف `settings-mode` (الذي يُخفي `<main>`)
-  // إلا إذا كانت الشاشة ظاهرة فعلاً — وإلا صارت النافذة فراغاً.
-  const screenVisible = !screen.classList.contains('hidden');
-  if (inSettingsWindow && !screenVisible) {
-    body.classList.remove('settings-mode');
-    return;
-  }
-  if (inSettingsWindow) {
+    if (screen.classList.contains('hidden')) {
+      // الحاوية غير قابلة للإظهار ⇒ لا نُخفِي المحتوى الرئيسي بلا بديل.
+      screenOn = false;
+      body.classList.remove('settings-mode');
+      return;
+    }
+    screenOn = true;
     body.classList.add('settings-mode');
     screen.setAttribute('aria-modal', 'true');
-    showTab(doc, 'performance');
+    showTab(doc, currentTab); // **يُعاد التبويب المحفوظ** لا الأوّل دائماً
   } else {
+    screenOn = false;
     body.classList.remove('settings-mode');
-    // **الرئيسية: مخفيّة دائماً** — الزرّ يفتح نافذة، لا قائمة.
     screen.classList.add('hidden');
     screen.setAttribute('aria-modal', 'false');
   }
 }
 
-/** يربط أزرار التبويبات (كانت أزراراً حقيقيّة: تُنقر وتُعلن حالتها). */
+/** يفتح شاشة الإعدادات داخل النافذة (نداء زرّ الإعدادات). */
+export function openSettingsScreen(doc: Document = document): void {
+  applySettingsMode(doc, true);
+}
+
+/** زرّ الرجوع/الإغلاق في الشاشة: يعيد العرض الرئيسي — **بلا إخفاء ولا تدمير**. */
+export function closeSettingsScreen(doc: Document = document): void {
+  applySettingsMode(doc, false);
+}
+
+/** يربط أزرار التبويبات وزرّ الرجوع. */
 export function wireTabButtons(doc: Document): void {
   for (const btn of Array.from(doc.querySelectorAll<HTMLElement>('[data-tab-btn]'))) {
     btn.addEventListener('click', () => {
@@ -122,30 +111,20 @@ export function wireTabButtons(doc: Document): void {
       }
     });
   }
-}
-
-/** يفتح نافذة الإعدادات المستقلة (الأمر في `lib.rs`، بلا صلاحيات جديدة). */
-export async function openSettingsWindow(): Promise<void> {
-  try {
-    await invoke('open_settings');
-  } catch (err) {
-    // **لا صمت**: تعذّر الفتح يُسجَّل (ولا بديل في الواجهة عن النافذة).
-    try {
-      await invoke('push_log', {
-        level: 'error',
-        message: `تعذّر فتح نافذة الإعدادات: ${String(err)}`,
-      });
-    } catch {
-      /* السجلّ نفسه قد يكون غائباً في بيئة الاختبار */
-    }
-  }
+  doc.getElementById('settings-close')?.addEventListener('click', () => {
+    closeSettingsScreen(doc);
+  });
 }
 
 /**
- * يُنادى مرّة عند الإقلاع: يضبط الوضع ويربط التبويبات، ويُبقي الشاشة مخفيّة في
- * الرئيسية. **مُصدَّر ليُقاس** في jsdom (الحرّاس الأربعة).
+ * يُنادى مرّة عند الإقلاع: يضبط الوضع الأوّلي ويربط التبويبات وزرّ الرجوع.
+ *
+ * **والوضع الأوّلي من `location.hash` وحده** — بديلٌ **للاختبار** (`#settings`)،
+ * **ولا قراءة لابل نافذة إطلاقاً**. وفي التطبيق الحقيقي يبدأ الوضع **مطفأً**
+ * ويُفتح بالزرّ.
  */
 export function wireSettingsScreen(doc: Document = document): void {
-  applySettingsMode(doc, isSettingsMode(currentWindowLabel(), doc.defaultView?.location.hash));
+  const want = (doc.defaultView?.location.hash ?? '').replace(/^#/, '') === 'settings';
+  applySettingsMode(doc, want);
   wireTabButtons(doc);
 }
