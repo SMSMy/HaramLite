@@ -679,11 +679,68 @@ fn download_verified(
 // Safe update orchestration
 // ─────────────────────────────────────────────────────────────────────
 
+/* ── **رموز نتيجة تحديث yt-dlp** (ط-٤ · البند ٣) ─────────────────────────────
+ * **العطل المقيس**: `ensure_updated` كان يُرجع `(bool, String)` و**تسعة مواضع
+ * إرجاع كلها نصوص عربية** لا تحمل رمزاً. و`bool` يفصل **حالتين** فقط: نُحدِّث
+ * الآن، أو لا. ⇒ فالقارئ الإنجليزي كان يرى **سبعة من تسعة** مواضع عربيةً خامّة
+ * (`src/queue.ts` يعرض `message` كما هو)، ورمز الخروج في `cli.rs` كان يُقرأ
+ * بـ`msg.contains("محدّث")` — **مطابقة نصّ عربي** تحكم سلوكاً برمجياً.
+ *
+ * **والعلاج**: رمز مستقرّ لكل موضع (`U_*`) + `UpdateOutcome` يحمل
+ * `{ updated, code, detail }`. و`detail` **يبقى النصّ الخام كما هو** (فلا يُفقد
+ * سبب، ولا ينكسر سجلّ)، و`code` هو ما يُترجَم ويُحكَم به.
+ *
+ * **والرموز في مساحة أسماء ثانية في جدول الواجهة** (`u.*` لا `code.*`): رموز
+ * `code.*` مربوطة في الاتجاهين بثوابت `E_*` في `bridge.rs` ويحرسها
+ * `src/__tests__/errorTextSurface.test.ts`، فإدخال هذه التسعة فيها كان سيُرخي ذلك
+ * الثابت أو يُخالقه — وهي **ليست** حمولات جسر. ويحرس تقابلَ `u.*` مع `U_*` في
+ * الاتجاهين الاختبارُ نفسه.
+ */
+/// لم يحن موعد الفحص بعد (كاش ٢٤ ساعة) — لا شبكة ولا نداء.
+pub const U_NOT_DUE: &str = "not_due";
+/// تعذّر جلب بيانات الإصدار من GitHub (شبكة/استجابة) — لا يُسقط التطبيق.
+pub const U_FETCH_FAILED: &str = "fetch_failed";
+/// النسخة المحلية هي الأحدث بالفعل — **نجاح** لا عطل.
+pub const U_ALREADY_CURRENT: &str = "already_current";
+/// تعذّر جلب ملف المجاميع الموقّعة (`SHA2-256SUMS`).
+pub const U_SUMS_FETCH_FAILED: &str = "sums_fetch_failed";
+/// ملف المجاميع جلب بنجاح لكنه **لا يحمل** بصمة `yt-dlp.exe`.
+pub const U_SUMS_NO_ASSET: &str = "sums_no_asset";
+/// فشل تنزيل التحديث أو فشل التحقق من بصمته (النسخة العاملة باقية).
+pub const U_DOWNLOAD_FAILED: &str = "download_failed";
+/// فشل تبديل الملف الجديد مكان القائم (نظام الملفات).
+pub const U_SWAP_FAILED: &str = "swap_failed";
+/// تم التحديث فعلاً — **نجاح**.
+pub const U_UPDATED: &str = "updated";
+/// النسخة الجديدة فشلت في فحص `--version` فاستُرجعت السابقة.
+pub const U_PROBE_ROLLBACK: &str = "probe_rollback";
+
+/// **نتيجة محاولة تحديث واحدة** — الرمز للترجمة والمنطق، والتفصيل للسبب.
+///
+/// `updated` يبقى كما كان (يقرؤه مسار الإقلاع في `lib.rs`)، و`code` **هو**
+/// المصدر الذي يحكم: لا مطابقة نصّ في أي موضع.
+#[derive(Debug, Clone)]
+pub struct UpdateOutcome {
+    /// أُحدِّث الملف فعلاً في هذه المحاولة (لا «كان محدّثاً»).
+    pub updated: bool,
+    /// أحد ثوابت `U_*` أعلاه.
+    pub code: &'static str,
+    /// **النصّ الخام كما كان حرفياً** — يبقى للسجلّ وللتوافق الخلفي.
+    pub detail: String,
+}
+
+impl UpdateOutcome {
+    fn new(updated: bool, code: &'static str, detail: impl Into<String>) -> Self {
+        Self { updated, code, detail: detail.into() }
+    }
+}
+
 /// Ensure the local yt-dlp is current (24h cadence). Never fatal:
-/// the bundled fallback keeps working regardless. Returns (updated, message).
-pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
+/// the bundled fallback keeps working regardless. Returns `UpdateOutcome`
+/// (the raw `detail` is unchanged; `code` is what callers must branch on).
+pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> UpdateOutcome {
     if !is_check_due(force) {
-        return (false, "لم يحن موعد فحص التحديث".into());
+        return UpdateOutcome::new(false, U_NOT_DUE, "لم يحن موعد فحص التحديث");
     }
 
     let release = match fetch_release() {
@@ -691,7 +748,7 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
         Err(e) => {
             let msg = format!("تخطي التحديث: {e}");
             tracing::warn!(target: "ytdlp", "{msg}");
-            return (false, msg);
+            return UpdateOutcome::new(false, U_FETCH_FAILED, msg);
         }
     };
 
@@ -702,7 +759,7 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
                 checked_at: now_secs(),
                 version: ver,
             });
-            return (false, format!("yt-dlp محدّث بالفعل ({v})"));
+            return UpdateOutcome::new(false, U_ALREADY_CURRENT, format!("yt-dlp محدّث بالفعل ({v})"));
         }
         tracing::info!(target: "ytdlp", "update available: {v} → {}", release.tag);
     } else {
@@ -712,11 +769,11 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
     // official checksum for the exe asset
     let sums = match fetch_text(&release.sums_url) {
         Ok(s) => s,
-        Err(e) => return (false, format!("تعذر جلب المجاميع الموقعة: {e}")),
+        Err(e) => return UpdateOutcome::new(false, U_SUMS_FETCH_FAILED, format!("تعذر جلب المجاميع الموقعة: {e}")),
     };
     let expected = match parse_sums_for(&sums, ASSET_NAME) {
         Some(d) => d,
-        None => return (false, "SHA2-256SUMS لا يحتوي yt-dlp.exe".into()),
+        None => return UpdateOutcome::new(false, U_SUMS_NO_ASSET, "SHA2-256SUMS لا يحتوي yt-dlp.exe"),
     };
 
     // target path = per-user tools dir (writable even for installed builds)
@@ -738,7 +795,7 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
     if let Err(e) = download_verified(&release.exe_url, &new_path, &expected, &dl_progress) {
         let msg = format!("فشل تنزيل التحديث (أبقينا النسخة العاملة): {e}");
         tracing::warn!(target: "ytdlp", "{msg}");
-        return (false, msg);
+        return UpdateOutcome::new(false, U_DOWNLOAD_FAILED, msg);
     }
 
     // backup → swap → sanity probe → rollback on failure
@@ -751,7 +808,7 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
     if let Err(e) = std::fs::rename(&new_path, &target) {
         let msg = format!("فشل تبديل الملف الجديد: {e}");
         tracing::warn!(target: "ytdlp", "{msg}");
-        return (false, msg);
+        return UpdateOutcome::new(false, U_SWAP_FAILED, msg);
     }
     let probe = make_cmd(&target).arg("--version").output();
     match probe {
@@ -769,7 +826,7 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
             })
             .ok();
             progress(1.0);
-            (true, format!("تم تحديث yt-dlp إلى {ver}"))
+            UpdateOutcome::new(true, U_UPDATED, format!("تم تحديث yt-dlp إلى {ver}"))
         }
         other => {
             // rollback
@@ -783,7 +840,7 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> (bool, String) {
                 .unwrap_or_else(|e| e.to_string());
             let msg = format!("فشل فحص النسخة الجديدة ({reason}) — استرجعنا السابقة");
             tracing::warn!(target: "ytdlp", "{msg}");
-            (false, msg)
+            UpdateOutcome::new(false, U_PROBE_ROLLBACK, msg)
         }
     }
 }

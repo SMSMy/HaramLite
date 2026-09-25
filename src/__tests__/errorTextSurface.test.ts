@@ -352,8 +352,72 @@ describe('ط-٤ · رموز `bridge.rs` لكلٍّ مدخل `code.*` في الج
   });
 });
 
-/* ══ ① الوحدة: `errText` على الحمولات الأربع ════════════════════════════════ */
+/* ══ ①ب · رموز **نتيجة تحديث yt-dlp** (`U_*` ⇒ `u.*`) — ط-٤/البند ٣ ═════════
+ * **العطل**: `yt_dlp::ensure_updated` يُرجع تسعة مواضع كلّها نصوص عربية، و`bool`
+ * يفصل حالتين ⇒ **سبعة منها** كانت تُعرض عربيةً في واجهة إنجليزية
+ * (`src/queue.ts` كان يعرض `r.message` كما هو).
+ *
+ * **ولماذا مساحة `u.*` لا `code.*`**: الكتلة أعلاه تربط `code.*` بثوابت `E_*` في
+ * `bridge.rs` **في الاتجاهين**؛ فرموز التحديث ليست حمولات جسر، وإدخالها هناك كان
+ * سيُرخي ذلك الثابت أو يُخالقه. وهذا الحارس يفرض التقابل نفسه على `u.*` ⇄ `U_*`.
+ */
+describe('ط-٤ · رموز `yt_dlp.rs` لكلٍّ مدخل `u.*` في الجدولين', () => {
+  const ytDlp = readSrc('src-tauri/src/yt_dlp.rs');
+  const declared = [...ytDlp.matchAll(/pub const (U_[A-Z0-9_]+)\s*:\s*&str\s*=\s*"([^"]+)";/g)]
+    .map((m) => m[2]);
 
+  it('القياس ليس باطلاً: الرست يُعلن الرموز التسعة، والجدول يحمل مدخلاتها', async () => {
+    const { i18n } = await import('../i18n');
+    const tableKeys = (Object.keys(i18n.ar) as string[]).filter((k) => k.startsWith('u.'));
+    expect(declared.length, 'ثوابت `U_*` في yt_dlp.rs').toBe(9);
+    expect(tableKeys.length, 'مدخلات `u.*` في i18n.ar').toBe(9);
+    expect(new Set(declared).size, 'قيم الرموز المعلَنة').toBe(declared.length);
+  });
+
+  it('لكل رمز مدخل — ولا مدخل بلا رمز (مدخل ميت = سقوط)، وفي اللغتين', async () => {
+    const { i18n } = await import('../i18n');
+    const keysOf = (row: Record<string, unknown>) =>
+      Object.keys(row).filter((k) => /^u\.[a-z][a-z0-9_]*$/.test(k)).map((k) => k.slice(2));
+    const ar = keysOf(i18n.ar as unknown as Record<string, unknown>);
+    const en = keysOf(i18n.en as unknown as Record<string, unknown>);
+    expect(declared.filter((c) => !ar.includes(c)), 'رموز في الرست بلا مدخل (نصّ عربي يعود صامتاً)')
+      .toEqual([]);
+    expect(ar.filter((c) => !declared.includes(c)), 'مدخل في الجدول بلا رمز (تغطية وهمية)')
+      .toEqual([]);
+    expect(ar, 'المدخلات في اللغتين').toEqual(en);
+    for (const c of ar) {
+      const a = (i18n.ar as unknown as Record<string, string>)[`u.${c}`];
+      const e = (i18n.en as unknown as Record<string, string>)[`u.${c}`];
+      expect(a.trim(), `قيمة \`u.${c}\` في ar`).not.toBe('');
+      expect(e.trim(), `قيمة \`u.${c}\` في en`).not.toBe('');
+      // **والسطح الإنجليزي بلا عربية**: هذه هي بعينها الجملة التي يراها قارئ
+      // الإنجليزية بدل النصّ الخام — فمحرف عربي فيها يُبقي العطل قائماً.
+      expect(e, `قيمة \`u.${c}\` في en تحمل محرفاً عربياً`).not.toMatch(/[\u0600-\u06FF]/);
+    }
+  });
+
+  it('و`errText` يقرأ الرمز من `u.*` حين لا مدخل له في `code.*` (الطبقتان معاً)', async () => {
+    vi.resetModules();
+    localStorage.setItem('hl.lang', 'en');
+    const { errText, i18n } = await import('../i18n');
+    const RAW = 'لم يحن موعد فحص التحديث';
+    // الحمولة كما يبنيها `lib.rs` اليوم: `code` + `detail` + `message`.
+    const out = errText({ updated: false, code: 'not_due', detail: RAW, message: RAW });
+    expect(out, 'المعروض').toBe(i18n.en['u.not_due']);
+    expect(out, 'لا محرف عربي على سطح إنجليزي').not.toMatch(/[\u0600-\u06FF]/);
+    // **والسبب لا يُفقد**: يبقى في الحمولة كما هو (يُسجَّل في سجلّ الخلف).
+    expect({ updated: false, code: 'not_due', detail: RAW }.detail).toBe(RAW);
+    // والعربية تعرض جملتها العربية من الجدول.
+    vi.resetModules();
+    localStorage.setItem('hl.lang', 'ar');
+    const ar = await import('../i18n');
+    expect(ar.errText({ code: 'not_due', error: RAW })).toBe(ar.i18n.ar['u.not_due']);
+    // وضابط: رمز مجهول في المساحتين ⇒ النصّ الخام (توافق خلفي).
+    expect(ar.errText({ code: 'no_such_update_code', error: RAW })).toBe(RAW);
+  });
+});
+
+/* ══ ① الوحدة: `errText` على الحمولات الأربع ════════════════════════════════ */
 /** النصّ العربي الذي يصوغه التطبيق فعلاً في هذا المسار (`bridge.rs:1255`
  *  يمرّر `e.to_string()` من المحرّك). */
 const AR_DETAIL = 'خطأ استدلال النموذج: تم إلغاء المعالجة من قبل المستخدم.';

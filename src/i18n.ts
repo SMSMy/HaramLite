@@ -367,6 +367,21 @@ const i18n = {
     'code.engine_error': 'فشل المحرّك: {e}',
     'code.unknown_message': 'رسالة غير معروفة بين الإضافة والتطبيق',
     'code.bad_input': 'طلب غير صالح',
+    // ── **رموز نتيجة تحديث yt-dlp** (`U_*` في `src-tauri/src/yt_dlp.rs` — ط-٤) ──
+    // **العطل المقيس**: `ensure_updated` يُرجع تسعة مواضع كلّها نصوص عربية،
+    // و`bool` يفصل حالتين ⇒ سبعة منها كانت تُعرض عربيةً لقارئ إنجليزي. وهذه
+    // مدخلاتها، **ومساحة أسماء ثانية** (`u.*` لا `code.*`) لأن `code.*` مربوطة
+    // في الاتجاهين بثوابت `E_*` في `bridge.rs`. ويحرس التقابلَ في الاتجاهين
+    // `src/__tests__/errorTextSurface.test.ts`، ويُعرض عبر `errText`.
+    'u.not_due': 'لم يحن موعد فحص التحديث بعد',
+    'u.fetch_failed': 'تعذّر فحص التحديث — تعذّر الوصول إلى بيانات الإصدار',
+    'u.already_current': 'yt-dlp محدّث بالفعل',
+    'u.sums_fetch_failed': 'تعذّر جلب ملف المجاميع الموقّعة',
+    'u.sums_no_asset': 'ملف المجاميع لا يحمل بصمة yt-dlp',
+    'u.download_failed': 'فشل تنزيل التحديث — أُبقيت النسخة العاملة',
+    'u.swap_failed': 'فشل استبدال ملف yt-dlp بالنسخة الجديدة',
+    'u.updated': 'تم تحديث yt-dlp بنجاح',
+    'u.probe_rollback': 'فشل فحص النسخة الجديدة — أُعيدت النسخة السابقة',
   },
   en: {
     actions_title: 'Diagnostics',
@@ -663,6 +678,15 @@ const i18n = {
     'code.engine_error': 'Engine failed: {e}',
     'code.unknown_message': 'Unknown message between the extension and the app',
     'code.bad_input': 'Invalid request',
+    'u.not_due': 'The update check is not due yet',
+    'u.fetch_failed': 'The update check could not reach the release data',
+    'u.already_current': 'yt-dlp is already up to date',
+    'u.sums_fetch_failed': 'Could not fetch the signed checksum file',
+    'u.sums_no_asset': 'The checksum file has no yt-dlp entry',
+    'u.download_failed': 'The update download failed — the working copy was kept',
+    'u.swap_failed': 'Could not replace the yt-dlp binary with the new copy',
+    'u.updated': 'yt-dlp was updated',
+    'u.probe_rollback': 'The new copy failed its version probe — the previous copy was restored',
   },
 } as const;
 
@@ -716,14 +740,22 @@ export function errText(err: unknown): string {
   }
 
   // ② والرمز المعلوم يسبقه: نصٌّ مترجَم بلغة القارئ، و`{e}` = التفصيل الخام.
+  //
+  //    **ومساحتان لا واحدة** (ط-٤ · البند ٣): `code.*` لرموز الجسر — وهي مربوطة
+  //    في الاتجاهين بثوابت `E_*` في `bridge.rs` ويحرسها
+  //    `src/__tests__/errorTextSurface.test.ts` — و`u.*` لرموز **نتيجة تحديث
+  //    yt-dlp** (`U_*` في `yt_dlp.rs`، وهي ليست حمولات جسر). وإدخال التسعة في
+  //    `code.*` كان سيُرخي ثابت التقابل أو يُخالقه. والترتيب مقصود: `code` أولاً
+  //    فلا يتوقّف رمز جسر على غياب تصادم في `u.*`.
   const code = (err as { code?: unknown } | null | undefined)?.code;
   if (typeof code === 'string' && code !== '') {
     const row = i18n[lang] as unknown as Record<string, string>;
-    const key = `code.${code}`;
-    // `hasOwnProperty` لا `in`: جدول `as const` كائنٌ عادي، و`in` يرى
-    // `toString` ونحوها من `Object.prototype` فيُترجم رمزاً اسمه `constructor`.
-    if (Object.prototype.hasOwnProperty.call(row, key)) {
-      return row[key].replace(/\{e\}/g, raw);
+    for (const key of [`code.${code}`, `u.${code}`]) {
+      // `hasOwnProperty` لا `in`: جدول `as const` كائنٌ عادي، و`in` يرى
+      // `toString` ونحوها من `Object.prototype` فيُترجم رمزاً اسمه `constructor`.
+      if (Object.prototype.hasOwnProperty.call(row, key)) {
+        return row[key].replace(/\{e\}/g, raw);
+      }
     }
   }
   // ③ رمز مجهول أو غائب ⇒ النصّ الخام حرفياً (توافق خلفي).

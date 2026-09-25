@@ -51,17 +51,18 @@ const en = i18n.en as unknown as Table;
 /** **المواضع المحسوبة المُعلَنة** — واحد، ويُقاس وجوده في المصدر لا يُفترض. */
 const COMPUTED_SITES = [
   {
-    id: 'errText · code.<code>',
+    id: 'errText · code.<code> / u.<code>',
     file: 'src/i18n.ts',
-    /** وجود الموضع نفسه: بناء المفتاح من الرمز. */
-    present: /const key = `code\.\$\{code\}`/,
-    /** نطاق ما يقرؤه: كل مفتاح بهذه البادئة. */
-    covers: /^code\./,
+    /** وجود الموضع نفسه: بناء المفتاحين من الرمز، بالترتيب. */
+    present: /for \(const key of \[`code\.\$\{code\}`, `u\.\$\{code\}`\]\)/,
+    /** نطاق ما يقرؤه: المساحتان المعلَنتان. */
+    covers: [/^code\./, /^u\./],
     why:
-      '`errText` هي الموضع **الوحيد** الذي يحوّل رمز الجسر إلى مفتاح، وهي تقرأ ' +
-      'الجدول بمفتاح محسوب (`code.${code}`) لأن الرموز تأتي من الرست. ونطاقه ' +
-      'مغلق: الرموز المُصدَرة تُقابل مدخلات `code.*` **في الاتجاهين** في ' +
-      '`errorTextSurface.test.ts` و`scripts/check-bridge-codes.cjs`، فلا يقرأ ' +
+      '`errText` هي الموضع **الوحيد** الذي يحوّل رمزاً إلى مفتاح، وهي تقرأ ' +
+      'الجدول بمفتاح محسوب لأن الرموز تأتي من الرست. ونطاقها **مغلق بمساحتين ' +
+      'معلَنتين**: `code.*` لرموز الجسر (تُقابل ثوابت `E_*` في `bridge.rs` في ' +
+      'الاتجاهين) و`u.*` لرموز نتيجة تحديث yt-dlp (تُقابل `U_*` في `yt_dlp.rs` ' +
+      'في الاتجاهين) — وكلاهما محروس في `errorTextSurface.test.ts`، فلا يقرأ ' +
       'المحسوب مفتاحاً لم يُفكَّر به.',
   },
 ];
@@ -135,6 +136,8 @@ function htmlBoundKeys(html: string): Set<string> {
   return out;
 }
 
+type AuditResult = { consumed: string[]; orphans: string[]; computedSites: string[]; computedMissing: string[] };
+
 /** **القياس النقي**: مفاتيح الجدول ⇒ أيّها مستهلك وأيّها يتيم.
  *  يُمرَّر النصّ لا الملف، فتُقاس المُفسَدات على المدخلات نفسها. */
 export function auditConsumers(
@@ -143,7 +146,7 @@ export function auditConsumers(
   html: string,
   i18nSource: string,
   computed: typeof COMPUTED_SITES,
-): { consumed: string[]; orphans: string[]; computedSites: string[]; computedMissing: string[] } {
+): AuditResult {
   const bound = htmlBoundKeys(html);
   const computedSites: string[] = [];
   const computedMissing: string[] = [];
@@ -151,7 +154,7 @@ export function auditConsumers(
   for (const site of computed) {
     if (site.present.test(i18nSource)) {
       computedSites.push(site.id);
-      coveredBy.push(site.covers);
+      coveredBy.push(...site.covers);
     } else {
       computedMissing.push(site.id);
     }
@@ -277,11 +280,14 @@ describe('ط-٤ · حارس المستهلك يرى الخطأ (مُفسَدات
   });
 
   it('مُفسَد (د): زوال الموضع المحسوب (`errText`) ⇒ `code.*` تصير يتيمة والحارس يسقط', () => {
-    const mutatedI18n = strip(I18N_SRC, 'const key = `code.${code}`');
+    const mutatedI18n = strip(I18N_SRC, 'for (const key of [`code.${code}`, `u.${code}`]) {');
     const r = auditConsumers(KEYS, SRC, indexHtml as string, mutatedI18n, COMPUTED_SITES);
-    expect(r.computedMissing, 'الإعلان صار غطاءً بلا موضع').toEqual(['errText · code.<code>']);
+    expect(r.computedMissing, 'الإعلان صار غطاءً بلا موضع').toEqual(['errText · code.<code> / u.<code>']);
     const codeOrphans = r.orphans.filter((k) => k.startsWith('code.'));
     expect(codeOrphans.length, 'مفاتيح `code.*` صارت يتيمة').toBeGreaterThan(0);
+    // **ومساحة `u.*` معها**: هي المقيس الجديد، ولا يُترك نصفُ الإعلان بلا مُفسَد.
+    const uOrphans = r.orphans.filter((k) => k.startsWith('u.'));
+    expect(uOrphans.length, 'مفاتيح `u.*` صارت يتيمة').toBeGreaterThan(0);
   });
 
   it('مُفسَد (هـ): إعلانٌ لمفتاح صار مستهلكاً ⇒ الإعلان يشيخ فيُسقط', () => {

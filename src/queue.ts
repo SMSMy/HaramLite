@@ -1128,9 +1128,16 @@ export function wireUrlDownload(): void {
       // force=true (الأمر نفسه منذ M5): يعمل حتى مع إطفاء التحديث التلقائي،
       // فهو طلب صريح من المستخدم لا فحصاً خلفياً. وبعد النجاح يُعاد قراءة
       // الإصدار المعروض في الإعدادات (ق-١) فلا يبقى الرقم قديماً.
-      const r = await invoke<{ updated: boolean; message: string }>('update_ytdlp');
+      //
+      // **والعرض عبر `errText` لا `r.message`** (ط-٤ · البند ٣): `message` هو
+      // النصّ الخام من `yt_dlp.rs` — **عربي دائماً** — فكان يُعرض كما هو لقارئ
+      // الواجهة الإنجليزية. و`code` (`U_*`) هو ما يُترجم إلى `u.*` بلغة القارئ،
+      // **و`detail` الخام يبقى في الحمولة وفي سجلّ الخلف** فلا يُفقد سبب.
+      const r = await invoke<{ updated: boolean; code?: string; detail?: string; message?: string }>(
+        'update_ytdlp',
+      );
       if (res) {
-        res.textContent = r.message;
+        res.textContent = errText({ code: r.code, error: r.detail ?? r.message ?? '' });
         res.classList.remove('hidden');
       }
       refreshYtdlpUpdateUi();

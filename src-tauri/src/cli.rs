@@ -225,6 +225,27 @@ fn run_probe(path: &str) -> i32 {
     }
 }
 
+/// **رمز الخروج من نتيجة تحديث yt-dlp** — دالّة **صافية**: نوعٌ ⟶ عدد، بلا نصّ.
+///
+/// **العطب الذي أُزيل** (ط-٤ · البند ٣): كان الحكم
+/// `if updated || msg.contains("محدّث") { 0 } else { 1 }` — أي أن **سلوكاً
+/// برمجياً يُحكَم بمطابقة نصّ عربي**. فأسوأ ما فيه ليس هشاشته فقط، بل أن
+/// **ترجمة الرسالة كانت تُغيّر رمز الخروج صامتاً**: تكفي إعادة صياغة الجملة
+/// («محدَّث» بلا شدّة، أو «النسخة الأحدث») فينقلب 0 إلى 1، **وكل الاختبارات
+/// تمرّ** لأن لا أحد كان يقيس الرمز.
+///
+/// **والدلالة بعينها القديمة** (لا تغيير سلوك — يُثبته اختبار التكافؤ في
+/// `mod tests` أدناه): `0` لحالتَي نجاح — تحديثٌ وقع الآن، أو النسخة المحلية
+/// أحدث بالفعل (وهما بعينهما ما كان `updated || contains("محدّث")` يلتقطه) —
+/// و`1` لما عداهما من الرموز السبعة.
+fn exit_code_for(outcome: &crate::yt_dlp::UpdateOutcome) -> i32 {
+    use crate::yt_dlp::{U_ALREADY_CURRENT, U_UPDATED};
+    match outcome.code {
+        U_UPDATED | U_ALREADY_CURRENT => 0,
+        _ => 1,
+    }
+}
+
 fn run_check() -> i32 {
     let rows = pipeline::health_check().unwrap_or_default();
     let mut bad = false;
@@ -381,16 +402,12 @@ pub fn entry(args: &[String]) -> i32 {
         return run_check();
     }
     if opts.update_ytdlp {
-        let (updated, msg) = crate::yt_dlp::ensure_updated(true, &|p| {
+        let outcome = crate::yt_dlp::ensure_updated(true, &|p| {
             eprint!("\r  تنزيل [{:>3}%]", (p * 100.0) as u32);
         });
         eprintln!();
-        println!("{msg}");
-        return if updated || msg.contains("محدّث") {
-            0
-        } else {
-            1
-        };
+        println!("{}", outcome.detail);
+        return exit_code_for(&outcome);
     }
     if let Some(url) = &opts.url {
         let out_dir = opts.out_dir.clone().unwrap_or_else(|| ".".into());
@@ -435,7 +452,115 @@ mod tests {
         v.iter().map(|s| (*s).to_string()).collect()
     }
 
-    /// **قاعدة التوافق**: غياب `--provider` = السلوك الحالي حرفياً — `--cuda`
+    /* ── ط-٤ · رمز الخروج من نتيجة التحديث: **رموز لا نصوص** ─────────────────── */
+
+    /// **الرموز التسعة** بترتيب مواضع الإرجاع في `ensure_updated` — والجرد هنا
+    /// **صريح بالاسم** لأنه هو المقيس: لو أُضيف رمز عاشر ولم يُدرَج، سقط
+    /// اختبار التكافؤ أدناه (فمجموعة الجدولين تتقابل في الاتجاهين).
+    const ALL_U_CODES: [&str; 9] = [
+        crate::yt_dlp::U_NOT_DUE,
+        crate::yt_dlp::U_FETCH_FAILED,
+        crate::yt_dlp::U_ALREADY_CURRENT,
+        crate::yt_dlp::U_SUMS_FETCH_FAILED,
+        crate::yt_dlp::U_SUMS_NO_ASSET,
+        crate::yt_dlp::U_DOWNLOAD_FAILED,
+        crate::yt_dlp::U_SWAP_FAILED,
+        crate::yt_dlp::U_UPDATED,
+        crate::yt_dlp::U_PROBE_ROLLBACK,
+    ];
+
+    fn outcome(code: &'static str) -> crate::yt_dlp::UpdateOutcome {
+        crate::yt_dlp::UpdateOutcome { updated: false, code, detail: String::new() }
+    }
+
+    /// **الدالّة صافية وتُحكم بالرموز التسعة**: حالتا نجاح فقط، والسبعة الباقية
+    /// فشل — **بلا قراءة نصّ**. ومُفسَدها: قلب رمز واحد في `exit_code_for`.
+    #[test]
+    fn exit_code_is_decided_by_the_code_not_by_the_text() {
+        for c in ALL_U_CODES {
+            let want = if c == crate::yt_dlp::U_UPDATED || c == crate::yt_dlp::U_ALREADY_CURRENT {
+                0
+            } else {
+                1
+            };
+            assert_eq!(exit_code_for(&outcome(c)), want, "رمز {c}");
+        }
+        // **والدليل أن النصّ لا يحكم**: نفس الرمز بنصوص متضادّة ⟹ نفس الرمز.
+        // (لو عاد `contains("محدّث")` لانقلب أحد السطرين.)
+        let mut a = outcome(crate::yt_dlp::U_FETCH_FAILED);
+        a.detail = "yt-dlp محدّث بالفعل".into();          // نصّ يوهم بالنجاح
+        let mut b = outcome(crate::yt_dlp::U_ALREADY_CURRENT);
+        b.detail = "تعذر جلب المجاميع الموقعة".into();     // نصّ يوهم بالفشل
+        assert_eq!(exit_code_for(&a), 1, "نصّ النجاح لا يرفع رمز فشل");
+        assert_eq!(exit_code_for(&b), 0, "نصّ الفشل لا يخفض رمز نجاح");
+    }
+
+    /// **لا تغيير سلوك — يُثبَت ولا يُدَّعى**: يقابل **جدولين** على الرموز
+    /// التسعة: الجديد (`exit_code_for`) والقديم **حرفياً**
+    /// (`updated || msg.contains("محدّث")`) — ويشترط تطابقهما في كل حالة،
+    /// **ويشترط أن الجدول القديم يخالف الجديد في حالة واحدة على الأقل** مُصاغة
+    /// بنصّ يوهم، وإلا كان «التكافؤ» فارغاً لأنه لا يقيس شيئاً.
+    #[test]
+    fn the_new_exit_code_matches_the_old_text_matching_table() {
+        // النصوص الخام كما تُبنى اليوم في `yt_dlp.rs`، **حرفياً**.
+        let raw: [(&'static str, bool, &str); 9] = [
+            (crate::yt_dlp::U_NOT_DUE, false, "لم يحن موعد فحص التحديث"),
+            (crate::yt_dlp::U_FETCH_FAILED, false, "تخطي التحديث: network down"),
+            (crate::yt_dlp::U_ALREADY_CURRENT, false, "yt-dlp محدّث بالفعل (2025.01.01)"),
+            (crate::yt_dlp::U_SUMS_FETCH_FAILED, false, "تعذر جلب المجاميع الموقعة: timeout"),
+            (crate::yt_dlp::U_SUMS_NO_ASSET, false, "SHA2-256SUMS لا يحتوي yt-dlp.exe"),
+            (crate::yt_dlp::U_DOWNLOAD_FAILED, false, "فشل تنزيل التحديث (أبقينا النسخة العاملة): 404"),
+            (crate::yt_dlp::U_SWAP_FAILED, false, "فشل تبديل الملف الجديد: denied"),
+            (crate::yt_dlp::U_UPDATED, true, "تم تحديث yt-dlp إلى 2025.02.02"),
+            (crate::yt_dlp::U_PROBE_ROLLBACK, false, "فشل فحص النسخة الجديدة (status=1) — استرجعنا السابقة"),
+        ];
+        let mut diffs = 0;
+        for (code, updated, msg) in raw {
+            let old = if updated || msg.contains("محدّث") { 0 } else { 1 };
+            let new = exit_code_for(&crate::yt_dlp::UpdateOutcome {
+                updated,
+                code,
+                detail: msg.to_string(),
+            });
+            assert_eq!(new, old, "رمز {code} بنصّه الخام: الجديد {new} والقديم {old}");
+            diffs += 1;
+        }
+        assert_eq!(diffs, 9, "الجدولان قُبلا على التسعة كلها");
+    }
+
+    /// **ومُفسَد الجدول القديم**: حالات **غير** النصوص التسعة يخالف فيها النصّ
+    /// الرمز — وهي التي كانت تُقلب صامتة (ترجمة/إعادة صياغة). تُثبت أن
+    /// «التكافؤ» أعلاه ليس تافهاً: القاعدتان تختلفان فعلاً خارج النصوص المشحونة.
+    #[test]
+    fn the_old_text_rule_can_disagree_with_the_code() {
+        let cases: [(&'static str, bool, &str); 3] = [
+            // فشل حقيقي بنصّ يذكر «محدّث» (رسالة خطأ تشرح الحالة) ⇒ القديم 0 والجديد 1.
+            (crate::yt_dlp::U_FETCH_FAILED, false, "تعذر الفحص: هل yt-dlp محدّث؟"),
+            // نجاح بنصّ لا يذكر «محدّث» (صياغة بديلة) ⇒ القديم 1 والجديد 0.
+            (crate::yt_dlp::U_ALREADY_CURRENT, false, "النسخة المحلية هي الأحدث"),
+            // وتحديثٌ وقع بنصّ لا يذكرها ⇒ القديم 0 للـ`updated` وحده.
+            (crate::yt_dlp::U_UPDATED, true, "تم التنزيل"),
+        ];
+        let mut disagree = 0;
+        for (code, updated, msg) in cases {
+            let old = if updated || msg.contains("محدّث") { 0 } else { 1 };
+            let new = exit_code_for(&crate::yt_dlp::UpdateOutcome {
+                updated,
+                code,
+                detail: msg.to_string(),
+            });
+            if old != new {
+                disagree += 1;
+            }
+            assert_eq!(new, if updated || code == crate::yt_dlp::U_ALREADY_CURRENT { 0 } else { 1 });
+        }
+        assert!(
+            disagree >= 2,
+            "القاعدتان لم تختلفا إلا في {disagree} حالة — فالتكافؤ المقيس تافهِ القيمة"
+        );
+    }
+
+    /// **وقاعدة التوافق**: غياب `--provider` = السلوك الحالي حرفياً — `--cuda`
     /// وحده يقرّر، ولا فرض. لو صار الغياب يفرض شيئاً لسقط هذا الاختبار.
     #[test]
     fn provider_flag_absent_keeps_todays_behaviour() {
