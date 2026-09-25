@@ -885,7 +885,8 @@ CASES.push({
  *    تُقاس **مقارنتها** لا cargo: بيئة مصنوعة فيها `cargo.cmd` مزيّف يطبع ما تتوقّعه البوّابة،
  *    فالمُفسَدات تُشغَّل في أجزاء الثانية بدل دقيقتين، ويبقى المقيس منطق البوّابة نفسه
  *    (القياس من cargo، والحكم منها). ─────────────────────────────────────────── */
-function relFakeCargo(dir, { warnings, passed, failed = 0, ignored = 4, silent = false }) {
+function relFakeCargo(dir, { warnings, passed, failed = 0, ignored = 4, silent = false,
+  errors = 0, clippyExit = 0, buildOk = true }) {
   const jsonLines = [];
   for (let i = 0; i < warnings; i++) {
     jsonLines.push(JSON.stringify({
@@ -896,6 +897,18 @@ function relFakeCargo(dir, { warnings, passed, failed = 0, ignored = 4, silent =
       },
     }));
   }
+  /* **أخطاء clippy** (`level:"error"`) — الثقب المقيس: البوّابة كانت تعدّ `warning` وحده
+     فيمرّ كودٌ **يرفضه** clippy أخضر. والنصّ والموضع مقصودان كي يُقاس **التسمية** لا السقوط فقط. */
+  for (let i = 0; i < errors; i++) {
+    jsonLines.push(JSON.stringify({
+      reason: 'compiler-message',
+      message: {
+        level: 'error', code: { code: 'clippy::invisible_characters' },
+        message: 'invisible character detected',
+        spans: [{ is_primary: true, file_name: 'src\\yt_dlp.rs', line_start: 2899, column_start: 61 }],
+      },
+    }));
+  }
   const lines = [
     '@echo off',
     'if "%1"=="--version" ( echo cargo 1.95.0-probe & exit /b 0 )',
@@ -903,7 +916,8 @@ function relFakeCargo(dir, { warnings, passed, failed = 0, ignored = 4, silent =
     'if "%1"=="clippy" (',
   ];
   if (!silent) for (const l of jsonLines) lines.push('  echo ' + l.replace(/\^/g, '^^').replace(/[<>|&]/g, '^$&'));
-  lines.push('  exit /b 0', ')');
+  lines.push('  echo ' + JSON.stringify({ reason: 'build-finished', success: buildOk }));
+  lines.push('  exit /b ' + clippyExit, ')');
   lines.push('if "%1"=="test" ( echo test result: ok. ' + passed + ' passed; ' + failed + ' failed; ' + ignored + ' ignored & exit /b 0 )');
   lines.push('exit /b 0');
   mk(dir, 'fakebin/cargo.cmd', lines.join('\r\n'));
@@ -951,6 +965,19 @@ CASES.push({
     { label: 'خطّ أساس مفقود ⇒ صفر مدخل يسمّي الملف',
       apply: (dir) => fs.rmSync(path.join(dir, 'qa', 'rust-baselines.json'), { force: true }),
       mustMatch: /خطّ الأساس مفقود/ },
+    /* الثقب المقيس (كشفه وكيل `dl2` من قياسه هو): البوّابة كانت تقبل `level === "warning"` وحده
+       ⇒ `error: invisible character detected` من محرف `U+200B` قائم في الشجرة مرّ **أخضر**
+       بينما `cargo clippy --all-targets` **exit 1**. فالمُفسَدات الثلاثة تُغلق الأبواب الثلاثة:
+       تشخيص `error` · رمز خروج clippy · و`build-finished.success`. */
+    { label: 'clippy أخرج error ⇒ تسقط البوّابة وتسمّي الرمز والموضع',
+      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 349, errors: 1 }); },
+      mustMatch: /clippy::invisible_characters @ src\\yt_dlp\.rs:2899:61 — invisible character detected/ },
+    { label: 'clippy انتهى برمز ١ بلا تشخيص مفصَّل ⇒ تسقط البوّابة',
+      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 349, clippyExit: 1 }); },
+      mustMatch: /clippy انتهى برمز خروج 1/ },
+    { label: 'البناء فشل (build-finished.success=false) ⇒ تسقط البوّابة',
+      apply: (dir) => { relFakeCargo(dir, { warnings: 15, passed: 349, buildOk: false }); },
+      mustMatch: /build-finished\.success === false/ },
   ],
   zero: { label: 'لا cargo ولا بديل ⇒ صفر مدخل',
     apply: (dir) => fs.rmSync(path.join(dir, 'fakebin'), { recursive: true, force: true }) },

@@ -34,28 +34,48 @@ const CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
 // و-٨ — فحص الرابط قبل تمريره إلى yt-dlp
 // ─────────────────────────────────────────────────────────────────────
 //
-// **السياسة الحالية نقضت قراراً سابقاً — والسبب مقيس.** كان هنا قرار
-// «مرفوض: قائمة مضيفين بيضاء صارمة» بحجّة أن الوعد المعلن «يوتيوب أو أي موقع
-// آخر» يُبطل بقائمة بيضاء. وقد نُقض لأن **التحويلات (302) لا يمكن منعها في
-// yt-dlp**: قِيس على `bin\yt-dlp.exe` (‏2026.08.19 · sha256 `66674953…`) أن
-// `--help` لا يحوي عَلَماً يمنع اتّباع التحويلات (لا شيء غير `--proxy`)،
-// وcِيس حيّاً أن yt-dlp **يتّبع** تحويلاً إلى خدمة داخلية (انظر التقرير §SSRF).
+// ─────────────────────────────────────────────────────────────────────
+// و-٨ — فحص الرابط قبل تمريره إلى yt-dlp
+// ─────────────────────────────────────────────────────────────────────
+//
+// **السياسة مشروطة بالمصدر — نقضت قراراً سابقاً، ثم ضُيّقت بإذن المالك.**
+//
+// (١) كان هنا قرار «مرفوض: قائمة مضيفين بيضاء صارمة» بحجّة أن الوعد المعلن
+// «يوتيوب أو أي موقع آخر» يُبطل بقائمة بيضاء. وقد نُقض لأن **التحويلات (302)
+// لا يمكن منعها في yt-dlp**: قِيس على `bin\yt-dlp.exe` (‏2026.08.19 · sha256
+// `66674953…`) أن `--help` لا يحوي عَلَماً يمنع اتّباع التحويلات (لا شيء غير
+// `--proxy`)، وقِيس حيّاً أن yt-dlp **يتّبع** تحويلاً إلى خدمة داخلية.
 // ⇒ فرابطٌ عامّ يحوّل إلى `127.0.0.1`/`169.254.169.254` يصل داخلاً، والفحص
-// النصّي للرابط **الأولي** لا يراه. والقائمة الصارمة هي **الأرخص** الذي يُخرج
-// هذا النوع من النطاق عملياً: لا نتكلّم أصلاً مع مضيف يمكن أن يحوّل داخلاً.
+// النصّي للرابط **الأولي** لا يراه.
 //
-// **والكلفة معلنة لا مخفيّة**: المواقع العامة غير المدرَجة في [`ALLOWED_HOSTS`]
-// تُرفض الآن (كانت تُقبل). وهذا تضييق لوعد معلن في `docs/` («أي رابط من أي
-// موقع يدعمه yt-dlp») — مذكور في تقرير التسليم بنصّه، ورجوعُه سطرٌ واحد
-// (إسقاط نداء [`host_is_allowed`] في هذه الدالة).
+// (٢) ثم ضُيّقت القائمة الصارمة إلى **مصدر واحد غير موثوق** ([`Source::Telegram`])
+// لأن كلفتها العامة — رفض كل موقع غير مُدرَج — **تُبطل وعداً معلناً** في
+// `docs/index.html` («أي رابط من أي موقع يدعمه yt-dlp») وتضرب الاستعمال
+// الأساسي. فالسياسة الآن:
+//   * [`Source::Local`] (الواجهة · الجسر · الـCLI = المستخدم نفسه):
+//     **«أي موقع» كما كان** + رفض كل عنوان محلي/خاص **بعد حلّ الاسم**.
+//   * [`Source::Telegram`] (رابط من محادثة، ومنها المجموعات = أي عضو):
+//     **قائمة السماح** [`ALLOWED_HOSTS`] + رفض المحلي بعد الحلّ.
 //
-// **التهديد المقصود بالمنع**: استعمال تطبيقنا كأداة استطلاع داخل الشبكة — ومن
-// مصدر **غير موثوق** (عضو محادثة مجموعات يرسل رابطاً). الرابط يأتي
-// من الإضافة/الواجهة/تيليجرام/الـCLI، وyt-dlp يتّصل به؛ فطلبٌ إلى
-// `127.0.0.1:8081` أو `192.168.1.1` أو `169.254.169.254` يجعل العمليّة
+// والنوع ليس له افتراضيّ: كل نداء يسمّي مصدره صراحةً، فلا تنزلق سياسةٌ إلى
+// الأخرى بصمت.
+//
+// **التهديد المقصود بالمنع**: استعمال تطبيقنا كأداة استطلاع داخل الشبكة. وطلبٌ
+// إلى `127.0.0.1:8081` أو `192.168.1.1` أو `169.254.169.254` يجعل العمليّة
 // **نفسها** تكلّم خدمة داخلية — وهو أثر لا علاقة له بتنزيل وسائط.
-// والمنع ثلاث طبقات: مخطّطان فقط · **قائمة سماح للمضيفات** · رفض كل مضيف
-// محلي/خاص **بعد حلّ الاسم** (لا بالنصّ وحده).
+// والمنع: مخطّطان فقط · رفض كل مضيف محلي/خاص **بعد حلّ الاسم** (لا بالنصّ وحده)
+// · **وقائمة سماح للمضيفات في مسار تلغرام وحده**.
+
+/// **مصدر الرابط — هو ما يحدّد السياسة** (قرار المالك: لا سياسة واحدة للجميع).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Source {
+    /// المستخدم نفسه: الواجهة (`lib.rs`) · جسر الإضافة (`bridge.rs`) · الـCLI.
+    /// ⇒ وعد «أي موقع» قائم كما كان.
+    Local,
+    /// تلغرام (`telegram.rs`): الرابط قد يأتي من **أي عضو** في محادثة أو مجموعة
+    /// ⇒ غير موثوق ⇒ قائمة السماح.
+    Telegram,
+}
 
 /// **المضيفات المسموح بها — عائلة يوتيوب وحدها** (والقائمة **مقيسة** من
 /// الاستعمال الفعلي: كل نداءات المنتج والاختبارات وبوّابات `scripts/` تستعمل
@@ -90,16 +110,17 @@ fn system_resolver(host: &str, port: u16) -> Vec<std::net::IpAddr> {
     }
 }
 
-/// فحص الرابط قبل أي اتصال. `Ok` = يُمرَّر إلى yt-dlp، و`Err` = رسالة عربية
-/// تسمّي السبب (لا رفض صامت).
-pub fn validate_download_url(url: &str) -> Result<(), String> {
-    validate_download_url_with(url, &system_resolver)
+/// فحص الرابط قبل أي اتصال — **بسياسة مصدره** ([`Source`]). `Ok` = يُمرَّر إلى
+/// yt-dlp، و`Err` = رسالة عربية تسمّي السبب (لا رفض صامت).
+pub fn validate_download_url(url: &str, source: Source) -> Result<(), String> {
+    validate_download_url_with(url, source, &system_resolver)
 }
 
 /// نفس الفحص بمحلِّل أسماء **مُمرَّر**: يقيسه الاختبار بلا شبكة وبلا حالة عامّة
 /// (فالحكم على القيمة المحلولة يُقاس بلا DNS حقيقي).
 fn validate_download_url_with(
     url: &str,
+    source: Source,
     resolve: &dyn Fn(&str, u16) -> Vec<std::net::IpAddr>,
 ) -> Result<(), String> {
     let url = url.trim();
@@ -160,14 +181,18 @@ fn validate_download_url_with(
         return Err(format!("اسم المضيف «{host}» غير صالح في هذا الرابط"));
     }
 
-    // 4) **قائمة السماح**: لا نتكلّم إلا مع عائلة يوتيوب — وهذا هو ما يُخرج
-    //    «رابط عامّ يحوّل إلى الداخل» من النطاق (لا عَلَم في yt-dlp يمنع
-    //    التحويلات؛ انظر رأس القسم). والرسالة تسمّي المسموح صراحةً.
-    if !host_is_allowed(host) {
+    // 4) **قائمة السماح — لمسار تلغرام وحده** ([`Source::Telegram`]): الرابط قد
+    //    يأتي من أي عضو، وهذا هو ما يُخرج «رابط عامّ يحوّل إلى الداخل» من النطاق
+    //    (لا عَلَم في yt-dlp يمنع التحويلات؛ انظر رأس القسم). والرسالة تسمّي
+    //    المسموح والسبب صراحةً.
+    //    **وفي المصدر المحلي لا تُفرض**: الوعد المعلن («أي رابط من أي موقع يدعمه
+    //    yt-dlp») يبقى قائماً، ويبقى معه رفض العنوان المحلي (البند ٥).
+    if source == Source::Telegram && !host_is_allowed(host) {
         return Err(format!(
-            "المضيف «{host}» غير مسموح: HaramLite ينزّل من يوتيوب \
-             (youtube.com · youtu.be) — والقائمة الصارمة هي ما يمنع \
-             تحويلاً من موقع عامّ إلى خدمة داخلية"
+            "المضيف «{host}» غير مسموح لرابط من تلغرام: روابط المحادثات \
+             تُقبل من يوتيوب وحده (youtube.com · youtu.be) — لأن القائمة \
+             الصارمة هي ما يمنع تحويلاً من موقع عامّ إلى خدمة داخلية، \
+             والرابط قد يأتي من أي عضو. أرسل الرابط من الواجهة إن كان من موقع آخر"
         ));
     }
 
@@ -1213,8 +1238,9 @@ pub fn download_media(
     out_dir: &Path,
     progress: &dyn Fn(f32) -> bool,
     cancel: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+    source: Source,
 ) -> Result<PathBuf, YtError> {
-    download_media_inner(url, out_dir, progress, cancel, false)
+    download_media_inner(url, out_dir, progress, cancel, false, source)
 }
 
 /// Watch-temp download: audio only (`ba/b`, small + fast) for in-page
@@ -1224,8 +1250,9 @@ pub fn download_audio(
     out_dir: &Path,
     progress: &dyn Fn(f32) -> bool,
     cancel: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+    source: Source,
 ) -> Result<PathBuf, YtError> {
-    download_media_inner(url, out_dir, progress, cancel, true)
+    download_media_inner(url, out_dir, progress, cancel, true, source)
 }
 
 /// Pure format selector (unit-tested): temp listens take audio only.
@@ -1688,11 +1715,14 @@ fn download_media_inner(
     progress: &dyn Fn(f32) -> bool,
     cancel: &std::sync::Arc<std::sync::atomic::AtomicBool>,
     audio_only: bool,
+    source: Source,
 ) -> Result<PathBuf, YtError> {
     use std::sync::atomic::Ordering;
     // و-٨: رفض الرابط قبل أي اتصال، برسالته العربية كما هي (بلا غلاف
-    // «فشل التحقق») لأن نصّه يسمّي السبب للمستخدم مباشرة.
-    validate_download_url(url).map_err(YtError::Rejected)?;
+    // «فشل التحقق») لأن نصّه يسمّي السبب للمستخدم مباشرةً. **والسياسة تتبع
+    // المصدر** ([`Source`]): قائمة سماح لروابط تلغرام وحدها، ورفض العنوان
+    // المحلي في الحالين.
+    validate_download_url(url, source).map_err(YtError::Rejected)?;
     let exe = resolve_ytdlp().ok_or(YtError::NotFound)?;
     std::fs::create_dir_all(out_dir).map_err(|e| YtError::Io(e.to_string()))?;
 
@@ -2469,39 +2499,53 @@ pub(crate) mod tests {
             "http://2130706433/x",
             "http://2852039166/x",
         ] {
-            let got = validate_download_url(url);
-            assert!(got.is_err(), "الرابط يجب أن يُرفض ولم يُرفض: {url} ⇒ {got:?}");
-            // الرسالة تسمّي السبب — لا رفض صامت.
-            let msg = got.unwrap_err();
-            assert!(!msg.is_empty(), "رسالة الرفض فارغة لـ{url}");
+            // **وفي المصدرين**: رفض المحلي ليس سياسةَ مصدر ([`Source`]) — بل هو
+            // جوهر منع SSRF، فيجب أن يسقط في المحلي كما في تلغرام.
+            for source in [Source::Local, Source::Telegram] {
+                let got = validate_download_url(url, source);
+                assert!(
+                    got.is_err(),
+                    "الرابط يجب أن يُرفض ولم يُرفض ({source:?}): {url} ⇒ {got:?}"
+                );
+                // الرسالة تسمّي السبب — لا رفض صامت.
+                let msg = got.unwrap_err();
+                assert!(!msg.is_empty(), "رسالة الرفض فارغة لـ{url}");
+            }
         }
 
-        // سبب الرفض صريح في كل عائلة من العائلات الثلاث.
-        assert!(validate_download_url("http://127.0.0.1/a")
+        // سبب الرفض صريح في كل عائلة من العائلات الثلاث (وبالمصدر المحلي،
+        // فالرسالة لا تتبدّل بتبدّل المصدر).
+        assert!(validate_download_url("http://127.0.0.1/a", Source::Local)
             .unwrap_err()
             .contains("حلقة محلية"));
-        assert!(validate_download_url("http://10.1.2.3/a")
+        assert!(validate_download_url("http://10.1.2.3/a", Source::Local)
             .unwrap_err()
             .contains("شبكة خاصة"));
-        assert!(validate_download_url("http://169.254.169.254/a")
-            .unwrap_err()
-            .contains("link-local"));
-        assert!(validate_download_url("file:///etc/passwd")
+        assert!(
+            validate_download_url("http://169.254.169.254/a", Source::Telegram)
+                .unwrap_err()
+                .contains("link-local")
+        );
+        assert!(validate_download_url("file:///etc/passwd", Source::Local)
             .unwrap_err()
             .contains("http"));
-        assert!(validate_download_url("http://localhost/a")
-            .unwrap_err()
-            .contains("localhost"));
+        assert!(
+            validate_download_url("http://localhost/a", Source::Telegram)
+                .unwrap_err()
+                .contains("localhost")
+        );
         // IPv4 مُضمَّن في IPv6 يُصنَّف بحلقة محلية لا بخطأ عام.
-        assert!(validate_download_url("http://[::ffff:127.0.0.1]/a")
-            .unwrap_err()
-            .contains("حلقة محلية"));
+        assert!(
+            validate_download_url("http://[::ffff:127.0.0.1]/a", Source::Local)
+                .unwrap_err()
+                .contains("حلقة محلية")
+        );
     }
 
-    /// **قائمة السماح: عائلة يوتيوب تُقبل** — بنفس محلِّل أسماء مُمرَّر يعيد
+    /// **عائلة يوتيوب تُقبل من المصدرين** — بنفس محلِّل أسماء مُمرَّر يعيد
     /// عناوين **عامة** (فلا يحتاج الفحص شبكةً ولا يعتمد على DNS هذه اللحظة).
     #[test]
-    fn the_youtube_family_is_accepted() {
+    fn the_youtube_family_is_accepted_from_both_sources() {
         let public = |_h: &str, _p: u16| vec!["142.251.156.4".parse().unwrap()];
         for url in [
             "https://www.youtube.com/watch?v=x",
@@ -2516,53 +2560,69 @@ pub(crate) mod tests {
             " https://www.youtube.com/watch?v=x ",
             "https://www.youtube.com./watch?v=x",
         ] {
-            let got = validate_download_url_with(url, &public);
-            assert!(got.is_ok(), "المضيف المسموح يجب أن يُقبل: {url} ⇒ {got:?}");
+            for source in [Source::Local, Source::Telegram] {
+                let got = validate_download_url_with(url, source, &public);
+                assert!(
+                    got.is_ok(),
+                    "المضيف المسموح يجب أن يُقبل ({source:?}): {url} ⇒ {got:?}"
+                );
+            }
         }
     }
 
-    /// **قائمة السماح: ما عدا ذلك يُرفض — وهذا هو مانع التحويل.**
+    /// **السياسة مشروطة بالمصدر — وهي قلب هذا البند.**
     ///
     /// **الفكرة المقيسة**: yt-dlp **يتّبع التحويلات** ولا عَلَم يمنعها، فرابطٌ
-    /// عامّ يحوّل إلى `127.0.0.1`/`169.254.169.254` كان يصل داخلاً. والقائمة
-    /// الصارمة تُخرج هذا النوع من النطاق: **لا نتكلّم مع المضيف الذي يحوّل**
-    /// أصلاً. فالمُقاس هنا **الرفض** لا وجود دالّة.
+    /// عامّ يحوّل إلى `127.0.0.1`/`169.254.169.254` كان يصل داخلاً. وقائمة
+    /// السماح تُخرج هذا النوع من النطاق: **لا نتكلّم مع المضيف الذي يحوّل**.
+    /// **لكنها تُفرض على مسار تلغرام وحده** ([`Source::Telegram`] — الرابط قد
+    /// يأتي من أي عضو)، وتبقى في المصدر المحلي وعدَ «أي رابط من أي موقع يدعمه
+    /// yt-dlp» كما كان. فالمُقاس هنا **الاتجاهان معاً** لا الرفض وحده.
     ///
-    /// **(مُفسَد محروس: إسقاط نداء `host_is_allowed` ⇒ تسقط هذه الحالة.)**
+    /// **(مُفسَدان محروسان: (أ) فرض القائمة على المحلي ⇒ يسقط · (ب) إسقاطها
+    /// عن تلغرام ⇒ يسقط — مُنفَّذان، انظر التقرير.)**
     #[test]
-    fn hosts_outside_the_allowlist_are_refused_so_a_redirect_cannot_be_used() {
+    fn a_local_link_keeps_any_site_while_a_telegram_link_is_limited_to_the_allowlist() {
         let public = |_h: &str, _p: u16| vec!["142.251.156.4".parse().unwrap()];
         for url in [
-            // واجهة التحويل نفسها: مضيف عامّ يتحكّم به المهاجم ⇒ مرفوض.
+            // واجهة التحويل نفسها: مضيف عامّ يتحكّم به المهاجم.
             "http://public-redirector.example/x",
             "https://vimeo.com/1",
             "http://soundcloud.com/a/b",
             "https://example.com/path?q=1#frag",
+            // صورٌ مكافئة لاسم مُدرَج: لا تمرّ في الحالتين (حدّ نقطة لا لاحقة نصّية).
             "https://www.youtube.com.attacker.example/watch?v=x",
             "https://evil-youtube.com/watch?v=x",
-            // عنوان IPv6 عامّ صريح ليس في القائمة كذلك (المخطّط/الشكل لا يغيّر السياسة).
             "https://[2606:4700::1111]/x",
         ] {
-            let got = validate_download_url_with(url, &public);
+            // (أ) **المحلي: يُقبل** — الوعد المعلن قائم.
+            let local = validate_download_url_with(url, Source::Local, &public);
             assert!(
-                got.is_err(),
-                "مضيف خارج القائمة يجب أن يُرفض (وهو ما يمنع التحويل إلى الداخل): {url}"
+                local.is_ok(),
+                "المصدر المحلي يجب أن يبقى «أي موقع» (وإلا أُبطل وعد معلن): {url} ⇒ {local:?}"
             );
-            let msg = got.unwrap_err();
+            // (ب) **تلغرام: يُرفض** — وهو ما يمنع التحويل إلى الداخل.
+            let tg = validate_download_url_with(url, Source::Telegram, &public);
             assert!(
-                msg.contains("غير مسموح"),
-                "سبب الرفض يجب أن يسمّي القائمة: {url} ⇒ {msg}"
+                tg.is_err(),
+                "رابط تلغرام إلى مضيف خارج القائمة يجب أن يُرفض: {url}"
+            );
+            let msg = tg.unwrap_err();
+            assert!(
+                msg.contains("غير مسموح") && msg.contains("تلغرام"),
+                "سبب الرفض يجب أن يسمّي القائمة والمصدر: {url} ⇒ {msg}"
             );
         }
     }
 
-    /// **الرفض بعد حلّ الاسم لا بالنصّ وحده (ب)** — والقياس بمحلِّل مُمرَّر.
+    /// **الرفض بعد حلّ الاسم لا بالنصّ وحده** — والقياس بمحلِّل مُمرَّر،
+    /// **وفي المصدرين**: هذا هو ما لا يُخفَّف بأي سياسة (جوهر منع SSRF).
     ///
-    /// اسمٌ **مدرَج في القائمة** (فلا تحجبه أ) يحلّ إلى عنوان محلي: هذا ما
-    /// يفعله ملف `hosts` مُعدَّل أو DNS مُسمَّم (‏`www.youtube.com ⇒ 127.0.0.1`)،
-    /// وحينها تكلّم العمليّة **خدمةً على الجهاز نفسه** وهي تظنّ أنها تكلّم يوتيوب.
+    /// اسمٌ **مدرَج في القائمة** يحلّ إلى عنوان محلي: هذا ما يفعله ملف `hosts`
+    /// مُعدَّل أو DNS مُسمَّم (‏`www.youtube.com ⇒ 127.0.0.1`)، وحينها تكلّم
+    /// العمليّة **خدمةً على الجهاز نفسه** وهي تظنّ أنها تكلّم يوتيوب.
     ///
-    /// **(مُفسَد محروس: إسقاط حلقة `resolve` ⇒ يسقط — مُنفَّذ، انظر التقرير.)**
+    /// **(مُفسَد محروس (ج): إسقاط حلقة `resolve` ⇒ يسقط — مُنفَّذ.)**
     #[test]
     fn an_allowed_name_that_resolves_to_a_local_address_is_refused() {
         for (ip, why) in [
@@ -2577,7 +2637,7 @@ pub(crate) mod tests {
             let parsed = ip.parse().expect("عنوان صالح في الجدول");
             let r = move |_h: &str, _p: u16| vec![parsed];
             let url = "https://www.youtube.com/watch?v=x";
-            let got = validate_download_url_with(url, &r);
+            let got = validate_download_url_with(url, Source::Local, &r);
             assert!(
                 got.is_err(),
                 "اسمٌ مسموح يحلّ إلى {ip} يجب أن يُرفض (وإلا كلّمنا خدمة داخلية)"
@@ -2591,9 +2651,14 @@ pub(crate) mod tests {
                 "الرسالة يجب أن تسمّي العنوان المحلول وسببه: {ip} ⇒ {msg}"
             );
         }
-        // وضابط: نفس الاسم بعنوان عامّ يمرّ (فالرفض ليس «رفض الأسماء»).
+        // وضابط: نفس الاسم بعنوان عامّ يمرّ في المصدرين (فالرفض ليس «رفض الأسماء»).
         let ok = |_h: &str, _p: u16| vec!["142.251.156.4".parse().unwrap()];
-        assert!(validate_download_url_with("https://www.youtube.com/watch?v=x", &ok).is_ok());
+        for source in [Source::Local, Source::Telegram] {
+            assert!(
+                validate_download_url_with("https://www.youtube.com/watch?v=x", source, &ok)
+                    .is_ok()
+            );
+        }
     }
 
     /// **قاعدتان لا تفترقان في الاتجاه الذي يهمّ**: كل عنوان يراه الفاحص
@@ -2689,11 +2754,53 @@ pub(crate) mod tests {
             rec.lock().unwrap().push((h.to_string(), p));
             vec!["142.251.156.4".parse().unwrap()]
         };
-        let _ = validate_download_url_with("https://www.youtube.com:8443/watch?v=x", &r);
+        let _ = validate_download_url_with(
+            "https://www.youtube.com:8443/watch?v=x",
+            Source::Telegram,
+            &r,
+        );
         assert_eq!(
             seen.lock().unwrap().as_slice(),
             &[("www.youtube.com".to_string(), 8443u16)]
         );
+    }
+
+    /// **ونقاط النداء تسمّي مصدرها الصحيح** — فالسياسة لا تُفرض إن مرّر مسار
+    /// تلغرام `Local` (وهو تبديل عارض لا يراه المُصرِّف: النوع واحد).
+    ///
+    /// **وحدّه معلن**: فحصٌ **نصّي** لملفات الشجرة — تعليقٌ يحمل النصّ يخدعه.
+    /// وقيمته أنه يمنع **التبديل العارض**، والحكم على السلوك نفسه في
+    /// `a_local_link_keeps_any_site_while_a_telegram_link_is_limited_to_the_allowlist`.
+    ///
+    /// **(مُفسَد محروس: تمرير `Source::Local` في `telegram.rs` ⇒ يسقط.)**
+    #[test]
+    fn every_call_site_declares_its_source() {
+        const TELEGRAM: &str = include_str!("telegram.rs");
+        const BRIDGE: &str = include_str!("bridge.rs");
+        const CLI: &str = include_str!("cli.rs");
+        const LIB: &str = include_str!("lib.rs");
+        let calls = |src: &str| {
+            src.matches("yt_dlp::download_media(").count()
+                + src.matches("yt_dlp::download_audio(").count()
+        };
+        // تلغرام: غير موثوق — ولا نداء محلياً فيه (وإلا فالقائمة لا تُفرض في مسارها).
+        assert!(
+            calls(TELEGRAM) > 0,
+            "لا نداء تنزيل في telegram.rs — الفحص باطل"
+        );
+        assert!(
+            TELEGRAM.contains("Source::Telegram"),
+            "مسار تلغرام لا يسمّي مصدره غير الموثوق"
+        );
+        assert!(
+            !TELEGRAM.contains("Source::Local"),
+            "مسار تلغرام فيه نداء بمصدر محلي — القائمة لا تُفرض هناك"
+        );
+        for (name, src) in [("lib.rs", LIB), ("bridge.rs", BRIDGE), ("cli.rs", CLI)] {
+            assert!(calls(src) > 0, "لا نداء تنزيل في {name} — الفحص باطل");
+            assert!(src.contains("Source::Local"), "{name} لا يسمّي المصدر المحلي");
+            assert!(!src.contains("Source::Telegram"), "{name} فيه مصدر تلغرام");
+        }
     }
 
     /// و-٨ سلبي: المداخل الفارغة/التالفة تُرفض ولا تصل إلى yt-dlp.
@@ -2707,10 +2814,13 @@ pub(crate) mod tests {
             "///x",
             "http://",
         ] {
-            assert!(
-                validate_download_url(url).is_err(),
-                "رابط تالف يجب أن يُرفض: {url:?}"
-            );
+            // وفي المصدرين: رابط تالف/محلي لا يمرّ من أي سياسة مصدر.
+            for source in [Source::Local, Source::Telegram] {
+                assert!(
+                    validate_download_url(url, source).is_err(),
+                    "رابط تالف يجب أن يُرفض ({source:?}): {url:?}"
+                );
+            }
         }
     }
 
@@ -2724,6 +2834,7 @@ pub(crate) mod tests {
             Path::new("."),
             &|_| true,
             &cancel,
+            Source::Local,
         )
         .expect_err("must be rejected");
         assert!(
@@ -3209,6 +3320,7 @@ fn main() {
                 &worker_out,
                 &dl,
                 &cancel,
+                Source::Local,
             );
             let _ = tx_done.send(());
             r.is_err()
@@ -3574,6 +3686,7 @@ fn main() {
                 &tmp,
                 &|_p| true,
                 &cancel,
+                Source::Local,
             )
         });
         *ytdlp_test_override()
@@ -3688,6 +3801,7 @@ fn main() {
                 &tmp,
                 &|_p| true,
                 &cancel,
+                Source::Local,
             )
         });
         *ytdlp_test_override()
@@ -3761,6 +3875,7 @@ fn main() {
             &tmp,
             &|_p| true,
             &cancel,
+            Source::Local,
         );
         *ytdlp_test_override()
             .lock()
@@ -3803,6 +3918,7 @@ fn main() {
             &tmp,
             &|_p| true,
             &cancel,
+            Source::Local,
         );
         *ytdlp_test_override()
             .lock()
@@ -3848,6 +3964,7 @@ fn main() {
             &tmp,
             &|_p| true,
             &cancel,
+            Source::Local,
         );
         *ytdlp_test_override()
             .lock()
@@ -3913,6 +4030,7 @@ fn main() {
             &tmp,
             &|_p| true,
             &cancel,
+            Source::Local,
         );
         let _ = canceller.join();
         *ytdlp_test_override()
@@ -4009,6 +4127,7 @@ fn main() {
             &tmp,
             &|_p| true,
             &cancel,
+            Source::Local,
         );
         *ytdlp_test_override()
             .lock()
@@ -4149,7 +4268,7 @@ fn main() {
             *ytdlp_test_override()
                 .lock()
                 .unwrap_or_else(|p| p.into_inner()) = Some(fake.clone());
-            let r = download_media(url, &tmp, &|_p| true, &cancel);
+            let r = download_media(url, &tmp, &|_p| true, &cancel, Source::Local);
             *ytdlp_test_override()
                 .lock()
                 .unwrap_or_else(|p| p.into_inner()) = None;
@@ -4177,7 +4296,7 @@ fn main() {
             *ytdlp_test_override()
                 .lock()
                 .unwrap_or_else(|p| p.into_inner()) = Some(fake.clone());
-            let _r = download_media(url, &tmp, &|_p| true, &cancel);
+            let _r = download_media(url, &tmp, &|_p| true, &cancel, Source::Local);
             *ytdlp_test_override()
                 .lock()
                 .unwrap_or_else(|p| p.into_inner()) = None;
@@ -4224,6 +4343,7 @@ fn main() {
             &tmp,
             &|_p| true,
             &cancel,
+            Source::Local,
         );
         *ytdlp_test_override()
             .lock()
@@ -4293,6 +4413,7 @@ fn main() {
             &tmp,
             &|_p| true,
             &cancel,
+            Source::Local,
         );
         let _ = canceller.join();
         *ytdlp_test_override()
@@ -4364,6 +4485,7 @@ fn main() {
             &tmp,
             &|_p| true,
             &cancel,
+            Source::Local,
         );
         *ytdlp_test_override()
             .lock()
@@ -4568,6 +4690,7 @@ fn main() {
             &tmp,
             &|_p| true,
             &cancel,
+            Source::Local,
         );
         *ytdlp_test_override()
             .lock()
@@ -4684,6 +4807,7 @@ fn main() {
                 &worker_out,
                 &dl,
                 &cancel,
+                Source::Local,
             );
             let _ = tx_done.send(match &r {
                 Ok(p) => format!("نجح: {}", p.display()),

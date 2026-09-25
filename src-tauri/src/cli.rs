@@ -404,6 +404,7 @@ pub fn entry(args: &[String]) -> i32 {
                 true
             },
             &never_cancel,
+            crate::yt_dlp::Source::Local,
         ) {
             Ok(path) => {
                 eprintln!("\r  [100%]");

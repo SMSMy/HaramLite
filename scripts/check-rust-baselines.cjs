@@ -15,6 +15,12 @@
  *   ③ **والاختبارات المُهمَلة** (`tests_ignored`): كان الرقم يُكتَب ويُطبَع **ولا يُقارَن** ⇒ حارسٌ يُنزَع
  *      بـ`#[ignore]` واختبارٌ تافه يُضاف مكانه يعطي العدد نفسه و«٠ فاشل» فيمرّ **أخضر وحارسُه لا يعمل**
  *      (الثقب قِيس في بيئة مصنوعة، وكشفه جاسوس مستقلّ). فيُسقط الآن **زيادةُ** المُهمَل عن الأساس.
+ *   ④ **وأخطاء clippy** (`level:"error"`): كان العدّ يقبل `level === "warning"` **وحده** ويُسقط ما سواه
+ *      ⇒ كودٌ يرفضه clippy (لا تحذيراً عليه) يمرّ **أخضر**. والثقب المقيس: `error: invisible character
+ *      detected` من محرف `U+200B` قائم في الشجرة، و`pnpm rust:gates` قال «✓ سليم» بينما
+ *      `cargo clippy --all-targets` **exit 1** (كشفه وكيل `dl2` من قياسه هو). فيُسقط الآن:
+ *      (أ) **أي** تشخيص `level:"error"` — **ويُسمّى** رمزُه وموضعُه ونصُّه · (ب) و**رمز خروج clippy
+ *      غير الصفر** (فخطأُ بناءٍ بلا تشخيص مفصَّل يسقط أيضاً) · (ج) و`build-finished.success === false`.
  *
  * `--update` يكتب خطّ الأساس من التشغيل الحالي (تعديل واعٍ يُراجَع في الالتزام، لا صمت).
  * و`--baseline=<path>` للاختبار (فيُقاس الحارس نفسه على خطّ أساس مُصطنع).
@@ -82,27 +88,42 @@ const toolchain = (() => {
 
 /* ── ① تحذيرات clippy: مواضع فريدة من JSON ───────────────────────────────── */
 /** **بلا `--quiet`**: التشخيصات تُكتب JSON على stdout، و`--quiet` جُرِّب فأعطى رقماً خاطئاً (١٢ بدل ١٥)
- *  — والقياس الموثوق يُكتب إلى **ملف** ثم يُقرأ، لا عبر أنبوب مع `--quiet`. */
+ *  — والقياس الموثوق يُكتب إلى **ملف** ثم يُقرأ، لا عبر أنبوب مع `--quiet`.
+ *
+ *  **والمخرَج الخام يُقرأ لا الملخّص**: كل سطر JSON على حدة، ولا حكم من سطرَي cargo الختاميّين.
+ *  وتُجمَع **الأخطاء** (`level:"error"`) بأسمائها — لا تُطوى في العدّ. */
 function clippyUniqueWarnings() {
   const r = cargoRun(['clippy', '--all-targets', '--manifest-path', MANIFEST, '--message-format=json'],
     { maxBuffer: 512 * 1024 * 1024 });
   if (r.error) return { error: r.error.message };
   const out = r.stdout || '';
   const seen = new Map();
+  const errors = [];
   let parsed = 0;
+  let sawDiagnostic = 0;
+  let buildOk = null;
   for (const line of out.split(/\r?\n/)) {
     const t = line.trim();
     if (!t.startsWith('{')) continue;
     let j; try { j = JSON.parse(t); } catch { continue; }
+    if (j.reason === 'build-finished') { buildOk = j.success !== false; continue; }
     if (j.reason !== 'compiler-message' || !j.message) continue;
-    if (j.message.level !== 'warning') continue;
-    parsed++;
+    sawDiagnostic++;
     const code = j.message.code?.code || '(بلا رمز)';
     const span = (j.message.spans || []).find((s) => s.is_primary) || (j.message.spans || [])[0] || {};
-    seen.set(`${code}|${span.file_name || '?'}|${span.line_start || 0}|${span.column_start || 0}`, true);
+    const where = `${span.file_name || '?'}:${span.line_start || 0}:${span.column_start || 0}`;
+    if (j.message.level === 'error') {
+      // **يُسمّى**: الرمز + الموضع + نصّ الخطأ (أول سطر منه) — لا «فشل clippy» مبهمة.
+      const first = String(j.message.message || '').split('\n')[0].trim();
+      errors.push(`${code} @ ${where} — ${first}`);
+      continue;
+    }
+    if (j.message.level !== 'warning') continue;
+    parsed++;
+    seen.set(`${code}|${where}`, true);
   }
-  if (parsed === 0) return { error: 'لم يُقرأ تشخيص واحد من clippy (لا JSON في المخرَج)' };
-  return { unique: seen.size, keys: [...seen.keys()].sort(), raw: parsed, status: r.status };
+  if (sawDiagnostic === 0) return { error: 'لم يُقرأ تشخيص واحد من clippy (لا JSON في المخرَج)' };
+  return { unique: seen.size, keys: [...seen.keys()].sort(), raw: parsed, status: r.status, errors, buildOk };
 }
 
 /* ── ② اختبارات Rust: مجموع نتائج كل الأهداف ─────────────────────────────── */
@@ -127,6 +148,12 @@ if (clippy.error || tests.error) {
 }
 
 if (update) {
+  // **ولا يُكتَب خطّ أساس على شجرة يرفضها clippy**: وإلا صار الخطأُ نفسه هو «المرجع» المُقارَن به.
+  if ((clippy.errors && clippy.errors.length) || clippy.buildOk === false || clippy.status !== 0) {
+    console.error('✗ لا يُحدَّث خطّ الأساس: clippy أخرج أخطاءً أو انتهى برمز غير صفر');
+    for (const e of (clippy.errors || []).slice(0, 10)) console.error('   · ' + e);
+    process.exit(1);
+  }
   const data = {
     why: 'خطّ أساس مقيس لبوّابات Rust — يُحدَّث بـ--update بعد مراجعة السبب، ولا يُخفَّض لتُمرَّر بوّابة.',
     clippy_unique_warnings: clippy.unique,
@@ -155,6 +182,19 @@ for (const k of ['clippy_unique_warnings', 'tests_passed', 'tests_ignored']) {
 }
 
 const reasons = [];
+/* **أخطاء clippy تسقط البوّابة أولاً** (البند ④): بوّابةٌ تُخضرّ على كودٍ يرفضه clippy ليست بوّابة.
+ * والثلاثة معاً: تشخيصات `level:"error"` بأسمائها · رمز خروج clippy · و`build-finished.success`. */
+if (clippy.errors && clippy.errors.length) {
+  reasons.push(`clippy أخرج **${clippy.errors.length} خطأ** (‏level:"error") — كودٌ يرفضه clippy لا يمرّ:\n` +
+    clippy.errors.slice(0, 10).map((e) => '     · ' + e).join('\n') +
+    (clippy.errors.length > 10 ? `\n     · … و${clippy.errors.length - 10} أخرى` : ''));
+}
+if (clippy.buildOk === false) {
+  reasons.push('clippy: `build-finished.success === false` — البناء نفسه فشل (وأي تشخيص مفصَّل مذكور أعلاه إن وُجد)');
+}
+if (clippy.status !== 0) {
+  reasons.push(`clippy انتهى برمز خروج ${clippy.status} (المطلوب ٠) — حتى بلا تشخيص مُفصَّل لا تُقبَل البوّابة`);
+}
 if (clippy.unique > base.clippy_unique_warnings) {
   reasons.push(`تحذيرات clippy: ${clippy.unique} موضعاً فريداً > الأساس ${base.clippy_unique_warnings} — تحذير جديد لم يُراجَع`);
 }
