@@ -37,6 +37,11 @@ vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) })
 
 import indexHtml from '../../index.html?raw';
 import settingsRs from '../../src-tauri/src/settings.rs?raw';
+/* **مصدرا الرموز** لحارس «لا مفتاح بلا مستهلك» (الشرط ② أدناه): يُقرآن آلياً
+ * من الرست، فلا يُعلَن رمزٌ بيد. و`errorTextSurface` نصّاً للشرط ③. */
+import bridgeRs from '../../src-tauri/src/bridge.rs?raw';
+import ytDlpRs from '../../src-tauri/src/yt_dlp.rs?raw';
+import errorTextSurfaceSrc from './errorTextSurface.test.ts?raw';
 import { i18n } from '../i18n';
 import {
   SETTINGS_FIELD_CONTROL,
@@ -633,8 +638,84 @@ describe('لا إعداد بلا سطح · ولا مفتاح ترجمة بلا �
     ];
     expect(sources.length, 'ملفات المستهلكين المقروءة').toBeGreaterThanOrEqual(15);
 
+    /* ── **المفاتيح المركَّبة**: مساحتا `code.*` و`u.*` تُبنى أسماؤهما وقت التشغيل ──
+     *
+     * **العطل الذي وُلدت منه هذه القاعدة (مقيس)**: `src/i18n.ts:703` تقرأ
+     * `for (const key of [\`code.${code}\`, \`u.${code}\`])` — أي أن **اسم المفتاح
+     * يُبنى من رمز يصل من الرست**، فلا يظهر حرفيّاً في أي ملف. فحارسٌ يقيس
+     * **الإشارة الحرفيّة** كان يُسقط **١٣ مفتاحاً حيّاً** (`5 code.* + 8 u.*`)
+     * بذريعة «يتيم» — وهو **عطل في الحارس لا في الشجرة**.
+     *
+     * **وهذه ليست قائمة استثناء** (الاستثناء يتقادم ويمرّ صامتاً)، بل **قاعدة
+     * مُشتقّة يُتحقّق من مبرّرها آلياً في كل تشغيل**، بثلاثة شروط **كلّها لازمة**:
+     *   ① المفتاح له مدخل في **الجدولين** (‏ar وen) — كما هو الشرط القائم.
+     *   ② **وله رمزٌ مقابل في الرست، مقروءاً من الملفين لا مُعلَناً بيد**:
+     *      `code.<x>` ⇒ `pub const E_<…> = "<x>"` في `bridge.rs` ·
+     *      و`u.<x>` ⇒ `pub const U_<…> = "<x>"` في `yt_dlp.rs`.
+     *   ③ **وأن يكون حارس التقابل حيّاً**: `src/__tests__/errorTextSurface.test.ts`
+     *      موجود **ويقيس الاتجاهين** (`code.*` لكل `E_*` · و`u.*` لكل `U_*`).
+     *      فإن غاب أو نُزع قياسه ⇒ **يسقط هذا الحارس**.
+     * ⇒ فلا منفذ إخفاء: مفتاح مركَّب **لا يُقبل** إلا ومعه رمزه في الرست ومدخله في
+     * الجدولين **وحارسُ تقابلٍ حيّ**. **وأي مفتاح مركّب آخر (لا `code.`/`u.`)
+     * يبقى يسقط كما كان** — لأن الفرع أدناه لا يُدخله أصلاً.
+     */
+    const rustText = `${bridgeRs}\n${ytDlpRs}`;
+    const rustCodes = new Set(
+      [...rustText.matchAll(/pub const [EU]_[A-Z0-9_]+\s*:\s*&str\s*=\s*"([^"]+)";/g)].map((m) => m[1]),
+    );
+    // الشرط ③: الحارس المقابل حيّ — يُقرأ نصّه ويُشترط أن يذكر المساحتين وثوابت الرست.
+    const counterpartLive =
+      /pub const E_/.test(errorTextSurfaceSrc) &&
+      /code\./.test(errorTextSurfaceSrc) &&
+      /U_/.test(errorTextSurfaceSrc) &&
+      /u\./.test(errorTextSurfaceSrc) &&
+      /i18n\.(ar|en)/.test(errorTextSurfaceSrc);
+    expect(
+      counterpartLive,
+      'حارس التقابل `errorTextSurface.test.ts` غير حيّ (يقيس `code.*`⇄`E_*` و`u.*`⇄`U_*`) — ' +
+        'فالمفاتيح المركَّبة لا يجوز أن تُقبل بلا حارسٍ يقيس تقابلها',
+    ).toBe(true);
+
+    const composed: string[] = [];
+    const composedNoRustCode: string[] = [];
+    const composedNoEn: string[] = [];
+    for (const k of keys) {
+      const m = /^(code|u)\.(.+)$/.exec(k);
+      if (!m) continue;
+      composed.push(k);
+      if (!rustCodes.has(m[2])) composedNoRustCode.push(k);
+      if (!Object.prototype.hasOwnProperty.call(i18n.en, k)) composedNoEn.push(k);
+    }
+    expect(composedNoEn, `مفاتيح مركَّبة بلا مدخل في جدول en: ${composedNoEn.join(' · ')}`).toEqual([]);
+    expect(
+      composedNoRustCode,
+      `مفاتيح مركَّبة بلا رمز مقابل في الرست (‏pub const E_*/U_* في bridge.rs/yt_dlp.rs): ${composedNoRustCode.join(' · ')}`,
+    ).toEqual([]);
+
+    /* **والاتجاه الثاني — وهو ما يمنع «قاعدةً » فارغة**: لو حُذف مفتاح من الجدولين
+     * مع بقاء رمزه في الرست، كان الفرع أعلاه **لا يراه** (لأنه يمسح مفاتيح الجدول
+     * لا رموز الرست) فيمرّ الحارس كذباً. **وقد وقع هذا فعلاً في مُفسَدي الأول**:
+     * حذفتُ `'code.bad_input'` من الجدولين فبقي `14 passed` — أي أن القاعدة كانت
+     * تُقاس في اتجاه واحد. فالآن يُقاس **التقابل في الاتجاهين**، ومعه **ضابطان
+     * للحدّين**: لكل مساحة رمزٌ في الرست، وله مدخلٌ في الجدولين. */
+    const tableCodes = new Set(
+      Object.keys(i18n.ar).filter((k) => /^(code|u)\./.test(k)).map((k) => k.replace(/^(code|u)\./, '')),
+    );
+    const rustOnly: string[] = [...rustCodes].filter((c) => !tableCodes.has(c));
+    expect(
+      rustOnly,
+      `رموز في الرست بلا مدخل في الجدولين (تُعرض عندها بالعربية الخام في واجهة إنجليزية): ${rustOnly.join(' · ')}`,
+    ).toEqual([]);
+    // وضابطان: المساحتان ليستا فارغتين، ولا واحدة منهما ابتلعت الأخرى.
+    expect([...rustCodes].filter((c) => c === 'duplicate_link').length, 'رمز E_ معروف في الرست').toBe(1);
+    expect(tableCodes.size, 'رموز مقابلة في الجداول').toBeGreaterThanOrEqual(10);
+    expect(rustCodes.size, 'رموز E_*/U_* المقروءة من الرست').toBeGreaterThanOrEqual(tableCodes.size);
+    // وضابط: القاعدة مُستعملة فعلاً — لو صارت صفر مفتاح لكانت شرطاً ميتاً يمرّ كذباً.
+    expect(composed.length, 'مفاتيح مركَّبة مقبولة بهذه القاعدة').toBeGreaterThanOrEqual(10);
+
     const orphans: string[] = [];
     for (const k of keys) {
+      if (composed.includes(k)) continue; // قاعدتها أعلاه مُشتقّة ومُتحقَّق منها
       const re = new RegExp(`(^|[^A-Za-z0-9_])${k}([^A-Za-z0-9_]|$)`);
       if (!sources.some((s) => re.test(s.t))) orphans.push(k);
     }
