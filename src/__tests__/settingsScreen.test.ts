@@ -52,12 +52,13 @@ function mountApp(): void {
  * والقائمة **مكتوبة صراحةً** (لا تُشتقّ من الصفحة) — وإلا لكان الحارس يقرأ ما
  * يقيسه فيمرّ دائماً: المُفسَد المراد كشفه هو **نقص عنصر من الشاشة**.
  */
-const REQUIRED: ReadonlyArray<readonly [string, readonly string[]]> = [
+const REQUIRED: ReadonlyArray<readonly [string, readonly string[], string?]> = [
   [
     'الأداء (cuda + hint + سقف الفصول)',
     ['setting-cuda', 'cuda-hint', 'cuda-hint-text', 'max-jobs'],
+    'performance',
   ],
-  ['الفصل والمزوّد', ['cuda-provider']],
+  ['الفصل والمزوّد', ['cuda-provider'], 'engine'],
   [
     'المراقبة التلقائية',
     [
@@ -138,6 +139,31 @@ const ALL_REQUIRED: readonly string[] = [
 ];
 
 const TABS = ['performance', 'engine', 'watch', 'bridge', 'telegram', 'update', 'about'];
+
+/**
+ * **التبويب المتوقَّع لمعرّفات محدّدة** — فلا يكفي أن يكون العنصر «في الشاشة»،
+ * بل **في تبويبه المُعلَن**. وهذا توسيعٌ **مقصود لا حصر** (المطلوب الكامل: كل
+ * معرّف بتبويبه)، ويكفي لكشف الخطأ الذي وقع فعلاً: `#max-jobs` كان في `engine`
+ * والمتوقَّع `performance` — **مقيس** بـ`closest('.settings-tab-panel').dataset.tab`.
+ * **مُفسَده**: نقل أيّ معرّف هنا إلى تبويب آخر ⇒ يسقط.
+ */
+const EXPECTED_TAB: Record<string, string> = {
+  'setting-cuda': 'performance',
+  'cuda-hint': 'performance',
+  'cuda-hint-text': 'performance',
+  'max-jobs': 'performance',
+  'cuda-provider': 'engine',
+  'setting-watch': 'watch',
+  'watch-options': 'watch',
+  'setting-bridge': 'bridge',
+  'btn-telegram': 'telegram',
+  'tg-group-mode': 'telegram',
+  'setting-autostart': 'update',
+  'setting-notify': 'update',
+  'btn-repair-open': 'update',
+  'btn-report': 'about',
+  'btn-about': 'about',
+};
 
 /** يركّب DOM ويربط الشاشة (والوضع الأوّلي من الـhash — بديل الاختبار). */
 async function mount(initialHash = ''): Promise<typeof import('../settingsScreen')> {
@@ -271,6 +297,18 @@ describe('تكافؤ الشاشة · كل عنصر في القائمة القد�
       n += ids.length;
     }
     const outsideFound = OUTSIDE.filter((id) => document.getElementById(id) !== null).length;
+    // **والتبويب المتوقَّع** (لا مجرّد الوجود): كل معرّف في `EXPECTED_TAB` يجب أن
+    // يكون في تبويبه المُعلَن — وهو ما يكشف خطأ التقسيم (`#max-jobs`).
+    const misplaced: string[] = [];
+    for (const [id, tab] of Object.entries(EXPECTED_TAB)) {
+      const el = document.getElementById(id);
+      if (!el) continue; // غيابه يُكشف أعلاه
+      const got = el.closest<HTMLElement>('.settings-tab-panel')?.dataset.tab ?? '(خارج التبويبات)';
+      if (got !== tab) misplaced.push(`${id}: متوقَّع ${tab} · مقيس ${got}`);
+    }
+    expect(misplaced, `عناصر في غير تبويبها: ${misplaced.join(' · ')}`).toEqual([]);
+    // eslint-disable-next-line no-console
+    console.log(`التبويب المتوقَّع: ${Object.keys(EXPECTED_TAB).length} معرّفاً في تبويبها الصحيح`);
     // eslint-disable-next-line no-console
     console.log(`تكافؤ شاشة الإعدادات: ${n + outsideFound} من ${ALL_REQUIRED.length}`);
     expect(n + outsideFound, 'N من N').toBe(ALL_REQUIRED.length);

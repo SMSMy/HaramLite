@@ -971,6 +971,71 @@ function runProbe(args) {
     }
   }
 
+  // ── **حالة الإعدادات الداخلية** — الحالة التي يفتحها المستخدم فعلاً ─────────
+  // العطب الذي وُلدت منه (ميداني، مقيس): الرأس يحمل `.glass-effect` وفيه
+  // `backdrop-filter: blur(16px)`، و`backdrop-filter` غير `none` يجعل العنصر
+  // **كتلةً حاوية** لـ`position: fixed` بداخله ⇒ فالشاشة (`#settings-menu`، وهي
+  // داخل `<header>`) انكمشت إلى **67.2px** عند y=23، ووقع شريط التبويبات (y=154)
+  // والحاويات (y=213) **خارجها** فقصّها `overflow:auto` — وكان الحارس يمرّ لأنه
+  // يقيس صندوق القائمة بلا `body.settings-mode`، **فلا يرى الحالة التي يفتحها
+  // المستخدم**. وهذا ما تُصلحه هذه الكتلة: تُقاس الحالة نفسها في كل عرض واتجاه.
+  let settings = null;
+  {
+    const screen = document.getElementById('settings-menu');
+    const tabbar = document.getElementById('settings-tabs');
+    if (screen && tabbar) {
+      const priorMode = document.body.classList.contains('settings-mode');
+      const priorHidden = screen.classList.contains('hidden');
+      const panels = Array.from(document.querySelectorAll('.settings-tab-panel'));
+      const priorHiddenPanels = panels.map((p) => p.hidden);
+      document.body.classList.add('settings-mode');
+      screen.classList.remove('hidden');
+      const active = panels.find((p) => !p.hidden) || panels[0];
+      panels.forEach((p) => { p.hidden = p !== active; });
+
+      const sb = screen.getBoundingClientRect();
+      const tb = tabbar.getBoundingClientRect();
+      const inside = (c, p) => c.top >= p.top - 1 && c.bottom <= p.bottom + 1 && c.left >= p.left - 1 && c.right <= p.right + 1;
+      // ما يرسم فوق شريط التبويبات من خارج الشاشة (‏`#logcard` كان يفعلها).
+      const overTabs = [];
+      if (tb.width > 4 && tb.height > 4) {
+        for (const el of Array.from(document.querySelectorAll('body *'))) {
+          if (screen.contains(el)) continue;
+          const cs = getComputedStyle(el);
+          if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) continue;
+          const r = el.getBoundingClientRect();
+          if (r.width < 50 || r.height < 8) continue;
+          if (!(r.right <= tb.left || r.left >= tb.right || r.bottom <= tb.top || r.top >= tb.bottom)) {
+            overTabs.push(el.id || el.tagName.toLowerCase());
+          }
+        }
+      }
+      const firstTab = tabbar.querySelector('[data-tab-btn]');
+      const ftb = firstTab ? firstTab.getBoundingClientRect() : null;
+      settings = {
+        screenW: +sb.width.toFixed(1),
+        screenH: +sb.height.toFixed(1),
+        screenBox: [+sb.left.toFixed(1), +sb.top.toFixed(1), +sb.right.toFixed(1), +sb.bottom.toFixed(1)],
+        tabBox: [+tb.left.toFixed(1), +tb.top.toFixed(1), +tb.right.toFixed(1), +tb.bottom.toFixed(1)],
+        activeBox: active ? (([c]) => [+c.left.toFixed(1), +c.top.toFixed(1), +c.right.toFixed(1), +c.bottom.toFixed(1)])([active.getBoundingClientRect()]) : null,
+        tabH: +tb.height.toFixed(1),
+        tabW: +tb.width.toFixed(1),
+        tabsInsideScreen: inside(tb, sb),
+        activeInsideScreen: active ? inside(active.getBoundingClientRect(), sb) : false,
+        firstTabLabel: firstTab ? (firstTab.textContent || '').trim() : '',
+        firstTabBox: ftb ? +ftb.height.toFixed(1) : 0,
+        elementsOverTabs: overTabs,
+        pageScrollable: document.documentElement.scrollHeight > window.innerHeight + 2,
+        screenScrolls: screen.scrollHeight > screen.clientHeight + 2,
+      };
+
+      // لا تُترك الصفحة في وضع لم تكن فيه (فلا يتأثّر ما بعده).
+      panels.forEach((p, i) => { p.hidden = priorHiddenPanels[i]; });
+      if (!priorMode) document.body.classList.remove('settings-mode');
+      if (priorHidden) screen.classList.add('hidden');
+    }
+  }
+
   const menuRow = rows.find((r) => r.name === 'settings-menu') || null;
   return {
     viewport: { width: vw, height: vh },
@@ -989,6 +1054,7 @@ function runProbe(args) {
       menuRow,
       probe,
       probeError,
+      settings,
       rows,
       skipped,
     };
@@ -1451,6 +1517,52 @@ async function main() {
             if (drift > 1) {
               problems.push(`${dir}@${width}: measured #settings-menu left=${data.menuRow.left} but the end-edge probe predicts ${data.probe.endEdgeLeft} (drift ${drift.toFixed(2)}px) — probe and page disagree`);
             }
+          }
+
+          // ── **حالة الإعدادات**: أربعة شروط تقيس ما يراه المستخدم ────────────
+          // (وهي التي كانت غائبة فمرّ العطب: الشاشة 67.2px والتبويبات خارجها.)
+          if (data.settings) {
+            const s = data.settings;
+            note(
+              `settings-mode: screen ${s.screenW}x${s.screenH} ${JSON.stringify(s.screenBox)} · tabs ${s.tabW}x${s.tabH} ${JSON.stringify(s.tabBox)} ` +
+              `· active ${JSON.stringify(s.activeBox)} "${s.firstTabLabel}" ` +
+              `· inside=${s.tabsInsideScreen}/${s.activeInsideScreen} · over-tabs=[${s.elementsOverTabs.join(', ')}] ` +
+              `· pageScroll=${s.pageScrollable} · screenScroll=${s.screenScrolls}`,
+            );
+            // (د) الحاوية تحوي شريطها وحاويتها النشطة.
+            if (!s.tabsInsideScreen) {
+              problems.push(
+                `${dir}@${width}: شريط تبويبات الشاشة **خارج** حاويتها (الشاشة ${s.screenW}x${s.screenH} · الشريط ${s.tabW}x${s.tabH}) ` +
+                '— الصنف المقيس: كتلة حاوية لـ`position:fixed` (‏backdrop-filter على الرأس) أو حاوية بلا ارتفاع',
+              );
+            }
+            if (!s.activeInsideScreen) {
+              problems.push(`${dir}@${width}: حاوية التبويب النشطة خارج الشاشة — محتواها مقصوص`);
+            }
+            // (ب) تبويب ظاهر بارتفاع معقول ونصّه غير فارغ ⇒ «مقروء».
+            if (!(s.tabH > 20 && s.firstTabBox > 8 && s.firstTabLabel)) {
+              problems.push(
+                `${dir}@${width}: تبويب الشاشة غير مقروء (ارتفاع الشريط ${s.tabH}px · أول زرّ ${s.firstTabBox}px · نصّه "${s.firstTabLabel}")`,
+              );
+            }
+            // (أ) لا عنصر من خارج الشاشة يتقاطع مع شريط التبويبات.
+            if (s.elementsOverTabs.length) {
+              problems.push(
+                `${dir}@${width}: عناصر ترسم **فوق** شريط تبويبات الشاشة: ${s.elementsOverTabs.join(', ')} — الشريط مقطوع بصرياً`,
+              );
+            }
+            // (ج) لا سمرولة غير مقصودة (ولا قصّ داخل الشاشة نفسها).
+            if (s.pageScrollable) {
+              problems.push(`${dir}@${width}: الصفحة تُمرَّر في وضع الإعدادات — سمرولة غير مقصودة`);
+            }
+            if (s.screenScrolls) {
+              note('   ملاحظة: الشاشة تُمرَّر داخلياً (محتواها أطول من مساحتها) — مسموح لا عطب');
+            }
+          } else {
+            problems.push(
+              `${dir}@${width}: **لم تُقَس حالة الإعدادات** (لا #settings-menu أو لا #settings-tabs) — ` +
+              'فحص لا يقيس الحالة التي يفتحها المستخدم ليس فحصاً',
+            );
           }
 
           log(`── ${dir} @ ${data.viewport.width}x${data.viewport.height} (requested ${width}) ──`);

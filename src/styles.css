@@ -64,6 +64,10 @@ body.settings-mode #logcard {
 body.settings-mode #settings-menu {
   position: fixed;
   inset: 0;
+  /* **والهامش صفر**: `mt-2` (‏8px) من أصناف القائمة القديمة يبقى مع `inset:0`
+   * فينزلق الإطار — **مقيس**: `[0, 8, 1084, 800]` في نافذة ارتفاعها 792px ⇒
+   * أسفله **8px خارج النافذة**، وفيه خطر قصّ آخر عنصر في حاوية طويلة. */
+  margin: 0;
   width: auto;
   max-height: none;
   /* هامش الشاشة صفر: مع `position: fixed; inset: 0` كان `mt-2` من الترميز

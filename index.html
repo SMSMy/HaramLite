@@ -74,7 +74,19 @@
              طلب المالك 2026-09-21 نقله إلى هنا: كان في «إعدادات متقدمة» المخفية
              (ستّ نقرات على شارة الإصدار) ثم في الصفحة الرئيسية، والمكان الصحيح
              قسم الإعدادات بجانب خيار CUDA — فهو خيار أداء مثله.
-             والقصّ في الخلف أيضاً (`slots::clamp_limit`) فهذه ليست الحارس الوحيد. -->
+             والقصّ في الخلف أيضاً (`slots::clamp_limit`) فهذه ليست الحارس الوحيد.
+             (**والتعليق صار يطابق الواقع بعد `10d8dfa`**: `#max-jobs` في تبويب
+             `performance` ومعه `#cuda-provider` — فحُذف تعليق فرع
+             `agent/x4-cancel` الذي يصف نقلاً من `engine`، لأن الفرع المدموج نُفِّذ
+             فيه النقل نفسه ومعها أربعة غيره في `10d8dfa`. وقياس الحلّ:
+             `git diff 0db0ade agent/x4-cancel -- index.html` = نقلان
+             (`#cuda-provider` · `#max-jobs`) لا خامسهما.)
+             (**وحلّ دمج `agent/x4-cancel` لم يكن نصّياً فقط**: إضافة الفرع حاويةَ
+             `engine` ثانية بنفس `data-tab` وبنسخة ثانية من `#cuda-provider`،
+             فصار المعرّف **نسختين** وعدد الحاويات **ثمانياً** — وقِيس ذلك فعلاً
+             (`cuda-provider(2 نسخة)` · `المعروض engine,engine` في
+             `settingsTabs.test.ts`). والحاوية الثانية حُذفت، وبقي هذا السطر في
+             `performance` كما تُعلنه `src/settingsTabMap.ts`.) -->
         <div class="flex flex-col gap-unit mt-1">
             <div class="flex items-center gap-stack-sm">
                 <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="max_jobs_label">أقصى فصول متزامنة:</span>
