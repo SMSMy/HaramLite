@@ -54,14 +54,14 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.3",
     "@tauri-apps/plugin-opener": "^2",
-    "@tauri-apps/plugin-updater": "^2.11.0"
+    "@tauri-apps/plugin-updater": "^2.12.0"
   },
   "devDependencies": {
     "@tailwindcss/container-queries": "^0.1.1",
     "@tailwindcss/forms": "^0.5.11",
     "@tauri-apps/cli": "^2",
     "@types/jsdom": "^30.0.0",
-    "jsdom": "^30.0.1",
+    "jsdom": "^30.1.1",
     "tailwindcss": "3.4.19",
     "typescript": "~5.9.3",
     "vite": "^6.0.3",
