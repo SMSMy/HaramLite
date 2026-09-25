@@ -34,21 +34,74 @@ const CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
 // و-٨ — فحص الرابط قبل تمريره إلى yt-dlp
 // ─────────────────────────────────────────────────────────────────────
 //
-// **قرار هندسي (مرفوض: قائمة مضيفين بيضاء صارمة).** الواجهة وREADME تعد
-// المستخدم بـ«يوتيوب أو أي موقع آخر»، وهي وظيفة قائمة: قائمة بيضاء تُكسر
-// بكل موقع لا نعرفه (Vimeo · SoundCloud · Bandcamp · موقع جامعي…) فتُبطل
-// ميزة معلنة. المرفوض إذن ليس الفحص بل *تضييق قائمة المواقع*.
+// **السياسة الحالية نقضت قراراً سابقاً — والسبب مقيس.** كان هنا قرار
+// «مرفوض: قائمة مضيفين بيضاء صارمة» بحجّة أن الوعد المعلن «يوتيوب أو أي موقع
+// آخر» يُبطل بقائمة بيضاء. وقد نُقض لأن **التحويلات (302) لا يمكن منعها في
+// yt-dlp**: قِيس على `bin\yt-dlp.exe` (‏2026.08.19 · sha256 `66674953…`) أن
+// `--help` لا يحوي عَلَماً يمنع اتّباع التحويلات (لا شيء غير `--proxy`)،
+// وcِيس حيّاً أن yt-dlp **يتّبع** تحويلاً إلى خدمة داخلية (انظر التقرير §SSRF).
+// ⇒ فرابطٌ عامّ يحوّل إلى `127.0.0.1`/`169.254.169.254` يصل داخلاً، والفحص
+// النصّي للرابط **الأولي** لا يراه. والقائمة الصارمة هي **الأرخص** الذي يُخرج
+// هذا النوع من النطاق عملياً: لا نتكلّم أصلاً مع مضيف يمكن أن يحوّل داخلاً.
 //
-// **التهديد المقصود بالمنع** (منصوص في نموذج التهديد و-٨): استعمال تطبيقنا
-// كأداة استطلاع داخل الشبكة. الرابط يأتي من الإضافة/الواجهة/تيليجرام/الـCLI،
-// وyt-dlp يتّصل به؛ فطلبٌ إلى `127.0.0.1:8081` أو `192.168.1.1` أو
-// `169.254.169.254` يجعل العمليّة **نفسها** تكلّم خدمة داخلية — وهو أثر لا
-// علاقة له بتنزيل وسائط. المنع هنا: مخطّطان فقط + رفض كل مضيف محلي/خاص +
-// رفض ما ليس مضيفاً صالحاً. كل ما تبقّى من الشبكة العامة يبقى مسموحاً.
+// **والكلفة معلنة لا مخفيّة**: المواقع العامة غير المدرَجة في [`ALLOWED_HOSTS`]
+// تُرفض الآن (كانت تُقبل). وهذا تضييق لوعد معلن في `docs/` («أي رابط من أي
+// موقع يدعمه yt-dlp») — مذكور في تقرير التسليم بنصّه، ورجوعُه سطرٌ واحد
+// (إسقاط نداء [`host_is_allowed`] في هذه الدالة).
+//
+// **التهديد المقصود بالمنع**: استعمال تطبيقنا كأداة استطلاع داخل الشبكة — ومن
+// مصدر **غير موثوق** (عضو محادثة مجموعات يرسل رابطاً). الرابط يأتي
+// من الإضافة/الواجهة/تيليجرام/الـCLI، وyt-dlp يتّصل به؛ فطلبٌ إلى
+// `127.0.0.1:8081` أو `192.168.1.1` أو `169.254.169.254` يجعل العمليّة
+// **نفسها** تكلّم خدمة داخلية — وهو أثر لا علاقة له بتنزيل وسائط.
+// والمنع ثلاث طبقات: مخطّطان فقط · **قائمة سماح للمضيفات** · رفض كل مضيف
+// محلي/خاص **بعد حلّ الاسم** (لا بالنصّ وحده).
+
+/// **المضيفات المسموح بها — عائلة يوتيوب وحدها** (والقائمة **مقيسة** من
+/// الاستعمال الفعلي: كل نداءات المنتج والاختبارات وبوّابات `scripts/` تستعمل
+/// `www.youtube.com` أو `music.youtube.com` أو `youtu.be`، و`docs/` تسمّي
+/// يوتيوب صراحةً).
+///
+/// **ولماذا صارمة إلى هذا الحدّ**: قيمة القائمة في **صِغَرها**. كل مضيف يُضاف
+/// إليها هو مضيف يمكن أن يُستعمل وسيطاً لتحويلٍ إلى الداخل، فتُفرغ الحماية من
+/// معناها. والصيغة تقبل النطاق نفسه وكل نطاق فرعي منه **بحدّ نقطة** —
+/// `evil-youtube.com` و`youtube.com.evil.example` لا يمرّان.
+const ALLOWED_HOSTS: &[&str] = &["youtube.com", "youtu.be", "youtube-nocookie.com"];
+
+/// المضيف داخل القائمة (أو نطاق فرعي منها بحدّ نقطة)؟ يُقارَن بعد التطبيع:
+/// حروف صغيرة، وبلا نقطة نهائية.
+fn host_is_allowed(host: &str) -> bool {
+    let h = host.trim_end_matches('.').to_ascii_lowercase();
+    ALLOWED_HOSTS
+        .iter()
+        .any(|dom| h == *dom || h.ends_with(&format!(".{dom}")))
+}
+
+/// **حلّ الاسم الإنتاجي**: `to_socket_addrs` كما هي (لا خدمة أسماء خاصة بنا،
+/// ولا كاش يخالف ما سيراه yt-dlp).
+fn system_resolver(host: &str, port: u16) -> Vec<std::net::IpAddr> {
+    use std::net::ToSocketAddrs;
+    match (host, port).to_socket_addrs() {
+        Ok(it) => it.map(|s| s.ip()).collect(),
+        // **فشل الحلّ لا يُحوَّل رفضاً**: قد يكون الاسم أو الشبكة متعثّراً لحظياً،
+        // وyt-dlp سيقول السبب الحقيقي. (وحدّ معلن: نافذة TOCTOU بين حلّنا وحلّ
+        // yt-dlp — انظر قسم «ما لم يُقَس».)
+        Err(_) => Vec::new(),
+    }
+}
 
 /// فحص الرابط قبل أي اتصال. `Ok` = يُمرَّر إلى yt-dlp، و`Err` = رسالة عربية
 /// تسمّي السبب (لا رفض صامت).
 pub fn validate_download_url(url: &str) -> Result<(), String> {
+    validate_download_url_with(url, &system_resolver)
+}
+
+/// نفس الفحص بمحلِّل أسماء **مُمرَّر**: يقيسه الاختبار بلا شبكة وبلا حالة عامّة
+/// (فالحكم على القيمة المحلولة يُقاس بلا DNS حقيقي).
+fn validate_download_url_with(
+    url: &str,
+    resolve: &dyn Fn(&str, u16) -> Vec<std::net::IpAddr>,
+) -> Result<(), String> {
     let url = url.trim();
     if url.is_empty() {
         return Err("الرابط فارغ — الصق رابط فيديو أو صوت".to_string());
@@ -56,6 +109,7 @@ pub fn validate_download_url(url: &str) -> Result<(), String> {
 
     // 1) المخطّط: http/https فقط. `file:` يقرأ القرص المحلي، و`data:`/`javascript:`
     //    لا شبكة لهما أصلاً — وكلها لا تعني «تنزيل وسائط».
+    let https = strip_scheme(url, "https://").is_some();
     let rest = if let Some(r) = strip_scheme(url, "https://") {
         r
     } else if let Some(r) = strip_scheme(url, "http://") {
@@ -106,7 +160,46 @@ pub fn validate_download_url(url: &str) -> Result<(), String> {
         return Err(format!("اسم المضيف «{host}» غير صالح في هذا الرابط"));
     }
 
+    // 4) **قائمة السماح**: لا نتكلّم إلا مع عائلة يوتيوب — وهذا هو ما يُخرج
+    //    «رابط عامّ يحوّل إلى الداخل» من النطاق (لا عَلَم في yt-dlp يمنع
+    //    التحويلات؛ انظر رأس القسم). والرسالة تسمّي المسموح صراحةً.
+    if !host_is_allowed(host) {
+        return Err(format!(
+            "المضيف «{host}» غير مسموح: HaramLite ينزّل من يوتيوب \
+             (youtube.com · youtu.be) — والقائمة الصارمة هي ما يمنع \
+             تحويلاً من موقع عامّ إلى خدمة داخلية"
+        ));
+    }
+
+    // 5) **بعد حلّ الاسم لا بالنصّ وحده**: اسمٌ عامّ الشكل قد يحلّ إلى عنوان
+    //    محلي (ملف hosts مُعدَّل أو تسميم DNS: `www.youtube.com` ⇒ 127.0.0.1
+    //    يجعلنا نُكلّم خدمة على الجهاز نفسه). والمقارنة **قيمةً**: العنوان
+    //    المحلول يُمرَّر إلى نفس دالة التصنيف النصّية بعد صياغته بـ`Display`
+    //    (وهي صياغة قياسية لا يتحكّم بها المهاجم) — فقاعدة واحدة لا قاعدتان.
+    if !is_ipv4(host) && !is_ipv6_literal(host) {
+        let port = authority_port(hostport, https);
+        for ip in resolve(host, port) {
+            if let Some(scope) = ip_is_local(ip) {
+                return Err(format!(
+                    "رابط إلى «{host}» مرفوض: الاسم يحلّ إلى العنوان {ip} ({scope}) — \
+                     HaramLite ينزّل من مواقع الإنترنت العامة فقط"
+                ));
+            }
+        }
+    }
+
     Ok(())
+}
+
+/// المنفذ من خانة المضيف (`host:8443`) أو الافتراضي للمخطّط. **للحلّ وحده**،
+/// فلا يغيّر ما يُمرَّر إلى yt-dlp.
+fn authority_port(hostport: &str, https: bool) -> u16 {
+    hostport
+        .rsplit(':')
+        .next()
+        .filter(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(if https { 443 } else { 80 })
 }
 
 /// إزالة بادئة المخطّط بلا اعتبار لحالة الأحرف (`HTTPS://` رابط صالح).
@@ -174,6 +267,28 @@ pub fn private_scope(host: &str) -> Option<&'static str> {
         return Some("اسم جهاز على الشبكة المحلية (بلا نطاق)");
     }
     None
+}
+
+/// **تصنيف عنوانٍ محلول — قيمةً لا نصّاً**: يُمرَّر عنوان IP **مُحلَّل**، فلا
+/// تُطبَّق عليه حِيَل التهرّب النصّية ([`is_ipv4_shorthand`]) — تلك للمدخل
+/// النصّي وحده (‏`127.1` · `0x7f.0.0.1` · `2130706433`).
+///
+/// **ولماذا الفصل لازم (خطأ وقعتُ فيه وقِيس)**: أوّل صياغة للتفحّص الاسميّ
+/// مرّرت العنوان المحلول إلى [`private_scope`] النصّية، فردّت
+/// `www.youtube.com` محلولاً إلى `142.251.156.4` بـ«صيغة عنوان IPv4 غير
+/// قياسية (تهريب محتمل)» — لأن أول خانة رقمية. أي أن قاعدةً كُتبت للمدخل
+/// **غير الموثوق** رفضت عنواناً عاماً سليماً. والقاعدة الآن: التصنيف **بالقيمة**
+/// على العنوان المحلول، و[`is_ipv4_shorthand`] على النصّ وحده.
+///
+/// والتصنيف نفسه هو المستعمل نصّياً ([`ipv4_octets_scope`] · [`ipv6_scope`]) —
+/// فلا قاعدتان تفترقان (ويُحرَس اتفاقُهما باختبار).
+fn ip_is_local(ip: std::net::IpAddr) -> Option<&'static str> {
+    match ip {
+        std::net::IpAddr::V4(v4) => ipv4_octets_scope(v4.octets()),
+        // الصياغة من `Display` القياسي لـ`Ipv6Addr` (لا يتحكّم بها المهاجم)،
+        // و`ipv6_scope` تُحلّل ثم تُصنّف **بالقيمة** — فهي آمنة هنا.
+        std::net::IpAddr::V6(v6) => ipv6_scope(&v6.to_string()),
+    }
 }
 
 /// أربع خانات عشرية كلها أرقام؟ (لا يعتمد على `Ipv4Addr` حتى يبقى الفحص نقياً.)
@@ -601,6 +716,20 @@ impl StderrTail {
     }
 }
 
+/// **نصّ السبب في رسالة `ERROR:`** — و`None` إن لم يكن **بعد الرمز نصّ**.
+///
+/// **ولماذا (ثقب مقيس)**: كان `ERROR:` وحده (أو `ERROR:` بفراغات) يُحفظ
+/// «سبباً مكتوباً» فيُصنَّف **عابراً** فيُعاد عليه — إعادة عمياء على رسالة
+/// مقطوعة. والحالة واقعية لا نظرية: عند قتل العمليّة يقرأ خيط التصريف ما وصل
+/// من الأنبوب، وقد يصل **الرمز وحده** بلا نصّه. فصار الشرط: نصٌّ **غير فارغ**
+/// بعد الرمز، وهو شرطٌ **واحد** يُستعمل في `push_stderr_line` (الحفظ) وفي
+/// [`is_transient_failure`] (الحكم) معاً — فلا يفلت من أحدهما ما يمرّ في الآخر.
+fn error_reason_text(line: &str) -> Option<&str> {
+    line.strip_prefix("ERROR:")
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+}
+
 /// يُضيف سطراً إلى ما نجمعه من stderr: الذيل المحدود ([`STDERR_TAIL_LINES`] سطراً،
 /// و[`STDERR_LINE_CAP`] بايتاً للسطر) **وآخر رسالة خطأ**.
 fn push_stderr_line(cap: &Mutex<StderrCapture>, raw: &[u8], cut: bool) {
@@ -616,10 +745,11 @@ fn push_stderr_line(cap: &Mutex<StderrCapture>, raw: &[u8], cut: bool) {
         line.push_str(&format!(" …[قُصَّ: تجاوز سطرٌ واحد {STDERR_LINE_CAP} بايت]"));
     }
     if let Ok(mut g) = cap.lock() {
-        // **رسالة الخطأ**: تبدأ بسطر `ERROR:` وتُضمّ إليها أسطر التفافها (كل ما
-        // ليس `WARNING:` ولا سطراً موسوماً بـ`[` — فسطر مكسور لا يُفلت من المطابقة).
-        if line.starts_with("ERROR:") {
-            g.last_error = Some(line.clone());
+        // **رسالة الخطأ**: تبدأ بسطر `ERROR:` **وبعدها نصّ** (وإلا فلا سبب:
+        // [`error_reason_text`])، وتُضمّ إليها أسطر التفافها (كل ما ليس
+        // `WARNING:` ولا سطراً موسوماً بـ`[` — فسطر مكسور لا يُفلت من المطابقة).
+        if let Some(text) = error_reason_text(&line) {
+            g.last_error = Some(format!("ERROR: {text}"));
         } else if !line.starts_with("WARNING:") && !line.starts_with('[') {
             if let Some(prev) = g.last_error.as_mut() {
                 if prev.len() < STDERR_LINE_CAP {
@@ -684,7 +814,9 @@ fn drain_stderr<R: std::io::Read>(
 /// دون ملف ناتج صالح» (`نداءات: 2 · ملفات الخانة: []`)؛ (٢) وقِيس حيّاً
 /// (**٩٠٠٫٣٥ ث**) أن **الجمود** يُعلن فشلاً وفي الخانة ملفٌّ كامل صالح
 /// (`نداءات: 1 · ملفات الخانة: […wav]`) — فالاستشارة صارت في **كل** فرع فشل
-/// بعد وفاة العمليّة، عدا الإلغاء (قرار المستخدم لا يُنقَض بنجاح).
+/// **والاستثناء الوحيد: الإلغاء** — وموضعه صار **قبل** هذه الدالة لا داخلها:
+/// يُفحَص `cancel` في رأس مسار ما بعد موت العمليّة، فإن كان المستخدم قد ألغى
+/// عاد الخطأ قبل أن تُستشار الخانة (قرار المستخدم لا يُنقَض بنجاح).
 fn usable_slot(out_dir: &Path, video_id: &str) -> Option<PathBuf> {
     find_slots(out_dir, video_id)
         .into_iter()
@@ -706,6 +838,12 @@ fn failure_tail(stdout_tail: &VecDeque<String>, stderr_tail: &mut StderrTail, n:
         stderr_tail.text(n)
     )
 }
+
+/// **نصّ الإلغاء الواحد في مسار التنزيل** — مصدر واحد فلا يفترق نصّان (كان
+/// مكتوباً حرفياً في موضع واحد، وصار له موضعان بعد قاعدة «الإلغاء يُفحَص أولاً»).
+/// والمستهلكون لا يطابقون نصّه: الجسر يقرأ **علمه** (`bridge.rs:1261`) وتلغرام
+/// تقرأ علمها — فالنصّ للعرض وحده.
+const DOWNLOAD_CANCELLED: &str = "أُلغي التنزيل من قبل المستخدم";
 
 /// **سقف المحاولات**: محاولة واحدة + **إعادة واحدة** — لا حلقة إعادة.
 /// **سقف المحاولات**: محاولة واحدة + **إعادة واحدة** — لا حلقة إعادة.
@@ -760,14 +898,21 @@ fn normalize_for_match(s: &str) -> String {
 /// **هل يُعاد على هذا الفشل؟** يُغذّى بـ**رسالة `ERROR:`** وحدها
 /// ([`StderrTail::reason`]) لا بالذيل المجموع (‏`WARNING:` ليس سبب فشل).
 ///
-/// شرطان: ① **سببٌ مكتوب** (فراغٌ ⇒ لا إعادة على عمى)، ② **ولا نصَّ فشل دائم**
-/// من [`PERMANENT_FAILURES`] — بمطابقة **مطبَّعة** (حالةُ الأحرف والمسافات).
+/// شرطان: ① **سببٌ مكتوب**: رسالة `ERROR:` **وبعدها نصّ غير فارغ** — و`ERROR:`
+/// وحدها (رسالةٌ مقطوعة على الرمز) أو الفراغ ⇒ **لا إعادة** (لا إعادة على عمى)،
+/// ② **ولا نصَّ فشل دائم** من [`PERMANENT_FAILURES`] — بمطابقة **مطبَّعة**
+/// (حالةُ الأحرف والمسافات).
 ///
 /// **وحدّ الصدق فيه**: ما لم يُذكر في القائمة يُعدّ عابراً ⇒ يُعاد عليه مرّة
 /// (وقد قِيس ذلك على نصوص دائمة غير مُدرجة: انظر التقرير §٩).
 fn is_transient_failure(error_message: &str) -> bool {
-    let t = normalize_for_match(error_message);
-    if t.is_empty() || t == EMPTY_STDERR {
+    // الشرط ① يُقاس بنفس الدالة التي تحفظ السبب ([`error_reason_text`]) — فلا
+    // تمرّ رسالةٌ مقطوعة على الرمز من باب الحفظ وترتدّ من باب الحكم (أو العكس).
+    let Some(text) = error_reason_text(error_message) else {
+        return false;
+    };
+    let t = normalize_for_match(text);
+    if t.is_empty() {
         return false;
     }
     !PERMANENT_FAILURES
@@ -1281,13 +1426,222 @@ fn find_slots(out_dir: &Path, video_id: &str) -> Vec<PathBuf> {
 /// A pre-existing slot file is only reusable when it is a REAL complete
 /// media file: killed mid-merge runs leave corrupt slot files behind, so
 /// non-empty plus a valid probe with positive duration is required.
+///
+/// **وشرط الاكتمال ([`container_is_truncated`]) أُضيف بعد ثقب مقيس**: `ffprobe`
+/// وحده **لا يرى القطع** في صنفين مقيسين: (١) ملفٌ نصف مكتوب يقرأ `ffprobe`
+/// رأسه فيُبلّغ صوتاً ومدة موجبة (`رأس ١٦٠٠ بايت و٨٤٤ على القرص ⇒
+/// ffprobe: Ok(صوت, 0.05 ث)` — مقيس بالحرف)، (٢) وWebM مقطوع عند ٥٠٪ و٩٠٪
+/// (`ffprobe` يبلّغ 20.008 ث وتياراً صوتياً كاملاً). فالشرط الجديد يقارن
+/// **إعلان الحاوية نفسه** بما على القرص.
+///
+/// **ولا حدّ مُدوَّر فيه**: لا رقم سحريّ ولا نسبة — مقارنةٌ تامّة
+/// (`declared > on_disk`)، وقيمها **مقيسة** على ملفات حقيقية (انظر
+/// [`container_is_truncated`]). والقاعدة محافظة: `false` (لا حكم) كلّما لم
+/// نعرف قراءة إعلان الحاوي، فلا يُرفض ملفٌّ سليم بسبب جهلنا.
 fn slot_usable(p: &Path) -> bool {
-    if std::fs::metadata(p).map(|m| m.len()).unwrap_or(0) == 0 {
+    let on_disk = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+    if on_disk == 0 {
+        return false;
+    }
+    if container_is_truncated(p, on_disk) {
         return false;
     }
     crate::media::probe(p)
         .map(|info| info.has_audio && info.duration_secs > 0.0)
         .unwrap_or(false)
+}
+
+/// **هل تُعلن الحاوية بايتاتٍ أكثر مما على القرص؟** — `true` فقط حين **نُثبته**،
+/// و`false` حين لا نعرف قراءة إعلان هذا الحاوي (فلا حكم على ما نجهله).
+///
+/// **لماذا لا يكفي `ffprobe`**: قِيس على هذه الآلة (‏`bin\ffprobe.exe`، بنفس
+/// وسائط المنتج `-v error -print_format json -show_format -show_streams`):
+///
+/// | الملف | على القرص | إعلان الحاوية | `ffprobe` |
+/// |---|---|---|---|
+/// | WAV كامل (‏data=800) | ‏844 | ‏808 | `Ok` — صوت · 0.05 ث |
+/// | WAV مقطوع (‏data=1600, كُتب 844) | ‏844 | ‏1608 | **`Ok` — صوت · 0.05 ث** (لا يرى القطع!) |
+/// | WebM كامل | ‏208569 | حجم `Segment` معلوم | `Ok` — صوت · 20.008 ث |
+/// | WebM مقطوع ٥٠٪ | ‏104284 | أكبر | **`Ok` — صوت · 20.008 ث** |
+/// | MP4 (‏moov آخراً، وهو مخرج الدمج) مقطوع ٥٠٪ | ‏231916 | — | `Err` (`moov atom not found`) |
+/// | MP4 (‏moov أولاً) مقطوع ٥٠٪ | ‏231916 | أكبر | **`Ok` — صوت+صورة · 20.000 ث** |
+///
+/// ⇒ فالصنف «حاوٍ يُعلن أكثر مما على القرص» هو ما يُغلق الثقب، وهو **مقيس**
+/// في الاتجاهين (المقطوع يُرفض، والكامل يُقبل) لكل عائلة مدعومة.
+///
+/// **وحدوده المعلنة**: (أ) حاويات لا نقرأ إعلانها (`mp3` · `ogg` · `ts` ·
+/// `flv` · أي مجهول) ⇒ لا حكم؛ (ب) `Segment` بحجم «غير معلوم» في WebM ⇒ لا حكم؛
+/// (ج) قطعٌ يقع **بالضبط على حدّ صندوق/عنصر** في حاوٍ بفهرسٍ في أوله ⇒ لا يراه
+/// هذا الفحص (ويُغلق أشهرَ صوره: MP4 بلا `mdat` مطلقاً).
+fn container_is_truncated(p: &Path, on_disk: u64) -> bool {
+    let Some(head) = read_head(p, CONTAINER_HEAD_CAP) else {
+        return false; // ملف غير مقروء ⇒ لا حكم (‏ffprobe سيقول كلمته)
+    };
+    // ① RIFF (‏wav · avi · webp…): حقل الحجم في البايتات 4..8 = حجم الملف − 8.
+    if head.len() >= 8 && &head[0..4] == b"RIFF" {
+        let declared = u32::from_le_bytes([head[4], head[5], head[6], head[7]]) as u64 + 8;
+        return declared > on_disk;
+    }
+    // ② ISO-BMFF (‏mp4 · m4a · mov): صناديق متتابعة، ولكلٍّ حجمُه المُعلن.
+    if head.len() >= 12 && &head[4..8] == b"ftyp" {
+        if let Ok(mut f) = std::fs::File::open(p) {
+            return iso_bmff_truncated(&mut f, on_disk);
+        }
+        return false;
+    }
+    // ③ EBML (‏webm · mkv): إعلان `Segment` إن كان معلوماً.
+    if head.len() >= 4 && head[0..4] == [0x1A, 0x45, 0xDF, 0xA3] {
+        return ebml_truncated(&head, on_disk);
+    }
+    false
+}
+
+/// سقف ما نقرؤه من رأس الملف: يكفي للـEBML ولأول صناديق ISO-BMFF (ورأس RIFF
+/// لا يحتاج إلا ٨ بايتات).
+const CONTAINER_HEAD_CAP: usize = 64 * 1024;
+
+/// أول `cap` بايت من الملف. `None` ⇒ تعذّرت القراءة (فلا حكم).
+fn read_head(p: &Path, cap: usize) -> Option<Vec<u8>> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(p).ok()?;
+    let mut buf = vec![0u8; cap];
+    let mut got = 0usize;
+    while got < cap {
+        match f.read(&mut buf[got..]) {
+            Ok(0) => break,
+            Ok(n) => got += n,
+            Err(_) => return None,
+        }
+    }
+    buf.truncate(got);
+    Some(buf)
+}
+
+/// **ISO-BMFF**: نمشي على الصناديق العليا (`[حجم u32 BE][نوع 4 محارف]`)، فإذا
+/// أعلن صندوقٌ نهايةً تتجاوز ما على القرص فالملف مقطوع. وإذا رأينا `moov`
+/// (الفهرس) بلا `mdat` (البيانات) إطلاقاً فالملف مقطوع أيضاً — وهذا يُغلق
+/// «قطعاً على حدّ صندوق» في ملفات الفهرس-أولاً.
+fn iso_bmff_truncated(f: &mut std::fs::File, on_disk: u64) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut off: u64 = 0;
+    let mut saw_moov = false;
+    let mut saw_mdat = false;
+    let mut boxes: u32 = 0;
+    while on_disk.saturating_sub(off) >= 8 {
+        if f.seek(SeekFrom::Start(off)).is_err() {
+            return false;
+        }
+        let mut hdr = [0u8; 8];
+        if f.read_exact(&mut hdr).is_err() {
+            return false;
+        }
+        let size32 = u32::from_be_bytes([hdr[0], hdr[1], hdr[2], hdr[3]]);
+        let kind = [hdr[4], hdr[5], hdr[6], hdr[7]];
+        let (size, hdr_len) = if size32 == 1 {
+            let mut ext = [0u8; 8];
+            if f.read_exact(&mut ext).is_err() {
+                return true; // رأسٌ موسّع ناقص ⇒ قطع
+            }
+            (u64::from_be_bytes(ext), 16u64)
+        } else if size32 == 0 {
+            // «إلى نهاية الملف» — قانونيّ لآخر صندوق وحده.
+            (on_disk - off, 8u64)
+        } else {
+            (size32 as u64, 8u64)
+        };
+        if kind == *b"moov" {
+            saw_moov = true;
+        }
+        if kind == *b"mdat" {
+            saw_mdat = true;
+        }
+        if size < hdr_len {
+            return true; // حجم أصغر من رأسه ⇒ تالف/مقطوع
+        }
+        if size32 != 0 && off.saturating_add(size) > on_disk {
+            return true; // **الإعلان يتجاوز القرص** ⇒ قطع
+        }
+        off = off.saturating_add(size);
+        boxes += 1;
+        if boxes > 100_000 {
+            return false; // حماية من حلقة لا تنتهي ⇒ لا حكم
+        }
+    }
+    saw_moov && !saw_mdat
+}
+
+/// **EBML/Matroska**: رأس EBML ثم عنصر `Segment`؛ فإن كان حجمه **معلوماً**
+/// ونهايته تتجاوز ما على القرص فالملف مقطوع. وحجم «غير معلوم» (كل بتات القيمة
+/// ١ — تدفّق حيّ) ⇒ لا حكم.
+fn ebml_truncated(head: &[u8], on_disk: u64) -> bool {
+    let mut pos = 0usize;
+    let Some((id, _)) = ebml_vint(head, &mut pos, true) else {
+        return false;
+    };
+    if id != 0x1A45_DFA3 {
+        return false;
+    }
+    let Some((hdr_size, unknown)) = ebml_vint(head, &mut pos, false) else {
+        return false;
+    };
+    if unknown {
+        return false;
+    }
+    pos = pos.saturating_add(hdr_size as usize);
+    // العناصر العليا بعد الرأس حتى `Segment` (‏0x18538067).
+    for _ in 0..64 {
+        let before = pos;
+        let Some((eid, _)) = ebml_vint(head, &mut pos, true) else {
+            return false;
+        };
+        let Some((esz, eunknown)) = ebml_vint(head, &mut pos, false) else {
+            return false;
+        };
+        if eid == 0x1853_8067 {
+            if eunknown {
+                return false;
+            }
+            return (pos as u64).saturating_add(esz) > on_disk;
+        }
+        if eunknown {
+            return false;
+        }
+        pos = pos.saturating_add(esz as usize);
+        if pos <= before || pos > head.len() {
+            return false; // لا تقدّم أو خارج ما قرأناه ⇒ لا حكم
+        }
+    }
+    false
+}
+
+/// عدد EBML متغيّر الطول (‏vint). `keep_marker=true` للمُعرّفات (كل البايتات
+/// تُحفظ كما هي)، و`false` للأحجام (تُنزع بتة الطول). والقيمة الثانية:
+/// هل الحجم «غير معلوم» (كل بتات القيمة ١).
+fn ebml_vint(buf: &[u8], pos: &mut usize, keep_marker: bool) -> Option<(u64, bool)> {
+    let first = *buf.get(*pos)?;
+    if first == 0 {
+        return None;
+    }
+    let len = first.leading_zeros() as usize + 1; // ١..٨
+    if *pos + len > buf.len() {
+        return None;
+    }
+    let mut value: u64 = if keep_marker {
+        let mut v = 0u64;
+        for i in 0..len {
+            v = (v << 8) | buf[*pos + i] as u64;
+        }
+        *pos += len;
+        return Some((v, false));
+    } else {
+        (first as u64) & ((1u64 << (8 - len)) - 1)
+    };
+    for i in 1..len {
+        value = (value << 8) | buf[*pos + i] as u64;
+    }
+    *pos += len;
+    let all_ones = (1u64 << (7 * len)) - 1;
+    Some((value, value == all_ones))
 }
 
 /// Delete our stale slot files and transient junk (crash leftovers).
@@ -1680,7 +2034,7 @@ fn download_media_inner(
                             kill_now();
                             let _ = c.wait();
                         }
-                        return Err(YtError::Process("أُلغي التنزيل من قبل المستخدم".into()));
+                        return Err(YtError::Process(DOWNLOAD_CANCELLED.into()));
                     }
                 }
             }
@@ -1691,6 +2045,26 @@ fn download_media_inner(
             .map_err(|e| YtError::Process(format!("فشل انتظار yt-dlp: {e}")))?
             .wait()
             .map_err(|e| YtError::Process(format!("فشل انتظار yt-dlp: {e}")))?;
+
+        // ── **قاعدة الإلغاء: يُفحَص أولاً ولا يُفسَّر نجاحاً** ────────────────────
+        //
+        // **الثقب المقيس (حكم جاسوس مستقلّ)**: كان فحص الخانة ([`usable_slot`])
+        // يسبق `cancel.load` في فرع الخروج غير الصفري ⇒ سباقٌ **يُلغي الإلغاء**:
+        // حارس القتل يقتل شجرة yt-dlp عند إلغاء المستخدم، فيخرج الطفل بغير صفر،
+        // فإن كانت في الخانة بقيةٌ صالحة (من محاولة سابقة) عادت المهمّة **نجاحاً**
+        // — أي أن إلغاء المستخدم انقلب تسليماً.
+        //
+        // **والقاعدة الآن صريحة وواحدة**: بعد موت العمليّة، الإلغاء يُحكَم **قبل**
+        // استشارة الخانة وقبل أي إعادة — في كل الفروع (الجمود · انكسار الأنبوب ·
+        // الخروج بغير صفر · الخروج بصففر). فلا يُنقَض قرارُ المستخدم بنجاح، ولا
+        // يُعاد على فشلٍ وقع بعد إلغائه.
+        if cancel.load(Ordering::SeqCst) {
+            tracing::warn!(
+                target: "ytdlp",
+                "انتهت عمليّة yt-dlp ({status}) **بعد إلغاء المستخدم** ({url}) — لا يُسلَّم ما في الخانة ولا يُعاد"
+            );
+            return Err(YtError::Process(DOWNLOAD_CANCELLED.into()));
+        }
         if stalled.load(Ordering::SeqCst) {
             // **الخانة تُستشار قبل إعلان الجمود فشلاً** (ثقب مقيس حيّاً: ٩٠٠٫٣٥ ث
             // ⇒ «توقف التنزيل» وفي الخانة ملفٌّ كامل صالح). وهي النجاح حين تصلح.
@@ -1725,9 +2099,10 @@ fn download_media_inner(
             // **الحكم من رسالة `ERROR:` وحدها** (لا الذيل المجموع ولا التحذيرات):
             // قِيس أن `WARNING: … video unavailable` + `ERROR: … 403` كان يُصنَّف
             // «دائماً» بالذيل المجموع فلا يُعاد على فشل **عابر**.
+            // **وشرط الإلغاء لم يُحذف بل تقدّم**: صار في رأس ما بعد الموت
+            // (`cancel.load` أعلاه) — فلا يُعاد على فشلٍ وقع بعد إلغاء المستخدم.
             let reason = stderr_tail.reason();
-            let cancelled = cancel.load(Ordering::SeqCst);
-            if attempt < DOWNLOAD_ATTEMPTS && !cancelled && is_transient_failure(&reason) {
+            if attempt < DOWNLOAD_ATTEMPTS && is_transient_failure(&reason) {
                 tracing::warn!(
                     target: "ytdlp",
                     "المحاولة {attempt} فشلت بخطأ **عابر** ({url}) — أُعيدت مرّة واحدة بعد تنظيف الخانة. نصّ السبب:\n{reason}"
@@ -2123,25 +2498,202 @@ pub(crate) mod tests {
             .contains("حلقة محلية"));
     }
 
-    /// و-٨ سلبي (الجدول المطلوب حرفياً): المواقع العامة تُقبل — الوعد المعلن
-    /// «يوتيوب أو أي موقع آخر» يبقى قائماً (لا قائمة بيضاء).
+    /// **قائمة السماح: عائلة يوتيوب تُقبل** — بنفس محلِّل أسماء مُمرَّر يعيد
+    /// عناوين **عامة** (فلا يحتاج الفحص شبكةً ولا يعتمد على DNS هذه اللحظة).
     #[test]
-    fn public_targets_are_accepted() {
+    fn the_youtube_family_is_accepted() {
+        let public = |_h: &str, _p: u16| vec!["142.251.156.4".parse().unwrap()];
         for url in [
             "https://www.youtube.com/watch?v=x",
-            "https://vimeo.com/1",
+            "https://youtube.com/watch?v=x",
+            "https://music.youtube.com/watch?v=x",
+            "https://m.youtube.com/watch?v=x",
             "https://youtu.be/dQw4w9WgXcQ",
-            "http://soundcloud.com/a/b",
-            "https://example.com/path?q=1#frag",
+            "https://www.youtube-nocookie.com/embed/x",
             "HTTPS://WWW.YouTube.COM/watch?v=x",
             "https://user:pw@www.youtube.com/watch?v=x",
             "https://www.youtube.com:443/watch?v=x",
             " https://www.youtube.com/watch?v=x ",
+            "https://www.youtube.com./watch?v=x",
+        ] {
+            let got = validate_download_url_with(url, &public);
+            assert!(got.is_ok(), "المضيف المسموح يجب أن يُقبل: {url} ⇒ {got:?}");
+        }
+    }
+
+    /// **قائمة السماح: ما عدا ذلك يُرفض — وهذا هو مانع التحويل.**
+    ///
+    /// **الفكرة المقيسة**: yt-dlp **يتّبع التحويلات** ولا عَلَم يمنعها، فرابطٌ
+    /// عامّ يحوّل إلى `127.0.0.1`/`169.254.169.254` كان يصل داخلاً. والقائمة
+    /// الصارمة تُخرج هذا النوع من النطاق: **لا نتكلّم مع المضيف الذي يحوّل**
+    /// أصلاً. فالمُقاس هنا **الرفض** لا وجود دالّة.
+    ///
+    /// **(مُفسَد محروس: إسقاط نداء `host_is_allowed` ⇒ تسقط هذه الحالة.)**
+    #[test]
+    fn hosts_outside_the_allowlist_are_refused_so_a_redirect_cannot_be_used() {
+        let public = |_h: &str, _p: u16| vec!["142.251.156.4".parse().unwrap()];
+        for url in [
+            // واجهة التحويل نفسها: مضيف عامّ يتحكّم به المهاجم ⇒ مرفوض.
+            "http://public-redirector.example/x",
+            "https://vimeo.com/1",
+            "http://soundcloud.com/a/b",
+            "https://example.com/path?q=1#frag",
+            "https://www.youtube.com.attacker.example/watch?v=x",
+            "https://evil-youtube.com/watch?v=x",
+            // عنوان IPv6 عامّ صريح ليس في القائمة كذلك (المخطّط/الشكل لا يغيّر السياسة).
             "https://[2606:4700::1111]/x",
         ] {
-            let got = validate_download_url(url);
-            assert!(got.is_ok(), "الرابط العام يجب أن يُقبل: {url} ⇒ {got:?}");
+            let got = validate_download_url_with(url, &public);
+            assert!(
+                got.is_err(),
+                "مضيف خارج القائمة يجب أن يُرفض (وهو ما يمنع التحويل إلى الداخل): {url}"
+            );
+            let msg = got.unwrap_err();
+            assert!(
+                msg.contains("غير مسموح"),
+                "سبب الرفض يجب أن يسمّي القائمة: {url} ⇒ {msg}"
+            );
         }
+    }
+
+    /// **الرفض بعد حلّ الاسم لا بالنصّ وحده (ب)** — والقياس بمحلِّل مُمرَّر.
+    ///
+    /// اسمٌ **مدرَج في القائمة** (فلا تحجبه أ) يحلّ إلى عنوان محلي: هذا ما
+    /// يفعله ملف `hosts` مُعدَّل أو DNS مُسمَّم (‏`www.youtube.com ⇒ 127.0.0.1`)،
+    /// وحينها تكلّم العمليّة **خدمةً على الجهاز نفسه** وهي تظنّ أنها تكلّم يوتيوب.
+    ///
+    /// **(مُفسَد محروس: إسقاط حلقة `resolve` ⇒ يسقط — مُنفَّذ، انظر التقرير.)**
+    #[test]
+    fn an_allowed_name_that_resolves_to_a_local_address_is_refused() {
+        for (ip, why) in [
+            ("127.0.0.1", "حلقة محلية"),
+            ("169.254.169.254", "link-local"),
+            ("10.1.2.3", "شبكة خاصة"),
+            ("192.168.1.7", "شبكة خاصة"),
+            ("::1", "حلقة محلية"),
+            ("fe80::1", "link-local"),
+            ("::ffff:7f00:1", "حلقة محلية"),
+        ] {
+            let parsed = ip.parse().expect("عنوان صالح في الجدول");
+            let r = move |_h: &str, _p: u16| vec![parsed];
+            let url = "https://www.youtube.com/watch?v=x";
+            let got = validate_download_url_with(url, &r);
+            assert!(
+                got.is_err(),
+                "اسمٌ مسموح يحلّ إلى {ip} يجب أن يُرفض (وإلا كلّمنا خدمة داخلية)"
+            );
+            let msg = got.unwrap_err();
+            // الرسالة تحمل **قيمة** العنوان المحلول كما تصل من المحلِّل
+            // (`::ffff:7f00:1` تُكتب `::ffff:127.0.0.1` — وهي القيمة نفسها).
+            let shown = parsed.to_string();
+            assert!(
+                msg.contains(why) && msg.contains(&shown),
+                "الرسالة يجب أن تسمّي العنوان المحلول وسببه: {ip} ⇒ {msg}"
+            );
+        }
+        // وضابط: نفس الاسم بعنوان عامّ يمرّ (فالرفض ليس «رفض الأسماء»).
+        let ok = |_h: &str, _p: u16| vec!["142.251.156.4".parse().unwrap()];
+        assert!(validate_download_url_with("https://www.youtube.com/watch?v=x", &ok).is_ok());
+    }
+
+    /// **قاعدتان لا تفترقان في الاتجاه الذي يهمّ**: كل عنوان يراه الفاحص
+    /// **القيمي** ([`ip_is_local`] — للعنوان المحلول) محلياً يراه الفاحص
+    /// **النصّي** ([`private_scope`] — للمدخل غير الموثوق) محلياً كذلك.
+    ///
+    /// والفرق المسموح **في اتجاه واحد**: الفاحص النصّي **أكثر تشدّداً** فيرفض
+    /// كل عنوان مكتوب بخانات رقمية (`142.251.156.4` العامّ أيضاً) لأن أول خانة
+    /// رقمية حيلة `inet_addr` — وهذا تشدّد مقصود في المدخل النصّي، **ولا يجوز**
+    /// أن يُطبَّق على عنوان محلول (وهو الخطأ الذي وقعتُ فيه: رُفض
+    /// `www.youtube.com` محلولاً إلى `142.251.156.4`).
+    ///
+    /// **(مُفسَد محروس: إسقاط عنوان محلّي من جدول القيمة ⇒ يسقط.)**
+    #[test]
+    fn the_value_classifier_never_lets_through_what_the_text_one_calls_local() {
+        // (النصّ، محلّي بالقيمة، محلّي بالنصّ) — وكلها عناوين **تُحلَّل** فعلاً.
+        let table: &[(&str, bool, bool)] = &[
+            ("127.0.0.1", true, true),
+            ("142.251.156.4", false, true), // تشدّد نصّي مقصود (خانة أولى رقمية)
+            ("8.8.8.8", false, true),       // وكذلك
+            ("93.184.216.34", false, true),
+            ("10.0.0.5", true, true),
+            ("172.16.0.1", true, true),
+            ("192.168.1.1", true, true),
+            ("169.254.169.254", true, true),
+            ("0.0.0.0", true, true),
+            ("::1", true, true),
+            ("::", true, true),
+            ("2606:4700::1111", false, false),
+            ("2001:4860:482c:400::", false, false),
+            ("fe80::1", true, true),
+            ("fd00::1", true, true),
+            ("::ffff:127.0.0.1", true, true),
+            ("::ffff:7f00:1", true, true),
+            // ذيلٌ منقوط بخانات رقمية ⇒ الفحص النصّي يرفضه بتشدّده المعتاد
+            // (وهو ليس عنواناً محلياً بالقيمة).
+            ("::ffff:8.8.8.8", false, true),
+            ("2002:7f00:1::", true, true),
+            ("64:ff9b::127.0.0.1", true, true),
+            ("64:ff9b::8.8.8.8", false, true),
+            ("ff02::1", true, true),
+        ];
+        for (text, value_local, text_local) in table {
+            assert_eq!(
+                private_scope(text).is_some(),
+                *text_local,
+                "الفحص النصّي خالف الجدول في «{text}»"
+            );
+            let parsed = text.parse().expect("عنوان صالح في الجدول");
+            assert_eq!(
+                ip_is_local(parsed).is_some(),
+                *value_local,
+                "الفحص القيمي خالف الجدول في «{text}»"
+            );
+            // الاتجاه الواحد الذي يهمّ أمنياً.
+            assert!(
+                !*value_local || *text_local,
+                "عنوان محلي بالقيمة مرّ من الفحص النصّي: {text}"
+            );
+        }
+        // وأسماء المضيفين العامة تمرّ من الفحص النصّي (فالتشدّد خاصٌّ بالأرقام).
+        for host in ["www.youtube.com", "example.com", "youtu.be"] {
+            assert!(private_scope(host).is_none(), "اسم عامّ رُفض نصّياً: {host}");
+        }
+        // **وصيغ `inet_addr` المختصرة تُرفض نصّياً بحكم التشدّد**: لا تُحلَّل
+        // عنواناً بـ`IpAddr` أصلاً (فلا مقابل لها في الجدول القيمي)، ولولا هذا
+        // الحكم لقرأها `inet_addr` — ومنها curl وPython — عنواناً محلياً.
+        for shorthand in ["127.1", "0x7f.0.0.1", "2130706433", "0177.0.0.1"] {
+            assert!(
+                shorthand.parse::<std::net::IpAddr>().is_err(),
+                "«{shorthand}» تُحلَّل عنواناً — فالجدول ناقص"
+            );
+            assert!(
+                private_scope(shorthand).is_some(),
+                "صيغة مختصرة يجب أن تُرفض نصّياً: {shorthand}"
+            );
+        }
+    }
+
+    /// وصفة المضيف في الرابط الأولي: منفذ صريح أو الافتراضي للمخطّط — **للحلّ
+    /// وحده**، ولا يغيّر ما يُمرَّر إلى yt-dlp.
+    #[test]
+    fn the_resolution_port_follows_the_url_or_the_scheme() {
+        assert_eq!(authority_port("www.youtube.com", true), 443);
+        assert_eq!(authority_port("www.youtube.com", false), 80);
+        assert_eq!(authority_port("www.youtube.com:8443", true), 8443);
+        assert_eq!(authority_port("[::1]:8081", true), 8081);
+        assert_eq!(authority_port("[::1]", true), 443);
+        // وضابط: المحلِّل يُنادى بالمنفذ المذكور فعلاً.
+        let seen = std::sync::Arc::new(Mutex::new(Vec::<(String, u16)>::new()));
+        let rec = seen.clone();
+        let r = move |h: &str, p: u16| {
+            rec.lock().unwrap().push((h.to_string(), p));
+            vec!["142.251.156.4".parse().unwrap()]
+        };
+        let _ = validate_download_url_with("https://www.youtube.com:8443/watch?v=x", &r);
+        assert_eq!(
+            seen.lock().unwrap().as_slice(),
+            &[("www.youtube.com".to_string(), 8443u16)]
+        );
     }
 
     /// و-٨ سلبي: المداخل الفارغة/التالفة تُرفض ولا تصل إلى yt-dlp.
@@ -2288,6 +2840,8 @@ fn main() {
     let transient_then_wait = dir_name.contains("transient_then_wait");
     let speak_fail = dir_name.contains("speak_fail");
     let stall_with_valid = dir_name.contains("stall_with_valid");
+    let cancel_with_valid = dir_name.contains("cancel_with_valid");
+    let bare_error = dir_name.contains("bare_error");
 
     // ② **العامل** في الصورة ذات العمليتين: يسجّل معرّفه وينام (يمسك الأنبوب
     //    الموروث من مُشغّله — ولهذا تبقى المهمّة معلّقة إن نجا).
@@ -2342,7 +2896,7 @@ fn main() {
     if retry_mode {
         let n = bump_calls(dir.as_deref());
         if n == 1 {
-            // نصفُ ملفٍ في الخانة، كما يترك 403 الحقيقي (`…​.f616.mp4`): يقيس
+            // نصفُ ملفٍ في الخانة، كما يترك 403 الحقيقي (`….f616.mp4`): يقيس
             // الحارس أن الإعادة **تكنس الخانة** قبل المحاولة الثانية.
             if let Some(t) = tmpl.as_deref() {
                 let _ = std::fs::write(t.replace("%(ext)s", "f616.mp4"), b"partial-fragment");
@@ -2427,6 +2981,39 @@ fn main() {
         let _ = std::io::stdout().flush();
         std::thread::sleep(std::time::Duration::from_secs(30));
         return;
+    }
+
+    // ③.ي **خانةٌ صالحة ثم انتظار**: يكتب ملفاً صالحاً، ثم يكتب فشلاً عابراً
+    //    (‏403)، ثم **ينتظر ٢ ث** قبل الخروج بـ1 — وهي نافذة الإلغاء.
+    //    يقيس حارس (أ): **الإلغاء يُفحَص أولاً ولا يُفسَّر نجاحاً** — فبلا الفحص
+    //    الأول كان مسار «خروج بغير صفر + خانة صالحة» يُسلّم النجاح لمهمّة ألغاها
+    //    المستخدم (وهو الثقب المقيس).
+    if cancel_with_valid {
+        let _ = bump_calls(dir.as_deref());
+        if let Some(t) = tmpl.as_deref() {
+            write_wav(std::path::Path::new(&t.replace("%(ext)s", "wav")));
+        }
+        for i in 1..=2 {
+            progress(&format!("step {i}"));
+        }
+        eprintln!("ERROR: unable to download video data: HTTP Error 403: Forbidden");
+        let _ = std::io::stderr().flush();
+        let _ = std::io::stdout().flush();
+        std::thread::sleep(std::time::Duration::from_millis(2000));
+        std::process::exit(1);
+    }
+
+    // ③.ك **`ERROR:` بلا نصّ**: رسالةٌ مقطوعة على الرمز (وهو ما يبقى في الأنبوب
+    //    إذا قُتلت العمليّة في منتصف السطر) ⇒ **لا سبب ⇒ لا إعادة**: نداء واحد.
+    if bare_error {
+        let _ = bump_calls(dir.as_deref());
+        for i in 1..=2 {
+            progress(&format!("step {i}"));
+        }
+        eprintln!("ERROR:");
+        let _ = std::io::stderr().flush();
+        let _ = std::io::stdout().flush();
+        std::process::exit(1);
     }
 
     // ③.هـ **ملفٌ صالح في الخانة ثم خروجٌ بخطأ دائم**: لقياس السياسة — هل
@@ -3664,6 +4251,291 @@ fn main() {
             out.display()
         );
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// **حارس (١٣): الإلغاء لا يُفسَّر نجاحاً — ولو كانت الخانة تحمل ملفاً صالحاً.**
+    ///
+    /// **الثقب المقيس (حكم جاسوس مستقلّ)**: في فرع الخروج غير الصفري كان فحص
+    /// الخانة (`usable_slot`) يسبق `cancel.load` ⇒ سباقٌ **يُلغي الإلغاء**:
+    /// حارس القتل يقتل yt-dlp عند إلغاء المستخدم ⇒ خروجٌ بغير صفر ⇒ خانةٌ صالحة
+    /// موجودة ⇒ **نجاح** لمهمّة ألغاها المستخدم.
+    ///
+    /// **والمزيّف** (‏`cancel_with_valid`): يكتب خانةً صالحة، ثم `ERROR: …403`،
+    /// ثم ينتظر ٢ ث قبل الخروج بـ1 — وفي تلك النافذة يُلغى التنزيل. فكل شرائط
+    /// النجاح الكاذب متحقّقة (خانة صالحة + سبب مكتوب)، **والوحيد** الذي يجب أن
+    /// يحكم هو الإلغاء.
+    ///
+    /// **(مُفسَد محروس: إسقاط فحص `cancel` في رأس ما بعد الموت ⇒ يسقط — مُنفَّذ.)**
+    #[cfg(windows)]
+    #[test]
+    fn a_cancelled_download_is_never_delivered_from_a_valid_slot() {
+        use std::sync::atomic::Ordering;
+        use std::time::Duration;
+
+        let _reg = crate::slots::registry_test_lock();
+        let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
+        let fake = fake_variant(&root, "cancel_with_valid");
+        let tmp = std::env::temp_dir().join(format!("hl_cancel_slot_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("مجلد القياس");
+
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(fake);
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = cancel.clone();
+        let canceller = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(1200));
+            flag.store(true, Ordering::SeqCst);
+        });
+        let r = download_media(
+            "https://www.youtube.com/watch?v=AJOOve4s0_8",
+            &tmp,
+            &|_p| true,
+            &cancel,
+        );
+        let _ = canceller.join();
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = None;
+
+        let calls = fake_calls(&tmp);
+        eprintln!(
+            "x2-dl/حارس الإلغاء مع خانة صالحة — نداءات: {calls} · النتيجة: {}",
+            match &r {
+                Ok(p) => format!("نجاح: {}", p.display()),
+                Err(e) => format!("فشل: {e}"),
+            }
+        );
+        match r {
+            Ok(p) => panic!(
+                "تنزيلٌ ألغاه المستخدم عاد **نجاحاً** من خانةٍ صالحة ({}): الإلغاء لا يُفسَّر نجاحاً",
+                p.display()
+            ),
+            Err(e) => assert!(
+                format!("{e}").contains(DOWNLOAD_CANCELLED),
+                "الفشل ليس نصّ الإلغاء: {e}"
+            ),
+        }
+        assert_eq!(
+            calls, 1,
+            "أُعيدت المحاولة بعد إلغاء المستخدم (نداءات: {calls}) — الإلغاء ليس عابراً يُعاد عليه"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// **حارس (١٤): `ERROR:` بلا نصّ ليس سبباً ⇒ لا إعادة عمياء.**
+    ///
+    /// الرسالة المقطوعة على الرمز واقعية لا نظرية: عند قتل العمليّة يقرأ خيط
+    /// التصريف ما وصل من الأنبوب، وقد يصل **الرمز وحده**. وكان يُحفظ «سبباً
+    /// مكتوباً» فيُصنَّف عابراً ⇒ إعادة على عمى (نداءان). والمقيس الآن: **نداء
+    /// واحد**، والخطأ يعود بنصّه كما وصل.
+    ///
+    /// **(مُفسَد محروس: إسقاط شرط النصّ في [`error_reason_text`] ⇒ يسقط — مُنفَّذ.)**
+    #[cfg(windows)]
+    #[test]
+    fn a_bare_error_marker_is_not_a_reason_to_retry() {
+        // وحدةً: النصّ بعد الرمز شرط، والرسالة الكاملة سبب.
+        assert_eq!(error_reason_text("ERROR:"), None);
+        assert_eq!(error_reason_text("ERROR:   "), None);
+        assert_eq!(error_reason_text("ERROR:\t"), None);
+        assert_eq!(error_reason_text("ERROR: real cause"), Some("real cause"));
+        assert_eq!(error_reason_text("WARNING: x"), None);
+        assert!(!is_transient_failure("ERROR:"), "الرمز وحده صار سبباً");
+        assert!(
+            !is_transient_failure("ERROR:    "),
+            "الرمز بفراغات صار سبباً"
+        );
+        assert!(is_transient_failure("ERROR: unable to download video data"));
+
+        let _reg = crate::slots::registry_test_lock();
+        let root = std::env::temp_dir().join(format!("hl_fakebuild_{}", std::process::id()));
+        let fake = fake_variant(&root, "bare_error");
+        let tmp = std::env::temp_dir().join(format!("hl_bare_error_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("مجلد القياس");
+
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(fake);
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let r = download_media(
+            "https://www.youtube.com/watch?v=AJOOve4s0_8",
+            &tmp,
+            &|_p| true,
+            &cancel,
+        );
+        *ytdlp_test_override()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = None;
+
+        let calls = fake_calls(&tmp);
+        eprintln!(
+            "x2-dl/حارس `ERROR:` بلا نصّ — نداءات: {calls} · النتيجة: {}",
+            match &r {
+                Ok(p) => format!("نجاح: {}", p.display()),
+                Err(e) => format!("فشل: {e}"),
+            }
+        );
+        assert_eq!(
+            calls, 1,
+            "أُعيد على رسالة مقطوعة على الرمز (`ERROR:` بلا نصّ) — لا إعادة على عمى (نداءات: {calls})"
+        );
+        let err = match r {
+            Ok(p) => panic!("لا خانة ولا نجاح متوقَّع هنا: {}", p.display()),
+            Err(e) => format!("{e}"),
+        };
+        assert!(err.contains("exit code: 1"), "النصّ لا يسمّي الخروج: {err}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// **حارس (١٥): شرط الاكتمال — يُقاس في الاتجاهين، ولكل عائلة حاوٍ.**
+    ///
+    /// **الثقب المقيس**: `slot_usable` كان يقبل ملفاً **نصف مكتوب** إذا قرأ
+    /// `ffprobe` رأسه: بنيتُ ملفاً يصرّح رأسُه بـ1600 بايت وعلى القرص 844 ⇒
+    /// `ffprobe` يقول `Ok` (صوت · 0.05 ث) — **وهو نفس ما يقوله لملفٍ كامل بحجم
+    /// 844 بايت** (مقيس، انظر جدول [`container_is_truncated`]). فصار الشرط:
+    /// **إعلان الحاوية لا يتجاوز ما على القرص**.
+    ///
+    /// **وما يقيسه هذا الحارس**: (١) `ffprobe` **يقبل** المقطوع (فالثقب حقيقي
+    /// ومُعاد تمثيله في الاختبار لا مُدَّعى)، (٢) و`slot_usable` **يرفضه**،
+    /// (٣) والملف الكامل **يمرّ** من البابين (فلا رفض لسليم)، (٤) والتعرف على
+    /// الحاويات الثلاث (‏RIFF · ISO-BMFF · EBML) و«لا حكم» لما نجهله.
+    ///
+    /// **(مُفسَد محروس: إسقاط الاستشارة في `slot_usable` ⇒ يسقط.)**
+    #[test]
+    fn a_truncated_container_is_refused_while_a_complete_one_passes() {
+        let dir = std::env::temp_dir().join(format!("hl_container_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("مجلد القياس");
+
+        // ① RIFF — القياس الحرفي للثقب.
+        let wav = wav_bytes(8000, 1600);
+        let wav_half = wav[..844].to_vec();
+        // ② ISO-BMFF (‏mp4/m4a): `ftyp` + `moov` + `mdat`، وصورةٌ بلا `mdat`.
+        let mut mp4 = iso_box(b"ftyp", 8);
+        mp4.extend(iso_box(b"moov", 8));
+        mp4.extend(iso_box(b"mdat", 4096));
+        let mut moov_only = iso_box(b"ftyp", 8);
+        moov_only.extend(iso_box(b"moov", 8));
+        // ③ EBML (‏webm/mkv): `Segment` بحجم معلوم، وآخر بحجم غير معلوم.
+        let webm = ebml_bytes(64, true);
+        let webm_unknown = ebml_bytes(64, false);
+
+        let cases: Vec<(&str, Vec<u8>, usize, bool)> = vec![
+            ("WAV كامل", wav.clone(), wav.len(), false),
+            ("WAV مقطوع (844 من 1644)", wav_half.clone(), 844, true),
+            ("MP4 كامل", mp4.clone(), mp4.len(), false),
+            ("MP4 مقطوع في mdat", mp4.clone(), mp4.len() - 100, true),
+            (
+                "MP4 بفهرسٍ بلا بيانات",
+                moov_only.clone(),
+                moov_only.len(),
+                true,
+            ),
+            ("WebM كامل", webm.clone(), webm.len(), false),
+            ("WebM مقطوع", webm.clone(), webm.len() - 20, true),
+            (
+                "WebM بحجم Segment غير معلوم",
+                webm_unknown.clone(),
+                webm_unknown.len() - 20,
+                false, // لا حكم: تدفّق حيّ لا يُفرَّق عن مقطوع
+            ),
+        ];
+        for (i, (label, bytes, write, want)) in cases.iter().enumerate() {
+            let p = dir.join(format!("case{i}.bin"));
+            std::fs::write(&p, &bytes[..*write]).expect("كتابة الملف");
+            let on_disk = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
+            assert_eq!(
+                on_disk, *write as u64,
+                "الكتابة لم تقع كما قُصدت في «{label}»"
+            );
+            assert_eq!(
+                container_is_truncated(&p, on_disk),
+                *want,
+                "حكم الاكتمال خالف المتوقَّع في «{label}»"
+            );
+        }
+
+        // ولا حكم على حاوٍ لا نعرفه (‏mp3 · ogg · ts…) — حدّ معلن لا صمت.
+        let junk = dir.join("unknown.bin");
+        std::fs::write(&junk, vec![0x49u8; 4096]).expect("كتابة ملف مجهول");
+        assert!(
+            !container_is_truncated(&junk, 4096),
+            "حاوٍ مجهول لا يُحكَم عليه (لا رفض لما نجهله)"
+        );
+
+        // ④ والاتجاهان على `slot_usable` نفسه — وفيه **يعمل ffprobe فعلاً**:
+        //    المقطوع يمرّ من ffprobe ويرتدّ من شرط الاكتمال، والكامل يمرّ من الاثنين.
+        let complete = dir.join("complete.wav");
+        std::fs::write(&complete, &wav).expect("كتابة WAV كامل");
+        let truncated = dir.join("truncated.wav");
+        std::fs::write(&truncated, &wav_half).expect("كتابة WAV مقطوع");
+
+        let seen = crate::media::probe(&truncated)
+            .expect("ffprobe يقبل الملف المقطوع — وهذا هو الثقب المقيس بعينه");
+        assert!(
+            seen.has_audio && seen.duration_secs > 0.0,
+            "الصورة المقيسة تحتاج ffprobe يقبل المقطوع (صوت + مدة): {seen:?}"
+        );
+        let truncated_usable = slot_usable(&truncated);
+        let complete_usable = slot_usable(&complete);
+        eprintln!(
+            "x2-dl/حارس الاكتمال — على القرص: المقطوع {} بايت · الكامل {} بايت · \
+             ffprobe(المقطوع): صوت={} مدة={:.2} ث · slot_usable(المقطوع)={truncated_usable} · \
+             slot_usable(الكامل)={complete_usable} · حالات الحاويات: {}",
+            std::fs::metadata(&truncated).map(|m| m.len()).unwrap_or(0),
+            std::fs::metadata(&complete).map(|m| m.len()).unwrap_or(0),
+            seen.has_audio,
+            seen.duration_secs,
+            cases.len()
+        );
+        assert!(!truncated_usable, "خانةٌ نصف مكتوبة قُبلت — الثقب المقيس عاد");
+        assert!(
+            complete_usable,
+            "خانةٌ كاملة (يقرؤها ffprobe) رُفضت — الشرط الجديد يرفض السليم"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// بايتات WAV حقيقية (‏PCM أحادي ١٦ بت): الرأس يصرّح بـ`data_len` بايتاً.
+    fn wav_bytes(rate: u32, data_len: u32) -> Vec<u8> {
+        let mut v: Vec<u8> = Vec::new();
+        v.extend_from_slice(b"RIFF");
+        v.extend_from_slice(&(36 + data_len).to_le_bytes());
+        v.extend_from_slice(b"WAVEfmt ");
+        v.extend_from_slice(&16u32.to_le_bytes());
+        v.extend_from_slice(&1u16.to_le_bytes());
+        v.extend_from_slice(&1u16.to_le_bytes());
+        v.extend_from_slice(&rate.to_le_bytes());
+        v.extend_from_slice(&(rate * 2).to_le_bytes());
+        v.extend_from_slice(&2u16.to_le_bytes());
+        v.extend_from_slice(&16u16.to_le_bytes());
+        v.extend_from_slice(b"data");
+        v.extend_from_slice(&data_len.to_le_bytes());
+        v.resize(v.len() + data_len as usize, 0);
+        v
+    }
+
+    /// صندوق ISO-BMFF: `[حجم u32 BE][نوع ٤ محارف][حمولة أصفار]`.
+    fn iso_box(kind: &[u8; 4], payload: usize) -> Vec<u8> {
+        let mut v = ((8 + payload) as u32).to_be_bytes().to_vec();
+        v.extend_from_slice(kind);
+        v.resize(v.len() + payload, 0);
+        v
+    }
+
+    /// ملف EBML صغير: رأس EBML ثم `Segment` بحجم معلوم (أو غير معلوم = `0xFF`).
+    fn ebml_bytes(segment_payload: usize, known_size: bool) -> Vec<u8> {
+        let mut v = vec![0x1A, 0x45, 0xDF, 0xA3, 0x84, 0, 0, 0, 0];
+        v.extend_from_slice(&[0x18, 0x53, 0x80, 0x67]);
+        if known_size {
+            v.push(0x80 | (segment_payload as u8)); // vint بطول بايت (الحجم < 127)
+        } else {
+            v.push(0xFF); // كل بتات القيمة ١ ⇒ «غير معلوم»
+        }
+        v.resize(v.len() + segment_payload, 0);
+        v
     }
 
     /// **حارس (١١): فشل التنزيل لا يُوسَم «ملفات:» — ولا يفقد اسمه.**
