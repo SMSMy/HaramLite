@@ -250,27 +250,43 @@ describe('حارس الظهور · تفعيل تبويب يُظهر كل معر�
 describe('لا مسار ميت · لا لوحة إعدادات بلا عنصر، ولا نداء إلى عنصر غير موجود', () => {
   it('لا حاوية إعدادات مُعنونة بلا أي معرّف من الخريطة', async () => {
     await mountInSettingsMode();
-    const headings = Array.from(document.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6')).filter(
-      (h) => SETTINGS_GROUP_HEADING_KEYS.includes(h.getAttribute('data-i18n') ?? ''),
-    );
+    // **الالتقاط بالمفتاح لا بالوسم**: `data-i18n` قد يكون على `<h4>` نفسه (وهو
+    // حال العناوين الحيّة) وقد يكون على `<span>` داخل العنوان (وهو حال
+    // `dlg_advanced` في اللوحة المحذوفة). والالتقاط بـ`h1..h6` وحدها كان **أعمى
+    // عن الحالة التي كُتب من أجلها**: مُفسَد «أعِد كتلة اللوحة وحدها» أسقط حارس
+    // الوجود في DOM ولم يُسقط هذا. فالصيد الآن بالمفتاح، ثم يُصعد إلى أقرب عنوان.
+    const anchors: { key: string; box: HTMLElement | null }[] = [];
+    for (const key of SETTINGS_GROUP_HEADING_KEYS) {
+      for (const el of Array.from(
+        document.querySelectorAll<HTMLElement>(`[data-i18n="${key}"]`),
+      )) {
+        // **وشرط «داخل عنوان» ليس زخرفة**: المفاتيح نفسها تُستعمل **تسمياتٍ لأزرار
+        // التبويب** في `#settings-tabs` كذلك (`data-tab-btn="performance"` نصّه
+        // `set_group_perf`) — ولو التقيناها لسألنا عن `nav#settings-tabs` هل فيه
+        // عنصر من الخريطة، فسقط الحارس على شجرة سليمة (وقع فعلاً: ٤ إنذارات كاذبة).
+        // والقاعدة: مفتاح **يُعنوِن** صندوقاً يلزمه عنصر؛ ومفتاح **يُسمّي زرّاً**
+        // ليس عنواناً.
+        const heading = el.closest<HTMLElement>('h1,h2,h3,h4,h5,h6');
+        if (!heading) continue;
+        anchors.push({ key, box: heading.parentElement });
+      }
+    }
     // عدم البطلان: لو حُذفت العناوين كلها لمرّ الفحص بلا معنى.
-    expect(
-      headings.length,
-      'عناوين مجموعات الإعدادات الموجودة في index.html',
-    ).toBeGreaterThanOrEqual(6);
+    expect(anchors.length, 'عناوين مجموعات الإعدادات الموجودة في index.html').toBeGreaterThanOrEqual(6);
 
-    const dead = headings
-      .filter((h) => {
-        const box = h.parentElement;
-        if (!box) return true;
-        return !Array.from(box.querySelectorAll<HTMLElement>('[id]')).some((el) =>
-          MAP_IDS.includes(el.id),
-        );
-      })
-      .map((h) => {
-        const box = h.parentElement;
-        const where = box ? `<${box.tagName.toLowerCase()}${box.id ? `#${box.id}` : ''}>` : '(بلا أب)';
-        return `${h.getAttribute('data-i18n')} داخل ${where} بلا أي معرّف من الخريطة`;
+    const dead = anchors
+      .filter(
+        (a) =>
+          !a.box ||
+          !Array.from(a.box.querySelectorAll<HTMLElement>('[id]')).some((el) =>
+            MAP_IDS.includes(el.id),
+          ),
+      )
+      .map((a) => {
+        const where = a.box
+          ? `<${a.box.tagName.toLowerCase()}${a.box.id ? `#${a.box.id}` : ''}>`
+          : '(بلا أب)';
+        return `${a.key} داخل ${where} بلا أي معرّف من الخريطة`;
       });
     expect(dead, `لوحات إعدادات ميتة (عنوان بلا عنصر): ${dead.join(' · ')}`).toEqual([]);
   });
