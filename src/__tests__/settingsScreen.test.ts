@@ -27,6 +27,10 @@ import indexHtml from '../../index.html?raw';
 import libRs from '../../src-tauri/src/lib.rs?raw';
 import capJson from '../../src-tauri/capabilities/default.json?raw';
 import screenTs from '../settingsScreen.ts?raw';
+import { SETTINGS_TAB_MAP } from '../settingsTabMap';
+// **استيراد نوعيّ محض** (يُمحى في البناء): قائمة التبويبات تُشتقّ من المصدر
+// الواحد بدل نسخة نصّية رابعة تتقادم بصمت — وكانت هنا كذلك حتى الدمج.
+import type { SettingsTab } from '../settingsScreen';
 
 const h = vi.hoisted(() => ({
   invoke: vi.fn<(cmd: string, args?: unknown) => Promise<unknown>>(async () => ({})),
@@ -138,7 +142,11 @@ const ALL_REQUIRED: readonly string[] = [
   ...OUTSIDE.filter((id) => !REQUIRED.some(([, ids]) => ids.includes(id))),
 ];
 
-const TABS = ['performance', 'engine', 'watch', 'bridge', 'telegram', 'update', 'about'];
+// **والقائمة تُشتقّ من الخريطة المعلَنة**، فلا تُكتب التبويبات مرّتين في هذا
+// الملف (كانت مكتوبة نصّاً فبقيت سبعة بعد أن صارت في الشجرة سبعة فعلاً — والنسخة
+// النصّية هي أول ما يتقادم). والترتيب يأتي من ترتيب المفاتيح في الخريطة، ووجوده
+// في واجهة المستخدم يقيسه `settingsTabs.test.ts` مقابل `[data-tab-btn]` الحقيقي.
+const TABS: readonly SettingsTab[] = [...new Set(Object.values(SETTINGS_TAB_MAP))];
 
 /**
  * **التبويب المتوقَّع لمعرّفات محدّدة** — فلا يكفي أن يكون العنصر «في الشاشة»،
@@ -146,22 +154,32 @@ const TABS = ['performance', 'engine', 'watch', 'bridge', 'telegram', 'update', 
  * معرّف بتبويبه)، ويكفي لكشف الخطأ الذي وقع فعلاً: `#max-jobs` كان في `engine`
  * والمتوقَّع `performance` — **مقيس** بـ`closest('.settings-tab-panel').dataset.tab`.
  * **مُفسَده**: نقل أيّ معرّف هنا إلى تبويب آخر ⇒ يسقط.
+ *
+ * ⚠ **وثلاثة أسطر من هذا الجدول صُحّحت في الدمج (لا نُقلت كما هي)**، لأن الفرع
+ * المدموج كان مبنيّاً على `5e5ce0f` **قبل** `10d8dfa` الذي نقل أربعة عناصر:
+ * `#cuda-provider` · `#setting-notify` · `#btn-report` (و`#max-jobs`). والقياس
+ * الحرفي قبل التصحيح من `pnpm test:web`:
+ * `عناصر في غير تبويبها: cuda-provider: متوقَّع engine · مقيس performance ·
+ *  setting-notify: متوقَّع update · مقيس performance ·
+ *  btn-report: متوقَّع about · مقيس update`.
+ * ⇒ القيم هنا الآن **مطابقة للخريطة المعلَنة** في `src/settingsTabMap.ts`،
+ * ويُشترَط ذلك صراحةً في الحارس أدناه (فلا يعود جدولٌ ثانٍ يكذب في صمت).
  */
 const EXPECTED_TAB: Record<string, string> = {
   'setting-cuda': 'performance',
   'cuda-hint': 'performance',
   'cuda-hint-text': 'performance',
   'max-jobs': 'performance',
-  'cuda-provider': 'engine',
+  'cuda-provider': 'performance',
   'setting-watch': 'watch',
   'watch-options': 'watch',
   'setting-bridge': 'bridge',
   'btn-telegram': 'telegram',
   'tg-group-mode': 'telegram',
   'setting-autostart': 'update',
-  'setting-notify': 'update',
+  'setting-notify': 'performance',
   'btn-repair-open': 'update',
-  'btn-report': 'about',
+  'btn-report': 'update',
   'btn-about': 'about',
 };
 
@@ -299,6 +317,26 @@ describe('تكافؤ الشاشة · كل عنصر في القائمة القد�
     const outsideFound = OUTSIDE.filter((id) => document.getElementById(id) !== null).length;
     // **والتبويب المتوقَّع** (لا مجرّد الوجود): كل معرّف في `EXPECTED_TAB` يجب أن
     // يكون في تبويبه المُعلَن — وهو ما يكشف خطأ التقسيم (`#max-jobs`).
+    //
+    // **وشرطان يمنعان جدولاً ثانياً يكذب بصمت** (وهو ما وقع في الدمج: جاء الجدول
+    // من فرع مبنيّ على شجرة أقدم، فخالف الخريطة المعلَنة في ثلاثة معرّفات):
+    //   ① كل مفتاح في `EXPECTED_TAB` **معلَن** في `SETTINGS_TAB_MAP`،
+    //   ② وقيمته فيه **مطابقة** لقيمة الخريطة — فلا مصدران للحقيقة يفترقان.
+    const notDeclared: string[] = [];
+    const disagree: string[] = [];
+    for (const [id, tab] of Object.entries(EXPECTED_TAB)) {
+      const declared = SETTINGS_TAB_MAP[id];
+      if (declared === undefined) notDeclared.push(id);
+      else if (declared !== tab) disagree.push(`${id}: هنا «${tab}» وفي الخريطة «${declared}»`);
+    }
+    expect(
+      notDeclared,
+      `معرّفات في الجدول وغير معلَنة في src/settingsTabMap.ts: ${notDeclared.join(' · ')}`,
+    ).toEqual([]);
+    expect(
+      disagree,
+      `جدولان يفترقان عن الخريطة المعلَنة: ${disagree.join(' · ')}`,
+    ).toEqual([]);
     const misplaced: string[] = [];
     for (const [id, tab] of Object.entries(EXPECTED_TAB)) {
       const el = document.getElementById(id);
