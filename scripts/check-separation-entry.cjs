@@ -58,18 +58,31 @@ const ENTRY = 'process_file';
  * الواحد، فصارت «ملفاً مسموحاً بلا موضع» = قائمة متقادمة. ولم يُترك لها
  * `sites: 0` عمداً: حلقة ④ السفلية تعدّ `sites.length === 0` تقادماً فتُسقط
  * الحارس على أي حال ⇒ الحذف هو التعبير الصحيح الوحيد.
- * والمسموح اليوم: **موضعان مباشران في الاختبارات** فقط. */
+ *
+ * ── **والعدّ صار شقّين (2026-09-25) بعد أن قِيس أن الحارس كان يسقط على شجرة سليمة** ──
+ * `process_file_logs_a_cancel_at_info_and_a_missing_input_at_error` (أُضيف في
+ * `705ae1b` «إلغاء المستخدم ليس فشلاً») ينادي `process_file` **داخل `#[cfg(test)]`**
+ * ليبلُغ المسار الكامل — فصار في `pipeline.rs` موضعان، والقائمة كانت تسمح بواحد
+ * ⇒ **سقوط على `main` من أول دمج (`dbea432`) وبقي غير مُعلَن**. ورفع الرقم إلى ٢
+ * كان سيسمح **بمدخل إنتاجيّ ثانٍ يمرّ صامتاً** — وهو الإرخاء نفسه.
+ * فصار العقد هكذا:
+ *   • `sites`      = **مواضع الإنتاج** — السقف يبقى كما كان (**صفر** لكل ملف هنا:
+ *                    مدخل المنتج الوحيد يحمله الغلاف). وأي نداء إنتاجيّ ثانٍ يسقط.
+ *   • `test_sites` = **المواضع داخل سياق اختبار** (`#[cfg(test)]` أو `#[test]`) —
+ *                    مُعلَنة بالعدد أيضاً، فأي موضع ثالث غير مُعلَن يسقط.
+ * والتصنيف **آليّ بنيويّ** (‏`testRanges` أدناه) لا بإعلان مكتوب بيد. */
 const ALLOWED = [
-  { file: 'src-tauri/src/pipeline.rs', sites: 1, role: 'اختبار', why: 'تعريف الدالة (لا يُعدّ) + اختبار وحدة' },
-  { file: 'src-tauri/src/separator.rs', sites: 1, role: 'اختبار', why: 'اختبار فصل داخل الوحدة' },
+  { file: 'src-tauri/src/pipeline.rs', sites: 0, test_sites: 2, role: 'اختبار', why: 'تعريف الدالة (لا يُعدّ) + موضعان في اختبار الوحدة: حارس (ب) للمسار الكامل، واختبار سطر الإلغاء INFO/ERROR — وكلاهما داخل #[cfg(test)]' },
+  { file: 'src-tauri/src/separator.rs', sites: 0, test_sites: 1, role: 'اختبار', why: 'اختبار فصل داخل الوحدة' },
   // حارسة تفنيد م٦-ب (مسار `clip`): وحدة **اختبار فقط** (`#[cfg(test)] mod m6b_clip_guard;`
   // في `lib.rs`) تنادي `process_file` لتقيس بعقد الإنتاج نفسه أن ملف المستخدم يبقى كامل
   // الطول وأن خريطة الصفحة لا تصل إلى `kept_ranges`. أُدرجت بعد أن **أسقطها هذا الحارس
   // على `main`** (2026-09-22) عند دمج حارسة الجاسوس — أي أن الحارس يعمل. وهي إضافة
-  // **مُعلَنة** لا تجاوز: العدد مثبَّت (`sites`)، وأي موضع ثانٍ في الملف يُسقط الحارس.
+  // **مُعلَنة** لا تجاوز: العدد مثبَّت (`test_sites`)، وأي موضع ثالث يُسقط الحارس.
   {
     file: 'src-tauri/src/m6b_clip_guard.rs',
-    sites: 2,
+    sites: 0,
+    test_sites: 2,
     role: 'اختبار',
     why: 'وحدة اختبار فقط (#[cfg(test)]) تقيس مسار clip عبر عقد process_file — موضعان: قصّ صفحة تُحفظ، وملف مستخدم يبقى كامل الطول',
   },
@@ -219,14 +232,61 @@ function lineIndexer(live) {
 }
 
 /**
+ * **مدى كل سياق اختبار** في النصّ الحيّ — بنيويّ لا بإعلان.
+ *
+ * الشرط: وسم `#[test]` أو `#[cfg(test)]`، ثم **أول كتلة `{}` بعده** (بعد وسوم أخرى
+ * وكلمات `fn`/`mod`/`pub`/`async`/`unsafe`/اسم)، ومداها بمطابقة الأقواس.
+ *
+ * **والعطل المقيس الذي أوجب «أول كتلة» بدل «قوس فوريّ»**: الوسم في هذه الشجرة
+ * يسبق **دالّة** أيضاً لا وحدةً فقط — `#[cfg(test)]\nfn lock_name_for(…) {` في
+ * `pipeline.rs`. فنسخةٌ تشترط `{` فوراً بعد الوسم **لا ترى إلا الصدفة**، وقاست
+ * **صفر سياق اختبار** على ملفٍ كله اختبارات ⇒ فصنّفت موضعَي الاختبار «إنتاجاً»
+ * وأسقطت الحارس. (النسخة الحرفية من فخّ «حارسٌ يقيس تمثيلاً نصّياً بعينه».)
+ * @returns {Array<[number,number]>} مدى [البداية، النهاية] بإزاحات النصّ الحيّ.
+ */
+function testRanges(live) {
+  const out = [];
+  const re = /#\[(?:cfg\(test\)|test)\]/g;
+  let m;
+  while ((m = re.exec(live)) !== null) {
+    // امشِ من بعد الوسم حتى **أول `{`** — متجاوزاً وسوم أخرى وكلمات الإعلان.
+    // والحدّ: لا نمشي أكثر من 400 محرف، ولا نعبر `;` (فالإعلان بلا جسم ينتهي بها).
+    let i = m.index + m[0].length;
+    const limit = Math.min(live.length, i + 400);
+    let brace = -1;
+    for (let k = i; k < limit; k++) {
+      const c = live[k];
+      if (c === '{') { brace = k; break; }
+      if (c === ';') break; // إعلان بلا جسم (مثل `#[cfg(test)] use …;`)
+    }
+    if (brace < 0) continue;
+    let depth = 0;
+    let j = brace;
+    for (; j < live.length; j++) {
+      if (live[j] === '{') depth++;
+      else if (live[j] === '}') { depth--; if (depth === 0) break; }
+    }
+    out.push([brace, j]);
+  }
+  return out;
+}
+
+/** هل الإزاحة داخل سياق اختبار؟ */
+function inTestContext(ranges, idx) {
+  return ranges.some(([a, b]) => idx >= a && idx <= b);
+}
+
+/**
  * مواضع الاسم في ملف Rust واحد، على النصّ الحيّ (بلا تعليقات ولا نصوص سلاسل).
- * @returns {{sites: Array<{line:number,code:string,raw:string}>, imports: Array<{line:number,raw:string}>}}
+ * وكل موضع **يُصنَّف**: إنتاجيّ أم داخل سياق اختبار (`testRanges`).
+ * @returns {{sites: Array<{line:number,code:string,raw:string,test:boolean}>, imports: Array<{line:number,raw:string}>}}
  */
 function findSites(text) {
   const live = stripRustComments(text);
   const at = lineIndexer(live);
   const rawLines = text.split(/\r?\n/);
   const liveLines = live.split(/\r?\n/);
+  const ranges = testRanges(live);
   const sites = [];
   const imports = [];
   const re = new RegExp('\\b' + ENTRY + '\\b', 'g');
@@ -238,7 +298,7 @@ function findSites(text) {
     const raw = (rawLines[line - 1] || '').trim();
     // سطر استيراد (`use …`) إعلانٌ لا مدخل — ويُعدّ ويُطبع صراحةً.
     if (/^use\b/.test((liveLines[line - 1] || '').trim())) { imports.push({ line, raw }); continue; }
-    sites.push({ line, code: (liveLines[line - 1] || '').trim(), raw });
+    sites.push({ line, code: (liveLines[line - 1] || '').trim(), raw, test: inTestContext(ranges, m.index) });
   }
   return { sites, imports };
 }
@@ -349,15 +409,33 @@ function main(argv) {
 
   for (const [rel, r] of perFile) {
     const n = r.sites.length;
+    const prod = r.sites.filter((s) => !s.test);
+    const inTest = r.sites.filter((s) => s.test);
     const allowed = allowedByFile.get(rel);
     const wrapper = wrapperByFile.get(rel);
     if (allowed) {
-      if (n > allowed.sites) {
-        note('زيادة', rel, r.sites[allowed.sites].line, r.sites[allowed.sites].raw,
-          'المتوقَّع ' + allowed.sites + ' ووُجد ' + n + ' — مدخل جديد في ملف مسموح');
-      } else if (n < allowed.sites) {
-        note('نقص', rel, r.sites.length ? r.sites[0].line : 0, r.sites.length ? r.sites[0].raw : '',
-          'المتوقَّع ' + allowed.sites + ' ووُجد ' + n + ' — موضع موعود غاب (نُقل أو حُذف؟)');
+      const wantProd = allowed.sites;
+      const wantTest = allowed.test_sites ?? 0;
+      if (prod.length > wantProd) {
+        const s = prod[wantProd];
+        note('زيادة', rel, s.line, s.raw,
+          'مدخل **إنتاجيّ** جديد في ملف مسموح: المتوقَّع ' + wantProd + ' إنتاجيّاً ووُجد ' + prod.length +
+          ' — مرّره عبر الغلاف الواحد أو سجّله في القائمة');
+      } else if (prod.length < wantProd) {
+        note('نقص', rel, prod.length ? prod[0].line : 0, prod.length ? prod[0].raw : '',
+          'المتوقَّع ' + wantProd + ' إنتاجيّاً ووُجد ' + prod.length + ' — موضع موعود غاب (نُقل أو حُذف؟)');
+      }
+      if (inTest.length > wantTest) {
+        const s = inTest[wantTest];
+        note('زيادة-اختبار', rel, s.line, s.raw,
+          'موضع جديد **داخل سياق اختبار**: المتوقَّع ' + wantTest + ' ووُجد ' + inTest.length +
+          ' — أعلِنه في القائمة (`test_sites`) أو بيّن أنه إنتاجيّ');
+      } else if (inTest.length < wantTest) {
+        note('نقص-اختبار', rel, inTest.length ? inTest[0].line : 0, inTest.length ? inTest[0].raw : '',
+          'المتوقَّع ' + wantTest + ' داخل الاختبارات ووُجد ' + inTest.length + ' — القائمة تقادمت');
+      }
+      if (n !== prod.length + inTest.length) {
+        note('تصنيف', rel, 0, '', 'خلل تصنيف داخلي: ' + n + ' ≠ ' + (prod.length + inTest.length));
       }
     } else if (wrapper) {
       if (n > wrapper.max) {
@@ -371,7 +449,7 @@ function main(argv) {
   }
   for (const e of ALLOWED) {
     if (!perFile.has(e.file) || perFile.get(e.file).sites.length === 0) {
-      note('نقص', e.file, 0, '', 'ملف مسموح بلا موضع (المتوقَّع ' + e.sites + ') — القائمة تقادمت');
+      note('نقص', e.file, 0, '', 'ملف مسموح بلا موضع (المتوقَّع ' + e.sites + ' إنتاجيّاً و' + (e.test_sites ?? 0) + ' اختبارياً) — القائمة تقادمت');
     }
   }
   const wrappersWithSite = WRAPPERS.filter((e) => {
@@ -388,6 +466,12 @@ function main(argv) {
     .reduce((s, e) => s + (perFile.get(e.file) ? perFile.get(e.file).sites.length : 0), 0);
   const tests = ALLOWED.filter((e) => e.role === 'اختبار')
     .reduce((s, e) => s + (perFile.get(e.file) ? perFile.get(e.file).sites.length : 0), 0);
+  // والشقّان مصنَّفان آلياً: إنتاجيّ مقابل داخل سياق اختبار (على **كل** الملفات لا المسموحة وحدها).
+  let prodAll = 0;
+  let testAll = 0;
+  for (const r of perFile.values()) {
+    for (const s of r.sites) (s.test ? testAll++ : prodAll++);
+  }
 
   const out = [];
   if (!opts.quiet) {
@@ -396,8 +480,14 @@ function main(argv) {
     for (const e of ALLOWED) {
       const r = perFile.get(e.file);
       const n = r ? r.sites.length : 0;
-      out.push('  ' + (n === e.sites ? '✓' : '✗') + ' ' + e.file.padEnd(34) + n + '/' + e.sites + '  ' + e.role + ' — ' + e.why);
-      if (r) for (const s of r.sites) out.push('        · سطر ' + s.line + ': ' + s.raw);
+      const p = r ? r.sites.filter((s) => !s.test).length : 0;
+      const t = r ? r.sites.filter((s) => s.test).length : 0;
+      const wantT = e.test_sites ?? 0;
+      const ok = p === e.sites && t === wantT;
+      out.push('  ' + (ok ? '✓' : '✗') + ' ' + e.file.padEnd(34) +
+        p + '/' + e.sites + ' إنتاجيّ · ' + t + '/' + wantT + ' اختباري' +
+        '  ' + e.role + ' — ' + e.why);
+      if (r) for (const s of r.sites) out.push('        · سطر ' + s.line + ' [' + (s.test ? 'اختبار' : 'إنتاج') + ']: ' + s.raw);
     }
     for (const e of WRAPPERS) {
       const r = perFile.get(e.file);
@@ -431,6 +521,8 @@ function main(argv) {
    * ومدخل المنتج الوحيد يحمله الغلاف. */
   out.push('✓ ' + totalSites + ' مواضع مسموحة — ' + tests + ' مباشرةً في الاختبارات · ' + product +
     ' مباشرةً في مسار المنتج · و' + wrappersWithSite.length + ' غلافٌ يحمل مدخل المنتج · 0 غير مسموح');
+  out.push('  والتصنيف الآليّ على الشجرة كلها: ' + prodAll + ' موضعاً **إنتاجيّاً** · ' + testAll +
+    ' موضعاً **داخل سياق اختبار** (`#[cfg(test)]`/`#[test]`، والمدى محسوب بمطابقة الأقواس)');
   process.stdout.write(out.join('\n') + '\n');
   return EXIT.PASS;
 }

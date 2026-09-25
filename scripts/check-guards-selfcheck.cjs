@@ -684,17 +684,26 @@ const SEP_CALL = (mod) => 'pub fn run() {\n    let _ = ' + mod + '::process_file
 function sepFixture(dir) {
   // الغلاف الوحيد المسموح في مسار المنتج (محدِّد م١).
   mk(dir, 'src-tauri/src/slots.rs', SEP_CALL('pipeline'));
-  // `pipeline.rs` يحمل **التعريف** (لا يُعدّ مدخلاً) واختبار وحدة (يُعدّ).
+  // `pipeline.rs` يحمل **التعريف** (لا يُعدّ مدخلاً) و**موضعين اختباريين** كما في
+  // الشجرة الحقيقية (اختباران ينادِيان `process_file` داخل `#[cfg(test)]`).
   mk(dir, 'src-tauri/src/pipeline.rs',
     'pub fn process_file(a: u8) -> u8 { a }\n\n' +
-    '#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() { let _ = process_file(1); }\n}\n');
-  mk(dir, 'src-tauri/src/separator.rs', 'pub fn run() { let _ = crate::pipeline::process_file(a); }\n');
+    '#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() { let _ = process_file(1); }\n' +
+    '    #[test]\n    fn t2() { let _ = process_file(2); }\n}\n');
+  // **والبيئة المصنوعة تتبع عدّ الشقّين** (2026-09-25): كل موضع في هذين الملفين
+  // **داخل سياق اختبار** كما هو في الشجرة الحقيقية (`separator.rs` وحدة
+  // `#[cfg(test)] mod tests` · و`m6b_clip_guard.rs` كله `#[test]`)، ولا موضع
+  // **إنتاجيّ** في أيٍّ منهما — والسقف الإنتاجي في القائمة **صفر** لكل ملف، ومدخل
+  // المنتج الوحيد يحمله الغلاف (`slots.rs`). ولو بقيت البيئة بلا وسوم اختبار
+  // لصُنّفت مواضعها «إنتاجاً» فسقط **الضابط** لا المُفسَد.
+  mk(dir, 'src-tauri/src/separator.rs',
+    '#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() { let _ = crate::pipeline::process_file(a); }\n}\n');
   // حارسة تفنيد م٦-ب: وحدة اختبار مسموحة بـ**موضعين مثبَّتين** (أُدرجت 2026-09-22 بعد أن
   // أسقط الحارسُ الحقيقيُّ الملفَ على `main` وأنا أظنّ البوّابات خضراء). البيئة المصنوعة
   // تحمل الموضعين نفسهما، وإلا عدّ الحارس «موضعاً موعوداً غاب» فسقط **الضابط** لا المُفسَد.
   mk(dir, 'src-tauri/src/m6b_clip_guard.rs',
-    'pub fn a() { let _ = crate::pipeline::process_file(a); }\n' +
-    'pub fn b() { let _ = crate::pipeline::process_file(b); }\n');
+    '#[test]\nfn a() { let _ = crate::pipeline::process_file(a); }\n' +
+    '#[test]\nfn b() { let _ = crate::pipeline::process_file(b); }\n');
 }
 CASES.push({
   name: 'check-separation-entry.cjs',
