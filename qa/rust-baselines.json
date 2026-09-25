@@ -1,7 +1,7 @@
 {
   "why": "خطّ أساس مقيس لبوّابات Rust — يُحدَّث بـ--update بعد مراجعة السبب، ولا يُخفَّض لتُمرَّر بوّابة.",
   "clippy_unique_warnings": 14,
-  "tests_passed": 444,
+  "tests_passed": 447,
   "tests_ignored": 5,
   "tests": [
     "atomic::tests::a_failed_write_keeps_the_old_file_and_leaves_no_temp",
@@ -44,10 +44,13 @@
     "calibrate::tests::music_above_noise_on_synthetic",
     "calibrate::tests::report_calibration",
     "calibrate::tests::silence_class_scores_nothing",
+    "cli::tests::exit_code_is_decided_by_the_code_not_by_the_text",
     "cli::tests::help_mentions_the_provider_flag",
     "cli::tests::provider_flag_absent_keeps_todays_behaviour",
     "cli::tests::provider_flag_forces_the_named_chain",
     "cli::tests::provider_values_are_parsed_and_bad_ones_refused",
+    "cli::tests::the_new_exit_code_matches_the_old_text_matching_table",
+    "cli::tests::the_old_text_rule_can_disagree_with_the_code",
     "cuda_runtime::failure_states::complete_runtime_attempts_cuda_and_defers_failure_to_the_chain",
     "cuda_runtime::failure_states::driver_presence_absent_vs_incomplete_and_long_lists",
     "cuda_runtime::failure_states::forced_chain_codes_roundtrip_and_unknown_means_none",
