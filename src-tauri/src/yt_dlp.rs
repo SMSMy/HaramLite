@@ -731,7 +731,11 @@ pub struct UpdateOutcome {
 
 impl UpdateOutcome {
     fn new(updated: bool, code: &'static str, detail: impl Into<String>) -> Self {
-        Self { updated, code, detail: detail.into() }
+        Self {
+            updated,
+            code,
+            detail: detail.into(),
+        }
     }
 }
 
@@ -759,7 +763,11 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> UpdateOutcome {
                 checked_at: now_secs(),
                 version: ver,
             });
-            return UpdateOutcome::new(false, U_ALREADY_CURRENT, format!("yt-dlp محدّث بالفعل ({v})"));
+            return UpdateOutcome::new(
+                false,
+                U_ALREADY_CURRENT,
+                format!("yt-dlp محدّث بالفعل ({v})"),
+            );
         }
         tracing::info!(target: "ytdlp", "update available: {v} → {}", release.tag);
     } else {
@@ -769,11 +777,19 @@ pub fn ensure_updated(force: bool, progress: &dyn Fn(f32)) -> UpdateOutcome {
     // official checksum for the exe asset
     let sums = match fetch_text(&release.sums_url) {
         Ok(s) => s,
-        Err(e) => return UpdateOutcome::new(false, U_SUMS_FETCH_FAILED, format!("تعذر جلب المجاميع الموقعة: {e}")),
+        Err(e) => {
+            return UpdateOutcome::new(
+                false,
+                U_SUMS_FETCH_FAILED,
+                format!("تعذر جلب المجاميع الموقعة: {e}"),
+            )
+        }
     };
     let expected = match parse_sums_for(&sums, ASSET_NAME) {
         Some(d) => d,
-        None => return UpdateOutcome::new(false, U_SUMS_NO_ASSET, "SHA2-256SUMS لا يحتوي yt-dlp.exe"),
+        None => {
+            return UpdateOutcome::new(false, U_SUMS_NO_ASSET, "SHA2-256SUMS لا يحتوي yt-dlp.exe")
+        }
     };
 
     // target path = per-user tools dir (writable even for installed builds)

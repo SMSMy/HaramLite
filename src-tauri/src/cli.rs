@@ -470,7 +470,11 @@ mod tests {
     ];
 
     fn outcome(code: &'static str) -> crate::yt_dlp::UpdateOutcome {
-        crate::yt_dlp::UpdateOutcome { updated: false, code, detail: String::new() }
+        crate::yt_dlp::UpdateOutcome {
+            updated: false,
+            code,
+            detail: String::new(),
+        }
     }
 
     /// **الدالّة صافية وتُحكم بالرموز التسعة**: حالتا نجاح فقط، والسبعة الباقية
@@ -488,9 +492,9 @@ mod tests {
         // **والدليل أن النصّ لا يحكم**: نفس الرمز بنصوص متضادّة ⟹ نفس الرمز.
         // (لو عاد `contains("محدّث")` لانقلب أحد السطرين.)
         let mut a = outcome(crate::yt_dlp::U_FETCH_FAILED);
-        a.detail = "yt-dlp محدّث بالفعل".into();          // نصّ يوهم بالنجاح
+        a.detail = "yt-dlp محدّث بالفعل".into(); // نصّ يوهم بالنجاح
         let mut b = outcome(crate::yt_dlp::U_ALREADY_CURRENT);
-        b.detail = "تعذر جلب المجاميع الموقعة".into();     // نصّ يوهم بالفشل
+        b.detail = "تعذر جلب المجاميع الموقعة".into(); // نصّ يوهم بالفشل
         assert_eq!(exit_code_for(&a), 1, "نصّ النجاح لا يرفع رمز فشل");
         assert_eq!(exit_code_for(&b), 0, "نصّ الفشل لا يخفض رمز نجاح");
     }
@@ -505,24 +509,63 @@ mod tests {
         // النصوص الخام كما تُبنى اليوم في `yt_dlp.rs`، **حرفياً**.
         let raw: [(&'static str, bool, &str); 9] = [
             (crate::yt_dlp::U_NOT_DUE, false, "لم يحن موعد فحص التحديث"),
-            (crate::yt_dlp::U_FETCH_FAILED, false, "تخطي التحديث: network down"),
-            (crate::yt_dlp::U_ALREADY_CURRENT, false, "yt-dlp محدّث بالفعل (2025.01.01)"),
-            (crate::yt_dlp::U_SUMS_FETCH_FAILED, false, "تعذر جلب المجاميع الموقعة: timeout"),
-            (crate::yt_dlp::U_SUMS_NO_ASSET, false, "SHA2-256SUMS لا يحتوي yt-dlp.exe"),
-            (crate::yt_dlp::U_DOWNLOAD_FAILED, false, "فشل تنزيل التحديث (أبقينا النسخة العاملة): 404"),
-            (crate::yt_dlp::U_SWAP_FAILED, false, "فشل تبديل الملف الجديد: denied"),
-            (crate::yt_dlp::U_UPDATED, true, "تم تحديث yt-dlp إلى 2025.02.02"),
-            (crate::yt_dlp::U_PROBE_ROLLBACK, false, "فشل فحص النسخة الجديدة (status=1) — استرجعنا السابقة"),
+            (
+                crate::yt_dlp::U_FETCH_FAILED,
+                false,
+                "تخطي التحديث: network down",
+            ),
+            (
+                crate::yt_dlp::U_ALREADY_CURRENT,
+                false,
+                "yt-dlp محدّث بالفعل (2025.01.01)",
+            ),
+            (
+                crate::yt_dlp::U_SUMS_FETCH_FAILED,
+                false,
+                "تعذر جلب المجاميع الموقعة: timeout",
+            ),
+            (
+                crate::yt_dlp::U_SUMS_NO_ASSET,
+                false,
+                "SHA2-256SUMS لا يحتوي yt-dlp.exe",
+            ),
+            (
+                crate::yt_dlp::U_DOWNLOAD_FAILED,
+                false,
+                "فشل تنزيل التحديث (أبقينا النسخة العاملة): 404",
+            ),
+            (
+                crate::yt_dlp::U_SWAP_FAILED,
+                false,
+                "فشل تبديل الملف الجديد: denied",
+            ),
+            (
+                crate::yt_dlp::U_UPDATED,
+                true,
+                "تم تحديث yt-dlp إلى 2025.02.02",
+            ),
+            (
+                crate::yt_dlp::U_PROBE_ROLLBACK,
+                false,
+                "فشل فحص النسخة الجديدة (status=1) — استرجعنا السابقة",
+            ),
         ];
         let mut diffs = 0;
         for (code, updated, msg) in raw {
-            let old = if updated || msg.contains("محدّث") { 0 } else { 1 };
+            let old = if updated || msg.contains("محدّث") {
+                0
+            } else {
+                1
+            };
             let new = exit_code_for(&crate::yt_dlp::UpdateOutcome {
                 updated,
                 code,
                 detail: msg.to_string(),
             });
-            assert_eq!(new, old, "رمز {code} بنصّه الخام: الجديد {new} والقديم {old}");
+            assert_eq!(
+                new, old,
+                "رمز {code} بنصّه الخام: الجديد {new} والقديم {old}"
+            );
             diffs += 1;
         }
         assert_eq!(diffs, 9, "الجدولان قُبلا على التسعة كلها");
@@ -535,15 +578,27 @@ mod tests {
     fn the_old_text_rule_can_disagree_with_the_code() {
         let cases: [(&'static str, bool, &str); 3] = [
             // فشل حقيقي بنصّ يذكر «محدّث» (رسالة خطأ تشرح الحالة) ⇒ القديم 0 والجديد 1.
-            (crate::yt_dlp::U_FETCH_FAILED, false, "تعذر الفحص: هل yt-dlp محدّث؟"),
+            (
+                crate::yt_dlp::U_FETCH_FAILED,
+                false,
+                "تعذر الفحص: هل yt-dlp محدّث؟",
+            ),
             // نجاح بنصّ لا يذكر «محدّث» (صياغة بديلة) ⇒ القديم 1 والجديد 0.
-            (crate::yt_dlp::U_ALREADY_CURRENT, false, "النسخة المحلية هي الأحدث"),
+            (
+                crate::yt_dlp::U_ALREADY_CURRENT,
+                false,
+                "النسخة المحلية هي الأحدث",
+            ),
             // وتحديثٌ وقع بنصّ لا يذكرها ⇒ القديم 0 للـ`updated` وحده.
             (crate::yt_dlp::U_UPDATED, true, "تم التنزيل"),
         ];
         let mut disagree = 0;
         for (code, updated, msg) in cases {
-            let old = if updated || msg.contains("محدّث") { 0 } else { 1 };
+            let old = if updated || msg.contains("محدّث") {
+                0
+            } else {
+                1
+            };
             let new = exit_code_for(&crate::yt_dlp::UpdateOutcome {
                 updated,
                 code,
@@ -552,7 +607,14 @@ mod tests {
             if old != new {
                 disagree += 1;
             }
-            assert_eq!(new, if updated || code == crate::yt_dlp::U_ALREADY_CURRENT { 0 } else { 1 });
+            assert_eq!(
+                new,
+                if updated || code == crate::yt_dlp::U_ALREADY_CURRENT {
+                    0
+                } else {
+                    1
+                }
+            );
         }
         assert!(
             disagree >= 2,
