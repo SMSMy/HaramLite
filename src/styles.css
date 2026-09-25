@@ -185,12 +185,28 @@ body.settings-mode .settings-tab-panel:not([hidden]) {
     animation: shimmer 2s infinite;
 }
 
-/* `.spring-panel` / `.spring-panel.open` / `.spring-panel-content` كانت هنا:
-   أنماط لوحة «الإعدادات المتقدمة» التي لا تُفتح إلا بستّ نقرات على شارة
-   الإصدار. وعناصرها انتقلت إلى شاشة الإعدادات، **فحُذف المسار كاملاً** (قرار
-   المالك، جولة settings2) وحُذفت أنماطه معه: لا صنف بلا عنصر يستعمله.
-   (مقيس قبل الحذف: `spring-panel` لم يكن مذكوراً في أي ملف غير `index.html`
-   وهذا الملف — لا اختبار ولا سكربت ولا وثيقة.) */
+/* لوحة «الإعدادات المتقدمة»: مطويّة افتراضياً (`grid-template-rows: 0fr` +
+   `opacity: 0`) و`.open` يفتحها — والفتح **بستّ نقرات على `#version-badge`**
+   (`src/main.ts` ⇒ `wireHiddenAdvancedPanel`). **أُعيدت هذه القواعد مع اللوحة**
+   بقرار المالك: بلا `grid-template-rows: 0fr` لظهر `#keep-inst` و`#fmt-select`
+   في `<main>` دائماً، وهو عكس الإخفاء المقصود. */
+.spring-panel {
+    transition: grid-template-rows 0.5s cubic-bezier(0.4, 0, 0.2, 1), margin 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease;
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    margin: 0;
+}
+
+.spring-panel.open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    margin-bottom: 1rem;
+}
+
+.spring-panel-content {
+    overflow: hidden;
+}
 
 @keyframes pulse-drag {
     0% { box-shadow: 0 0 0 0 rgba(218, 119, 86, 0.4); }

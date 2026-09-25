@@ -25,7 +25,6 @@ const i18n = {
     // استعمالها حيث تطابق المعنى، وهذا المفتاح وحده جديد (لا مقابل له).
     // وقيمته صارت «الفصل والصيغة» بعد نقل سطر المزوّد الفعّال إلى تبويب
     // «الأداء والمعالجة» (فلم يبقَ في التبويب مزوّد، وبقي الفصل والصيغة).
-    set_tab_engine: 'الفصل والصيغة',
     set_tab_update: 'التحديث والصيانة',
     settings_back: 'رجوع',
     set_group_watch: 'المراقبة التلقائية',
@@ -71,6 +70,13 @@ const i18n = {
     watch_enable: 'تفعيل مجلد المراقبة',
     watch_pick: 'اختيار المجلد',
     watch_mode_label: 'وضع المعالجة:',
+    // سطح `watch_out_kind` (جولة settings2 الرابعة): الحقل كان يُقرأ في
+    // `watch_service.rs:519` بلا أي سطح، فأُضيف سطحه وتسمياته.
+    watch_out_kind_label: 'نوع الإخراج:',
+    watch_out_kind_auto: 'تلقائي',
+    watch_out_kind_video: 'فيديو',
+    watch_out_kind_audio: 'صوت فقط (MP3)',
+    watch_out_kind_hint: '«تلقائي» و«فيديو» ينتجان فيديو، ويسقط المحرّك ذكيّاً إلى MP3 إن كان الملف صوتياً. «صوت فقط» ينتج MP3 دائماً.',
     watch_size_label: 'حجم أقصى للمراقبة (MB):',
     watch_rescan_label: 'فاصل المسح الدوري (ثانية):',
     max_jobs_label: 'أقصى فصول متزامنة:',
@@ -337,7 +343,6 @@ const i18n = {
     set_notify: 'Completion notifications + sound',
     settings_title: 'Settings',
     set_group_perf: 'Performance & processing',
-    set_tab_engine: 'Separation & format',
     set_tab_update: 'Updates & maintenance',
     settings_back: 'Back',
     set_group_watch: 'Automatic watching',
@@ -377,6 +382,11 @@ const i18n = {
     watch_enable: 'Enable watch folder',
     watch_pick: 'Choose folder',
     watch_mode_label: 'Processing mode:',
+    watch_out_kind_label: 'Output kind:',
+    watch_out_kind_auto: 'Automatic',
+    watch_out_kind_video: 'Video',
+    watch_out_kind_audio: 'Audio only (MP3)',
+    watch_out_kind_hint: 'Automatic and Video produce a video, and the engine falls back to MP3 for audio-only inputs. Audio only always produces MP3.',
     watch_size_label: 'Max watch file size (MB):',
     watch_rescan_label: 'Periodic rescan (seconds):',
     max_jobs_label: 'Max concurrent separations:',

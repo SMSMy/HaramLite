@@ -102,7 +102,7 @@ const REQUIRED: ReadonlyArray<readonly [string, readonly string[]]> = [
       'btn-repair-open',
     ],
   ],
-  ['عن البرنامج', ['btn-report', 'btn-about']],
+  ['عن البرنامج', ['btn-report', 'about-body']],
 ];
 
 /** المجموعات المطلوبة **خارج** الحاوية: لوحة تلغرام والإصلاح وزرّ اللغة. */
@@ -137,7 +137,7 @@ const ALL_REQUIRED: readonly string[] = [
   ...OUTSIDE.filter((id) => !REQUIRED.some(([, ids]) => ids.includes(id))),
 ];
 
-const TABS = ['performance', 'engine', 'watch', 'bridge', 'telegram', 'update', 'about'];
+const TABS = ['performance', 'watch', 'bridge', 'telegram', 'update', 'about'];
 
 /** يركّب DOM ويربط الشاشة (والوضع الأوّلي من الـhash — بديل الاختبار). */
 async function mount(initialHash = ''): Promise<typeof import('../settingsScreen')> {

@@ -33,11 +33,9 @@ export const SETTINGS_TAB_MAP: Readonly<Record<string, SettingsTab>> = Object.fr
   'max-jobs': 'performance',
   'setting-notify': 'performance',
 
-  // الفصل والصيغة: خيارا الفصل والإخراج. كانا في لوحة «الإعدادات المتقدمة»
-  // داخل `<main>` — صندوق لا يُفتح إلا بستّ نقرات على شارة الإصدار، وحُذف مساره
-  // كاملاً (ترميزه ومعالجه وأنماطه) بعد نقل عناصره إلى هنا.
-  'keep-inst': 'engine',
-  'fmt-select': 'engine',
+  // (وكان هنا `keep-inst` و`fmt-select` في تبويب «الفصل والصيغة» — أُعيدا إلى
+  // اللوحة المتقدّمة خلف ٦ نقرات بقرار المالك، وصار التبويب بلا معرّف فحُذف.
+  // وهما الآن في `SETTINGS_HIDDEN_SURFACES` لا في خريطة التبويبات.)
 
   // المراقبة التلقائية بخياراتها — ومنها حدّ الحجم وفاصل المسح
   // (`watch_size_label` · `watch_rescan_label` يقرأهما `watch.ts`).
@@ -50,6 +48,9 @@ export const SETTINGS_TAB_MAP: Readonly<Record<string, SettingsTab>> = Object.fr
   'btn-watch-cancel': 'watch',
   'watch-max-size': 'watch',
   'watch-rescan': 'watch',
+  // سطح `watch_out_kind`: أُضيف في جولة settings2 الرابعة بعد أن أثبت القياس أن
+  // للحقل أثراً حقيقياً (`watch_service.rs:519` ⇒ `audio` ينتج MP3) وكان بلا سطح.
+  'watch-out-kind': 'watch',
 
   // التكامل مع المتصفح
   'setting-bridge': 'bridge',
@@ -80,7 +81,8 @@ export const SETTINGS_TAB_MAP: Readonly<Record<string, SettingsTab>> = Object.fr
   'btn-report': 'update',
 
   // عن البرنامج
-  'btn-about': 'about',
+  // «حول البرنامج»: العنوان والمتن يُعرضان مباشرة في التبويب (#about-body).
+  'about-body': 'about',
 });
 
 /**
@@ -92,6 +94,35 @@ export const SETTINGS_MENU_CHROME: readonly string[] = Object.freeze([
   'settings-menu',
   'settings-close',
   'settings-tabs',
+]);
+
+/**
+ * **أسطح مخفيّة مقصودة** — عناصر تحكّم **ليست في أي تبويب** وليست مسارات ميتة:
+ * قرار المالك (جولة settings2) أن `#keep-inst` (الاحتفاظ بالموسيقى) و
+ * `#fmt-select` (صيغة الصوت) يبقيان **خلف ٦ نقرات على شارة الإصدار** في لوحة
+ * «الإعدادات المتقدمة» — وهي سياسة البرنامج منذ البداية بنصّ قراره.
+ *
+ * **ولماذا هذا التصريح لا استثناء في حارس الميتات**: المعرّفان **موجودان فعلاً**
+ * في `index.html`، فـ`getElementById` عليهما **يُحلّ** ولا حاجة إلى أي قائمة
+ * استثناء في حارس «لا مسار ميت» (وقد بقي ذلك الحارس **بصفر استثناء**). وهذا
+ * التصريح يضيف ما هو أقوى من الاستثناء: **أين يجب أن يكونا** (داخل اللوحة، لا
+ * داخل الشاشة)، **وأن يُفتحا بالنقر الستّ فعلاً** — فلا يتحوّل التصريح إلى غطاء.
+ */
+export const SETTINGS_HIDDEN_SURFACES: readonly {
+  id: string;
+  container: string;
+  why: string;
+}[] = Object.freeze([
+  {
+    id: 'keep-inst',
+    container: 'advanced-panel-container',
+    why: 'خيار «الاحتفاظ بالموسيقى» — مخفيّ خلف ٦ نقرات بقرار المالك. يقرأه main.ts وqueue.ts بالمعرّف نفسه، فلا نسخة ثانية.',
+  },
+  {
+    id: 'fmt-select',
+    container: 'advanced-panel-container',
+    why: 'خيار «صيغة الصوت» (MP3/WAV/FLAC) — مخفيّ خلف ٦ نقرات بقرار المالك. يقرأه queue.ts بالمعرّف نفسه.',
+  },
 ]);
 
 /**
@@ -110,7 +141,6 @@ export const SETTINGS_MENU_CHROME: readonly string[] = Object.freeze([
  */
 export const SETTINGS_GROUP_HEADING_KEYS: readonly string[] = Object.freeze([
   'set_group_perf',
-  'set_tab_engine',
   'set_group_watch',
   'set_group_integration',
   'set_group_system',
@@ -166,6 +196,7 @@ export const SETTINGS_FIELD_CONTROL: Readonly<Record<string, string>> = Object.f
   watch_mode: 'watch-mode',
   watch_max_size_mb: 'watch-max-size',
   watch_rescan_secs: 'watch-rescan',
+  watch_out_kind: 'watch-out-kind',
   // التكامل
   bridge_enabled: 'setting-bridge',
   // التحديث والصيانة
@@ -195,15 +226,6 @@ export const SETTINGS_FIELDS_WITHOUT_CONTROL: readonly { field: string; why: str
         '(`askAutostartOnce` في integration.ts:820) كي لا يُسأل المستخدم عن التشغيل ' +
         'مع النظام مرتين. ولا معنى لسطح يضبطها.',
     },
-    {
-      field: 'watch_out_kind',
-      why:
-        'عطب قائم **مُعلَن** (اكتُشف بهذا الحارس، ولم يُصلَح ولم يُخفَ): يقرأه ' +
-        '`watch_service.rs:468,519` ليقرّر نوع إخراج ملفّ المراقبة، ولا سطح له، ' +
-        'و`settings.ts:133` يرسل القيمة `auto` **ثابتة** في كل دفع ⇒ فتحرير ' +
-        'settings.json لا يدوم (الدفعة التالية تُعيدها). فهو إعداد بلا سطح ' +
-        '**وبلا أثر دائم** — مرشّح للحذف أو لسطح حقيقي، والقرار للمالك.',
-    },
   ]);
 
 /**
@@ -214,11 +236,10 @@ export const SETTINGS_FIELDS_WITHOUT_CONTROL: readonly { field: string; why: str
 export const SETTINGS_OUTSIDE_TABS: readonly { id: string; why: string }[] = Object.freeze([
   { id: 'lang-toggle', why: 'زرّ لغة الواجهة في الشريط العلوي: ليس قيمة إعداد (لا حقل له في `Settings`)، ويجب أن يبقى ظاهراً في الوضعين — نقله إلى تبويب «عن البرنامج» يحجبه ما لم تُفتح الشاشة (انظر styles.css: الرأس يبقى في وضع الإعدادات).' },
 
-  { id: 'about-overlay', why: 'نافذة «حول» المنبثقة — تُفتح بـ`#btn-about` وتبقى خارج الشاشة.' },
-  { id: 'about-title', why: 'عنوان نافذة «حول» المنبثقة.' },
-  { id: 'about-close', why: 'زرّ إغلاق نافذة «حول» المنبثقة.' },
-  { id: 'about-body', why: 'جسم نافذة «حول» المنبثقة (يملؤه aboutUpdate.ts).' },
-  { id: 'about-ok', why: 'زرّ تأكيد نافذة «حول» المنبثقة.' },
+  // (وكانت هنا خمسة معرّفات لمودال «حول البرنامج»: `about-overlay` ·
+  // `about-title` · `about-close` · `about-body` · `about-ok`. وقد حُذف المودال
+  // بقرار المالك فانتقل `about-body` **إلى تبويب «حول البرنامج»** في الخريطة،
+  // وزال الأربعة الآخرون مع المودال — فلا يُصرَّح بمعرّف غير موجود.)
 
   { id: 'autostart-overlay', why: 'نافذة سؤال التشغيل مع النظام — تُعرض مرّة واحدة عند الإقلاع، لا من الإعدادات.' },
   { id: 'autostart-ask-title', why: 'عنوان نافذة سؤال التشغيل مع النظام.' },

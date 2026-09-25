@@ -678,7 +678,11 @@ function loadSettingsTabMap() {
   if (!map || typeof map !== 'object' || Array.isArray(map)) return null;
   if (!Array.isArray(chrome) || !Array.isArray(outside)) return null;
   const ids = Object.keys(map);
-  if (ids.length < 40 || chrome.length < 3 || outside.length < 20) return null; // vacuity gate
+  // **بوّابة عدم بطلان لا عدّاد دقيق**: الحدّ فضفاض (٣٥) عن قصد؛ فالعدد الدقيق
+  // (٣٩ اليوم) يحرسه `src/__tests__/settingsTabs.test.ts`. ولو ثبّتناه هنا لسقط
+  // هذا الحارس عند كل تغيير مشروع في الخريطة — ووقع فعلاً: ٤٠ ⇒ ٣٩ بعد نقل
+  // `keep-inst`/`fmt-select` إلى الأسطح المخفيّة المُعلَنة.
+  if (ids.length < 35 || chrome.length < 3 || outside.length < 20) return null; // vacuity gate
   if (!outside.every((o) => o && typeof o.id === 'string' && typeof o.why === 'string')) return null;
   return { map, chrome, outside, ids };
 }
@@ -1342,7 +1346,7 @@ async function main() {
       1,
     );
   }
-  const TAB_NAMES = ['performance', 'engine', 'watch', 'bridge', 'telegram', 'update', 'about'];
+  const TAB_NAMES = ['performance', 'watch', 'bridge', 'telegram', 'update', 'about'];
 
   log('HaramLite layout guard');
   log(`  browser : ${exe}`);

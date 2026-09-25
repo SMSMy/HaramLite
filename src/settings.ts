@@ -79,6 +79,22 @@ export function groupModeFrom(raw: string | null): 'mentions' | 'all' {
   return raw === 'all' ? 'all' : 'mentions';
 }
 
+/** **نوع إخراج ملفّات مجلد المراقبة** — `watch_out_kind` في الرست.
+ *
+ *  كان **بلا سطح**: `collectSettings` كان يرسل `'auto'` **ثابتة**، و
+ *  `watch_service.rs:519-525` يقرأه فيقرّر `OutKind` لكل ملف يراقبه (`audio`
+ *  ⇒ MP3، و`auto`/`video` ⇒ فيديو مع سقوط ذكيّ إلى mp3 للصوتيّ)، وهو أيضاً في
+ *  `fingerprint` (‏`watch_service.rs:468`) فتغييره **يُعيد تشغيل خيط المراقبة**.
+ *  ⇒ فله **أثر حقيقي**، وقياس الجولة أثبته، فأُضيف له سطح في تبويب «المراقبة».
+ *
+ *  والتطبيع هنا **مصدر وحيد** (كنمط `groupModeFrom` و`clampConcurrentJobs`):
+ *  القائمة والخزن والمرسَل تمرّ منه، فقيمة غريبة في `settings.json` أو في
+ *  التخزين لا تُنتج قيمة ثالثة. والمجهول يُردّ إلى `auto` — وهو **الافتراضيّ
+ *  الذي كان يعمل به التطبيق فعلاً**، فلا يتغيّر سلوك مستخدم قديم. */
+export function watchOutKindFrom(raw: string | null): 'auto' | 'video' | 'audio' {
+  return raw === 'video' || raw === 'audio' ? raw : 'auto';
+}
+
 let settingsSyncTimer: number | undefined;
 /** Hook filled by wireWatchSettings so external settings changes can repaint. */
 let refreshWatchUi: (() => void) | null = null;
@@ -130,7 +146,9 @@ export function collectSettings(): RustSettings {
     watch_enabled: localStorage.getItem('hl.watch') === '1',
     watch_path: localStorage.getItem('hl.watch_path') || null,
     watch_mode: localStorage.getItem('hl.watch_mode') || 'song',
-    watch_out_kind: 'auto',
+    // كان `'auto'` ثابتة (حقل بلا سطح) — صار من سطحه في تبويب «المراقبة»،
+    // والقيمة تمرّ بـ`watchOutKindFrom` فلا يدخل التخزين قيمة ثالثة.
+    watch_out_kind: watchOutKindFrom(localStorage.getItem('hl.watch_kind')),
     watch_max_size_mb: Number(localStorage.getItem('hl.watch_max_mb')) || 2048,
     watch_rescan_secs: Number(localStorage.getItem('hl.watch_rescan')) || 60,
     // م١: سقف الفصول المتزامنة (1..=2). الافتراضي 1 = الطرف الآمن (فصلان
@@ -175,6 +193,11 @@ export async function seedSettings(): Promise<void> {
       if (localStorage.getItem(ls) === null && typeof s[k] === 'string') {
         localStorage.setItem(ls, s[k] as string);
       }
+    }
+    // نوع إخراج المراقبة: بذرة **مطبَّعة** لا منسوخة (كنمط وضع المجموعة أدناه)،
+    // فقيمة غريبة في settings.json لا تُدخل قيمة ثالثة إلى التخزين.
+    if (localStorage.getItem('hl.watch_kind') === null && typeof s.watch_out_kind === 'string') {
+      localStorage.setItem('hl.watch_kind', watchOutKindFrom(s.watch_out_kind));
     }
     // م٤: بذرة وضوح رسائل المجموعة — **مطبَّعة** لا منسوخة: قيمة الخلف
     // (`telegram_group_mode`) تمرّ بـ`groupModeFrom` أيضاً، فقيمة غريبة في

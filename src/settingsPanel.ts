@@ -20,7 +20,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { t } from './i18n';
 import { openSettingsScreen } from './settingsScreen';
-import { groupModeFrom, notifyWatchUiChanged, pushSettings, type RustSettings } from './settings';
+import { groupModeFrom, notifyWatchUiChanged, pushSettings, watchOutKindFrom, type RustSettings } from './settings';
 import { showCudaHint, updateCudaBanner, refreshProviderLine, type CudaStatus } from './cuda';
 import { askAutostartOnce, refreshAutostart, refreshBridgeExt } from './integration';
 import { refreshYtdlpUpdateUi } from './ytdlpUi';
@@ -147,6 +147,21 @@ export function wireSettings(): void {
       const v = groupModeFrom(groupMode.value);
       groupMode.value = v; // قيمة دخيلة في DOM تُصحَّح قبل أن تُخزَّن
       localStorage.setItem('hl.tg_group_mode', v);
+      pushSettings();
+    });
+  }
+
+  // `#watch-out-kind`: **سطح `watch_out_kind`** — كان الحقل بلا سطح
+  // (`collectSettings` يرسل `auto` ثابتة) ويقرأه `watch_service.rs:519` فيقرّر
+  // نوع إخراج كل ملف يراقبه. والقيم الثلاث معلَنة، والتطبيع عبر
+  // `watchOutKindFrom` — مصدر واحد يشاركه `collectSettings`، فالمعروض = المُرسَل.
+  const watchOutKind = document.getElementById('watch-out-kind') as HTMLSelectElement | null;
+  if (watchOutKind) {
+    watchOutKind.value = watchOutKindFrom(localStorage.getItem('hl.watch_kind'));
+    watchOutKind.addEventListener('change', () => {
+      const v = watchOutKindFrom(watchOutKind.value);
+      watchOutKind.value = v; // قيمة دخيلة في DOM تُصحَّح قبل أن تُخزَّن
+      localStorage.setItem('hl.watch_kind', v);
       pushSettings();
     });
   }

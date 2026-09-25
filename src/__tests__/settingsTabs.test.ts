@@ -26,6 +26,15 @@
  * لنفس الخريطة، فلا يُدَّعى أن هذا الملف وحده يُثبت الظهور.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+/* مِحوَرات Tauri: هذا الملف يستورد وحدات تنادي `invoke` (‏`queue.ts` في حارس
+ * `updateQualityOptions`، و`hiddenPanel.ts` في حارس النقر الستّ). بلا محوَل
+ * يفشل النداء **بعد** انتهاء الاختبار فيُحسب خطأً غير معالَج ويُسقِط الملف كلّه
+ * (وقع فعلاً: `Test Files 21 passed` مع `Errors 6` و`EXIT=1`). */
+const h = vi.hoisted(() => ({ invoke: vi.fn(async () => ({})) }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: h.invoke }));
+vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
+
 import indexHtml from '../../index.html?raw';
 import settingsRs from '../../src-tauri/src/settings.rs?raw';
 import { i18n } from '../i18n';
@@ -33,6 +42,7 @@ import {
   SETTINGS_FIELD_CONTROL,
   SETTINGS_FIELDS_WITHOUT_CONTROL,
   SETTINGS_GROUP_HEADING_KEYS,
+  SETTINGS_HIDDEN_SURFACES,
   SETTINGS_MENU_CHROME,
   SETTINGS_OUTSIDE_TABS,
   SETTINGS_TAB_MAP,
@@ -127,6 +137,10 @@ async function mountInSettingsMode(): Promise<typeof import('../settingsScreen')
 
 const MAP_IDS: readonly string[] = Object.keys(SETTINGS_TAB_MAP);
 
+/** معرّفات **الأسطح المخفيّة المعلَنة** (اللوحة المتقدّمة خلف ٦ نقرات) — مُصنَّفة
+ *  تصنيفاً صريحاً، لكنها ليست في تبويب ولذلك لا تدخل `MAP_IDS`. */
+const HIDDEN_IDS: readonly string[] = SETTINGS_HIDDEN_SURFACES.map((h) => h.id);
+
 /** الحاويات التي تحمل المعرّف حين يكون تبويبها مفعّلاً. */
 function activate(tab: string): void {
   const btn = document.querySelector<HTMLElement>(`[data-tab-btn="${tab}"]`);
@@ -167,8 +181,9 @@ afterEach(() => {
 describe('خريطة تبويبات الإعدادات · الخريطة معلَنة وغير باطلة', () => {
   it('كل تبويب من السبعة له معرّفات، والخريطة ليست صغيرة ولا مكرّرة', () => {
     // حارس ضد الخريطة الفارغة/الناقصة: «كل المعرّفات في تبويبها» تصير صحيحة
-    // بلا معنى لو كانت الخريطة فارغة.
-    expect(MAP_IDS.length, 'عدد المعرّفات في الخريطة').toBeGreaterThanOrEqual(40);
+    // بلا معنى لو كانت الخريطة فارغة. والحدّ **مقيس**: ٣٩ معرّفاً بعد أن خرج
+    // `keep-inst`/`fmt-select` إلى الأسطح المخفيّة ودخل `watch-out-kind`.
+    expect(MAP_IDS.length, 'عدد المعرّفات في الخريطة').toBeGreaterThanOrEqual(39);
     expect(new Set(MAP_IDS).size, 'لا معرّف مكرّر').toBe(MAP_IDS.length);
     for (const tab of SETTINGS_TABS) {
       const n = MAP_IDS.filter((id) => SETTINGS_TAB_MAP[id] === tab).length;
@@ -348,30 +363,90 @@ describe('لا مسار ميت · لا لوحة إعدادات بلا عنصر،
       .filter(
         (a) =>
           !a.box ||
-          !Array.from(a.box.querySelectorAll<HTMLElement>('[id]')).some((el) =>
-            MAP_IDS.includes(el.id),
+          // «معرّف مُصنَّف» = في خريطة التبويبات **أو** سطح مخفيّ مُعلَن (اللوحة
+          // المتقدّمة خلف ٦ نقرات) — فالتصريح لا يُسقِط الحارس، وحاويةٌ بلا أي
+          // معرّف مُصنَّف تبقى عطباً.
+          !Array.from(a.box.querySelectorAll<HTMLElement>('[id]')).some(
+            (el) => MAP_IDS.includes(el.id) || HIDDEN_IDS.includes(el.id),
           ),
       )
       .map((a) => {
         const where = a.box
           ? `<${a.box.tagName.toLowerCase()}${a.box.id ? `#${a.box.id}` : ''}>`
           : '(بلا أب)';
-        return `${a.key} داخل ${where} بلا أي معرّف من الخريطة`;
+        return `${a.key} داخل ${where} بلا أي معرّف مُصنَّف`;
       });
     expect(dead, `لوحات إعدادات ميتة (عنوان بلا عنصر): ${dead.join(' · ')}`).toEqual([]);
   });
 
-  it('لا عنصر للوحة المحذوفة في DOM (ولا صنفها)', async () => {
+  /* اللوحة المتقدّمة: **سطح مقصود** بقرار المالك (٦ نقرات على شارة الإصدار)،
+   * لا مسار ميت. وهذا الحارس يقيس ثلاثة أشياء: أنها موجودة، وأنها **هي** الحاملة
+   * للمعرّفين المعلَنين، وأنها تُفتح بالنقر الستّ **فعلاً** ولا تُفتح بخمس —
+   * فالتصريح لا يصير غطاءً: لو نُقل المعرّف إلى تبويب، أو نُزع المعالج، سقط. */
+  it('اللوحة المتقدّمة موجودة، وتحمل المعرّفين المعلَنين، وتُفتح بستّ نقرات لا بخمس', async () => {
+    const screen = await mountInSettingsMode();
+    expect(screen.settingsScreenIsOn(), 'الشاشة مفتوحة (وضع الإعدادات)').toBe(true);
+
+    const panel = document.getElementById('advanced-panel-container');
+    expect(panel, '#advanced-panel-container موجود').not.toBeNull();
+    expect(panel!.classList.contains('spring-panel'), 'صنف .spring-panel عليه').toBe(true);
+    expect(
+      document.querySelector('main')!.contains(panel!),
+      'اللوحة داخل <main> (سطح العرض الرئيسي لا شاشة الإعدادات)',
+    ).toBe(true);
+    // ومطويّة افتراضياً: بلا `.open` لا يُرى محتواها (والنمط في styles.css).
+    expect(panel!.classList.contains('open'), 'مطويّة قبل النقر').toBe(false);
+
+    const menu = document.getElementById('settings-menu')!;
+    for (const { id, container } of SETTINGS_HIDDEN_SURFACES) {
+      const el = document.getElementById(id);
+      expect(el, `#${id} موجود`).not.toBeNull();
+      expect(
+        document.getElementById(container)!.contains(el!),
+        `#${id} داخل #${container}`,
+      ).toBe(true);
+      expect(menu.contains(el!), `#${id} **ليس** في شاشة الإعدادات`).toBe(false);
+    }
+
+    // **والفتح مقيس سلوكياً**: النقر على الشارة ستّاً يفتح، وخمساً لا تفتح.
+    const { wireHiddenAdvancedPanel } = await import('../hiddenPanel');
+    wireHiddenAdvancedPanel();
+    const badge = document.getElementById('version-badge')!;
+    for (let i = 0; i < 5; i++) badge.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(panel!.classList.contains('open'), 'خمس نقرات لا تفتح').toBe(false);
+    badge.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(panel!.classList.contains('open'), 'السادسة تفتح').toBe(true);
+    // والعدّاد **يُصفَّر عند ٦** (سلوك مسترجَع من `f2114a5^` حرفياً)، فالطيّ يلزمه
+    // ستّ نقرات **جديدة** لا واحدة: خمسٌ لا تطوي، والسادسة تطوي.
+    for (let i = 0; i < 5; i++) badge.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(panel!.classList.contains('open'), 'خمس نقرات بعد الفتح لا تطوي').toBe(true);
+    badge.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(panel!.classList.contains('open'), 'وستّ نقرات جديدة تطوي').toBe(false);
+  });
+
+  /* **«حول البرنامج» يُعرض مباشرة، لا في مودال** (قرار المالك، جولة settings2):
+   * كان زرّ `#btn-about` يفتح `#about-overlay`. والمحتوى انتقل إلى `#about-body`
+   * **داخل تبويب «حول البرنامج»**. وهذا الحارس يمنع عودة المودال: لا عنصر
+   * `#about-overlay`، ولا زرّ فتح `#btn-about`، و`#about-body` **داخل التبويب**
+   * ومملوء فعلاً (‏`fillAbout()` كتبت فيه) — فلا يبقى مودال ولا سطح فارغ. */
+  it('لا مودال «حول البرنامج»: المتن داخل تبويبه ومملوء', async () => {
     await mountInSettingsMode();
-    expect(document.getElementById('advanced-panel'), 'element #advanced-panel').toBeNull();
-    expect(
-      document.getElementById('advanced-panel-container'),
-      'element #advanced-panel-container',
-    ).toBeNull();
-    expect(
-      document.querySelectorAll('.spring-panel, .spring-panel-content').length,
-      'عناصر .spring-panel في DOM',
-    ).toBe(0);
+    expect(document.getElementById('about-overlay'), '#about-overlay').toBeNull();
+    expect(document.getElementById('btn-about'), '#btn-about').toBeNull();
+    expect(document.getElementById('about-close'), '#about-close').toBeNull();
+    expect(document.getElementById('about-ok'), '#about-ok').toBeNull();
+
+    const body = document.getElementById('about-body');
+    expect(body, '#about-body موجود').not.toBeNull();
+    const panel = document.querySelector('.settings-tab-panel[data-tab="about"]');
+    expect(panel, 'تبويب «حول البرنامج» موجود').not.toBeNull();
+    expect(panel!.contains(body!), '#about-body **داخل** تبويب about').toBe(true);
+    // وفي DOM المشحون هو فارغ (يملؤه `fillAbout()` عند الإقلاع) — فيُقاس أن
+    // الملء **يعمل** على هذا الموضع بعينه، لا أن يُدَّعى.
+    const { wireAbout } = await import('../aboutUpdate');
+    wireAbout();
+    expect((body!.textContent || '').trim().length, 'المتن مملوء بعد wireAbout').toBeGreaterThan(20);
+    expect(body!.querySelectorAll('[data-open-url]').length, 'روابط الائتمان تعمل في موضعها الجديد').toBeGreaterThan(0);
   });
 
   it('كل getElementById في src/*.ts يشير إلى معرّف موجود — بلا أي قائمة استثناء', async () => {
@@ -407,9 +482,12 @@ describe('لا مسار ميت · لا لوحة إعدادات بلا عنصر،
     }
 
     // **الحدّ مقيس لا مُدوَّر**: عدد المعرّفات الفريدة التي تُحلّ فعلاً في
-    // `src/*.ts` (‏مقيس 2026-09-25 بعد تنظيف الجولتين الثالثة والرابعة: ١٣٧).
-    // ونقصانه يعني أن مساراً أُزيل، فيُحدَّث الرقم عمداً بدل أن يمرّ الفحص بلا معنى.
-    expect(total, 'عدد مسارات getElementById المقروءة من src/*.ts').toBeGreaterThanOrEqual(137);
+    // `src/*.ts` — **١٣٦** بعد جولة settings2 الرابعة (كان ١٣٧): حذف مودال «حول»
+    // أزال أربعة مسارات (`about-overlay` · `btn-about` · `about-close` ·
+    // `about-ok`)، ونقل اللوحة المتقدّمة إلى `src/hiddenPanel.ts` نقل معرّفين
+    // معها، ودخل `watch-out-kind` سطحاً جديداً. ونقصانه يعني أن مساراً أُزيل،
+    // فيُحدَّث الرقم عمداً بدل أن يمرّ الفحص بلا معنى.
+    expect(total, 'عدد مسارات getElementById المقروءة من src/*.ts').toBeGreaterThanOrEqual(136);
 
     // **ولا قائمة استثناء** — وكانت هنا واحدة على `main.ts`. وثلاثتها حُذفت
     // (`preview-toggle` · `preview-duration` · `preview-hint`)، **والقائمة معها**:
@@ -419,6 +497,38 @@ describe('لا مسار ميت · لا لوحة إعدادات بلا عنصر،
       missing,
       `مسارات ميتة في src/*.ts (تنادي عناصر غير موجودة في index.html): ${missing.join(' · ')}`,
     ).toEqual([]);
+    // **وصفر استثناء** — وهذه ليست زخرفة: بعد إعادة اللوحة المتقدّمة (قرار
+    // المالك) صار معرّفها **موجوداً** فحلّ الحارس بلا حاجة إلى قائمة استثناء.
+    // ولو أُزيل ترميز اللوحة يوماً لبقي الحارس ساقطاً كما كان. (والحارس على
+    // `src/main.ts` وحده لا يكفي: المسح الشامل هو ما كشف `q-wrap` في `queue.ts`.)
+    expect(SETTINGS_HIDDEN_SURFACES.length, 'الأسطح المخفيّة مصرَّح بها').toBeGreaterThan(0);
+  });
+
+  /* **لا تبويب بلا معرّف**: العلّة التي أُغلقت مرّتين — تبويب معروض ولا شيء فيه.
+   * `engine` صار بلا أي معرّف بعد أن أُعيد `#keep-inst`/`#fmt-select` إلى اللوحة
+   * المتقدّمة، فحُذف التبويب. وهذا الحارس يمنع عودة الصنف: أي تبويب في
+   * `SETTINGS_TABS` بلا معرّف واحد ⇒ يسقط. */
+  it('لا تبويب بلا أي معرّف في الخريطة', async () => {
+    await mountInSettingsMode();
+    const empty: string[] = [];
+    const counts: string[] = [];
+    for (const tab of SETTINGS_TABS) {
+      const n = MAP_IDS.filter((id) => SETTINGS_TAB_MAP[id] === tab).length;
+      counts.push(`  ${tab.padEnd(12)} ${n}`);
+      if (n === 0) empty.push(tab);
+    }
+    // eslint-disable-next-line no-console
+    console.log('  التبويب       معرّفات');
+    for (const c of counts) {
+      // eslint-disable-next-line no-console
+      console.log(c);
+    }
+    expect(empty, `تبويبات بلا أي معرّف (تبويب فارغ = عطب): ${empty.join(' · ')}`).toEqual([]);
+    // والبنية تُطابقه: زرّ وحاوية لكل تبويب معلَن، ولا تبويب زائد في الترميز.
+    const btns = Array.from(document.querySelectorAll<HTMLElement>('[data-tab-btn]')).map((b) => b.dataset.tabBtn);
+    const panels = Array.from(document.querySelectorAll<HTMLElement>('.settings-tab-panel')).map((p) => p.dataset.tab);
+    expect(btns, 'أزرار التبويب = SETTINGS_TABS').toEqual([...SETTINGS_TABS]);
+    expect(panels, 'حاويات التبويب = SETTINGS_TABS').toEqual([...SETTINGS_TABS]);
   });
 
   /* الأثر المقيس لحذف ربط `#q-wrap`/`#quality-select`: **صفر** — وهذا يقيسه

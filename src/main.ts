@@ -6,10 +6,7 @@ import { applyLang, t, wireLang } from './i18n';
 import { pushLogLine, refresh, wireLogToggle } from './log';
 import type { LogLine } from './types';
 import { startLongtaskWatch, startStallDetector } from './diagnostics';
-import {
-  pushSettings,
-  seedSettings,
-} from './settings';
+import { seedSettings } from './settings';
 import { wireWatchSettings } from './watch';
 import * as session from './session';
 import { outDirOf, setVerdictHtml, verdictHtml } from './media';
@@ -20,6 +17,7 @@ import { autoHealthCheck, wireRepair } from './repair';
 import { updateCudaBanner, refreshProviderLine } from './cuda';
 import { silentUpdateCheck, wireAbout, wireReport, wireUpdateCheck } from './aboutUpdate';
 import { wireSettings } from './settingsPanel';
+import { wireHiddenAdvancedPanel } from './hiddenPanel';
 import { wireSettingsScreen } from './settingsScreen';
 
 
@@ -46,40 +44,6 @@ function wireContextMenu(): void {
 
 /* ── wiring ─────────────────────────────────────────────────────────── */
 
-/* ربط «الاحتفاظ بالموسيقى» (`#keep-inst`) — وهو اليوم كل ما في هذه الدالة.
- *
- * **وكان معه مسار ثانٍ** (واسم الدالة `wireSecretSettings`): عدّاد ستّ نقرات على
- * `#version-badge` يفتح لوحة «الإعدادات المتقدمة» (`#advanced-panel-container`
- * بـ`.spring-panel`) وفيها `#keep-inst` · `#fmt-select` · `#watch-max-size` ·
- * `#watch-rescan`. وعناصرها الأربعة انتقلت إلى تبويبي «الفصل والصيغة» و«المراقبة»
- * في شاشة الإعدادات، فبقي الصندوق بعنوانه بلا عنصر.
- * **فحُذف المسار كاملاً** (قرار المالك، جولة settings2): الترميز في `index.html`،
- * والعدّاد هنا، وقواعد `.spring-panel` في `src/styles.css` ⇒ **لا مسار يفتح لوحة
- * غير موجودة، ولا عدّاد نقرات على الشارة**. والشارة نفسها باقية: `init()` يعرض
- * عليها الإصدار من `ping` (`#version-badge`).
- * **وحرّاسه** في `src/__tests__/settingsTabs.test.ts` ⇒ «لا مسار ميت»: (١) كل
- * `getElementById` في هذا الملف يشير إلى معرّف موجود في `index.html` — بلا أي
- * قائمة استثناء، وهو الحارس الذي يمنع عودة عدّادٍ يفتح لوحة غير موجودة؛
- * (٢) لا عنصر للوحة في DOM.
- *
- * **ولم يبقَ في هذا الملف مسار ميت**: كان فيه ثلاثة (`preview-toggle` ·
- * `preview-duration` · `preview-hint` — «المعاينة السريعة») وحُذفت مع
- * `refreshPreviewHint` و`wirePreview` في الجولة الثالثة. والأثر المقيس للحذف:
- * **صفر** — لأن `wirePreview` كانت تُرجع مبكراً عند `if (!toggle || !sel)` وهما
- * `null` في الترميز المشحون، فلم يُنادَ `session.setPreviewEnabled` ولا
- * `setPreviewSeconds` قطّ. والإعدادان (`hl.preview` · `hl.preview_seconds`) ومستهلكاهما
- * (‏`queue.ts:481,854` ← `pipeline.rs`) **لم تُمَسّا**. */
-function wireKeepInstrumental(): void {
-  const cb = document.getElementById('keep-inst') as HTMLInputElement | null;
-  if (cb) {
-    cb.checked = localStorage.getItem('hl.keep_inst') === '1';
-    cb.addEventListener('change', () => {
-      localStorage.setItem('hl.keep_inst', cb.checked ? '1' : '0');
-      pushSettings();
-      invoke('push_log', { level: 'info', message: `keep_instrumental = ${cb.checked}` });
-    });
-  }
-}
 
 function wireModes(): void {
   const cards = document.querySelectorAll<HTMLElement>('.mode-card');
@@ -225,7 +189,7 @@ async function init(): Promise<void> {
   applyLang();
 
   wire();
-  wireKeepInstrumental();
+  wireHiddenAdvancedPanel();
   restoreBatchState();
   try {
     const info = await invoke<{ app: string; version: string }>('ping');
