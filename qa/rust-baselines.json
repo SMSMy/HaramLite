@@ -1,11 +1,11 @@
 {
   "why": "خطّ أساس مقيس لبوّابات Rust — يُحدَّث بـ--update بعد مراجعة السبب، ولا يُخفَّض لتُمرَّر بوّابة.",
   "clippy_unique_warnings": 14,
-  "tests_passed": 417,
+  "tests_passed": 418,
   "tests_ignored": 5,
   "toolchain": {
     "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
     "clippy": "clippy 0.1.95 (59807616e1 2026-04-14)"
   },
-  "measured_at": "2026-09-25 · قياس محلي بعد إصلاحات dl2"
+  "measured_at": "2026-09-25 · قياس محلي بعد سياسة المصدر وبوّابة clippy"
 }
