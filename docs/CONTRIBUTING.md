@@ -93,7 +93,7 @@ gh release upload vX.Y.Z dist/release-metadata/build-info.json dist/release-meta
   `git describe --tags --exact-match HEAD`, so if the file is generated before the tag it writes
   `null` with a reason — truthful, but of no use to a reviewer.
 - And the attestation file **fails and is not written** if the version differs among the four
-  files (an executed falsifier: `package.json` alone ⇒ rejected).
+  files (an executed mutant: `package.json` alone ⇒ rejected).
 - `sbom.cdx.json` (CycloneDX 1.5) carries **804 measured components**: 597 from
   `cargo metadata --locked` (matching the `Cargo.lock` blocks) and 207 from `pnpm-lock.yaml`.
 - And to scan it externally: `osv-scanner --sbom dist/release-metadata/sbom.cdx.json` — and what
@@ -180,7 +180,7 @@ is entered in `qa/TEST-MATRIX.md`.
 
 - **The order is binding**: write the test against the code **before** the fix. For if it
   **passes** on the old code, you have not understood the failure yet — and that is an invalid
-  falsifier according to `AGENT.md` §3.
+  mutant according to `AGENT.md` §3.
 - **And a test with no report is not accepted**: the comment names the report (an issue link or
   its number) so that it is known **why** the test existed when it is read a year later.
 - **And linking to CI is a condition** (`AGENT.md` §10): a test that is not run automatically is
@@ -220,12 +220,12 @@ and fastest first, then what touches the interface, then the textual guards.
 | 7 | **The layout guard** | `node scripts/check-layout.cjs` | **18 floating boxes in 6 window states** (ltr/rtl × 820/1084/1920) stay inside the window bounds. **And its position after the build is mandatory**: it measures `dist/`, not the source | `Layout guard (headless geometry)` |
 | 8 | Settings parity | `pnpm settings:parity` | The parity of settings keys between the frontend and Rust (24=24) — and it follows `collectSettings()` wherever it is in `src/**/*.ts` and fails on zero definitions or two definitions | `Settings parity guard` |
 | 9 | The extension guard | `pnpm ext:guard` | 513 checks on `browser-extension/content.js` (the single audio position **executed**, not read · preventing seek-back · the mandatory behaviour · the gap decision · the speed-up mode · the attribution structure on both elements) | `Extension sync guard` |
-| 10 | **The falsifiers gate (negative)** | `pnpm ext:mutants` | 36 behavioural falsifiers applied to the shipped file **in memory**, and every falsifier **must** bring the guard down | `Extension mutant gate (negative tests)` |
+| 10 | **The mutant gate (negative)** | `pnpm ext:mutants` | 36 behavioural mutants applied to the shipped file **in memory**, and every mutant **must** bring the guard down | `Extension mutant gate (negative tests)` |
 | 11 | Version consistency | `pnpm versions:check` | The application version in four files (`package.json` · `tauri.conf.json` · `Cargo.toml` · `Cargo.lock`) — it fails on the first divergence, and it prints the extension version **flagged as an independent cycle** (`1.1.5`) so that it is not unified with it | `Version consistency guard` |
 | 12 | The site guards | `pnpm site:check` | **Six** guards over `docs/`: CSS · the pages · the tags · the Arabic · the links · **and the footer and the badge** (the last was connected to this very `pnpm site:check` command — it used to be run manually, so it recorded the drift and exited 0) | `Site guards` |
 | 13 | **The manual test log** | `node scripts/matrix-check.cjs` | The **20** mandatory rows in `qa/TEST-MATRIX.md` must each carry **a date, a machine and a result** in its last cell. **And it measures the existence of the record, not the honesty of the tester**: "not executed" is an accepted recorded result. And it fails loudly (exit 2) on a missing file or zero mandatory rows — "a guard that does not see is not a guard" | `Manual test matrix (every mandatory row carries a record)` |
 | 14 | **The single-separation-entry guard** | `pnpm separation:entry` | Every **live mention** of the identifier `process_file` in the Rust sources is matched against an explicit allow-list (file + **expected count**): **3 places** today (2 directly in the tests · and the **only** product entry, carried by the `slots.rs` wrapper) — and the old five-file constraints were dropped when M1 was merged because their entries moved to the wrapper, so keeping them was "a stale list". It was born because the 0.2.9 protection (the separation-slots limiter) rests on **all** the entries passing through one wrapper — so a guard that prevents the **sixth** is cheaper than discovering it after building on it. The match is **deliberately broad** and is against the text **after stripping comments**: it catches `p::process_file(` after `use … as p`, and the bare call after `use …::process_file`, and the function pointer — not one specific form. And it fails (exit 2) on **zero places** or a missing source folder: "zero entries is not a success". Measured (2026-09-21 after the merge): **3 allowed places · 0 not allowed** | `Separation entry guard (one entry, one wrapper)` |
-| 15 | **The guard of the guards** | `pnpm guards:selfcheck` | For each of **eleven** guards it builds a crafted environment under `%TEMP%` containing a **falsifier** (which must bring it down), a **control** (which must pass it, having seen a non-zero entry), and **zero entry** (which must fail loudly). Measured (2026-09-21 after M1): **controls 11/11 · falsifiers 39/39 · zero entry 11/11** — and the time is **8.5 s and 15.5 s** across two runs (it varies with machine load, so let it be read as a range, not a number). And this is the **third face** of the repository rule: "a guard that does not see is not a guard" **applied to the guards themselves** | `Guard self-check gate (mutant + control per guard)` |
+| 15 | **The guard of the guards** | `pnpm guards:selfcheck` | For each of **eleven** guards it builds a crafted environment under `%TEMP%` containing a **mutant** (which must bring it down), a **control** (which must pass it, having seen a non-zero entry), and **zero entry** (which must fail loudly). Measured (2026-09-21 after M1): **controls 11/11 · mutants 39/39 · zero entry 11/11** — and the time is **8.5 s and 15.5 s** across two runs (it varies with machine load, so let it be read as a range, not a number). And this is the **third face** of the repository rule: "a guard that does not see is not a guard" **applied to the guards themselves** | `Guard self-check gate (mutant + control per guard)` |
 
 > **Step names, not line numbers**: the column used to point at `ci.yml:<line>` — and they all
 > went stale as soon as two steps were inserted. A name does not go stale; and the check is
@@ -241,14 +241,14 @@ and fastest first, then what touches the interface, then the textual guards.
 > **And the practical check**: after every connection, open the CI run and read the step itself —
 > do not assume it.
 
-> **The falsifiers gate is negative in the precise sense: success in it is not "the guard is
+> **The mutant gate is negative in the precise sense: success in it is not "the guard is
 > green" but "the guard sees".** A green guard on a sound file proves nothing; the evidence is
-> that it falls on a corrupted text. Therefore **a falsifier that passes = a confirmed hole**,
-> and the command fails (`exit 1`) and names the falsifier that passed
+> that it falls on a corrupted text. Therefore **a mutant that passes = a confirmed hole**,
+> and the command fails (`exit 1`) and names the mutant that passed
 > (`scripts/check-extension-mutants.cjs:8-10` · `:145-151`). And it is what exposed **13 holes**
 > in the guard in a single session — so do not run it after the push, but before it.
 >
-> The practical rule: **if you add a check to a guard with no falsifier that brings it down, you
+> The practical rule: **if you add a check to a guard with no mutant that brings it down, you
 > have not added a check.**
 
 ### And four measured rules born from the 0.2.8 round (each of them from an incident, with its numbers)
@@ -267,7 +267,7 @@ product code**:
 | **The runner OS** | A Docker container action (`cargo-deny-action`) on a Windows runner died with "Container action is only supported on Linux" **before it checked anything** | `12b0284` |
 
 **And the practical check that was performed here**: `GITHUB_ACTIONS=true` + a foreign
-`GITHUB_SHA` on the clean tree ⇒ **controls 10/10 · falsifiers 32/32 · zero entry 10/10 — exit 0**
+`GITHUB_SHA` on the clean tree ⇒ **controls 10/10 · mutants 32/32 · zero entry 10/10 — exit 0**
 (2026-09-17).
 
 **2) Read the CI result before you push on top of it.**
