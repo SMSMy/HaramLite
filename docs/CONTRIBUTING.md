@@ -180,10 +180,12 @@ is entered in `qa/TEST-MATRIX.md`.
 
 - **The order is binding**: write the test against the code **before** the fix. For if it
   **passes** on the old code, you have not understood the failure yet — and that is an invalid
-  mutant according to `AGENT.md` §3.
+  mutant according to the project contract §3 (the agent contract is maintained locally and is
+  not part of the published tree).
 - **And a test with no report is not accepted**: the comment names the report (an issue link or
   its number) so that it is known **why** the test existed when it is read a year later.
-- **And linking to CI is a condition** (`AGENT.md` §10): a test that is not run automatically is
+- **And linking to CI is a condition** (project contract §10 — maintained locally, not published):
+  a test that is not run automatically is
   not a guard. And if automating it is impossible because the case needs Windows/hardware/a
   browser, then stating that is **mandatory** and the row in `qa/TEST-MATRIX.md` is **a declared
   substitute, not an equivalent**.
