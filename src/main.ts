@@ -58,15 +58,17 @@ function wireContextMenu(): void {
  * غير موجودة، ولا عدّاد نقرات على الشارة**. والشارة نفسها باقية: `init()` يعرض
  * عليها الإصدار من `ping` (`#version-badge`).
  * **وحرّاسه** في `src/__tests__/settingsTabs.test.ts` ⇒ «لا مسار ميت»: (١) كل
- * `getElementById` في هذا الملف يشير إلى معرّف موجود في `index.html` — وهو الحارس
- * الذي يمنع عودة عدّادٍ يفتح لوحة غير موجودة؛ (٢) لا عنصر للوحة في DOM.
+ * `getElementById` في هذا الملف يشير إلى معرّف موجود في `index.html` — بلا أي
+ * قائمة استثناء، وهو الحارس الذي يمنع عودة عدّادٍ يفتح لوحة غير موجودة؛
+ * (٢) لا عنصر للوحة في DOM.
  *
- * **وحدّ مُعلَن**: ثلاث دقائق **قائمة قبلي** في هذا الملف تشير إلى معرّفات غير
- * موجودة (`preview-toggle` · `preview-duration` · `preview-hint` — `refreshPreviewHint`
- * و`wirePreview`)، ومسجَّلة في `docs/AUDIT.md:647` («الـ`dist` خالٍ من
- * `preview-toggle` مؤكد»). **لم أحذفها**: مسار «المعاينة السريعة» ليس لوحة
- * `#advanced-panel`، وحذفه تغيير سلوك لم يُطلب. وهي معلَنة بالاسم في
- * `PRE_EXISTING_DEAD_MAIN_TS_IDS` كي لا يمرّ **مسار ميت جديد** بصمت. */
+ * **ولم يبقَ في هذا الملف مسار ميت**: كان فيه ثلاثة (`preview-toggle` ·
+ * `preview-duration` · `preview-hint` — «المعاينة السريعة») وحُذفت مع
+ * `refreshPreviewHint` و`wirePreview` في الجولة الثالثة. والأثر المقيس للحذف:
+ * **صفر** — لأن `wirePreview` كانت تُرجع مبكراً عند `if (!toggle || !sel)` وهما
+ * `null` في الترميز المشحون، فلم يُنادَ `session.setPreviewEnabled` ولا
+ * `setPreviewSeconds` قطّ. والإعدادان (`hl.preview` · `hl.preview_seconds`) ومستهلكاهما
+ * (‏`queue.ts:481,854` ← `pipeline.rs`) **لم تُمَسّا**. */
 function wireKeepInstrumental(): void {
   const cb = document.getElementById('keep-inst') as HTMLInputElement | null;
   if (cb) {
@@ -92,47 +94,25 @@ function wireModes(): void {
         sepLabel.innerHTML = t(key);
       }
       invoke('push_log', { level: 'info', message: `mode → ${session.getCurrentMode()}` });
-      refreshPreviewHint();
     });
   });
 }
 
-/* ── quick preview controls (Sprint B1) ─────────────────────────────── */
-function refreshPreviewHint(): void {
-  const toggle = document.getElementById('preview-toggle') as HTMLInputElement | null;
-  const sel = document.getElementById('preview-duration') as HTMLSelectElement | null;
-  const hint = document.getElementById('preview-hint');
-  if (!toggle || !sel || !hint) return;
-  sel.classList.toggle('hidden', !toggle.checked);
-  hint.textContent = toggle.checked
-    ? (session.getCurrentMode() === 'song' ? t('preview_hint_song') : t('preview_hint_clip'))
-    : '';
-}
-function wirePreview(): void {
-  const toggle = document.getElementById('preview-toggle') as HTMLInputElement | null;
-  const sel = document.getElementById('preview-duration') as HTMLSelectElement | null;
-  if (!toggle || !sel) return;
-  toggle.addEventListener('change', () => {
-    session.setPreviewEnabled(toggle.checked);
-    localStorage.setItem('hl.preview', session.getPreviewEnabled() ? '1' : '0');
-    pushSettings();
-    refreshPreviewHint();
-  });
-  sel.addEventListener('change', () => {
-    session.setPreviewSeconds(Number(sel.value) || 15);
-    localStorage.setItem('hl.preview_seconds', String(session.getPreviewSeconds()));
-    pushSettings();
-  });
-  // restore persisted state
-  toggle.checked = localStorage.getItem('hl.preview') === '1';
-  session.setPreviewEnabled(toggle.checked);
-  const saved = Number(localStorage.getItem('hl.preview_seconds'));
-  if (saved === 10 || saved === 15 || saved === 30) {
-    sel.value = String(saved);
-    session.setPreviewSeconds(saved);
-  }
-  refreshPreviewHint();
-}
+/* ── «المعاينة السريعة»: ربط DOM محذوف ─────────────────────────────────
+ * كان هنا `refreshPreviewHint()` و`wirePreview()` يعملان على `#preview-toggle`
+ * و`#preview-duration` و`#preview-hint` — و**المعرّفات الثلاثة غير موجودة**:
+ * لا في `index.html` (مقيس: `git grep preview index.html` = صفر) ولا في `dist/`
+ * المبنيّ، ولا يُنشئها أي مسار (`createElement`/`innerHTML` في `src/**` = صفر).
+ * فهما كانتا **تُرجعان مبكراً دائماً** (`if (!toggle || !sel) return`)، ولم
+ * يُنادَ `session.setPreviewEnabled`/`setPreviewSeconds` قطّ ⇒ `queue.ts:854`
+ * يرسل `previewSeconds: null` دائماً، و`queue.ts:481` يعرض `sep_done_short`
+ * دائماً. فحُذف المسار (قرار المالك، الجولة الثالثة) و**الأثر المقيس للحذف صفر**.
+ *
+ * **ولم تُمَسّ القيمة ولا مستهلكوها**: `hl.preview` · `hl.preview_seconds` في
+ * `settings.ts` (‏`collectSettings` · `seedSettings` · `applySettings`)، وحقلا
+ * `Settings.preview`/`preview_seconds` في الرست (`settings.rs:19,73`)، والقراءة
+ * الفعلية في `queue.ts:481,854` ← `pipeline.rs:815,858,869`. ودفعُها يبقى ممكناً
+ * من `settings.json`، ومتى عاد لها سطحٌ في الواجهة عملت كما هي. */
 
 function wireKinds(): void {
   const cards = document.querySelectorAll<HTMLElement>('.kind-card');
@@ -226,7 +206,6 @@ function wire(): void {
   wireUrlDownload();
   wireLogToggle();
   wireOpenFolder();
-  wirePreview();
   wireAbout();
   wireReport();
   wireRepair();

@@ -29,7 +29,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import indexHtml from '../../index.html?raw';
 import mainTs from '../main.ts?raw';
 import {
-  PRE_EXISTING_DEAD_MAIN_TS_IDS,
   SETTINGS_GROUP_HEADING_KEYS,
   SETTINGS_MENU_CHROME,
   SETTINGS_OUTSIDE_TABS,
@@ -304,7 +303,7 @@ describe('لا مسار ميت · لا لوحة إعدادات بلا عنصر،
     ).toBe(0);
   });
 
-  it('كل getElementById في src/main.ts يشير إلى معرّف موجود (عدا الميت المعلَن)', async () => {
+  it('كل getElementById في src/main.ts يشير إلى معرّف موجود — بلا أي قائمة استثناء', async () => {
     await mountInSettingsMode();
     const ids = [
       ...new Set(
@@ -312,20 +311,20 @@ describe('لا مسار ميت · لا لوحة إعدادات بلا عنصر،
       ),
     ];
     // عدم البطلان: استخراج صفر معرّف يجعل «لا مسار ميت» صحيحة بلا معنى.
-    expect(ids.length, 'مسارات getElementById المقروءة من main.ts').toBeGreaterThanOrEqual(8);
+    // والحدّ **مقيس**: بعد حذف مسار «المعاينة السريعة» بقي في الملف ٦ معرّفات
+    // فريدة — فالحدّ ٦ لا رقمٌ مُدوَّر. ونقصانه يعني أن مساراً أُزيل، فيُحدَّث
+    // الرقم عمداً بدل أن يمرّ الفحص بلا معنى.
+    expect(ids.length, 'مسارات getElementById المقروءة من main.ts').toBeGreaterThanOrEqual(6);
 
+    // **ولا قائمة استثناء** — وكانت هنا واحدة. الملف كان ينادي ثلاثة معرّفات لا
+    // وجود لها (`preview-toggle` · `preview-duration` · `preview-hint` —
+    // «المعاينة السريعة»)، فحُذف المسار نفسه في الجولة الثالثة **وحُذفت القائمة
+    // معه**: قائمة استثناء تبقى بعد زوال سببها تصير **غطاءً لعطب قادم**. فالمطلوب
+    // اليوم: صفر معرّف غير موجود، وصفر استثناء.
     const missing = ids.filter((id) => document.getElementById(id) === null);
-    const undeclared = missing.filter((id) => !PRE_EXISTING_DEAD_MAIN_TS_IDS.includes(id));
     expect(
-      undeclared,
-      `مسارات ميتة في src/main.ts (تنادي عناصر غير موجودة في index.html): ${undeclared.join(' · ')}`,
-    ).toEqual([]);
-
-    // والقائمة المعلَنة لا تتقادم: معرّف فيها صار موجوداً ⇒ ضيّقها.
-    const stale = PRE_EXISTING_DEAD_MAIN_TS_IDS.filter((id) => document.getElementById(id) !== null);
-    expect(
-      stale,
-      `معرّفات في PRE_EXISTING_DEAD_MAIN_TS_IDS صارت موجودة في index.html — ضيّق القائمة: ${stale.join(' · ')}`,
+      missing,
+      `مسارات ميتة في src/main.ts (تنادي عناصر غير موجودة في index.html): ${missing.join(' · ')}`,
     ).toEqual([]);
   });
 });
