@@ -1306,61 +1306,17 @@ fn cleanup_crash_leftovers() {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-/// **يفتح نافذة الإعدادات المستقلة** (قرار المالك 2026-09-23: «القائمة المنسدلة
-/// أصبحت طويلة» ⇒ نافذة مستقلة بشاشة إعدادات كاملة).
-///
-/// **والإنشاء من الرست لا من JS — أضيق نطاقاً بالبناء**: مسار `WebviewWindow`
-/// في JS يقتضي صلاحية `core:webview:allow-create-webview-window`؛ وهذا المسار
-/// **لا يقتضي صلاحية جديدة** (صفر إضافة)، وكل ما يلزم أن يكون **لابل** النافذة
-/// داخل قدرة قائمة (`capabilities/default.json`) وإلا رُفض كل `invoke` منها.
-///
-/// **والإخفاء عند الإغلاق قائمٌ أصلاً** في `on_window_event` أدناه (المعالج عامّ
-/// لكل النوافذ: `prevent_close` + `hide`) ⇒ فلا دمار ولا إعادة بناء، والعودة
-/// بـ`show`+`set_focus` تعيد النافذة بحالتها (تبويبها وتمريرها ومدخلاتها).
-///
-/// **والصفحة نفسها**: `index.html` — لا صفحة ثانية ولا مدخل بناء ثانٍ؛ والوضع
-/// يقرؤه `src/settingsScreen.ts` من **لابل النافذة** (`settings`).
-///
-/// **والأمر عامٌّ على الزمن التشغيلي** (`R: Runtime`) ليكون **قابلاً للقياس** في
-/// `tauri::test::mock_runtime` (اختبار «النافذة تُفتح» أدناه) بدل أن يبقى مقروءاً
-/// بالنصّ — و`AppHandle<Wry>` في الإنتاج يطابق `R` بلا تغيير في موضع النداء.
-#[tauri::command]
-fn open_settings<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
-    // **إن وُجدت فلا تُبنى ثانية**: إعادة الفتح تُظهرها وتُركّزها (وإلا صار لكل
-    // نقرة نافذةٌ جديدة على اللابل نفسه، وهي أخطاء tauri في اللوغ لا نوافذ).
-    if let Some(w) = app.get_webview_window("settings") {
-        let _ = w.unminimize();
-        w.show().map_err(|e| e.to_string())?;
-        w.set_focus().map_err(|e| e.to_string())?;
-        return Ok(());
-    }
-    let win = tauri::WebviewWindowBuilder::new(
-        &app,
-        "settings",
-        // **والوضع يُمرَّر من الرست في الرابط** (`#settings`): بديلٌ صريح يمنع
-        // انفراد تفعيل الشاشة بقراءة اللابل — وهو ما طلبه المشرف بعد عطب
-        // «النافذة البيضاء» الميداني. والجزء (`#`) عميليّ فلا يُرسَل إلى معالج
-        // المورد ولا يمسّ تحميل الصفحة، **وبقاؤه مقيس** في اختبار
-        // `mock_runtime` أدناه عبر `window.url()` (لا مفترَض).
-        tauri::WebviewUrl::App("index.html#settings".into()),
-    )
-    .title("HaramLite — الإعدادات")
-    .inner_size(980.0, 760.0)
-    .min_inner_size(720.0, 560.0)
-    .build()
-    .map_err(|e| e.to_string())?;
-    win.set_focus().map_err(|e| e.to_string())?;
-    tracing::info!(target: "app", "فُتحت نافذة الإعدادات المستقلة");
-    Ok(())
-}
-
 /// **ماذا يفعل طلب الإغلاق؟** — دالّة قرار **واحدة** يقرؤها المعالج ويقيسها
 /// اختبار (فلا يبقى السلوك مستنبطاً من فرعٍ داخل مُغلَق لا يُقاس).
 ///
-/// **والقرار النهائي للمالك (2026-09-24، بعد تصحيح المشرف)**: **الإخفاء في كل
-/// النوافذ** كما صُمِّم — **ولا إغلاق فعلي إطلاقاً**؛ فالرئيسية تُخفى إلى الشريط
-/// (البوت والمراقبة والجسر يبقون)، ونافذة الإعدادات تُخفى أيضاً فتعود بحالتها
-/// (تبويبها وتمريرها) من `open_settings` بلا بناء ثانٍ.
+/// **والقرار النهائي للمالك**: **الإخفاء** كما صُمِّم — **ولا إغلاق فعلي إطلاقاً**؛
+/// فالنافذة تُخفى إلى الشريط (البوت والمراقبة والجسر يبقون، والعودة من قائمة
+/// الأيقونة)، والحالة الداخلية للشاشة تبقى ما دامت العملية حيّة.
+///
+/// **ونافذة الإعدادات المستقلة أُزيلت** (قرار المالك 2026-09-24 بعد عطب ميداني
+/// مقيس: صارت هي نافذة العملية الرئيسية، وبيضاء، وبقيت عالقة بعد إغلاق التطبيق)
+/// ⇒ فالإعدادات **شاشة داخل هذه النافذة** (`src/settingsScreen.ts`)، ولا بناء
+/// نافذة ثانية ولا لابل ثانٍ ولا قدرة له.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum CloseAction {
     /// يُمنع الإغلاق وتُخفى النافذة — **وهو سلوك كل النوافذ**.
@@ -1546,7 +1502,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             ping,
-            open_settings,
             get_recent_logs,
             push_log,
             open_folder,
@@ -2123,96 +2078,65 @@ mod open_file_tests {
         }
     }
 
-    /// **حارس «النافذة تُفتح» — قياسٌ لا قراءة** (المطلوب ٦-أ في تكليف النافذة):
-    /// الأمر نفسه عبر **طبقة IPC** في تطبيق مصنوع، ثم **تُفحَص النافذة نفسها**
-    /// (`get_webview_window("settings")`) لا مجرّد قيمة إرجاع. وهذا أقوى من حارس
-    /// نصّي: لو نُزع بناء النافذة وبقي الأمر يُرجع `Ok(())` **سقط هذا الاختبار**.
+    /// **حارس «نافذة واحدة في العملية» — قياسٌ لا قراءة** (المطلوب ٥-ج في تكليف
+    /// إزالة النافذة المستقلة).
     ///
-    /// **ولا يُقاس هنا**: WebView2 ولا رسم الصفحة (‏`mock_runtime` لا يرسم) —
-    /// رسمُ الشاشة وتكافؤ عناصرها يقيسه `settingsScreen.test.ts` في jsdom.
+    /// **والعطب الذي وُلد منه (مقيس ميدانياً)**: نافذة الإعدادات المستقلة صارت هي
+    /// **نافذة العملية الرئيسية** (`MainWindowTitle = "HaramLite — الإعدادات"`)،
+    /// وبيضاء، و**بقيت عالقة بعد إغلاق المالك للتطبيق** حتى أُنهيت عملياته يدوياً
+    /// (`HaramLite = 0`). فالمسار الثاني أضاف صنف عطب كاملاً (إقلاع ثانٍ · هوية
+    /// نافذة · عمرٌ لا يتبع عمر التطبيق) مقابل مكسب صفر — والإعدادات صارت **شاشة
+    /// داخل النافذة** (`src/settingsScreen.ts`).
+    ///
+    /// **وما يقيسه**: تطبيق مصنوع يُبنى بنافذة واحدة فقط ⇒ **عدد النوافذ == 1**،
+    /// ولا وجود للابل `settings`. ومُفسَده: إعادة أي `WebviewWindowBuilder` بلابل
+    /// ثانٍ ⇒ يصير العدّ 2 ⇒ يسقط.
     #[test]
-    fn open_settings_creates_the_settings_window_over_ipc_and_reuses_it() {
+    fn the_process_has_exactly_one_window_and_no_settings_label() {
         let app = tauri::test::mock_builder()
-            .invoke_handler(tauri::generate_handler![open_settings])
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .expect("mock app");
-        assert!(
-            app.get_webview_window("settings").is_none(),
-            "لا نافذة إعدادات قبل الطلب"
-        );
-        let caller = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
             .build()
             .expect("mock main webview");
+        let windows = app.webview_windows();
+        assert_eq!(
+            windows.len(),
+            1,
+            "نافذة واحدة فقط في العملية (لا مسار ثانٍ): {windows:?}"
+        );
+        assert!(
+            windows.contains_key("main"),
+            "والنافذة هي الرئيسية: {windows:?}"
+        );
+        assert!(
+            app.get_webview_window("settings").is_none(),
+            "لا نافذة بلابل `settings` — أُزيل المسار الثاني"
+        );
+        eprintln!("نوافذ العملية: {} (main وحدها)", windows.len());
+    }
 
-        let invoke = || {
-            tauri::test::get_ipc_response(
-                &caller,
-                tauri::webview::InvokeRequest {
-                    cmd: "open_settings".into(),
-                    callback: tauri::ipc::CallbackFn(0),
-                    error: tauri::ipc::CallbackFn(1),
-                    url: "http://tauri.localhost".parse().unwrap(),
-                    body: tauri::ipc::InvokeBody::default(),
-                    headers: Default::default(),
-                    invoke_key: tauri::test::INVOKE_KEY.to_string(),
-                },
-            )
-        };
-        invoke().expect("open_settings يجب أن يُجيب عبر IPC بلا خطأ");
-        let first = app
-            .get_webview_window("settings")
-            .expect("النافذة المستقلة وُجدت فعلاً بعد النداء (‏`settings`)");
-        assert_eq!(first.label(), "settings", "اللابل هو ما تقرؤه الواجهة");
-        // **والوضع في الرابط مقيس لا مفترَض**: الجزء `#settings` يجب أن يبقى بعد
-        // دمج المسار في عنوان التطبيق — وهو **الدليل الثاني** لوضع الشاشة (فلا
-        // ينفرد اللابل بتفعيلها).
-        let url = first
-            .url()
-            .map_err(|e| e.to_string())
-            .expect("عنوان النافذة");
-        assert!(
-            url.as_str().contains("index.html"),
-            "النافذة تحمل صفحة التطبيق نفسها: {url}"
-        );
-        assert!(
-            url.fragment() == Some("settings"),
-            "الوضع لم يُمرَّر في الرابط (fragment) — فبقيت الشاشة رهن قراءة اللابل: {url}"
-        );
-        // **والنداء الثاني لا يبني ثانية**: نفس النافذة (لابل واحد لا يتكرّر).
-        invoke().expect("النداء الثاني يُظهر القائمة لا يفشل");
-        let again = app
-            .get_webview_window("settings")
-            .expect("النافذة باقية بعد النداء الثاني");
-        assert_eq!(again.label(), "settings");
-        eprintln!(
-            "open_settings (IPC): النافذة «{}» أُنشئت ثم أُعيد استخدامها",
-            again.label()
+    /// **قرار الإغلاق مقيس** (قرار المالك): **الإخفاء — ولا إغلاق فعلي إطلاقاً**.
+    ///
+    /// **مُفسَده**: إضافة فرع «إغلاق فعلي» ⇒ يسقط هذا الاختبار.
+    #[test]
+    fn the_close_action_hides_the_window_and_never_closes_for_real() {
+        assert_eq!(
+            close_action("main"),
+            CloseAction::Hide,
+            "النافذة تُخفى عند X (لا تُغلق فعلاً ولا تُدمَّر) — فالحالة الداخلية تبقى"
         );
     }
 
-    /// **قرار الإغلاق مقيس** (قرار المالك النهائي 2026-09-24 بعد تصحيح المشرف):
-    /// **الإخفاء في كل النوافذ — ولا إغلاق فعلي إطلاقاً**.
+    /// **القدرة على نافذة واحدة** — لا لابل `settings` فيها (المسار الثاني أُزيل)،
+    /// والصلاحيات السبع بلا زيادة.
     ///
-    /// **مُفسَده**: إضافة فرع «إغلاق فعلي» لأي لابل ⇒ يسقط هذا الاختبار.
-    #[test]
-    fn the_close_action_hides_every_window_and_never_closes_for_real() {
-        for label in ["main", "settings", "any-other"] {
-            assert_eq!(
-                close_action(label),
-                CloseAction::Hide,
-                "النافذة «{label}» يجب أن تُخفى عند X (لا تُغلق فعلاً ولا تُدمَّر)"
-            );
-        }
-    }
-
-    /// **القدرة تشمل اللابل الجديد** — وإلا رُفض كل `invoke` من نافذة الإعدادات
-    /// (‏tauri يرفض النافذة خارج أي قدرة) فتبدو النافذة مفتوحة وهي صمّاء.
+    /// **قارئٌ للقدرة نفسها** (`capabilities/default.json`) لا نسخة منها.
     ///
-    /// **قارئٌ للقدرة نفسها** (`capabilities/default.json`) لا نسخة منها: يُقرأ
-    /// الملف ويُحكم على مصفوفة `windows` — و**لا صلاحية جديدة تُطلب** (نفس
-    /// `permissions` السبعة)، وهو أضيق نطاقاً (المطلوب ٥).
+    /// **مُفسَده**: إعادة `"settings"` إلى مصفوفة `windows` ⇒ يسقط هذا الاختبار
+    /// (وهو مُفسَد المطلوب ٥-د: «أعِد المسار الثاني ⇒ يسقط»).
     #[test]
-    fn the_capability_covers_the_settings_window_with_no_new_permission() {
+    fn the_capability_covers_one_window_only_with_no_new_permission() {
         let raw = include_str!("../capabilities/default.json");
         let v: serde_json::Value = serde_json::from_str(raw).expect("قدرة مقروءة");
         let windows: Vec<&str> = v["windows"]
@@ -2221,13 +2145,10 @@ mod open_file_tests {
             .iter()
             .filter_map(|w| w.as_str())
             .collect();
-        assert!(
-            windows.contains(&"main"),
-            "النافذة الرئيسية باقية: {windows:?}"
-        );
-        assert!(
-            windows.contains(&"settings"),
-            "لابل نافذة الإعدادات غير مشمول بالقدرة — كل invoke منها سيُرفض: {windows:?}"
+        assert_eq!(
+            windows,
+            vec!["main"],
+            "نافذة واحدة في القدرة — لا مسار ثانٍ: {windows:?}"
         );
         let perms: Vec<&str> = v["permissions"]
             .as_array()
@@ -2250,7 +2171,7 @@ mod open_file_tests {
         );
         assert!(
             !perms.iter().any(|p| p.contains("webview:allow-create")),
-            "الإنشاء من الرست لا يقتضي صلاحية إنشاء نوافذ من JS: {perms:?}"
+            "لا صلاحية إنشاء نوافذ: {perms:?}"
         );
     }
 }

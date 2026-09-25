@@ -4732,10 +4732,24 @@ fn ask_oversize(
 
 /// يُزيل الأسئلة المنتهية **ويُعلن ذلك** — لا إسقاط صامت، **والملف يبقى**.
 fn purge_oversize(cfg: &TgConfig, store: &Arc<Mutex<OversizeStore>>) {
+    purge_oversize_at(cfg, store, Instant::now());
+}
+
+/// المسار نفسه بـ`now` **معامل** — فيُقاس انتهاء المدة بلا انتظار حقيقي ولا كسر
+/// ساعة.
+///
+/// **والعطل الذي وُلد منه هذا الفصل (مقيس)**: `Instant` في ويندوز لا يمتدّ قبل
+/// **إقلاع الجهاز**، وكان الاختبار يبني «سؤالاً منتهياً» بـ`now - OVERSIZE_TTL`
+/// (‏1800 ث) — فذعر على جهاز **زمن إقلاعه 19 دقيقة**:
+/// `overflow when subtracting duration from instant` (‏`std/src/time.rs:445`).
+/// فالصواب **تقديم الساعة** (`Instant + Duration` لا يذعر أبداً) لا إرجاعها:
+/// الاختبار يُدرج السؤال عند `now` ثم يُنادى بـ`now + TTL + 1s` ⇒ **مقيس على أي
+/// جهاز**، وبنفس شيفرة الإنتاج.
+fn purge_oversize_at(cfg: &TgConfig, store: &Arc<Mutex<OversizeStore>>, now: Instant) {
     let dead = store
         .lock()
         .unwrap_or_else(|p| p.into_inner())
-        .purge_expired(Instant::now());
+        .purge_expired(now);
     for o in dead {
         let _ = edit_message_kb(
             cfg,
@@ -9203,21 +9217,27 @@ mod tests {
             file: "old.mp3".into(),
             asked,
         };
-        store.insert(mk(801, now - OVERSIZE_TTL - Duration::from_secs(1)));
-        store.insert(mk(802, now - Duration::from_secs(5)));
+        // **والساعة تُقدَّم ولا تُرجَع**: الإدراج عند `now`، والنداء عند
+        // `now + OVERSIZE_TTL + 1s` — لأن `Instant` لا يمتدّ قبل إقلاع الجهاز،
+        // فالطرح `now - TTL` **يذعر** على جهاز حديث الإقلاع (مقيس: 19 دقيقة
+        // إقلاعاً ⇒ `overflow when subtracting duration from instant`).
+        let later = now + OVERSIZE_TTL + Duration::from_secs(1);
+        store.insert(mk(801, now));
+        store.insert(mk(802, later - Duration::from_secs(5)));
 
-        let dead = store.purge_expired(now);
+        let dead = store.purge_expired(later);
         assert_eq!(dead.len(), 1, "المنتهي وحده يُزال: {dead:?}");
         assert_eq!(dead[0].msg_id, 801);
         assert_eq!(store.len(), 1, "الحالة لم تتسرّب");
         assert!(store.get(7, 802).is_some(), "الحديث يبقى");
 
-        // والسلوكي: الإعلان في المحادثة عبر المسار الحقيقي.
+        // والسلوكي: الإعلان في المحادثة عبر المسار الحقيقي — **وبالساعة المقدَّمة
+        // نفسها** (`purge_oversize_at` هي `purge_oversize` بعينها بـ`now` معاملاً).
         let ov = Arc::new(Mutex::new(store));
         ov.lock()
             .unwrap()
-            .insert(mk(803, now - OVERSIZE_TTL - Duration::from_secs(30)));
-        purge_oversize(&cfg, &ov);
+            .insert(mk(803, later - OVERSIZE_TTL - Duration::from_secs(30)));
+        purge_oversize_at(&cfg, &ov, later);
         assert_eq!(ov.lock().unwrap().len(), 1, "بقي المنتهي");
         assert!(produced.is_file(), "حُذف الملف عند انتهاء المدة (ممنوع)");
         let edits = bot.edited_messages();

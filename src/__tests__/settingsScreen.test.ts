@@ -1,33 +1,36 @@
-/* ── شاشة الإعدادات في نافذتها المستقلة: أربعة حرّاس ────────────────────────
+/* ── شاشة الإعدادات **داخل نافذة التطبيق**: الحرّاس ────────────────────────
  *
- * قرار المالك (2026-09-23): «القائمة المنسدلة أصبحت طويلة» ⇒ **نافذة مستقلة**
- * فيها **شاشة كاملة** بسبعة تبويبات. وهذا الملف يقيس الأربعة التي طُلب قياسها:
+ * قرار المالك النهائي (2026-09-24): **إلغاء النافذة المستقلة** — فقد صارت هي
+ * **نافذة العملية الرئيسية** (`MainWindowTitle = "HaramLite — الإعدادات"`)،
+ * وبيضاء، و**بقيت عالقة بعد إغلاق التطبيق** حتى أُنهيت عملياته يدوياً
+ * (`HaramLite = 0`). والإعدادات الآن **شاشة داخل النافذة الواحدة**.
  *
- *   ١) **تُفتح**: في وضع نافذة الإعدادات تظهر الشاشة (`#settings-menu` بلا
- *      `hidden`، و`body.settings-mode`) **ويُعرض تبويب واحد** من السبعة
- *      (`hidden` على البقية) — فالتبويبات تعمل لا تُزيّن.
- *   ٢) **التكافؤ بالعدّ**: كل عنصر تحكّم كان في القائمة المنسدلة **موجود في
- *      الشاشة** — يُعدّ ويُطبع «N من N»، ويسقط إن نقص واحد.
- *   ٣) **أثر التغيير في الرئيسية (مصدر حالة واحد)**: تغيير قيمة في الشاشة يمرّ
- *      من **مسار الدفع القائم** (`set_settings`)، وحدث `settings-changed`
- *      القائم يعيد القيمة إلى نفس العنصر — فليس للشاشة مخزن ثانٍ.
- *   ٤) **لا مسار ثانٍ**: في النافذة الرئيسية **لا تُعرض الشاشة أبداً**، وزرّ
- *      الإعدادات ينادي `open_settings` (يفتح نافذة) **ولا يُظهر الحاوية** —
- *      فالمقياس على **المعنى** (نافذة تُفتح · لا قائمة تُفتح) لا على المعرّف.
+ * **وما يقيسه هذا الملف**:
+ *   ١) **الزرّ يبدّل إلى وضع الإعدادات**، والشاشة تُعرض بتبويباتها السبعة
+ *      (المعروض واحد بالضبط) — والمقياس **قيمةُ الوضع** من الوحدة لا الباني.
+ *   ٢) **زرّ الرجوع** يُعيد العرض الرئيسي ويُخفي الشاشة، **والحالة محفوظة**:
+ *      التبويب المختار يعود كما كان، وقيمةٌ في حقل لم تُحفظ لا تُفقد.
+ *   ٣) **التكافؤ بالعدّ**: كل عنصر كان في القائمة القديمة موجود في الشاشة —
+ *      «N من N» (‏61 من 61)، ويسقط إن نقص واحد.
+ *   ٤) **لا نافذة ثانية**: تُقرأ `src-tauri/src/lib.rs` وملف القدرة **بنصّهما
+ *      المشحون** فلا يبقى باني نافذة في الإنتاج ولا لابل `settings` ولا أمر
+ *      `open_settings`، والقدرة على `main` وحدها.
+ *   ٥) **ولا قراءة لابل نافذة إطلاقاً** في وحدة الشاشة (المصدر حالة داخلية).
  *
- * **ما لا يقيسه** (بصراحة): لا يشغّل نافذة WebView2 حقيقية ولا يرسم — فتحُ
- * النافذة فعلاً يقيسه في الرست
- * `open_settings_creates_the_settings_window_over_ipc_and_reuses_it` (عبر IPC
- * و`mock_runtime`، ثم تُفحَص النافذة نفسها). وهنا **بنية DOM على `index.html`
- * المشحون نفسه** (‏`?raw`)، لا نسخة منه.
+ * **ما لا يقيسه** (بصراحة): لا يشغّل نافذة WebView2 حقيقية ولا يرسم — فدورة حياة
+ * العملية (صفر نافذة عالقة بعد الإنهاء) تُقاس على الثنائي المدموج في التسليم
+ * الكامل بالأمر المذكور في التقرير (§١٣). وهنا **بنية DOM ونصّ الشيفرة
+ * المشحونين**، لا نسخة منهما.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import indexHtml from '../../index.html?raw';
+import libRs from '../../src-tauri/src/lib.rs?raw';
+import capJson from '../../src-tauri/capabilities/default.json?raw';
+import screenTs from '../settingsScreen.ts?raw';
 
 const h = vi.hoisted(() => ({
   invoke: vi.fn<(cmd: string, args?: unknown) => Promise<unknown>>(async () => ({})),
   listeners: new Map<string, (ev: { payload: unknown }) => void>(),
-  label: { value: null as string | null },
 }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: h.invoke }));
 vi.mock('@tauri-apps/api/event', () => ({
@@ -35,11 +38,6 @@ vi.mock('@tauri-apps/api/event', () => ({
     h.listeners.set(name, cb);
     return () => {};
   }),
-}));
-// اللابل يُستبدل عند الحدّ: الشاشة تقرؤه من الواجهة الرسمية، والاختبار يقرّر
-// أيّ نافذة نحن (وإلا لم يُقَس الوضعان معاً).
-vi.mock('@tauri-apps/api/webviewWindow', () => ({
-  getCurrentWebviewWindow: () => ({ label: h.label.value }),
 }));
 
 /** DOM التطبيق المشحون (بلا تنفيذ سكربتات: `innerHTML` لا يُنفّذ `script`). */
@@ -50,12 +48,15 @@ function mountApp(): void {
 }
 
 /**
- * **جرد التكافؤ** — كل عنصر تحكّم كان في القائمة المنسدلة، بمجموعاته الأربع
- * عشرة. والقائمة **مكتوبة صراحةً** (لا تُشتقّ من الصفحة) — وإلا لكانت الحارس
- * يقرأ ما يقيسه فيمرّ دائماً: المُفسَد المراد كشفه هو **نقص عنصر من الشاشة**.
+ * **جرد التكافؤ** — كل عنصر تحكّم كان في القائمة المنسدلة، بمجموعاته.
+ * والقائمة **مكتوبة صراحةً** (لا تُشتقّ من الصفحة) — وإلا لكان الحارس يقرأ ما
+ * يقيسه فيمرّ دائماً: المُفسَد المراد كشفه هو **نقص عنصر من الشاشة**.
  */
 const REQUIRED: ReadonlyArray<readonly [string, readonly string[]]> = [
-  ['الأداء (cuda + hint + سقف الفصول)', ['setting-cuda', 'cuda-hint', 'cuda-hint-text', 'max-jobs']],
+  [
+    'الأداء (cuda + hint + سقف الفصول)',
+    ['setting-cuda', 'cuda-hint', 'cuda-hint-text', 'max-jobs'],
+  ],
   ['الفصل والمزوّد', ['cuda-provider']],
   [
     'المراقبة التلقائية',
@@ -106,8 +107,6 @@ const REQUIRED: ReadonlyArray<readonly [string, readonly string[]]> = [
 
 /** المجموعات المطلوبة **خارج** الحاوية: لوحة تلغرام والإصلاح وزرّ اللغة. */
 const OUTSIDE: readonly string[] = [
-  'btn-report',
-  'btn-about',
   'tg-overlay',
   'tg-close',
   'tg-ok',
@@ -133,7 +132,6 @@ const OUTSIDE: readonly string[] = [
   'lang-toggle',
 ];
 
-/** كل المعرّفات المطلوبة (المجموعتان) — بها يُعلن «N من N». */
 const ALL_REQUIRED: readonly string[] = [
   ...REQUIRED.flatMap(([, ids]) => ids),
   ...OUTSIDE.filter((id) => !REQUIRED.some(([, ids]) => ids.includes(id))),
@@ -141,26 +139,20 @@ const ALL_REQUIRED: readonly string[] = [
 
 const TABS = ['performance', 'engine', 'watch', 'bridge', 'telegram', 'update', 'about'];
 
-/** يركّب DOM ويطبّق وضع نافذة الإعدادات عبر كود الإنتاج نفسه. */
-async function mountSettingsWindow(): Promise<void> {
+/** يركّب DOM ويربط الشاشة (والوضع الأوّلي من الـhash — بديل الاختبار). */
+async function mount(initialHash = ''): Promise<typeof import('../settingsScreen')> {
   mountApp();
-  h.label.value = 'settings';
-  const { wireSettingsScreen } = await import('../settingsScreen');
-  wireSettingsScreen();
-}
-
-/** يركّب DOM ويطبّق وضع النافذة الرئيسية. */
-async function mountMainWindow(): Promise<void> {
-  mountApp();
-  h.label.value = 'main';
-  const { wireSettingsScreen } = await import('../settingsScreen');
-  wireSettingsScreen();
+  const url = new URL(window.location.href);
+  url.hash = initialHash;
+  window.history.replaceState({}, '', url.toString());
+  const screen = await import('../settingsScreen');
+  screen.wireSettingsScreen();
+  return screen;
 }
 
 beforeEach(() => {
   h.invoke.mockClear();
   h.listeners.clear();
-  h.label.value = null;
 });
 
 afterEach(() => {
@@ -171,33 +163,44 @@ afterEach(() => {
   document.body.className = '';
 });
 
-/* ── ١) تُفتح: الشاشة ظاهرة وتبويب واحد معروض ─────────────────────────────── */
-describe('شاشة الإعدادات · تُفتح في نافذتها وتُبدَّل تبويباتها', () => {
-  it('في نافذة settings: الشاشة ظاهرة وسبعة تبويبات لسبع حاويات، والمعروض واحد', async () => {
-    await mountSettingsWindow();
-    const screen = document.getElementById('settings-menu');
-    expect(screen, '#settings-menu موجود في index.html').not.toBeNull();
-    expect(screen!.classList.contains('hidden'), 'الشاشة ظاهرة في نافذتها').toBe(false);
-    expect(document.body.classList.contains('settings-mode'), 'وضع الشاشة مُعلَن على body').toBe(
-      true,
+/* ── ١) الزرّ يبدّل إلى وضع الإعدادات، والشاشة تُعرض بتبويباتها ───────────── */
+describe('شاشة الإعدادات داخل النافذة · تُفتح بالزرّ', () => {
+  it('النقر على #btn-settings يبدّل الوضع ويُظهر الشاشة وتبويباً واحداً', async () => {
+    const screen = await mount();
+    expect(screen.settingsScreenIsOn(), 'قبل: الوضع مطفأ (التطبيق يبدأ على العرض الرئيسي)').toBe(
+      false,
     );
+    const container = document.getElementById('settings-menu')!;
+    expect(container.classList.contains('hidden'), 'قبل: الشاشة مخفيّة').toBe(true);
 
-    const btns = Array.from(document.querySelectorAll('[data-tab-btn]'));
-    const panels = Array.from(document.querySelectorAll('.settings-tab-panel'));
-    expect(btns.map((b) => (b as HTMLElement).dataset.tabBtn)).toEqual(TABS);
-    expect(panels.map((p) => (p as HTMLElement).dataset.tab)).toEqual(TABS);
-    // **والمعروض واحد بالضبط**: البقية `hidden` — فالتبويبات تعمل لا تُزيّن.
-    const shown = panels.filter((p) => !(p as HTMLElement).hidden);
-    expect(shown.length, 'تبويب واحد معروض').toBe(1);
-    expect((shown[0] as HTMLElement).dataset.tab).toBe('performance');
+    const { wireSettings } = await import('../settingsPanel');
+    wireSettings();
+    document
+      .getElementById('btn-settings')!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // **المقياس قيمةُ الوضع** (لا وجود باني نافذة)، ويوافقه الـDOM:
+    expect(screen.settingsScreenIsOn(), 'بعد: الوضع مُعلَن في الوحدة').toBe(true);
+    expect(document.body.classList.contains('settings-mode'), 'و`main` تُخفى به').toBe(true);
+    expect(container.classList.contains('hidden'), 'والشاشة ظاهرة').toBe(false);
+    const panels = Array.from(document.querySelectorAll<HTMLElement>('.settings-tab-panel'));
+    expect(panels.map((p) => p.dataset.tab)).toEqual(TABS);
+    expect(panels.filter((p) => !p.hidden).length, 'تبويب واحد معروض').toBe(1);
+    expect(document.querySelectorAll('[data-tab-btn]').length, 'سبعة أزرار تبويب').toBe(
+      TABS.length,
+    );
+    // **ولا نافذة ثانية تُطلب**: الزرّ لا ينادي أي أمر نوافذ.
     expect(
-      btns.filter((b) => b.getAttribute('aria-selected') === 'true').length,
-      'زرّ واحد مُعلَن نشطاً',
-    ).toBe(1);
+      h.invoke.mock.calls.filter(
+        (c) => String(c[0]).includes('window') || c[0] === 'open_settings',
+      ).length,
+      'لا نداء فتح نافذة',
+    ).toBe(0);
   });
 
   it('النقر على تبويب يُظهر حاويته وحدها', async () => {
-    await mountSettingsWindow();
+    const screen = await mount();
+    screen.openSettingsScreen();
     const watchBtn = document.querySelector<HTMLElement>('[data-tab-btn="watch"]')!;
     watchBtn.click();
     const shown = Array.from(document.querySelectorAll<HTMLElement>('.settings-tab-panel')).filter(
@@ -205,29 +208,60 @@ describe('شاشة الإعدادات · تُفتح في نافذتها وتُب
     );
     expect(shown.map((p) => p.dataset.tab)).toEqual(['watch']);
     expect(watchBtn.getAttribute('aria-selected')).toBe('true');
-    // والعناصر داخل التبويب المعروض هي عناصر التحكّم الحقيقيّة (لا نسخة).
-    const panel = document.querySelector<HTMLElement>('[data-tab="watch"]')!;
-    expect(panel.contains(document.getElementById('setting-watch'))).toBe(true);
-    expect(panel.contains(document.getElementById('btn-watch-folder'))).toBe(true);
+    expect(
+      document
+        .querySelector<HTMLElement>('[data-tab="watch"]')!
+        .contains(document.getElementById('setting-watch')),
+    ).toBe(true);
   });
 });
 
-/* ── ٢) التكافؤ بالعدّ: N من N ────────────────────────────────────────────── */
+/* ── ٢) زرّ الرجوع: يعيد العرض الرئيسي والحالة محفوظة ─────────────────────── */
+describe('زرّ الرجوع · يعيد العرض الرئيسي ولا يفقد الحالة', () => {
+  it('النقر على #settings-close يطفئ الوضع ويُخفي الشاشة، والتبويب يبقى محفوظاً', async () => {
+    const screen = await mount('#settings'); // بديل الاختبار للوضع الأوّلي
+    expect(screen.settingsScreenIsOn(), 'الوضع الأوّلي من الـhash').toBe(true);
+
+    // يختار المستخدم تبويباً غير الأوّل، ويكتب قيمة في حقل لم تُحفظ بعد.
+    document.querySelector<HTMLElement>('[data-tab-btn="telegram"]')!.click();
+    expect(screen.settingsScreenTab()).toBe('telegram');
+    const token = document.getElementById('tg-token') as HTMLInputElement | null;
+    if (token) token.value = 'قيمة-غير-محفوظة';
+
+    // الرجوع:
+    document.getElementById('settings-close')!.dispatchEvent(new MouseEvent('click'));
+    expect(screen.settingsScreenIsOn(), 'بعد: الوضع مطفأ').toBe(false);
+    expect(document.body.classList.contains('settings-mode'), 'و`main` تعود').toBe(false);
+    expect(
+      document.getElementById('settings-menu')!.classList.contains('hidden'),
+      'والشاشة مخفيّة',
+    ).toBe(true);
+
+    // **والحالة محفوظة**: العودة تُظهر نفس التبويب (لا تُصفّره إلى الأوّل)،
+    // والقيمة التي لم تُحفظ باقية (لا إخفاء نافذة ولا تدمير).
+    screen.openSettingsScreen();
+    expect(screen.settingsScreenTab(), 'التبويب المختار محفوظ').toBe('telegram');
+    const shown = Array.from(document.querySelectorAll<HTMLElement>('.settings-tab-panel')).filter(
+      (p) => !p.hidden,
+    );
+    expect(shown.map((p) => p.dataset.tab), 'والمعروض هو المحفوظ').toEqual(['telegram']);
+    if (token) expect(token.value, 'وقيمة الحقل لم تُفقد').toBe('قيمة-غير-محفوظة');
+  });
+});
+
+/* ── ٣) التكافؤ بالعدّ: N من N ────────────────────────────────────────────── */
 describe('تكافؤ الشاشة · كل عنصر في القائمة القديمة موجود في الشاشة', () => {
   it('يُعدّ العناصر ويطبع N من N — ويسقط إن نقص واحد', async () => {
-    await mountSettingsWindow();
-    const missing: string[] = [];
-    const outsideScreen: string[] = [];
+    await mount('#settings');
     const screen = document.getElementById('settings-menu')!;
+    const missing: string[] = [];
     for (const id of ALL_REQUIRED) {
       const el = document.getElementById(id);
       if (!el) missing.push(id);
-      else if (!screen.contains(el) && !document.body.contains(el)) outsideScreen.push(id);
+      else if (!screen.contains(el) && !document.body.contains(el)) missing.push(`${id}(خارج)`);
     }
     expect(missing, `عناصر غائبة عن الشاشة: ${missing.join(' · ')}`).toEqual([]);
-    expect(outsideScreen, `عناصر خارج الصفحة: ${outsideScreen.join(' · ')}`).toEqual([]);
 
-    // **والعدّ لكل مجموعة** — يُطبع ليكون دليلاً حيّاً (‏`--reporter=verbose`).
     let n = 0;
     for (const [group, ids] of REQUIRED) {
       const found = ids.filter((id) => document.getElementById(id) !== null);
@@ -236,103 +270,43 @@ describe('تكافؤ الشاشة · كل عنصر في القائمة القد�
       expect(found.length, `مجموعة «${group}»`).toBe(ids.length);
       n += ids.length;
     }
-    const outsideFound = OUTSIDE.filter(
-      (id) => document.getElementById(id) !== null && !ALL_REQUIRED.slice(0, n).includes(id),
-    ).length;
+    const outsideFound = OUTSIDE.filter((id) => document.getElementById(id) !== null).length;
     // eslint-disable-next-line no-console
-    console.log(
-      `تكافؤ شاشة الإعدادات: ${n + outsideFound} من ${ALL_REQUIRED.length} (خمسة عشر في الحاوية القائمة · إصلاح · تلغرام · اللغة)`,
-    );
+    console.log(`تكافؤ شاشة الإعدادات: ${n + outsideFound} من ${ALL_REQUIRED.length}`);
     expect(n + outsideFound, 'N من N').toBe(ALL_REQUIRED.length);
   });
 });
 
-/* ── ٣) مصدر حالة واحد: تغيير في الشاشة يبلغ الرئيسية ─────────────────────── */
-describe('مصدر حالة واحد · الشاشة تكتب من مسار الدفع القائم', () => {
-  it('تغيير #max-jobs في الشاشة يُدفع إلى الخلف، وحدث settings-changed يعيده', async () => {
-    vi.useFakeTimers();
-    await mountSettingsWindow();
-    const { wireSettings } = await import('../settingsPanel');
-    wireSettings();
-
-    const select = document.getElementById('max-jobs') as HTMLSelectElement;
-    expect(select, '#max-jobs موجود').not.toBeNull();
-    select.value = '2';
-    select.dispatchEvent(new Event('change'));
-    vi.advanceTimersByTime(400); // مهلة الدفع 300ms (قائمة)
-
-    const pushed = h.invoke.mock.calls.find((c) => c[0] === 'set_settings');
-    expect(pushed, 'الشاشة تدفع عبر set_settings القائم (لا مخزن ثانٍ)').toBeTruthy();
-    // الشكل من `settings.ts:144` نفسه: `invoke('set_settings', { value: ... })`،
-    // والحقل باسم عقد Rust (`max_concurrent_jobs`) لا باسم خزين الواجهة.
-    const payload = (pushed![1] as { value?: { max_concurrent_jobs?: number } }).value;
-    expect(payload?.max_concurrent_jobs, 'القيمة الجديدة بلغت الخلف').toBe(2);
-
-    // **والرئيسية تتبع الحدث القائم**: نفس المستمع يعيد القيمة إلى العنصر.
-    // والحِمل بأسماء **عقد Rust** (`max_concurrent_jobs`) كما يرسله الخلف —
-    // لا بأسماء خزين الواجهة، وإلا لقيس الاختبار حملاً لا وجود له.
-    const listener = h.listeners.get('settings-changed');
-    expect(listener, 'مستمع settings-changed مسجَّل (نفس الوحدة)').toBeTruthy();
-    select.value = '1';
-    listener!({ payload: { max_concurrent_jobs: 2 } });
-    expect(select.value, 'القيمة عادت من الحدث إلى نفس العنصر').toBe('2');
-    expect(localStorage.getItem('hl.max_jobs'), 'وبنفس مفتاح settings.ts').toBe('2');
-  });
-});
-
-/* ── ٤) لا مسار ثانٍ: الرئيسية لا تُظهر الشاشة، والزرّ يفتح نافذة ─────────── */
-describe('لا مسار ثانٍ · في الرئيسية لا تُفتح الشاشة أبداً', () => {
-  it('الشاشة مخفيّة في الرئيسية، وزرّ الإعدادات ينادي open_settings ولا يُظهرها', async () => {
-    await mountMainWindow();
-    const screen = document.getElementById('settings-menu')!;
-    expect(screen.classList.contains('hidden'), 'مخفيّة في الرئيسية').toBe(true);
-    expect(document.body.classList.contains('settings-mode'), 'لا وضع شاشة في الرئيسية').toBe(
-      false,
-    );
-
-    // الزرّ الحقيقي: الربط من كود الإنتاج.
-    const { wireSettings } = await import('../settingsPanel');
-    wireSettings();
-    const btn = document.getElementById('btn-settings')!;
-    btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-
-    const opened = h.invoke.mock.calls.filter((c) => c[0] === 'open_settings');
-    expect(opened.length, 'الزرّ ينادي open_settings (نافذة مستقلّة)').toBe(1);
+/* ── ٤) لا نافذة ثانية: قياس بنيوي على الشيفرة المشحونة ───────────────────── */
+describe('لا نافذة ثانية · النافذة واحدة والوضع من حالة داخلية', () => {
+  it('الإنتاج لا يبني نافذة، ولا لابل `settings`، والقدرة على main وحدها', async () => {
+    const cap = JSON.parse(capJson) as { windows: string[] };
+    expect(cap.windows, 'قدرة نافذة واحدة (لا `settings`)').toEqual(['main']);
+    // **ولا باني نافذة في الإنتاج**: `WebviewWindowBuilder` لا يبقى إلا في
+    // اختبارات الرست (نافذة `main` المصنوعة للقياس) — فيُحكم بحدّ الشيفرة.
+    const prodPart = libRs.split('#[cfg(test)]')[0];
     expect(
-      screen.classList.contains('hidden'),
-      '**ولا يُظهر الحاوية**: لا مسار ثانٍ للإعدادات في الرئيسية',
-    ).toBe(true);
-    expect(btn.getAttribute('aria-expanded'), 'لا قائمة تُعلَن مفتوحة').toBe('false');
-  });
-
-  it('وضع الشاشة يسقط إذا لم نكن في نافذة settings', async () => {
-    const { isSettingsMode } = await import('../settingsScreen');
-    expect(isSettingsMode('settings')).toBe(true);
-    expect(isSettingsMode('main')).toBe(false);
-    expect(isSettingsMode(null, '#settings'), 'بديل الـhash صريح').toBe(true);
-    expect(isSettingsMode(null, '#anything')).toBe(false);
-    // **والدلالتان تُجمعان بـ«أو»** (وهو موضع عطب «النافذة البيضاء» الميداني):
-    // كان اللابل يُقدَّم فيُهمَل الرابط الذي يمرّره الرست في `open_settings`
-    // ⇒ فسقوط إحداهما كان يُسقط الوضع.
-    // مُفسَده: إعادة `if (label) return label === 'settings'` ⇒ يسقط السطران.
+      prodPart.includes('WebviewWindowBuilder'),
+      'لا بناء نافذة في شيفرة الإنتاج (المسار الثاني أُزيل)',
+    ).toBe(false);
+    expect(prodPart.includes('"settings"'), 'ولا لابل `settings` في الإنتاج').toBe(false);
     expect(
-      isSettingsMode('main', '#settings'),
-      'الرابط يقول إعدادات ⇒ كفى ولو خالف اللابل (الرست يمرّره في open_settings)',
-    ).toBe(true);
-    expect(isSettingsMode('', '#settings'), 'لابل فارغ لا يُبطل الرابط').toBe(true);
+      prodPart.includes('fn open_settings'),
+      'ولا أمر `open_settings` (صار تبديل وضع داخل النافذة)',
+    ).toBe(false);
   });
 
-  it('لا نافذة فارغة: في وضع الإعدادات الشاشة ظاهرة، وفي الرئيسية مخفيّة', async () => {
-    // الحال الضارّ الذي يُنتج بياضاً: الوضع مُعلَن (فيُخفى `main`) والشاشة مخفيّة
-    // ⇒ لا مرئيّ إطلاقاً. فيُقاس **الصنفان معاً** لا أحدهما.
-    await mountSettingsWindow();
-    const screen = document.getElementById('settings-menu')!;
-    expect(document.body.classList.contains('settings-mode'), 'الوضع مُعلَن').toBe(true);
-    expect(screen.classList.contains('hidden'), 'والشاشة ظاهرة معه (لا بياض)').toBe(false);
-
-    await mountMainWindow();
-    const screen2 = document.getElementById('settings-menu')!;
-    expect(document.body.classList.contains('settings-mode'), 'لا وضع في الرئيسية').toBe(false);
-    expect(screen2.classList.contains('hidden'), 'والشاشة مخفيّة (لا مسار ثانٍ)').toBe(true);
+  it('وحدة الشاشة لا تقرأ لابل نافذة إطلاقاً (المصدر حالة داخلية)', () => {
+    for (const forbidden of [
+      'getCurrentWebviewWindow',
+      'getCurrentWindow',
+      'currentWindowLabel',
+      '__TAURI_INTERNALS__',
+    ]) {
+      expect(
+        screenTs.includes(forbidden),
+        `الوحدة لا تذكر «${forbidden}» — الوضع من حالة داخلية لا من لابل`,
+      ).toBe(false);
+    }
   });
 });

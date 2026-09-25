@@ -31,6 +31,13 @@
 <div id="settings-menu" class="hidden absolute end-0 top-full mt-2 w-64 max-h-[75vh] overflow-y-auto overscroll-contain bg-coal-surface/95 backdrop-blur-md border border-border-muted rounded-lg shadow-xl p-stack-md flex flex-col gap-stack-sm z-50 fade-in-up" role="dialog" aria-modal="false" data-i18n-aria="settings_title">
     <h3 class="font-label-md text-clay-accent border-b border-border-muted pb-2 mb-2" data-i18n="settings_title">الإعدادات</h3>
 
+    <!-- **زرّ الرجوع**: يعيد العرض الرئيسي **داخل النافذة نفسها** (لا إخفاء
+         نافذة ولا تدمير — والحالة تبقى ما دام التطبيق يعمل). -->
+    <button id="settings-close" type="button" class="settings-tab flex items-center gap-unit self-start">
+        <span class="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>
+        <span class="font-body-sm" data-i18n="settings_back">رجوع</span>
+    </button>
+
     <!-- ═══ تبويبات شاشة الإعدادات (نافذة مستقلة) ═══════════════════════════
          سبعة أزرار، وسبع حاويات `data-tab` تُغلّف المجموعات **القائمة نفسها**
          (لا عنصر تحكّم نُقل ولا خصيصة تغيّرت). التبديل في `src/settingsScreen.ts`،
