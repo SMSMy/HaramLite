@@ -1,7 +1,7 @@
 {
   "why": "خطّ أساس مقيس لبوّابات Rust — يُحدَّث بـ--update بعد مراجعة السبب، ولا يُخفَّض لتُمرَّر بوّابة.",
   "clippy_unique_warnings": 14,
-  "tests_passed": 418,
+  "tests_passed": 419,
   "tests_ignored": 5,
   "tests": [
     "atomic::tests::a_failed_write_keeps_the_old_file_and_leaves_no_temp",
@@ -218,6 +218,7 @@
     "settings::tests::a_plaintext_file_from_an_older_build_still_loads",
     "settings::tests::max_concurrent_jobs_defaults_to_one_and_clamps_out_of_range_values",
     "settings::tests::needs_sealing_detects_only_a_cleartext_secret",
+    "settings::tests::removed_preview_keys_in_an_old_file_still_load",
     "settings::tests::settings_round_trip_and_secrets_never_land_in_the_clear",
     "settings::tests::telegram_group_mode_defaults_to_mentions_and_clamps_unknown_values",
     "settings::tests::ytdlp_auto_update_is_on_by_default_and_survives_an_old_file",
