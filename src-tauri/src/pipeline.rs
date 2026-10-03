@@ -862,11 +862,10 @@ pub fn process_file(
     checkpoint(0.02)?;
     // Audit 2026-09-03: scratch must not outlive a failed run (tens of MB
     // per failure used to accumulate in the user's output folder).
-    let normalized = media::normalize_for_engine(input, &work_dir)
-        .map_err(|e| {
-            let _ = std::fs::remove_dir_all(&work_dir);
-            media_err(e)
-        })?;
+    let normalized = media::normalize_for_engine(input, &work_dir).map_err(|e| {
+        let _ = std::fs::remove_dir_all(&work_dir);
+        media_err(e)
+    })?;
     stage("normalize", 1.0);
     tracing::info!(target: "pipe", "normalized: {}", normalized.display());
 
@@ -1042,16 +1041,13 @@ pub fn process_file(
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "audio".into());
     {
-        let new_vocals =
-            vocals_path.with_file_name(format!("{orig_stem}_(Vocals)_haramlite.wav"));
+        let new_vocals = vocals_path.with_file_name(format!("{orig_stem}_(Vocals)_haramlite.wav"));
         if new_vocals != vocals_path {
             std::fs::rename(&vocals_path, &new_vocals).map_err(err)?;
             vocals_path = new_vocals;
         }
         if let Some(ip) = &mut instrumental_path {
-            let new_i = ip.with_file_name(format!(
-                "{orig_stem}_(Instrumental)_haramlite.wav"
-            ));
+            let new_i = ip.with_file_name(format!("{orig_stem}_(Instrumental)_haramlite.wav"));
             if new_i != *ip {
                 std::fs::rename(&*ip, &new_i).map_err(err)?;
                 *ip = new_i;

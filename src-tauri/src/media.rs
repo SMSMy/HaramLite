@@ -376,8 +376,19 @@ pub fn normalize_for_engine(input: &Path, work_dir: &Path) -> Result<PathBuf, Me
     let out_str = out.to_string_lossy().into_owned();
 
     let args: Vec<&str> = vec![
-        "-y", "-v", "error", "-i", &input_str, "-vn", "-ac", "2", "-ar", "44100", "-c:a",
-        "pcm_s16le", &out_str,
+        "-y",
+        "-v",
+        "error",
+        "-i",
+        &input_str,
+        "-vn",
+        "-ac",
+        "2",
+        "-ar",
+        "44100",
+        "-c:a",
+        "pcm_s16le",
+        &out_str,
     ];
 
     run_ffmpeg(&ffmpeg, &args)?;

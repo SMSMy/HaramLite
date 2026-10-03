@@ -693,8 +693,7 @@ fn player_close(state: tauri::State<'_, AppState>, id: u64) -> bool {
 fn read_normalized_mix(input: &Path) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
     let work = std::env::temp_dir().join(format!("hl_player_{}", std::process::id()));
     let _scratch = crate::scratch::ScratchGuard::new(&work);
-    let normalized =
-        media::normalize_for_engine(input, &work).map_err(|e| e.to_string())?;
+    let normalized = media::normalize_for_engine(input, &work).map_err(|e| e.to_string())?;
     separator::read_wav_stereo(&normalized).map_err(|e| e.to_string())
 }
 
