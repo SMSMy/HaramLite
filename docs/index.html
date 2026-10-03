@@ -51,7 +51,7 @@
       "applicationCategory": "MultimediaApplication",
       "applicationSubCategory": "Audio separation",
       "operatingSystem": "Windows 10, Windows 11",
-      "softwareVersion": "0.2.8",
+      "softwareVersion": "0.2.9",
       "inLanguage": [
         "ar",
         "en"
@@ -109,8 +109,8 @@
     lang: 'ar',
     /* رقم الإصدار يُقرأ من نشرة GitHub، والنسخة الاحتياطية هنا للعمل بلا شبكة.
        {v} في data-i18n-ar/en و data-i18n-alt-v يُستبدلان بهذا الرقم. */
-    version: '0.2.8',
-    releases: { tag: 'v0.2.8', exeUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.8/HaramLite_0.2.8_x64-setup.exe', msiUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.8/HaramLite_0.2.8_x64_en-US.msi' },
+    version: '0.2.9',
+    releases: { tag: 'v0.2.9', exeUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.9/HaramLite_0.2.9_x64-setup.exe', msiUrl: 'https://github.com/SMSMy/HaramLite/releases/download/v0.2.9/HaramLite_0.2.9_x64_en-US.msi' },
     /* في وضع en نضع English في data و data-i18n-ar في alt ليصير زرّ اللغة
        بالعربية. والعكس صحيح. */
     applyLang(lang) {
@@ -160,7 +160,7 @@
         var exeAsset = (data.assets || []).find(function (a) { return a.name.endsWith('-setup.exe'); });
         var msiAsset = (data.assets || []).find(function (a) { return a.name.endsWith('.msi'); });
         /* الرقم من النشرة نفسها: شارة الهيرو وأسماء الملفات ونصوص الأزرار كلها
-           تُبنى منه، فلا يبقى «0.2.8» مكتوباً في مكان يخالف النشرة. */
+           تُبنى منه، فلا يبقى «0.2.9» مكتوباً في مكان يخالف النشرة. */
         var tag = data.tag_name;
         /* حماية مقيسة (2026-09-17): نشرة أخرى في المستودع — قناة أصول الإصلاح
            `assets-v1` — صارت «Latest» نحو دقيقة، فعُرض وسمها إصداراً للتطبيق
@@ -263,7 +263,7 @@
 <div class="inline-flex flex-wrap items-center justify-center gap-stack-sm px-stack-md py-unit rounded-full bg-surface-container-high text-on-surface-variant mb-6 shadow-sm">
 <span class="w-2 h-2 rounded-full bg-clay-accent animate-pulse"></span>
 <span class="font-mono-code text-mono-code tracking-wide">
-<span class="text-clay-accent font-bold js-release-tag">v0.2.8</span> • 
+<span class="text-clay-accent font-bold js-release-tag">v0.2.9</span> • 
             <span data-i18n-ar="ويندوز 10/11 (x64)" data-i18n-en="Windows 10/11 (x64)">ويندوز 10/11 (x64)</span> • 
             <span data-i18n-ar="معالجة محلية 100%" data-i18n-en="100% On-Device AI">معالجة محلية 100%</span>
 </span>
@@ -286,8 +286,8 @@
 <div class="flex flex-wrap items-center justify-center gap-stack-md w-full mb-8">
 <a class="js-exe-link inline-flex items-center gap-stack-sm px-stack-lg py-stack-md rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold shadow-md hover:bg-primary transition-all duration-150 transform hover:-translate-y-0.5" href="https://github.com/SMSMy/HaramLite/releases/latest" rel="noreferrer">
 <span class="material-symbols-outlined text-[20px]">download</span>
-<span class="js-exe-text" data-i18n-ar="تحميل المثبّت الذكي ({v})" data-i18n-en="Download Setup ({v})">تحميل المثبّت الذكي (0.2.8)</span>
-<span class="inline-block font-mono-code text-mono-code opacity-75 js-exe-size" dir="ltr">187.6 MB</span>
+<span class="js-exe-text" data-i18n-ar="تحميل المثبّت الذكي ({v})" data-i18n-en="Download Setup ({v})">تحميل المثبّت الذكي (0.2.9)</span>
+<span class="inline-block font-mono-code text-mono-code opacity-75 js-exe-size" dir="ltr">187.8 MB</span>
 </a>
 <a class="inline-flex items-center gap-stack-sm px-stack-lg py-stack-md rounded bg-surface-container text-cream-text font-label-md text-label-md hover:bg-surface-container-high transition-colors shadow-sm" href="bridge.html" rel="noreferrer" target="_blank">
 <span class="material-symbols-outlined text-clay-accent text-[20px]">extension</span>
@@ -378,7 +378,7 @@
 <span class="w-3 h-3 rounded-full bg-warn-yellow inline-block"></span>
 <span class="w-3 h-3 rounded-full bg-tertiary inline-block"></span>
 </div>
-<span class="font-mono-code text-mono-code text-on-surface-variant mx-stack-sm">HaramLite Desktop v<span class="js-version-text">0.2.8</span> • [Tauri v2 + ONNX DirectML/CUDA]</span>
+<span class="font-mono-code text-mono-code text-on-surface-variant mx-stack-sm">HaramLite Desktop v<span class="js-version-text">0.2.9</span> • [Tauri v2 + ONNX DirectML/CUDA]</span>
 </div>
 <div class="flex items-center gap-stack-sm text-on-surface-variant font-mono-code text-mono-code">
 <span class="material-symbols-outlined text-[16px] text-clay-accent">memory</span>
@@ -519,7 +519,7 @@
 <span class="material-symbols-outlined text-[24px]">info</span>
 </div>
 <div class="flex-1">
-<span class="font-label-md text-label-md text-warn-yellow font-bold block mb-0.5" data-i18n-ar="تنبيه شفاف بخصوص التحديث في الإصدار {v}" data-i18n-en="Transparent Notice Regarding v{v} Auto-Updates">تنبيه شفاف بخصوص التحديث في الإصدار 0.2.8</span>
+<span class="font-label-md text-label-md text-warn-yellow font-bold block mb-0.5" data-i18n-ar="تنبيه شفاف بخصوص التحديث في الإصدار {v}" data-i18n-en="Transparent Notice Regarding v{v} Auto-Updates">تنبيه شفاف بخصوص التحديث في الإصدار 0.2.9</span>
 <p class="font-body-md text-body-md text-cream-text/90" data-i18n-ar="التحديث الذاتي التلقائي موقوف حالياً في هذا الإصدار لأن مفتاح توقيع الإصدارات الرقمي غير مضبوط في مسار البناء الآلي بعد. يتم الترقية مستقبلاً بتنزيل المثبّت الجديد مباشرة من صفحة الإصدارات." data-i18n-en="Automatic in-app updates are currently disabled in this build as release signing keys are not yet configured in CI. Future upgrades are performed by running the new installer directly from GitHub Releases.">التحديث الذاتي التلقائي موقوف حالياً في هذا الإصدار لأن مفتاح توقيع الإصدارات الرقمي غير مضبوط في مسار البناء الآلي بعد. يتم الترقية مستقبلاً بتنزيل المثبّت الجديد مباشرة من صفحة الإصدارات.</p>
 </div>
 </div>
@@ -537,13 +537,14 @@
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="مثبّت متكامل يجهّز بيئة العمل تلقائياً: يثبت VC++ Redistributable، ومسارات FFmpeg، ونموذج الذكاء الاصطناعي مع اختصارات سطح المكتب." data-i18n-en="All-in-one setup wizard: installs required VC++ redistributable, FFmpeg binaries, and AI models with desktop shortcuts.">مثبّت متكامل يجهّز بيئة العمل تلقائياً: يثبت VC++ Redistributable، ومسارات FFmpeg، ونموذج الذكاء الاصطناعي مع اختصارات سطح المكتب.</p>
 <div class="font-mono-code text-mono-code text-on-surface-variant/80 bg-surface-container-lowest p-stack-sm rounded mb-6" dir="ltr">
-              HaramLite_<span class="js-version-text">0.2.8</span>_x64-setup.exe
+              HaramLite_<span class="js-version-text">0.2.9</span>_x64-setup.exe
               <!-- المقاس أدناه (وكذلك .js-msi-size) يُستبدل عند التحميل من واجهة GitHub؛
-                   والمكتوب هنا مقاس الأصل المنشور فعلاً في 0.2.8 لا تقدير. -->
-              <span class="js-exe-size block text-clay-accent font-mono-code text-mono-code">187.6 MB</span>
+                   والمكتوب هنا مقاس الأصل المنشور فعلاً في 0.2.9 لا تقدير
+                   (مقيس 2026-09-25: 196,944,377 و230,002,688 بايت). -->
+              <span class="js-exe-size block text-clay-accent font-mono-code text-mono-code">187.8 MB</span>
             </div>
 </div>
-<a class="js-exe-link w-full py-stack-md rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold text-center hover:bg-primary transition-colors flex items-center justify-center gap-stack-sm shadow" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.8/HaramLite_0.2.8_x64-setup.exe">
+<a class="js-exe-link w-full py-stack-md rounded bg-clay-accent text-coal-surface font-label-md text-label-md font-bold text-center hover:bg-primary transition-colors flex items-center justify-center gap-stack-sm shadow" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.9/HaramLite_0.2.9_x64-setup.exe">
 <span class="material-symbols-outlined text-[20px]">download</span>
 <span data-i18n-ar="تحميل المثبّت (.exe)" data-i18n-en="Download Setup (.exe)">تحميل المثبّت (.exe)</span>
 </a>
@@ -557,11 +558,11 @@
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="حزمة MSI القياسية المخصصة لمسؤولي الأنظمة وبيئات النطاقات (Domain Admins)، تدعم التثبيت الصامت عبر سياسات المجموعات (GPO / Intune)." data-i18n-en="Standard MSI package tailored for system admins, supporting silent deployment, GPO automation, and MDM policies.">حزمة MSI القياسية المخصصة لمسؤولي الأنظمة وبيئات النطاقات (Domain Admins)، تدعم التثبيت الصامت عبر سياسات المجموعات (GPO / Intune).</p>
 <div class="font-mono-code text-mono-code text-on-surface-variant/80 bg-surface-container-lowest p-stack-sm rounded mb-6" dir="ltr">
-              HaramLite_<span class="js-version-text">0.2.8</span>_x64_en-US.msi
-              <span class="js-msi-size block text-clay-accent font-mono-code text-mono-code">364.7 MB</span>
+              HaramLite_<span class="js-version-text">0.2.9</span>_x64_en-US.msi
+              <span class="js-msi-size block text-clay-accent font-mono-code text-mono-code">219.3 MB</span>
             </div>
 </div>
-<a class="js-msi-link w-full py-stack-md rounded bg-surface-container-high text-cream-text font-label-md text-label-md font-bold text-center hover:bg-surface-bright transition-colors flex items-center justify-center gap-stack-sm" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.8/HaramLite_0.2.8_x64_en-US.msi">
+<a class="js-msi-link w-full py-stack-md rounded bg-surface-container-high text-cream-text font-label-md text-label-md font-bold text-center hover:bg-surface-bright transition-colors flex items-center justify-center gap-stack-sm" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.9/HaramLite_0.2.9_x64_en-US.msi">
 <span class="material-symbols-outlined text-[20px]">folder_zip</span>
 <span data-i18n-ar="تحميل حزمة MSI" data-i18n-en="Download MSI Package">تحميل حزمة MSI</span>
 </a>
@@ -573,7 +574,7 @@
 <span class="material-symbols-outlined text-on-surface-variant text-[28px]">package_2</span>
 <h3 class="font-headline-lg text-headline-lg text-on-surface-variant">النسخة المحمولة</h3>
 </div>
-<p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="تنويه: النسخة المحمولة (Portable) لم تتوفر في الإصدار 0.2.8 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في إصدار لاحق بعد ضغط النماذج." data-i18n-en="Notice: Standalone portable archive is paused in 0.2.8 due to required bin/ and models/ payload constraints (~515MB). Will return in upcoming pruned model updates.">تنويه: النسخة المحمولة (Portable) لم تتوفر في الإصدار 0.2.8 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في إصدار لاحق بعد ضغط النماذج.</p>
+<p class="font-body-md text-body-md text-on-surface-variant mb-4" data-i18n-ar="تنويه: النسخة المحمولة (Portable) لا تُشحن في الإصدار 0.2.9 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في إصدار لاحق بعد ضغط النماذج." data-i18n-en="Notice: the standalone portable archive is not shipped in 0.2.9 due to the required bin/ and models/ payload (~515MB). It returns in a later release once the models are pruned.">تنويه: النسخة المحمولة (Portable) لا تُشحن في الإصدار 0.2.9 نظراً لضرورة وجود مجلدات bin و models وحجمها المقدر بـ ~515MB. يتم شحنها في إصدار لاحق بعد ضغط النماذج.</p>
 </div>
 <div class="p-stack-sm bg-surface-container-lowest rounded text-center font-mono-code text-mono-code text-on-surface-variant">
             الحالة: مؤجّلة إلى 0.3
@@ -581,8 +582,9 @@
 </div>
 </div>
 <!-- Installer Integrity Panel: البصمة تُملأ من واجهة GitHub (asset.digest) عند فتح الصفحة.
-     والمكتوب هنا هو بصمة الأصل المنشور فعلاً في 0.2.8 لا تقدير — مقروءة من SHA256SUMS.txt
-     المرفق بالإصدار ومطابقة لـ digest في واجهة GitHub؛ يُحدَّث مع كل إصدار. -->
+     والمكتوب هنا هو بصمة الأصل المنشور فعلاً في 0.2.9 لا تقدير — مقروءة من SHA256SUMS.txt
+     المرفق بالإصدار ومطابقة لـ digest في واجهة GitHub (تحقّق 2026-09-25: بصمة كل ملف
+     حُسبت محلياً بعد تنزيله فطابقت الملفَّين)؛ يُحدَّث مع كل إصدار. -->
 <div class="bg-surface-container-low rounded-xl p-stack-lg mb-8 shadow-sm">
 <div class="flex items-start gap-stack-md">
 <span class="material-symbols-outlined text-clay-accent text-[26px] shrink-0">verified_user</span>
@@ -591,15 +593,15 @@
 <p class="font-body-md text-body-md text-on-surface-variant mb-3" data-i18n-ar="التوقيع الرقمي غير متوفّر بعد (يحتاج شهادة توقيع كود)، فالبصمة هي وسيلة التحقّق المتاحة: قارن بصمة ملفك المنزَّل بهذه القيمة، وهي منشورة كذلك في ملف SHA256SUMS.txt المرفق بالإصدار." data-i18n-en="Code signing is not available yet (it requires a code-signing certificate), so the fingerprint is the available means of verification: compare the hash of the file you downloaded with the value below. It is also published in the SHA256SUMS.txt attached to each release.">التوقيع الرقمي غير متوفّر بعد (يحتاج شهادة توقيع كود)، فالبصمة هي وسيلة التحقّق المتاحة: قارن بصمة ملفك المنزَّل بهذه القيمة، وهي منشورة كذلك في ملف SHA256SUMS.txt المرفق بالإصدار.</p>
 <div class="flex flex-col gap-1 font-mono-code text-mono-code bg-surface-container-lowest p-stack-sm rounded" dir="ltr">
 <div class="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
-<span class="text-on-surface-variant/70 js-exe-name">HaramLite_0.2.8_x64-setup.exe</span>
-<span class="text-clay-accent break-all js-exe-sha">f23a59ab82edb8156a2298f81b1c625cabdd122f07a5acab4d29f9719969cf6f</span>
+<span class="text-on-surface-variant/70 js-exe-name">HaramLite_0.2.9_x64-setup.exe</span>
+<span class="text-clay-accent break-all js-exe-sha">122c98caf45b57361a64a749f2d247fdbfda4e7e7d8a26a33e5db671cf47267a</span>
 </div>
 <div class="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-2">
-<span class="text-on-surface-variant/70 js-msi-name">HaramLite_0.2.8_x64_en-US.msi</span>
-<span class="text-clay-accent break-all js-msi-sha">89912fd12ec39e91db162a26907cf90b4fa928c1aa7c09f2c387411feda8baec</span>
+<span class="text-on-surface-variant/70 js-msi-name">HaramLite_0.2.9_x64_en-US.msi</span>
+<span class="text-clay-accent break-all js-msi-sha">10bd4b7d8a053447013639f4f3f4a573cb233bcfa3c7eb64eba701dbdd15c1d6</span>
 </div>
 </div>
-<a class="js-sums-link inline-flex items-center gap-1 mt-3 font-label-sm text-label-sm text-clay-accent hover:text-primary transition-colors" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.8/SHA256SUMS.txt" rel="noreferrer">
+<a class="js-sums-link inline-flex items-center gap-1 mt-3 font-label-sm text-label-sm text-clay-accent hover:text-primary transition-colors" href="https://github.com/SMSMy/HaramLite/releases/download/v0.2.9/SHA256SUMS.txt" rel="noreferrer">
 <span class="material-symbols-outlined text-[16px]">description</span>
 <span data-i18n-ar="تنزيل ملف البصمات SHA256SUMS.txt" data-i18n-en="Download SHA256SUMS.txt">تنزيل ملف البصمات SHA256SUMS.txt</span>
 </a>
@@ -751,17 +753,17 @@
 </div>
 </div>
 </section>
-<!-- 6. WHAT'S NEW IN 0.2.8 (#whatsnew) -->
+<!-- 6. WHAT'S NEW IN 0.2.9 (#whatsnew) -->
 <section class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop mb-24 scroll-mt-20" id="whatsnew">
 <div class="bg-surface-container-high rounded-xl p-stack-lg sm:p-12 shadow-lg">
 <div class="flex flex-col md:flex-row md:items-center justify-between gap-stack-md mb-8 pb-stack-md border-b border-border-muted">
 <div>
 <div class="inline-flex items-center gap-stack-sm px-stack-sm py-0.5 rounded bg-clay-accent/15 text-clay-accent font-mono-code text-mono-code font-bold mb-2">
-سجل التغييرات • الإصدار <span class="js-version-text">0.2.8</span>
+سجل التغييرات • الإصدار <span class="js-version-text">0.2.9</span>
 </div>
-<h2 class="font-headline-xl text-headline-xl text-cream-text" data-i18n-ar="الجديد في إصدار {v}" data-i18n-en="What&#39;s New in v{v}">الجديد في إصدار 0.2.8</h2>
+<h2 class="font-headline-xl text-headline-xl text-cream-text" data-i18n-ar="الجديد في إصدار {v}" data-i18n-en="What&#39;s New in v{v}">الجديد في إصدار 0.2.9</h2>
 </div>
-<a class="inline-flex items-center gap-stack-sm font-label-md text-label-md text-clay-accent hover:underline" href="https://github.com/SMSMy/HaramLite/releases/tag/v0.2.8" rel="noreferrer" target="_blank">
+<a class="inline-flex items-center gap-stack-sm font-label-md text-label-md text-clay-accent hover:underline" href="https://github.com/SMSMy/HaramLite/releases/tag/v0.2.9" rel="noreferrer" target="_blank">
 <span data-i18n-ar="عرض تقرير الإصدار في GitHub" data-i18n-en="View release on GitHub">عرض تقرير الإصدار في GitHub</span>
 <span class="material-symbols-outlined text-[16px]">arrow_outward</span>
 </a>
@@ -771,38 +773,40 @@
 <div class="space-y-stack-sm">
 <div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
 <span class="material-symbols-outlined text-clay-accent">security</span>
-<span data-i18n-ar="أُغلق ثقب حقن في «افتح الملف»" data-i18n-en="An injection hole in Open File was closed">أُغلق ثقب حقن في «افتح الملف»</span>
+<span data-i18n-ar="الوضع المُرسَل صار هو المعروض، وللغة زرّ ظاهر" data-i18n-en="The displayed mode is now the mode that is sent, and the language has a visible switch">الوضع المُرسَل صار هو المعروض، وللغة زرّ ظاهر</span>
 </div>
-<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="كان قائماً قبل 0.2.7: مسار فيه &amp; صار يُمرَّر وسيطاً واحداً بلا مُفسِّر أوامر." data-i18n-en="It predates 0.2.7: a path containing &amp; is now passed as a single argument, with no command interpreter.">كان قائماً قبل 0.2.7: مسار فيه &amp; صار يُمرَّر وسيطاً واحداً بلا مُفسِّر أوامر.</p>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="كان زرّ المشاهدة يرسل الطلب بلا وضع فيقع التطبيق على افتراضيّه (song): الوضع المعروض في الواجهة لم يكن الوضع المُرسَل، وزرّ اللغة لم يكن موجوداً أصلاً." data-i18n-en="The watch button sent its request with no mode, so the app fell back to its default (song): the mode shown in the interface was not the mode being sent, and there was no language button at all.">كان زرّ المشاهدة يرسل الطلب بلا وضع فيقع التطبيق على افتراضيّه (song): الوضع المعروض في الواجهة لم يكن الوضع المُرسَل، وزرّ اللغة لم يكن موجوداً أصلاً.</p>
 </div>
 
 <div class="space-y-stack-sm">
 <div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
 <span class="material-symbols-outlined text-clay-accent">play_circle</span>
-<span data-i18n-ar="حارس الإضافة كان يقرأ الكود ولا ينفّذه" data-i18n-en="The extension guard read the code without ever executing it">حارس الإضافة كان يقرأ الكود ولا ينفّذه</span>
+<span data-i18n-ar="حارسا الأسماء والمُفسَدات: اختبار يُحذف ويُوضع مكانه تافه صار يسقط البناء" data-i18n-en="Name and mutant gates: a deleted test replaced by a trivial one now fails the build">حارسا الأسماء والمُفسَدات: اختبار يُحذف ويُوضع مكانه تافه صار يسقط البناء</span>
 </div>
-<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="صار ينفّذ setAudioTime على ستة مشاهد ⇒ 513 فحصاً · 36 مُفسَداً (كانت 473 · 27)." data-i18n-en="It now runs setAudioTime across six scenarios ⇒ 513 checks · 36 mutants (was 473 · 27).">صار ينفّذ setAudioTime على ستة مشاهد ⇒ 513 فحصاً · 36 مُفسَداً (كانت 473 · 27).</p>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="خطّ الأساس كان يقارن العدد وحده؛ صار يقارن جرد الأسماء (418 اسماً) ⇒ اسم غاب يسقط البناء، ولكلٍّ مُفسَد يثبت أنه يراه." data-i18n-en="The baseline compared counts alone; it now compares the roster of names (418 names) ⇒ a missing name fails the build, each with a mutant proving the guard sees it.">خطّ الأساس كان يقارن العدد وحده؛ صار يقارن جرد الأسماء (418 اسماً) ⇒ اسم غاب يسقط البناء، ولكلٍّ مُفسَد يثبت أنه يراه.</p>
 </div>
 
 <div class="space-y-stack-sm">
 <div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
 <span class="material-symbols-outlined text-clay-accent">checklist</span>
-<span data-i18n-ar="ثلاث بوّابات كانت تصمت أو تصرخ خطأً" data-i18n-en="Three gates were silent, or cried wolf">ثلاث بوّابات كانت تصمت أو تصرخ خطأً</span>
+<span data-i18n-ar="فشل التنزيل صار يحمل سببه بدل تقدّم بلا خطأ" data-i18n-en="A failed download now carries its cause instead of progress with no error">فشل التنزيل صار يحمل سببه بدل تقدّم بلا خطأ</span>
 </div>
-<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="وثمانٍ لم تعد تمرّ فراغاً، وبوّابة جديدة pnpm guards:selfcheck تجعلها أربع عشرة." data-i18n-en="Eight more no longer pass on empty input, and a new gate, pnpm guards:selfcheck, brings the count to fourteen.">وثمانٍ لم تعد تمرّ فراغاً، وبوّابة جديدة pnpm guards:selfcheck تجعلها أربع عشرة.</p>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="كان stderr يُصرَّف إلى بالوعة تُرمى ويُبنى الذيل من stdout وحده — وyt-dlp يكتب ERROR: على stderr، فكان 100% ثم فشل بلا سبب." data-i18n-en="stderr was piped to a discarded sink and the tail was built from stdout alone — while yt-dlp writes ERROR: to stderr, so a 100% download failed with no cause shown.">كان stderr يُصرَّف إلى بالوعة تُرمى ويُبنى الذيل من stdout وحده — وyt-dlp يكتب ERROR: على stderr، فكان 100% ثم فشل بلا سبب.</p>
 </div>
 
 <div class="space-y-stack-sm">
 <div class="flex items-center gap-stack-sm text-cream-text font-bold font-label-md text-label-md">
 <span class="material-symbols-outlined text-clay-accent">auto_fix_high</span>
-<span data-i18n-ar="سبعة إصلاحات صحّة" data-i18n-en="Seven health fixes">سبعة إصلاحات صحّة</span>
+<span data-i18n-ar="إلغاء المستخدم لم يعد يُقرأ عطلاً" data-i18n-en="A user cancellation is no longer read as a failure">إلغاء المستخدم لم يعد يُقرأ عطلاً</span>
 </div>
-<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="(سجلّ throttle لا يطبع أصفاراً · stft بلا نقص تحت الصفر · bridge لا ينفكّ تدفّقه · نفايات CSS كانت تُسقط كتلتين مرئيتين) — بلا تغيير في طريقة الفصل أو الواجهة." data-i18n-en="(the throttle log no longer prints zeros · stft cannot underflow · the bridge stream no longer falls apart · stray CSS was dropping two visible blocks) — with no change to the separation method or the interface.">(سجلّ throttle لا يطبع أصفاراً · stft بلا نقص تحت الصفر · bridge لا ينفكّ تدفّقه · نفايات CSS كانت تُسقط كتلتين مرئيتين) — بلا تغيير في طريقة الفصل أو الواجهة.</p>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed" data-i18n-ar="كان يُسجَّل ERROR مع «تم إلغاء المعالجة من قبل المستخدم» — أي أن إلغاء المستخدم كان يُقرأ عطلاً. وحدّ معلَن: نداء الاستدلال داخل العملية حاجب ولا يُقطع." data-i18n-en="It logged ERROR together with &quot;processing cancelled by the user&quot; — i.e. a user cancellation read as a fault. One declared limit: the in-process inference call is blocking and cannot be cut.">كان يُسجَّل ERROR مع «تم إلغاء المعالجة من قبل المستخدم» — أي أن إلغاء المستخدم كان يُقرأ عطلاً. وحدّ معلَن: نداء الاستدلال داخل العملية حاجب ولا يُقطع.</p>
 </div>
 
 </div>
 </div>
 </section>
+
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-stack-lg pt-stack-md border-t border-border-muted">الحدود المعلَنة لهذا الإصدار (ما لم يُقَس: عميل تلغرام حقيقي · التزامن الحيّ داخل الصفحة · تركيب MSI على جهاز نظيف · VRAM بثلاث مهامّ) وقياس ما بعد الدفع: <a class="text-clay-accent hover:underline" href="https://github.com/SMSMy/HaramLite/blob/main/docs/RELEASE-0.2.9.md" rel="noreferrer" target="_blank">docs/RELEASE-0.2.9.md</a> · <a class="text-clay-accent hover:underline" href="https://github.com/SMSMy/HaramLite/releases/tag/v0.2.9" rel="noreferrer" target="_blank">نشرة GitHub</a>.</p>
 
 <!-- 7. STRICT ZERO-COMPROMISE PRIVACY (#privacy) -->
 <section class="max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop mb-24 scroll-mt-20" id="privacy">
