@@ -188,6 +188,7 @@ $ git merge-base --is-ancestor 011c5eb main   ⇒  True
 | **مصفوفة الاختبار اليدوي لم تُمَلأ** (تحتاج ويندوز + بوتاً حقيقيّاً + هاتفاً) | `x3-tg-report.md` §٨ · سطر 269 |
 | **تذبذب مقيس في اختبار قائم** — `telegram::tests::t3_two_users_run_in_parallel_up_to_the_global_cap`: **سببُه التنازع على الجهاز لا المنتج** (٤٢ تشغيلاً ساكناً ⇒ صفر فشل؛ وتحت تنازع حقيقي **١ فشل من ٣٦**) ⇒ «صفر فاشل» **ليس قابلاً لإعادة الإنتاج بثقة**، و**لم يُغلق** | `x4-cancel-report.md` §٧ · سطر 603 (بند ٨) · `docs/BACKLOG-0.3.md:359` (ك-١) |
 
+
 ---
 
 ## ٢.١) قياس بعد الدفع (لا يُقرأ كخضرة CI)
@@ -195,6 +196,7 @@ $ git merge-base --is-ancestor 011c5eb main   ⇒  True
 | ما قِيس | النتيجة |
 |---|---|
 | **`Quality gate` على `fca5882`** | **`failure`** (مقروء 2026-10-03 · التشغيل `36136136810`). ⚠️ **والخطوة الساقطة واحدة**: `Rust baseline gate` ⇒ «✗ اختبارات فاشلة: **7** · ✗ اختبارات ناجحة: **440 < الأساس 447** · ✗ اختبارات غابت عن التشغيل: **7 من 447**». والأسماء الغائبة السبعة **موجودة في `src-tauri/src` على `fca5882` نفسه** (متحقَّق: `git grep` على الالتزام) ⇒ **ليست اختبارات محذوفة بل لم تُشغَّل**. **ولم أُعالج العطب**: القرار للمالك |
+| **`Quality gate` بعد تثبيت الأداة** | التشغيلان `37144671050` و`37145722314`: **سطر clippy سقط من قائمة الفشل في الاثنين** (مقيس بالعدّ: صفر مطابقة لـ«تحذيرات clippy») وكان `15 موضعاً فريداً > الأساس 14` قبل التثبيت ⇒ **الرقم صار قابلاً لإعادة الإنتاج** |
 | **نشر الموقع** | `pages build and deployment` على `fca5882` ⇒ **`completed success`** · وعلى `c0bf651` و`a8747a6` ⇒ **`completed success`** أيضاً (التزاما تحديث الموقع، انظر §٥) |
 | **حماية الفرع** | الدفع أعلن `Bypassed rule violations: Required status check "gate" is expected` ⇒ **الفحص المطلوب اسمه `gate`**، وقد تجاوزه الدفع بصلاحية المالك. **ولا خضرة CI مدّعاة**: التشغيل **جارٍ**، ولم تُقرأ نتيجته |
 | **`release.yml` قابل للتشغيل بـ`workflow_dispatch`** | نعم — **لا تعطيل مقصود**: صفر `if: false` · صفر `continue-on-error` · صفر خطوة معلَّقة. يبني **المثبِّت** بـ`tauri-apps/tauri-action@v0` **وينشر إصدار GitHub** (`releaseDraft: false` · `permissions: contents: write`) ثم ينشر `SHA256SUMS.txt`·`build-info.json`·`sbom.cdx.json` ويرفع أصول الإصلاح الذاتي إلى `assets-v1` |
@@ -203,6 +205,44 @@ $ git merge-base --is-ancestor 011c5eb main   ⇒  True
 | **شرطه الخارجي** | يحتاج `assets-v1` قائماً: `bin/yt-dlp.exe` و`models/` **غير متتبَّعين في git**، و`fetch_redist.js --verify` يتحقّق من بصماتها ⇒ **بلا تلك الأصول يفشل التشغيل** |
 
 **للتشغيل من المتصفّح**: `Actions → Release → Run workflow` (الفرع `main`) — **GitHub يبنيه على عدّاءاته وجهازك مطفأ**. و`tagName: v__VERSION__` سيستهدف **`v0.2.9`** (الإصدار غير موجود على GitHub بعد ⇒ سينشئه).
+
+
+---
+
+## ٢.٢) تصنيف اختبارات كان يُظنّ أنها «متذبذبة» — **قِيس فتبيّن أنه نقص بيئة** (2026-10-03)
+
+> كُتب بعد أن صار ممكناً **تشغيل المجموعة محلياً**: `bin/` و`models/` كانتا فارغتين في كل شجرة،
+> فجُمعت الموارد من `target/` (‏`vc_redist` والنموذج) ومن `ffmpeg-lgpl-staging` (‏`ffmpeg`/`ffprobe`)،
+> **وبُصمة كل ملف طابقت المثبَّتة في `repair.rs`** (‏`node scripts/fetch_redist.js --verify` ⇒
+> «‏4 مكوّناً + vc_redist.x64.exe موجودة وبصماتها مطابقة»).
+
+**الفجوة المقيسة**: `ci.yml` كان يقول إن اختبارات `ffmpeg`/`ffprobe` **«تتخطّى نفسها عند غياب
+الأدوات»** — **وهذا غير صحيح لهذه المجموعة**: `yt_dlp` لا يكتفي بثنائي `yt-dlp`، بل يحكم على
+«خانة صالحة» عبر `slot_usable` ⇒ `media::probe` ⇒ **`ffprobe`**؛ وبلا `ffprobe` **تسقط** لا تتخطّى.
+و`bin/` في CI **stubs فقط** (‏`ci.yml`: تُنشأ ملفات `.stub`)، فالبوّابة كانت تسقط لنقص بيئة
+**ويُقرأ ذلك «عطب اختبارات»**.
+
+| # | الاختبار | الحكم | الدليل المقيس |
+|---|---|---|---|
+| ١ | `yt_dlp::tests::a_transient_failure_is_retried_once_and_succeeds` | **نقص بيئة** (‏`ffprobe`) — **لا يُهمَل** | بلا `ffprobe`: سقط برسالة الحارس «yt-dlp نجح دون ملف ناتج صالح — أعد المحاولة» **والنداءان وقعا** · وبـ`ffprobe`: **نجح** |
+| ٢ | `yt_dlp::tests::a_transient_failure_with_a_valid_slot_spends_no_retry` | نقص بيئة | سقط بـ«نداءات: 2» بدل ١ لأن الحكم على الخانة لم يجد `ffprobe` |
+| ٣ | `yt_dlp::tests::a_valid_slot_is_success_even_when_ytdlp_exits_nonzero` | نقص بيئة | سقط · ونجح بالمجموعة كاملة |
+| ٤ | `yt_dlp::tests::a_stalled_download_with_a_valid_slot_is_rescued` | نقص بيئة | سقط · ونجح بالمجموعة كاملة |
+| ٥ | `yt_dlp::tests::a_truncated_container_is_refused_while_a_complete_one_passes` | نقص بيئة | سقط عند `media::probe(&truncated)` — **الموضع نفسه يسمّي `ffprobe`** |
+| ٦ | `telegram::tests::t4_a_user_with_four_files_does_not_block_another_user` | **سليم** | **نجح محلياً** في كل قياس — وظهوره «غائباً» في CI لأن `cargo test` **يتوقّف عن إطلاق اختبارات بعد الفشل** |
+| ٧ | `telegram::tests::t9_the_intro_is_pinned_once_at_the_moment_the_bot_is_added` | **سليم** | نجح محلياً في كل قياس · والسبب نفسه في «غيابه» |
+| ٨ | `slots::tests::a_free_slot_is_taken_without_waiting_and_a_taken_one_reports_its_wait` | **سليم** | نجح محلياً في كل قياس · والسبب نفسه |
+
+**العلاج**: `ci.yml` صار يجلب `ffmpeg` و`ffprobe` مع النموذج في **الخطوة المتحقِّقة نفسها**
+(‏`--only=model,ffmpeg,ffprobe`). **ولم يُهمَل اختبار واحد ولم يُعدَّل خطّ الأساس**، لأن القياس
+أثبت أن **الاختبارات سليمة والبيئة ناقصة**.
+
+**والقياس الختامي محلياً (1.95.0 المثبَّتة · المجموعة كاملة)**: `cargo test --lib` ⇒
+**‏447 ناجحاً · ٠ فاشلاً · ٥ مُهمَلة** — **وهو رقم خطّ الأساس بعينه**، و**‏8/8** للثمانية أعلاه.
+
+**وما لم يُقَس**: هل يخضرّ `Quality gate` على العدّاء بهذين الإصلاحين؟ **يُقاس بعد الدفع**
+(انظر §٢.١)؛ ولا يُدَّعى أخضر قبل قراءته.
+
 
 ---
 
