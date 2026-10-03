@@ -87,11 +87,22 @@ function parseArgs(argv) {
       case '--list': opts.list = true; break;
       case '--force': opts.force = true; break;
       case '--help': case '-h': opts.help = true; break;
-      case '--only':
+      case '--only': {
+        /* **الرايات تتراكم ولا يُستبدل بعضها بعضاً (2026-10-03).**
+         * العطل المقيس: كان السطر `opts.only = value.split(...)` **إسناداً** ⇒
+         * `--only=model --only=ffmpeg` يُبقي **الأخير وحده** و**يُسقط الأول صامتاً**،
+         * والسكربت يخرج بـ`0` ويطبع «١ سليماً» ⇒ **نقص تجهيز صامت**: طلبٌ لم يُنفَّذ
+         * ويبدو ناجحاً. ومثله في CI يعني **أداةً لا تُجلب** ثم **اختبارات تسقط بلا سبب ظاهر**.
+         * ⇒ فالتجميع الآن **إضافة**. و`only` تبقى `null` إن لم يُمرَّر العلم إطلاقاً،
+         * لأن `[]` **صادقة** في `if (!only)` فيُفسد مسار «بلا تقييد».
+         * والصيغة المعتمدة في `ci.yml`: **علَم واحد بقيم مفصولة بفواصل** (والرايات المتعدّدة
+         * تعمل أيضاً بعد هذا الإصلاح، فلا يُكسر استعمال قائم). */
         if (!value) usageError('--only يحتاج قيمة، مثال: --only=yt-dlp');
-        opts.only = value.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-        if (opts.only.length === 0) usageError('--only يحتاج قيمة غير فارغة');
+        const parts = value.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+        if (parts.length === 0) usageError('--only يحتاج قيمة غير فارغة');
+        opts.only = [...(opts.only || []), ...parts];
         break;
+      }
       default:
         usageError(`خيار غير معروف: ${raw}`);
     }

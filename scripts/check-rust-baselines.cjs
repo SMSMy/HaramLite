@@ -44,6 +44,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { failingTestDetail } = require('./rust-fail-detail.cjs');
 
 const argv = process.argv.slice(2);
 const argOf = (n, d) => { const i = argv.indexOf('--' + n); return i >= 0 ? argv[i + 1] : d; };
@@ -174,8 +175,9 @@ function rustTestTotals() {
     }
   }
   if (live.size === 0) return { error: 'لم يُقرأ سطر اختبار واحد («test … ... ok») — لا جرد يُقاس' };
-  return { passed, failed, ignored, results, status: r.status, live, ignoredNames, extraFlagged };
+  return { passed, failed, ignored, results, status: r.status, live, ignoredNames, extraFlagged, failDetail: failingTestDetail(out) };
 }
+
 
 const clippy = clippyUniqueWarnings();
 const tests = rustTestTotals();
@@ -273,6 +275,17 @@ if (tests.ignored > base.tests_ignored) {
 
 if (reasons.length) {
   for (const r of reasons) console.error('✗ ' + r);
+  /* **تفصيل الساقط**: اسمه · موضعه · نصّ فشله · وزمنه — يُطبَع **قبل** الأسماء الغائبة،
+   *  لأن الغائب في الغالب **أثرٌ** للساقط (‏`cargo test` يتوقّف عن إطلاق اختبارات بعد
+   *  الفشل) لا عطبٌ ثانٍ. وبلا هذا السطر كان سجلّ CI يقول «٨ فاشلة» ولا يقول **أيّها**. */
+  if (tests.failDetail && tests.failDetail.length) {
+    console.error(`  تفصيل الاختبارات الفاشلة (${tests.failDetail.length}) — الاسم · الموضع · نصّ الفشل · الزمن:`);
+    for (const f of tests.failDetail) {
+      console.error(`   ✗ ${f.name}`);
+      console.error(`       الموضع: ${f.location}   ·   الزمن: ${f.elapsed}`);
+      console.error(`       الفشل : ${f.message}`);
+    }
+  }
   if (missing.length) {
     console.error('  الأسماء الغائبة (أوّل ٢٠):');
     for (const n of missing.slice(0, 20)) console.error('   · ' + n);

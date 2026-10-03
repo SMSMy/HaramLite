@@ -48,7 +48,8 @@
     "release:verify": "node scripts/check-release-artifact.cjs",
     "rust:gates": "node scripts/check-rust-baselines.cjs",
     "rust:mutants": "node scripts/check-rust-mutants.cjs",
-    "rust:mutants:selfcheck": "node scripts/check-rust-mutants.cjs --self-test"
+    "rust:mutants:selfcheck": "node scripts/check-rust-mutants.cjs --self-test",
+    "fetch:only:guard": "node scripts/check-fetch-only.cjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
