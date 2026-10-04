@@ -110,9 +110,14 @@ describe('lang.js · عناصر TRANSPARENCY ذات <b>/<code> تُترجم ول
   });
 
   it('والعنصر الذي لا وسم في قيمته يُترك بناؤه كما هو (js-release-tag)', () => {
-    // TRANSPARENCY.html:72 — السمة «تدقيق من الشيفرة · 0.2.7» بلا وسوم،
+    // TRANSPARENCY.html:72 — السمة «تدقيق من الشيفرة · <رقم>» بلا وسوم،
     // والابن `js-release-tag` يحمل الرقم الحيّ. لا وسم ⇒ لا شيء يُبنى، فيُترك
     // الابن كما هو ولا يُمحى (وهو ما كان يمحوه الإصلاح الأول لهذا العيب).
+    // **الرقم نفسه لا يُثبَّت بالاسم**: تقدّم مع كل إصدار، وتوقّع «0.2.7»
+    // المجمد سقط على سطر سليم بعد أن حملته الصفحة «0.2.9» (‏`0ad7ef4`) —
+    // يُقرأ الآن من HTML المصدر، والمطلوب أن يبقى الابن بنصّه كما كُتب.
+    const live = norm(TRANSPARENCY_HTML.match(/<span class="js-release-tag">([^<]+)<\/span>/)?.[1] ?? '');
+    expect(live, 'الرقم الحيّ غير مقروء من TRANSPARENCY.html — الفحص باطل').not.toBe('');
     for (const lang of ['ar', 'en'] as const) {
       const win = mount(TRANSPARENCY_HTML, lang);
       const el = [...win.document.querySelectorAll('[data-i18n-ar]')]
@@ -120,7 +125,7 @@ describe('lang.js · عناصر TRANSPARENCY ذات <b>/<code> تُترجم ول
       expect(el, 'عنصر js-release-tag مفقود — الفحص باطل').not.toBeUndefined();
       expect(el!.children).toHaveLength(1);
       expect(el!.firstElementChild!.classList.contains('js-release-tag')).toBe(true);
-      expect(norm(el!.firstElementChild!.textContent)).toBe('0.2.7');
+      expect(norm(el!.firstElementChild!.textContent)).toBe(live);
     }
   });
 });
