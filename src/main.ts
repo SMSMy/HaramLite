@@ -2,7 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import * as dialog from '@tauri-apps/plugin-dialog';
-import { applyLang, t, wireLang } from './i18n';
+import { applyLang, wireLang } from './i18n';
+import { wireModes } from './modes';
 import { pushLogLine, refresh, wireLogToggle } from './log';
 import type { LogLine } from './types';
 import { startLongtaskWatch, startStallDetector } from './diagnostics';
@@ -45,22 +46,8 @@ function wireContextMenu(): void {
 /* ── wiring ─────────────────────────────────────────────────────────── */
 
 
-function wireModes(): void {
-  const cards = document.querySelectorAll<HTMLElement>('.mode-card');
-  const sepLabel = document.getElementById('sep-label');
-  cards.forEach((card) => {
-    card.addEventListener('click', () => {
-      session.setCurrentMode((card.dataset.mode as 'song' | 'clip') ?? 'song');
-      cards.forEach((c) => c.classList.toggle('selected', c === card));
-      if (sepLabel) {
-        const key = session.getCurrentMode() === 'song' ? 'btn_sep_song' : 'btn_sep_clip';
-        sepLabel.dataset.i18n = key;
-        sepLabel.innerHTML = t(key);
-      }
-      invoke('push_log', { level: 'info', message: `mode → ${session.getCurrentMode()}` });
-    });
-  });
-}
+/* `wireModes` نُقلت إلى `src/modes.ts` (بند د2) كي يقيس اختبار دائم سلوك
+ * تسمية `#sep-label` — و`src/main.ts` لا يستورد `t` بعد نقلها. */
 
 /* ── «المعاينة السريعة»: ربط DOM محذوف ─────────────────────────────────
  * كان هنا `refreshPreviewHint()` و`wirePreview()` يعملان على `#preview-toggle`
