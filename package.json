@@ -49,6 +49,7 @@
     "rust:gates": "node scripts/check-rust-baselines.cjs",
     "rust:mutants": "node scripts/check-rust-mutants.cjs",
     "rust:mutants:selfcheck": "node scripts/check-rust-mutants.cjs --self-test",
+ "doc:commands": "node scripts/check-doc-commands.cjs",
     "fetch:only:guard": "node scripts/check-fetch-only.cjs"
   },
   "dependencies": {
