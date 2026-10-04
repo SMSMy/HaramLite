@@ -717,7 +717,10 @@ export function applyLang(): void {
   document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
   document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
     const key = el.dataset.i18n as keyof (typeof i18n)['ar'];
-    el.innerHTML = i18n[lang][key];
+    // د10: حارس المفتاح المفقود، مثل فرعَي aria/title المجاورين — بلا الحارس
+    // يُكتب النصّ الحرفي «undefined» مكان التسمية. (د9: النصّ الساكن المقابل
+    // في index.html مُزامَن مع هذا الجدول، واختبار i18nParity يقيس التزامن.)
+    if (i18n[lang][key] !== undefined) el.innerHTML = i18n[lang][key];
   });
   // Accessible names for icon-only controls / regions, kept symmetric with the
   // visible label (WCAG 2.5.3 label in name).

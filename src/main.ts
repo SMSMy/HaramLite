@@ -146,11 +146,6 @@ function wire(): void {
   wireSettingsScreen();
   wireSettings();
 
-  window.addEventListener('error', (ev) =>
-    invoke('push_log', { level: 'error', message: `JS error: ${ev.message}` }));
-  window.addEventListener('unhandledrejection', (ev) =>
-    invoke('push_log', { level: 'error', message: `JS unhandled rejection: ${String(ev.reason)}` }));
-
   wireModes();
   wireKinds();
   wireDropzone();
@@ -172,6 +167,14 @@ function wire(): void {
 }
 
 async function init(): Promise<void> {
+  // د14: معالجا error/unhandledrejection أول init() لا داخل wire() — كانا
+  // يُسجَّلان بعد seedSettings/applyLang فاستثناءٌ يقع في تلك النافذة يضيع
+  // بلا سجل. (و`init` نفسه يُستدعى مع تقييم الوحدة، فهذا أقرب موضع ممكن.)
+  window.addEventListener('error', (ev) =>
+    invoke('push_log', { level: 'error', message: `JS error: ${ev.message}` }));
+  window.addEventListener('unhandledrejection', (ev) =>
+    invoke('push_log', { level: 'error', message: `JS unhandled rejection: ${String(ev.reason)}` }));
+
   // Sprint D1: seed localStorage from the Rust settings store (fresh installs)
   await seedSettings();
 

@@ -6,7 +6,7 @@
  * المتغيّر يعرض «{secs}» للمستخدم بلا استبدال.
  */
 import { describe, expect, it } from 'vitest';
-import { i18n } from '../i18n';
+import { applyLang, i18n } from '../i18n';
 import indexHtml from '../../index.html?raw';
 
 type Table = Record<string, string>;
@@ -80,5 +80,27 @@ describe('ج-١٠ · the parity checks are not vacuous', () => {
     expect(Object.keys(en).length).toBe(Object.keys(ar).length);
     expect(new Set(htmlKeys).size).toBeGreaterThan(50);
     expect(new Set([...ariaKeys, ...titleKeys]).size).toBeGreaterThan(5);
+  });
+});
+
+describe('د9 · د10 — النصّ الساكن متزامن مع الجدول، والمفتاح المفقود لا يكتب undefined', () => {
+  it('النصّ الساكن لـtg_identity_hint في index.html يطابق قيمة الجدول (تصحيح «قابل للعكس»)', () => {
+    // د9: النصّ الساكن في HTML يقول «قابل للعكس» بينما الجدول المصحّح
+    // (i18n.ts:126، بتحليل موثّق في تعليقه) يقول: الاسم يُعاد والصورة تُزال
+    // ولا تُعاد. النصّ الساكن يسبق applyLang فيُرى قبل أي ترجمة.
+    const staticTexts = [...indexHtml.matchAll(/<span[^>]*data-i18n="tg_identity_hint"[^>]*>([^<]+)<\/span>/g)]
+      .map((m) => m[1].trim());
+    expect(staticTexts.length, 'العنصر غاب من index.html — الفحص باطل').toBe(1);
+    expect(staticTexts[0], 'نصّ HTML الساكن انحرف عن الجدول المصحَّح').toBe(i18n.ar.tg_identity_hint.trim());
+  });
+
+  it('applyLang بمفتاح data-i18n مفقود يُبقى النصّ القائم ولا يكتب undefined', () => {
+    // د10: فرع data-i18n في applyLang كان بلا حارس المفتاح المفقود بعكس
+    // فرعَي aria/title المجاورين — الحماية كانت اختبارية خارجية لا حارساً.
+    document.body.innerHTML = '<span id="victim" data-i18n="no_such_key_at_all">النصّ القائم</span>';
+    applyLang();
+    const el = document.getElementById('victim')!;
+    expect(el.textContent, 'كُتب نصّ undefined مكان التسمية').toBe('النصّ القائم');
+    expect(el.textContent).not.toContain('undefined');
   });
 });
