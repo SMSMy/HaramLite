@@ -122,8 +122,10 @@ function wireDropzone(): void {
 
   const win = getCurrentWebviewWindow();
   void win.onDragDropEvent((ev) => {
-    if (ev.payload.type === 'over') dz?.classList.add('dragging');
-    else dz?.classList.remove('dragging');
+    // د3 (0.3.0): الصنف `drag-over` هو المعرَّف في styles.css (نبض pulse-drag
+    // وإبراز المنطقة) — كان هنا `dragging` فلا يراه CSS ولا تغذية بصرية.
+    if (ev.payload.type === 'over') dz?.classList.add('drag-over');
+    else dz?.classList.remove('drag-over');
     if (ev.payload.type === 'drop') {
       const paths = ev.payload.paths;
       if (paths.length) void ingestFiles(paths);
