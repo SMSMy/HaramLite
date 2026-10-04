@@ -16,6 +16,7 @@
  */
 
 import { listen } from '@tauri-apps/api/event';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { invoke } from '@tauri-apps/api/core';
 import { currentLang, errText, t } from './i18n';
 import { pushSettings, setAutostartAsked, setTelegramApiHash, setTelegramToken } from './settings';
@@ -676,6 +677,19 @@ export function wireBridge(): void {
   }
 
   cb?.addEventListener('change', () => void applyBridge(!!cb.checked));
+
+  // د1 (0.3.0): زرّ «صفحة إضافة المتصفح» (#bridge-ext-link) يعيش في تبويب
+  // التكامل، والتفويض الوحيد لـ[data-open-url] كان على #about-body ⇒ نقرة
+  // صامتة في اللحظة التي يظهر فيها الزرّ (لا إضافة متصلة بعد). التفويض نفسه
+  // على حاوية التكامل: أي [data-open-url] داخل هذا التبويب يفتح بالمفتاح
+  // الخارجي — data-open-url فقط، لا href خام (href يقود WebView نفسه بعيداً).
+  document
+    .querySelector<HTMLElement>('.settings-tab-panel[data-tab="bridge"]')
+    ?.addEventListener('click', (e) => {
+      const el = (e.target as HTMLElement).closest?.('[data-open-url]') as HTMLElement | null;
+      const url = el?.getAttribute('data-open-url');
+      if (url) void openUrl(url).catch((err) => console.error('openUrl failed', err));
+    });
 
   // Init: backend ground truth wins over any stale cache — status known at
   // a glance and reconciled into settings so it survives restarts truthfully.
