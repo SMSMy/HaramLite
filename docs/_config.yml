@@ -28,6 +28,11 @@ exclude:
   - RELEASE-0.2.6.md
   - RELEASE-0.2.7.md
   - RELEASE-0.2.8.md
+  - RELEASE-0.2.9.md
+  - PLAN-*
+  - EXT-*
+  - THREAT-MODEL.md
+  - REVIEW-AREAS.md
   - rebuild/
 
 # ملاحظة: عند ربط الدومين المخصص أضف ملف CNAME يحوي haramlite.com في هذا المجلد،
