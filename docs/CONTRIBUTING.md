@@ -205,9 +205,9 @@ is entered in `qa/TEST-MATRIX.md`.
 - **The extension:** Native Messaging only (no HTTP ports). The host writes a request file in
   `app_data_dir/requests/` and the running instance picks it up — see `bridge.rs`.
 
-## The gates (fifteen — run in this order)
+## The gates (sixteen — run in this order)
 
-The `Quality gate` workflow (`.github/workflows/ci.yml`) runs these fifteen on **every push and
+The `Quality gate` workflow (`.github/workflows/ci.yml`) runs these sixteen on **every push and
 every pull request to `main`**. Run them locally in the same order before pushing: the cheapest
 and fastest first, then what touches the interface, then the textual guards.
 
@@ -228,6 +228,7 @@ and fastest first, then what touches the interface, then the textual guards.
 | 13 | **The manual test log** | `node scripts/matrix-check.cjs` | The **20** mandatory rows in `qa/TEST-MATRIX.md` must each carry **a date, a machine and a result** in its last cell. **And it measures the existence of the record, not the honesty of the tester**: "not executed" is an accepted recorded result. And it fails loudly (exit 2) on a missing file or zero mandatory rows — "a guard that does not see is not a guard" | `Manual test matrix (every mandatory row carries a record)` |
 | 14 | **The single-separation-entry guard** | `pnpm separation:entry` | Every **live mention** of the identifier `process_file` in the Rust sources is matched against an explicit allow-list (file + **expected count**): **3 places** today (2 directly in the tests · and the **only** product entry, carried by the `slots.rs` wrapper) — and the old five-file constraints were dropped when M1 was merged because their entries moved to the wrapper, so keeping them was "a stale list". It was born because the 0.2.9 protection (the separation-slots limiter) rests on **all** the entries passing through one wrapper — so a guard that prevents the **sixth** is cheaper than discovering it after building on it. The match is **deliberately broad** and is against the text **after stripping comments**: it catches `p::process_file(` after `use … as p`, and the bare call after `use …::process_file`, and the function pointer — not one specific form. And it fails (exit 2) on **zero places** or a missing source folder: "zero entries is not a success". Measured (2026-09-21 after the merge): **3 allowed places · 0 not allowed** | `Separation entry guard (one entry, one wrapper)` |
 | 15 | **The guard of the guards** | `pnpm guards:selfcheck` | For each of **eleven** guards it builds a crafted environment under `%TEMP%` containing a **mutant** (which must bring it down), a **control** (which must pass it, having seen a non-zero entry), and **zero entry** (which must fail loudly). Measured (2026-09-21 after M1): **controls 11/11 · mutants 39/39 · zero entry 11/11** — and the time is **8.5 s and 15.5 s** across two runs (it varies with machine load, so let it be read as a range, not a number). And this is the **third face** of the repository rule: "a guard that does not see is not a guard" **applied to the guards themselves** | `Guard self-check gate (mutant + control per guard)` |
+| 16 | **The bridge error-code gate** | `pnpm bridge:codes` | Every `code` the Rust bridge emits has an entry and a translation in **both** extension tables, both directions, and no raw `.error`/`.message` read escapes `errText`/`bridgeError` outside the declared ones. The guard has existed as `scripts/check-bridge-codes.cjs` since 0.2.9 (self-check: `pnpm bridge:codes:selfcheck`, 11 cases) but **no gate ran it** — measured: zero hits for it in `.github/` before this step; a guard nothing runs is advice, not a gate (rule §10) | `Bridge error-code gate (every Rust code carries both translations)` |
 
 > **Step names, not line numbers**: the column used to point at `ci.yml:<line>` — and they all
 > went stale as soon as two steps were inserted. A name does not go stale; and the check is

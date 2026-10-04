@@ -337,6 +337,16 @@ jobs:
       - name: Guard self-check gate (mutant + control per guard, generic and internal)
         run: pnpm guards:selfcheck:all
 
+      # ── البوّابة السادسة عشرة (م٠ · خطة 0.3.0): رموز أخطاء الجسر ──
+      # الحارس قائم منذ 0.2.9 (‏`scripts/check-bridge-codes.cjs`: كل `code` يُصدره
+      # الرست له مدخل وحالة ترجمة في جدولَي الإضافة بالاتجاهين، ولا قراءة
+      # `.error`/`.message` خامّة خارج `errText`/`bridgeError`) لكن **لا بوّابة
+      # تشغّله** (‏`grep` على `.github/` ⇒ صفر، قيس عند التنفيذ) — والحارس الذي لا
+      # يُشغَّل نصيحة لا بوّابة (قاعدة §١٠). وموضعه **آخر المهمة** عمداً كي يبقى
+      # تعليق «البوّابة الخامسة عشرة» أعلاه صادقاً كما هو.
+      - name: Bridge error-code gate (every Rust code carries both translations)
+        run: pnpm bridge:codes
+
   # ── Release gate (ARCHIVE/ROADMAP.md §٧.ب بند ٥ · §6) — workflow_dispatch ONLY ──
   #
   # Why a separate job instead of a step above: this is the one gate that needs
