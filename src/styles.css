@@ -36,24 +36,7 @@
 .lv-DEBUG { color: #c9c6c2; }
 .lv-ts { color: #93a1bd; }
 
-/* ── شاشة الإعدادات **داخل نافذة التطبيق** ─────────────────────────────────
- * الحاوية `#settings-menu` معرّفها تاريخي، ودورها الآن **شاشة** لا منسدلة: في
- * وضع الإعدادات تُفرَد على مساحة النافذة (‏`body.settings-mode`)، وفي الحالة
- * العادية تبقى مخفيّة (يفرضه `settingsScreen.ts`) والزرّ يبدّل الوضع ⇒ فلا مسار
- * ثانٍ ولا نافذة ثانية.
- * والقواعد هنا **هندسة عرضٍ فقط**: لا خصيصة عنصر تحكّم تغيّرت، ولا لون.
- *
- * **ولا تُقطع الشاشة**: الرأس يحمل `.glass-effect` وفيه `backdrop-filter:
- * blur(16px)` — و`backdrop-filter` (غير `none`) يجعل العنصر **كتلةً حاوية**
- * لـ`position: fixed` بداخله ⇒ فـ`inset: 0` يُحسب على **الرأس** (‏76.2px) لا على
- * النافذة، فتصير الشاشة شريطاً — **مقيس**: ارتفاع 67.2px عند y=23، والتبويبات
- * عند y=154 والحاويات عند y=213 أي **خارجها** فيقصّها `overflow: auto` ⇒ وهو
- * عطب «شريط التبويبات مقطوع + فراغ أسود + سمرولة» بعينه.
- * فتُبطل القاعدة المشغّل في وضع الإعدادات (والشاشة تغطّي الرأس فلا يظهر فرق). */
-body.settings-mode header.glass-effect {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
+
 /* **وشريط السجلّ لا يعلو الشاشة**: `#logcard` ابنٌ مباشر لـ`body` بـ`z-50` (مقيس:
  * [0, 76.2, 1184, 42] · static · ليس داخل الشاشة) — فمع أن الشاشة `fixed` و`z-50`
  * فهو **متأخّر عنها في DOM** فيرسم فوقها بين عنوانها وتبويباتها (وهو ما يظهر في
@@ -61,52 +44,53 @@ body.settings-mode header.glass-effect {
 body.settings-mode #logcard {
   display: none;
 }
+/* **والحاوية نفسها**: صنفا `hidden` و`flex` معاً يحسمان بالترتيب داخل
+ * مخرج tailwind — نثبّت الحسم صراحةً بدل الاعتماد على ترتيب التوليد. */
+#settings-menu.hidden {
+  display: none;
+}
+/* **والتخطيط master-detail بالشبكة**: اللوحات الستّ بنات **مباشرة** لـ
+ * `#settings-menu` (حارس `settingsTabs`: لا حاوية داخل حاوية — جذر عطب
+   التداخل القديم)، فالعمودان يُرَتان هنا: الترويسة على كامل العرض،
+   والتنقّل في العمود الأول (يمين RTL)، واللوحة النشطة في البقية. */
 body.settings-mode #settings-menu {
-  position: fixed;
-  inset: 0;
-  /* **والهامش صفر**: `mt-2` (‏8px) من أصناف القائمة القديمة يبقى مع `inset:0`
-   * فينزلق الإطار — **مقيس**: `[0, 8, 1084, 800]` في نافذة ارتفاعها 792px ⇒
-   * أسفله **8px خارج النافذة**، وفيه خطر قصّ آخر عنصر في حاوية طويلة. */
-  margin: 0;
-  width: auto;
-  max-height: none;
-  /* هامش الشاشة صفر: مع `position: fixed; inset: 0` كان `mt-2` من الترميز
-     (‏0.5rem) يُزيحها للأسفل — **مقيس** في متصفّح حقيقي: `#settings-menu`
-     top=8 · height=792، وبعده top=0 · height=800 (الأمر والرقم في
-     ARCHIVE/settings2-report.md §٤). و«y=23» المسجَّل في تعليق القاعدة أعلاه
-     يخصّ **حالة الانكماش 67.2px** (كتلة حاوية على الرأس)، لا حاشية `mt-2`.
-     والقاعدة لا تمسّ الهندسة خارج وضع الإعدادات. */
-  margin: 0;
-  border: 0;
-  border-radius: 0;
-  padding: 1.5rem;
-  gap: 1rem;
-  overflow-y: auto;
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+body.settings-mode .settings-screen-header {
+  grid-column: 1 / -1;
+}
+body.settings-mode #settings-tabs {
+  grid-row: 2;
+  grid-column: 1;
+}
+body.settings-mode .settings-tab-panel:not([hidden]) {
+  display: flex;
+  grid-row: 2;
+  grid-column: 2;
+}
+ * مخرج tailwind — نثبّت الحسم صراحةً بدل الاعتماد على ترتيب التوليد. */
+#settings-menu.hidden {
+  display: none;
 }
 /* الرأس يبقى (فيه زرّ اللغة وشارة الإصدار)، والمحتوى الرئيسي يُخفى. */
 body.settings-mode main {
   display: none;
 }
-/* **ولا يُكسَر `hidden`**: قاعدة `display` على الصنف وحده كانت تتغلّب على
- * `[hidden]` (لأن `[hidden]` في ورقة المتصفّح أدنى رتبةً من أي قاعدة مؤلّف)
- * فتُعرض التبويبات السبعة معاً. فالقاعدة الآن على **غير المخفيّ** وحده. */
+/* **ولا يُكسَر `hidden`**: صنف `flex` في الترميز يتغلّب على `[hidden]` من
+ * ورقة المتصفّح فتُعرض اللوحات كلها معاً — فالقاعدة على **غير المخفيّ**
+ * وحده، وتُرك الاتجاه والفرق لأصناف الترميز (`flex-col gap-5`). */
 body.settings-mode .settings-tab-panel:not([hidden]) {
   display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
 }
-.settings-tab {
-  font: inherit;
-  color: var(--hl-on-surface-variant, #c9c6c2);
-  padding: 0.25rem 0.6rem;
-  border-radius: 0.375rem;
-  cursor: pointer;
-  border: 1px solid transparent;
-}
-.settings-tab:hover { color: #da7756; }
+/* حالة التبويب المختار تُرسم من `aria-selected` وحدها (يضبطها `showTab`) —
+   والترميز يحمل بقية مظهر الزرّ؛ قاعدة أساسية على الصنف كانت تتعارض مع
+   أصناف الترميز بنفس الرتبة (styles.css يُحمَّل بعد tailwind) فأُلغيت. */
 .settings-tab[aria-selected="true"] {
-  color: #da7756;
-  border-color: #da7756;
+    background-color: rgba(218, 119, 86, 0.15);
+    border-color: rgba(218, 119, 86, 0.4);
+    color: #da7756;
 }
 
 
@@ -165,30 +149,6 @@ body.settings-mode .settings-tab-panel:not([hidden]) {
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.glass-effect {
-    background-color: rgba(31, 29, 27, 0.65);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-}
-
-@keyframes shimmer {
-    100% { transform: translateX(100%); }
-}
-
-.animate-shimmer {
-    position: relative;
-    overflow: hidden;
-}
-
-.animate-shimmer::after {
-    content: '';
-    position: absolute;
-    top: 0; right: 0; bottom: 0; left: 0;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
-    transform: translateX(-100%);
-    animation: shimmer 2s infinite;
-}
-
 /* لوحة «الإعدادات المتقدمة»: مطويّة افتراضياً (`grid-template-rows: 0fr` +
    `opacity: 0`) و`.open` يفتحها — والفتح **بستّ نقرات على `#version-badge`**
    (`src/main.ts` ⇒ `wireHiddenAdvancedPanel`). **أُعيدت هذه القواعد مع اللوحة**
@@ -225,16 +185,6 @@ body.settings-mode .settings-tab-panel:not([hidden]) {
     transform: scale(1.02);
 }
 
-.fade-in-up {
-    opacity: 0;
-    transform: translateY(15px);
-    animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-}
-
-@keyframes fadeInUp {
-    to { opacity: 1; transform: translateY(0); }
-}
-
 /* Log Fade In */
 @keyframes logFadeIn {
     from {
@@ -252,11 +202,6 @@ body.settings-mode .settings-tab-panel:not([hidden]) {
     animation: logFadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
-/* Staggered reveal delays */
-.delay-100 { animation-delay: 100ms; }
-.delay-200 { animation-delay: 200ms; }
-.delay-300 { animation-delay: 300ms; }
-
 @media (prefers-reduced-motion: reduce) {
     *, ::before, ::after {
         animation-duration: 0.01ms !important;
@@ -266,31 +211,24 @@ body.settings-mode .settings-tab-panel:not([hidden]) {
     }
 }
 
+/* بطاقات الوضع والنوع: المظهر الأساسي في الترميز، وحالة الاختيار من هنا —
+   `wireModes`/`wireKinds` يبدّلان صنف `selected` فقط، والنقطة تدلّ على
+   المختار في بطاقتي الوضع (عنصر `.mode-dot` في الترميز). */
 .mode-card.selected {
-    border-color: rgba(218, 119, 86, 0.5) !important;
-    background-color: rgba(218, 119, 86, 0.1) !important;
-    opacity: 1 !important;
+    border-color: rgba(218, 119, 86, 0.8);
 }
-/* Contrast (WCAG 2.1 AA, 2026-09-15): these opacities are the FLOOR that keeps
-   12px muted text ≥ 4.5:1 on the dark panels. Measured effective colours:
-     .mode-card:not(.selected) 0.7 → #a18f89 on #1b1a18 = 5.64:1
-     .kind-card:not(.selected) 0.55 → #96837c on #1b1a18 = 4.79:1
-   (0.5 would give 3.52:1 — below AA.) Text inside the mode cards carries no
-   extra opacity of its own so this single value decides its ratio. */
-.mode-card:not(.selected) {
-    border-color: #2E2C29 !important;
-    background-color: transparent !important;
-    opacity: 0.7 !important;
+.mode-card .mode-dot {
+    opacity: 0;
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.mode-card.selected .mode-dot {
+    opacity: 1;
 }
 .kind-card.selected {
-    background-color: rgba(218, 119, 86, 0.1) !important;
-    border-color: rgba(218, 119, 86, 0.3) !important;
-    opacity: 1 !important;
-}
-.kind-card:not(.selected) {
-    background-color: transparent !important;
-    border-color: transparent !important;
-    opacity: 0.55 !important;
+    background-color: rgba(218, 119, 86, 0.2);
+    border-color: rgba(218, 119, 86, 0.4);
+    color: #da7756;
+    font-weight: 700;
 }
 #logcard.collapsed #log-view {
     display: none !important;

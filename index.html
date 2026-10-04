@@ -5,351 +5,87 @@
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>HaramLite-RS Dashboard</title>
 
-
 <link rel="stylesheet" href="/src/tailwind.css" />
 <link rel="stylesheet" href="/src/styles.css" />
 </head>
-<body class="bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PGRlZnM+PHBhdHRlcm4gaWQ9ImEiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4wMykiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjYSkiLz48L3N2Zz4=')] bg-coal-surface text-cream-text h-screen flex flex-col font-body-md text-body-md overflow-hidden relative" style="background-attachment: fixed;">
-<!-- TopAppBar -->
-<header class="glass-effect border-b border-border-muted flex justify-between items-center w-full px-gutter py-stack-md max-w-full docked full-width top-0 z-50">
-<div class="flex items-center gap-stack-md">
-<h1 class="font-headline-xl text-headline-xl font-black text-clay-accent tracking-tight drop-shadow-md">HaramLite</h1>
-<span class="bg-surface-container text-on-surface-variant px-stack-sm py-unit rounded font-label-sm text-label-sm border border-border-muted cursor-pointer select-none transition-all duration-300 apple-ease hover:bg-surface-variant hover:scale-105 active:scale-95" id="version-badge"></span>
+<!-- ‏«Clay & Coal» (تصميم 0.3.0): الأساس `coal-surface`، والبطاقات `coal-bg`،
+     والحدود `border-muted`، وبلا ظلال — الطبقات اللونية تحلّ محلها (DESIGN.md). -->
+<body class="bg-coal-surface text-cream-text h-screen flex flex-col font-body-md text-body-md overflow-hidden relative">
+<!-- ══════════════════════════════════════════════════════════════════
+     شريط النافذة (العنوان واللغة والإعدادات) — منطقة سحب للنافذة
+     ══════════════════════════════════════════════════════════════════ -->
+<header class="h-10 bg-coal-surface border-b border-border-muted flex items-center justify-between px-3 shrink-0 z-50 select-none" data-tauri-drag-region="">
+<div class="flex items-center gap-2.5">
+<span class="w-5 h-5 rounded-md border border-border-muted/60 flex items-center justify-center bg-coal-bg shrink-0"><span class="material-symbols-outlined text-[13px] text-clay-accent" data-icon="graphic_eq">graphic_eq</span></span>
+<div class="flex items-center gap-2">
+<span class="font-bold text-xs tracking-wide text-cream-text">HaramLite</span>
+<span class="bg-surface-container-high/80 text-[10px] font-mono text-on-surface-variant px-1.5 py-0.5 rounded border border-border-muted cursor-pointer" id="version-badge"></span>
 </div>
-<div class="absolute left-1/2 transform -translate-x-1/2 pointer-events-none hidden md:block">
-<p class="font-body-lg text-cream-text text-sm font-semibold tracking-wide flex items-baseline gap-unit justify-center"><span data-i18n="tagline_pre">الموسيقى لا تليق بقلبٍ يريد</span> <span class="kashida-text text-clay-accent" data-i18n="tagline_hl">الطمأنينة</span><span aria-hidden="true">.</span></p></div>
-<div class="flex items-center gap-stack-md">
-<div id="lang-toggle" class="flex items-center gap-stack-md cursor-pointer group">
-<button class="text-on-surface-variant hover:bg-surface-variant/80 transition-all duration-300 apple-ease p-unit rounded font-label-md text-label-md hover:scale-105 active:scale-95">EN</button>
-<div class="h-4 w-px bg-border-muted"></div>
-<button class="text-clay-accent font-bold hover:bg-surface-variant/80 transition-all duration-300 apple-ease p-unit rounded font-label-md text-label-md hover:scale-105 active:scale-95 drop-shadow-sm">AR</button>
+<div class="h-3 w-px bg-border-muted mx-1"></div>
+<span class="text-[11px] text-on-surface-variant/70 hidden sm:inline flex items-baseline gap-unit"><span data-i18n="tagline_pre">الموسيقى لا تليق بقلبٍ يريد</span> <span class="kashida-text text-clay-accent" data-i18n="tagline_hl">الطمأنينة</span><span aria-hidden="true">.</span></span>
 </div>
-<div class="relative flex items-center gap-stack-md cursor-pointer group">
-<button id="btn-settings" class="text-on-surface-variant hover:bg-surface-variant/80 transition-all duration-300 apple-ease p-unit rounded hover:scale-110 active:scale-90 hover:text-cream-text">
-<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<div class="flex items-center gap-3">
+<!-- Language Pill — الحاوية معرّف تاريخي (`#lang-toggle`) وهدف معالج اللغة -->
+<div class="flex items-center bg-surface-container border border-border-muted rounded-md px-1.5 py-0.5 gap-1.5 text-[11px]" id="lang-toggle">
+<button class="text-on-surface-variant hover:text-cream-text font-medium px-1 transition-colors" type="button">EN</button>
+<div class="h-2.5 w-px bg-border-muted"></div>
+<button class="text-clay-accent font-bold px-1" type="button">AR</button>
+</div>
+<button class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface-container hover:bg-surface-container-high border border-border-muted hover:border-clay-accent/40 text-cream-text text-xs transition-all active:scale-95 group" id="btn-settings" type="button">
+<span class="material-symbols-outlined text-[16px] text-clay-accent transition-transform duration-300 group-hover:rotate-45" data-icon="settings">settings</span>
+<span class="font-medium text-xs" data-i18n="settings_title">الإعدادات</span>
 </button>
-<div id="settings-menu" class="hidden absolute end-0 top-full mt-2 w-64 max-h-[75vh] overflow-y-auto overscroll-contain bg-coal-surface/95 backdrop-blur-md border border-border-muted rounded-lg shadow-xl p-stack-md flex flex-col gap-stack-sm z-50 fade-in-up" role="dialog" aria-modal="false" data-i18n-aria="settings_title">
-    <h3 class="font-label-md text-clay-accent border-b border-border-muted pb-2 mb-2" data-i18n="settings_title">الإعدادات</h3>
-
-    <!-- **زرّ الرجوع**: يعيد العرض الرئيسي **داخل النافذة نفسها** (لا إخفاء
-         نافذة ولا تدمير — والحالة تبقى ما دام التطبيق يعمل). -->
-    <button id="settings-close" type="button" class="settings-tab flex items-center gap-unit self-start">
-        <span class="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>
-        <span class="font-body-sm" data-i18n="settings_back">رجوع</span>
-    </button>
-
-    <!-- ═══ تبويبات شاشة الإعدادات (نافذة مستقلة) ═══════════════════════════
-         سبعة أزرار، وسبع حاويات `data-tab` تُغلّف المجموعات **القائمة نفسها**
-         (لا عنصر تحكّم نُقل ولا خصيصة تغيّرت). التبديل في `src/settingsScreen.ts`،
-         والتبويب النشط يُعلَن بـ`aria-selected` و`hidden` على البقية. -->
-    <nav id="settings-tabs" class="flex flex-wrap gap-unit border-b border-border-muted pb-2" role="tablist" aria-label="settings">
-        <button type="button" class="settings-tab" role="tab" data-tab-btn="performance" aria-selected="true" data-i18n="set_group_perf">الأداء والمعالجة</button>
-        <button type="button" class="settings-tab" role="tab" data-tab-btn="watch" aria-selected="false" data-i18n="set_group_watch">المراقبة التلقائية</button>
-        <button type="button" class="settings-tab" role="tab" data-tab-btn="bridge" aria-selected="false" data-i18n="set_group_integration">التكامل</button>
-        <button type="button" class="settings-tab" role="tab" data-tab-btn="telegram" aria-selected="false" data-i18n="tg_title">بوت تيليجرام</button>
-        <button type="button" class="settings-tab" role="tab" data-tab-btn="update" aria-selected="false" data-i18n="set_tab_update">التحديث والصيانة</button>
-        <button type="button" class="settings-tab" role="tab" data-tab-btn="about" aria-selected="false" data-i18n="btn_about">حول البرنامج</button>
-    </nav>
-
-    <div class="settings-tab-panel" data-tab="performance">
-    <!-- ⚙️ الأداء والمعالجة -->
-    <div class="flex flex-col gap-stack-sm">
-        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_perf">الأداء والمعالجة</h4>
-        <label class="flex items-center gap-stack-sm cursor-pointer group">
-            <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-cuda" type="checkbox"/>
-            <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="set_cuda">استخدام تسريع CUDA (NVIDIA)</span>
-        </label>
-        <div id="cuda-hint" class="hidden flex flex-col gap-unit bg-tertiary/10 border border-tertiary/30 rounded p-unit mt-1">
-            <span id="cuda-hint-text" class="font-label-sm text-label-sm text-tertiary leading-relaxed"></span>
-        </div>
-        <!-- ن-٣: المزوّد الفعّال. سطح **حالة** لا تلميح عابر (فـ#cuda-hint يكتب
-             عليه التنزيل والأخطاء ويُمحى)، ومصدره `provider.json` الذي يُكتب في
-             كل جلسة فصل. النصّ الابتدائي هو «غير معروف» — حالة صادقة قبل أي
-             قياس، ويستبدله refreshProviderLine() بعد قراءة `cuda_status`.
-             **وموضعه هنا** (لا في تبويب «الفصل») لأن المالك صنّفه مع CUDA وسقف
-             الفصول: هو سطر «ما سيُجرَّب فعلاً» لنفس القرار. -->
-        <p id="cuda-provider" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed px-unit" data-i18n="cuda_provider_unknown">لم تُجرَّ جلسة فصل بعد — المزوّد الفعّال غير معروف</p>
-        <!-- سقف الفصول المتزامنة (م١) — في قسم الإعدادات، تحت «الأداء والمعالجة».
-             طلب المالك 2026-09-21 نقله إلى هنا: كان في «إعدادات متقدمة» المخفية
-             (ستّ نقرات على شارة الإصدار) ثم في الصفحة الرئيسية، والمكان الصحيح
-             قسم الإعدادات بجانب خيار CUDA — فهو خيار أداء مثله.
-             والقصّ في الخلف أيضاً (`slots::clamp_limit`) فهذه ليست الحارس الوحيد.
-             (**والتعليق صار يطابق الواقع بعد `10d8dfa`**: `#max-jobs` في تبويب
-             `performance` ومعه `#cuda-provider` — فحُذف تعليق فرع
-             `agent/x4-cancel` الذي يصف نقلاً من `engine`، لأن الفرع المدموج نُفِّذ
-             فيه النقل نفسه ومعها أربعة غيره في `10d8dfa`. وقياس الحلّ:
-             `git diff 0db0ade agent/x4-cancel -- index.html` = نقلان
-             (`#cuda-provider` · `#max-jobs`) لا خامسهما.)
-             (**وحلّ دمج `agent/x4-cancel` لم يكن نصّياً فقط**: إضافة الفرع حاويةَ
-             `engine` ثانية بنفس `data-tab` وبنسخة ثانية من `#cuda-provider`،
-             فصار المعرّف **نسختين** وعدد الحاويات **ثمانياً** — وقِيس ذلك فعلاً
-             (`cuda-provider(2 نسخة)` · `المعروض engine,engine` في
-             `settingsTabs.test.ts`). والحاوية الثانية حُذفت، وبقي هذا السطر في
-             `performance` كما تُعلنه `src/settingsTabMap.ts`.) -->
-        <div class="flex flex-col gap-unit mt-1">
-            <div class="flex items-center gap-stack-sm">
-                <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="max_jobs_label">أقصى فصول متزامنة:</span>
-                <select id="max-jobs" class="form-select bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent cursor-pointer">
-                    <option value="1" selected>1</option>
-                    <option value="2">2</option>
-                </select>
-            </div>
-            <span class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="max_jobs_hint">1 هو الافتراضيّ: فصلان معاً بلغا ذروة 7947 من 8192 م.ب (هامش 245 م.ب فقط) على بطاقة 8 جيجا · 2 أسرع لملفّين لكنه يُنفق هذا الهامش.</span>
-        </div>
-        <!-- الإشعارات: كانت في مجموعة «النظام» بتبويب التحديث، ونُقلت هنا بقرار
-             المالك (خيار يخصّ انتهاء المعالجة لا صيانة البرنامج). -->
-        <label class="flex items-center gap-stack-sm cursor-pointer group">
-            <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-notify" type="checkbox"/>
-            <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="set_notify">إشعارات الانتهاء + صوت خفيف</span>
-        </label>
-    </div>
-    </div>
-
-    <div class="settings-tab-panel" data-tab="watch" hidden>
-    <!-- 📁 المراقبة التلقائية -->
-    <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
-        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_watch">المراقبة التلقائية</h4>
-        <label class="flex items-center gap-stack-sm cursor-pointer group">
-            <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-watch" type="checkbox"/>
-            <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="watch_enable">تفعيل مجلد المراقبة</span>
-        </label>
-        <div id="watch-options" class="hidden flex flex-col gap-stack-sm">
-            <button id="btn-watch-folder" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
-                <span class="material-symbols-outlined text-sm" data-icon="folder_open">folder_open</span>
-                <span class="font-body-sm" data-i18n="watch_pick">اختيار المجلد</span>
-            </button>
-            <span id="watch-path" class="font-label-sm text-label-sm text-on-surface-variant truncate" dir="ltr"></span>
-            <div class="flex items-center gap-stack-sm">
-                <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="watch_mode_label">وضع المعالجة:</span>
-                <select id="watch-mode" class="form-select bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent cursor-pointer">
-                    <option value="song" data-i18n="watch_mode_song">أغنية</option>
-                    <option value="clip" data-i18n="watch_mode_clip">مقطع عادي</option>
-                </select>
-            </div>
-            <!-- سطح `watch_out_kind`: كان الحقل يُقرأ في `watch_service.rs:519`
-                 (فيقرّر `OutKind` لكل ملف يراقبه) و`collectSettings` يرسل `auto`
-                 **ثابتة** ⇒ إعداد بلا سطح. وأثبت قياس الجولة أن لأثره فرقاً
-                 حقيقياً (`audio` ⇒ MP3)، فأُضيف له سطحه هنا، والقيمة تمرّ
-                 بـ`watchOutKindFrom` في settings.ts (مصدر وحيد للتطبيع). -->
-            <div class="flex items-center gap-stack-sm">
-                <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="watch_out_kind_label">نوع الإخراج:</span>
-                <select id="watch-out-kind" class="form-select bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent cursor-pointer">
-                    <option value="auto" data-i18n="watch_out_kind_auto">تلقائي</option>
-                    <option value="video" data-i18n="watch_out_kind_video">فيديو</option>
-                    <option value="audio" data-i18n="watch_out_kind_audio">صوت فقط (MP3)</option>
-                </select>
-            </div>
-            <span class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="watch_out_kind_hint">«تلقائي» و«فيديو» ينتجان فيديو، ويسقط المحرّك ذكيّاً إلى MP3 إن كان الملف صوتياً. «صوت فقط» ينتج MP3 دائماً.</span>
-            <span id="watch-status" class="font-label-sm text-label-sm text-on-surface-variant"></span>
-            <button id="btn-watch-cancel" class="hidden text-error hover:text-red-400 font-label-sm text-label-sm p-unit rounded hover:bg-surface-variant/30 cursor-pointer transition-colors" data-i18n="watch_cancel"><span class="material-symbols-outlined text-sm" data-icon="close">close</span> إلغاء الملف الجاري</button>
-        </div>
-        <!-- حدّ الحجم وفاصل المسح: نُقلا من «الإعدادات المتقدمة» في <main> إلى
-             تبويب المراقبة — اسماهما `watch_size_label`/`watch_rescan_label`
-             وخياراه لـwatch.ts، فهما خيارا مراقبة لا خيارا فصل. وهما **خارج**
-             `#watch-options` عن قصد: كانا ظاهرين دائماً، فبقيا كذلك (لا يُشترطان
-             تفعيل المراقبة لإعداد حدّها). -->
-        <div class="flex items-center gap-stack-sm">
-            <span class="font-label-md text-on-surface-variant" data-i18n="watch_size_label">حجم أقصى للمراقبة (MB):</span>
-            <input id="watch-max-size" type="number" min="100" step="100" value="2048" class="form-input w-24 bg-coal-surface border border-border-muted rounded px-stack-sm py-unit text-cream-text focus:outline-none focus:border-clay-accent font-body-md"/>
-        </div>
-        <div class="flex items-center gap-stack-sm">
-            <span class="font-label-md text-on-surface-variant" data-i18n="watch_rescan_label">فاصل المسح الدوري (ثانية):</span>
-            <input id="watch-rescan" type="number" min="10" step="10" value="60" class="form-input w-20 bg-coal-surface border border-border-muted rounded px-stack-sm py-unit text-cream-text focus:outline-none focus:border-clay-accent font-body-md"/>
-        </div>
-    </div>
-    </div>
-
-    <div class="settings-tab-panel" data-tab="bridge" hidden>
-    <!-- 🔗 التكامل -->
-    <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
-        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_integration">التكامل</h4>
-        <label class="flex items-center gap-stack-sm cursor-pointer group">
-            <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-bridge" type="checkbox"/>
-            <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="btn_bridge">تفعيل التكامل مع المتصفح</span>
-        </label>
-        <!-- هل الإضافة موجودة؟ التطبيق لا يستطيع تعداد إضافات المتصفح، لكن المضيف
-             يسجّل أصل كل إضافة تتصل به — فإن لم يتصل شيء قط نعرض الرابط بدل التخمين. -->
-        <p id="bridge-ext-status" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed px-unit"></p>
-        <button id="bridge-ext-link" type="button" class="hidden items-center gap-unit text-left text-clay-accent hover:underline font-label-sm text-label-sm px-unit" data-open-url="https://haramlite.com/bridge.html">
-            <span class="material-symbols-outlined text-sm" data-icon="extension">extension</span>
-            <span data-i18n="bridge_page_link">صفحة إضافة المتصفح — التثبيت والشرح</span>
-        </button>
-    </div>
-    </div>
-
-    <div class="settings-tab-panel" data-tab="telegram" hidden>
-        <button id="btn-telegram" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer w-full">
-            <span class="material-symbols-outlined text-sm" data-icon="smart_toy">smart_toy</span>
-            <span class="font-body-sm" data-i18n="tg_title">بوت تيليجرام</span>
-            <span id="tg-badge" class="ms-auto font-label-sm text-label-sm"></span>
-        </button>
-        <!-- م٤: وضوح رسائل المجموعة **خيار للمستخدم** لا قرار مبرمج (قرار المالك).
-             موضعه قسم الإعدادات — مثل سقف الفصول المتزامنة (م١) — لا الواجهة الرئيسية.
-             خياران لا ثالث: 'mentions' (الافتراضيّ) و'all'؛ وأي قيمة أخرى في
-             localStorage تُردّ إلى 'mentions' في `groupModeFrom` (src/settings.ts)،
-             فالخيار الثالث غير موجود لا في القائمة ولا في التخزين. -->
-        <div class="flex flex-col gap-unit mt-1">
-            <div class="flex items-center gap-stack-sm">
-                <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="settings_group_mode">وضوح رسائل المجموعة:</span>
-                <select id="tg-group-mode" class="form-select bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent cursor-pointer">
-                    <option value="mentions" data-i18n="settings_group_mode_mentions" selected>بالمنشن فقط</option>
-                    <option value="all" data-i18n="settings_group_mode_all">كل الرسائل</option>
-                </select>
-            </div>
-            <span class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="settings_group_mode_hint">«بالمنشن فقط»: لا يرى البوت إلا ما وُجِّه إليه؛ والرسالة التي لا تذكره لا تصله أصلاً في مجموعة privacy mode فيها مفعّل. «كل الرسائل»: يراه ما لم يُقصد به أيضاً، فيلزم إطفاء privacy mode من @BotFather، وإلا لم يصل شيء.</span>
-        </div>
-        <!-- م٥: هوية البوت — مربّع اختيار **يعكس الواقع لا النيّة**.
-             `applied` يُقرأ من `telegram_status().identity.applied` (واقعٌ من
-             القرص)، والنتيجة الصريحة من `telegram_set_bot_identity`. ولا ادّعاء
-             قبل أن يصير `applied` صحيحاً، ولا نفيٌ قبل أن يصير خاطئاً، والفشل
-             يُعيد المربّع إلى حالته الحقيقية ويُعلن سببه.
-             واسم المستخدم `@…` **لا يُغيَّر من هنا** — من @BotFather وحده، ويُقال
-             كحدّ لا كوعد. -->
-        <div class="flex flex-col gap-unit mt-1">
-            <label class="flex items-center gap-stack-sm cursor-pointer group">
-                <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="tg-bot-identity" type="checkbox"/>
-                <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="tg_identity">استخدم اسم HaramLite وصورته للبوت</span>
-            </label>
-            <span id="tg-identity-note" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" role="status" aria-live="polite"></span>
-            <span class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="tg_identity_hint">الاسم يُعاد إلى ما كان عند الإلغاء. أما الصورة فتُزال عند الإلغاء ولا تُعاد — إذ لا سبيل لقراءة صورة البوت الحالية، فإن كانت لبوتك صورة تريدها فأعِدها من @BotFather. ومعرّف البوت نفسه (@…) لا يُغيَّر من هنا بل من @BotFather وحده.</span>
-            <button id="tg-set-commands" type="button" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
-                <span class="material-symbols-outlined text-sm" data-icon="terminal">terminal</span>
-                <span class="font-body-sm" data-i18n="tg_set_commands">اضبط أوامر البوت</span>
-            </button>
-            <span id="tg-commands-note" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" role="status" aria-live="polite"></span>
-            <button id="tg-stats" type="button" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
-                <span class="material-symbols-outlined text-sm" data-icon="bar_chart">bar_chart</span>
-                <span class="font-body-sm" data-i18n="tg_stats">📊 إحصاءات</span>
-            </button>
-            <!-- الإحصاءات تُعرض **من الردّ** لا من ترميز ثابت: وقبل أول قراءة
-                 تكون فارغة (لا «0 ملف · 0 بايت» — و`known:false` له نصّه الصادق). -->
-            <span id="tg-stats-body" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed whitespace-pre-line" role="status" aria-live="polite"></span>
-        </div>
-    </div>
-
-    <div class="settings-tab-panel" data-tab="update" hidden>
-    <!-- 🖥️ النظام -->
-    <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
-        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_system">النظام</h4>
-        <label class="flex items-center gap-stack-sm cursor-pointer group">
-            <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-autostart" type="checkbox"/>
-            <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="autostart_label">التشغيل مع بدء تشغيل ويندوز</span>
-        </label>
-        <p class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed px-unit" data-i18n="autostart_hint">يقلع في الخلفية بلا نافذة، ليبقى بوت تيليجرام وتكامل المتصفح جاهزين — وتفتح النافذة متى شئت من أيقونة الشريط.</p>
-        <!-- هـ.٢: صفّ التحقق من التحديثات. الزرّ لا يفشل بصمت: كل مسار (بلا شبكة ·
-             بلا إصدارات منشورة · استجابة غير متوقعة) يكتب نصّه في #update-status. -->
-        <button id="btn-update-check" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer disabled:opacity-50 disabled:cursor-wait">
-            <span class="material-symbols-outlined text-sm" data-icon="download">download</span>
-            <span class="font-body-sm" data-i18n="upd_check">التحقق من التحديثات</span>
-        </button>
-        <p id="update-status" class="hidden font-label-sm text-label-sm leading-relaxed px-unit" role="status" aria-live="polite"></p>
-        <button id="btn-update-download" class="hidden items-center gap-unit text-left text-clay-accent hover:underline font-label-sm text-label-sm px-unit cursor-pointer" data-i18n="upd_download"></button>
-    </div>
-
-    <!-- 🧰 الأدوات والمساعدة -->
-    <div class="border-t border-border-muted pt-2 mt-1 flex flex-col gap-stack-sm">
-        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="set_group_tools">الأدوات والمساعدة</h4>
-        <!-- البند ق-١: المفتاح الحقيقي لفحص تحديث yt-dlp. كان الفحص التلقائي وحده
-             في lib.rs يقرأ الإعدادات ولا يسألها؛ صار هذا الصفّ يقرّر. -->
-        <label class="flex items-center gap-stack-sm cursor-pointer group">
-            <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-ytdlp-auto" type="checkbox"/>
-            <span class="font-body-sm text-cream-text transition-colors duration-200" data-i18n="set_ytdlp_auto">تحديث yt-dlp تلقائياً</span>
-            <!-- الزرّ يحمل التلميح: يفتح ما ليس ظاهراً لكل المستخدمين (ما yt-dlp؟) -->
-            <button id="btn-upd-ytdlp" class="ms-auto flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer disabled:opacity-50 disabled:cursor-wait" data-i18n-title="ytdlp_about" data-i18n-aria="ytdlp_about">
-                <span class="material-symbols-outlined text-sm" data-icon="refresh">refresh</span>
-                <span data-i18n="ytdlp_update_now">تحديث yt-dlp الآن</span>
-            </button>
-        </label>
-        <!-- ق-١: تخفيف الضرر. عند الإطفاء يشرح الصفّ الثمن (نسخة محلية تتقادم
-             فيفشل التنزيل) ويعرض إصدار النسخة المحلية فعلاً — لا نصّ ثابت.
-             البنية نفسها بنية #cuda-hint، والألوان دلالية: error عند الإطفاء. -->
-        <div id="ytdlp-auto-status" class="hidden flex items-start gap-unit bg-error/10 border border-error/30 rounded p-unit mt-1">
-            <span class="material-symbols-outlined text-sm text-error shrink-0" data-icon="warning">warning</span>
-            <span class="font-label-sm text-label-sm text-error leading-relaxed">
-                <span data-i18n="ytdlp_off_warn">التحديث التلقائي مُطفأ: قد تبقى yt-dlp قديمة فيفشل تنزيل الروابط حتى تحدّثها يدوياً.</span>
-                <span id="ytdlp-local-version" class="block"></span>
-            </span>
-        </div>
-        <button id="btn-repair-open" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
-            <span class="material-symbols-outlined text-sm" data-icon="build">build</span>
-            <span class="font-body-sm" data-i18n="btn_repair">فحص وإصلاح المكونات</span>
-        </button>
-        <!-- الإبلاغ: نُقل من تبويب «عن البرنامج» إلى «التحديث والصيانة» بقرار
-             المالك — فهو إجراء صيانة (يفتح بلاغاً) لا تعريفٌ بالبرنامج. -->
-        <button id="btn-report" class="flex items-center gap-unit text-left text-on-surface-variant hover:text-clay-accent transition-colors p-unit rounded hover:bg-surface-variant/30 cursor-pointer">
-            <span class="material-symbols-outlined text-sm" data-icon="bug_report">bug_report</span>
-            <span class="font-body-sm" data-i18n="btn_report">الإبلاغ عن مشكلة</span>
-        </button>
-    </div>
-    </div>
-
-    <div class="settings-tab-panel" data-tab="about" hidden>
-        <!-- «حول البرنامج» **يُعرض مباشرة** في تبويبه (قرار المالك، جولة settings2):
-             لا زرّ `#btn-about` ولا مودال `#about-overlay`. والمحتوى يملؤه
-             `fillAbout()` في `src/aboutUpdate.ts` عند الإقلاع، والروابط
-             `data-open-url` تعمل بالمُوصِّل المفوَّض على `#about-body` نفسه —
-             فلا تتغيّر آلية الفتح، يتغيّر موضعها فقط. -->
-        <h4 class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="about_title">حول HaramLite</h4>
-        <div id="about-body" class="flex flex-col gap-unit font-body-sm text-sm text-cream-text leading-relaxed"></div>
-    </div>
-    </div>
 </div>
 </header>
-<!-- Main Content Area -->
-<main class="flex-1 flex flex-row flex-nowrap overflow-hidden relative z-10">
-<!-- Center Dashboard -->
-<div class="flex-1 overflow-y-auto p-stack-lg flex flex-col gap-stack-lg" id="dashboard-container">
-<!-- Permanent CUDA advice banner (visible while NVIDIA supported & CUDA off) -->
-<div id="cuda-banner" class="hidden flex items-center gap-stack-sm bg-tertiary/10 border border-tertiary/30 rounded-lg p-stack-md fade-in-up">
-<span class="material-symbols-outlined text-tertiary" data-icon="bolt">bolt</span>
-<span id="cuda-banner-text" class="font-body-sm text-sm text-tertiary flex-1 leading-relaxed"></span>
+<!-- ══════════════════════════════════════════════════════════════════
+     مساحة العمل: لوحة المعالجة + شريط الطابور الجانبي
+     ══════════════════════════════════════════════════════════════════ -->
+<main class="flex-1 flex flex-row flex-nowrap overflow-hidden relative">
+<div class="flex-1 overflow-y-auto p-5 flex flex-col gap-4" id="dashboard-container">
+<!-- شريط نصيحة CUDA الدائم (يملؤه `updateCudaBanner`) -->
+<div class="hidden flex items-center gap-3 bg-tertiary/10 border border-tertiary/30 rounded-xl p-3" id="cuda-banner">
+<span class="material-symbols-outlined text-tertiary text-lg" data-icon="bolt">bolt</span>
+<span class="text-xs text-tertiary flex-1 leading-relaxed" id="cuda-banner-text"></span>
 </div>
-<!-- Mode Selection -->
-<div class="grid grid-cols-2 gap-stack-md fade-in-up">
-<button id="mode-song" data-mode="song" class="mode-card selected glass-effect border-[1.5px] border-clay-accent/50 bg-clay-accent/10 rounded-lg p-stack-lg flex flex-col items-center justify-center gap-unit transition-all duration-300 apple-ease hover:bg-clay-accent/20 hover:-translate-y-1 hover:shadow-[0_8px_20px_-8px_rgba(218,119,86,0.4)] active:scale-[0.98]">
-<span class="material-symbols-outlined text-4xl text-clay-accent drop-shadow-md mb-2" data-icon="music_note" aria-hidden="true">music_note</span>
-<span class="font-label-md text-label-md text-clay-accent font-bold" data-i18n="mode_song">أغنية</span>
-<p class="font-label-sm text-xs mt-2 text-center leading-relaxed text-cream-text" data-i18n="mode_song_desc">إذا كنت تعزل الموسيقى عن أغنية، اختر هذا الخيار؛ سضيف قطع الصمت ويزيل كتمة الصوت.</p>
+<!-- بطاقتا الوضع — حالة الاختيار تُرسم من `.selected` في styles.css (يبدّلها wireModes) -->
+<div class="grid grid-cols-2 gap-3.5">
+<button class="mode-card selected bg-coal-bg border border-border-muted rounded-xl p-3.5 flex flex-col items-start gap-1.5 text-right transition-all hover:bg-surface-container active:scale-[0.99] relative overflow-hidden group" data-mode="song" id="mode-song" type="button">
+<div class="mode-dot absolute top-2.5 left-2.5 w-2 h-2 rounded-full bg-clay-accent"></div>
+<div class="flex items-center gap-2 text-clay-accent">
+<span class="material-symbols-outlined text-2xl" data-icon="music_note">music_note</span>
+<span class="font-bold text-sm" data-i18n="mode_song">أغنية</span>
+</div>
+<p class="text-[12px] text-on-surface-variant leading-relaxed mt-0.5" data-i18n="mode_song_desc">
+            إذا كنت تعزل الموسيقى عن أغنية، اختر هذا الخيار؛ سضيف قطع الصمت ويزيل كتمة الصوت.
+          </p>
 </button>
-<button id="mode-clip" data-mode="clip" class="mode-card glass-effect border border-border-muted rounded-lg p-stack-lg flex flex-col items-center justify-center gap-unit transition-all duration-300 apple-ease hover:bg-surface-container-high hover:-translate-y-1 hover:shadow-lg active:scale-[0.98]">
-<span class="material-symbols-outlined text-4xl text-on-surface-variant mb-2 opacity-50" data-icon="movie" aria-hidden="true">movie</span>
-<span class="font-label-md text-label-md text-on-surface-variant font-bold" data-i18n="mode_clip">مقطع عادي</span>
-<p class="font-label-sm text-xs mt-2 opacity-80 text-center leading-relaxed text-on-surface-variant" data-i18n="mode_clip_desc">للمقاطع التي تحتوي على متحدثين: لن يقطع الصمت، وسيزيل الموسيقى فقط.</p>
+<button class="mode-card bg-coal-bg border border-border-muted rounded-xl p-3.5 flex flex-col items-start gap-1.5 text-right transition-all hover:border-on-surface-variant/40 hover:bg-surface-container active:scale-[0.99] relative overflow-hidden group" data-mode="clip" id="mode-clip" type="button">
+<div class="mode-dot absolute top-2.5 left-2.5 w-2 h-2 rounded-full bg-clay-accent"></div>
+<div class="flex items-center gap-2 text-on-surface-variant group-hover:text-cream-text">
+<span class="material-symbols-outlined text-2xl" data-icon="movie">movie</span>
+<span class="font-bold text-sm" data-i18n="mode_clip">مقطع عادي</span>
+</div>
+<p class="text-[12px] text-on-surface-variant/80 leading-relaxed mt-0.5" data-i18n="mode_clip_desc">
+            للمقاطع التي تحتوي على متحدثين: لن يقطع الصمت، وسيزيل الموسيقى فقط.
+          </p>
 </button>
 </div>
-<!-- لوحة «الإعدادات المتقدمة» (`#advanced-panel-container` · `.spring-panel`) كانت
-     هنا: صندوق لا يُفتح إلا بستّ نقرات على شارة الإصدار، وفيه `#keep-inst` ·
-     `#fmt-select` · `#watch-max-size` · `#watch-rescan`. وعناصرها نُقلت إلى تبويبي
-     «الفصل والصيغة» و«المراقبة»، فبقي صندوق بعنوان بلا عنصر.
-     **وحُذف المسار كاملاً** (قرار المالك، جولة settings2): الترميز هنا، ومعالج
-     النقر الستّ في `src/main.ts`، وقواعد `.spring-panel` في `src/styles.css` —
-     **لا عنصر ميت ولا مسار يفتح لوحة غير موجودة**. وحارسه في
-     `src/__tests__/settingsTabs.test.ts` ⇒ «لا مسار ميت». -->
-<!-- Advanced Settings Panel — **مقصودة خلف ٦ نقرات** (قرار المالك، جولة settings2
-     الرابعة، بعد أن كانت أُزيلت ثم أُعيدت بقراره): لوحة «الإعدادات المتقدمة»
-     تُفتح بستّ نقرات متتابعة على شارة الإصدار (`#version-badge`) خلال ٤ ثوانٍ
-     (المعالج في `src/main.ts` ⇒ `wireHiddenAdvancedPanel`). وهي **يخفي**
-     `#keep-inst` (الاحتفاظ بالموسيقى) و`#fmt-select` (صيغة الصوت) عن الواجهة
-     العادية عن قصد — سياسة البرنامج منذ البداية (قرار المالك). والعنصر نفسه
-     (لا نسخة ثانية): `#keep-inst` يقرأه `main.ts` و`queue.ts`، و`#fmt-select`
-     يقرأه `queue.ts` — بالمعرّف نفسه.
-     **والحارس**: `src/__tests__/settingsTabs.test.ts` ⇒ «لا مسار ميت» يشترط أن
-     تبقى هذه اللوحة **هي** الحاملة لهذين المعرّفين وأن تُفتح بالنقر الستّ فعلاً. -->
+<!-- اللوحة المتقدمة: مطويّة خلف ستّ نقرات على شارة الإصدار (`wireHiddenAdvancedPanel`) -->
 <div class="spring-panel" id="advanced-panel-container">
 <div class="spring-panel-content">
-<div class="glass-effect border border-border-muted rounded-lg p-stack-lg flex flex-col gap-stack-md shadow-lg" id="advanced-panel">
-<h3 class="font-label-md text-label-md text-cream-text flex items-center gap-unit">
-<span class="material-symbols-outlined text-sm text-clay-accent" data-icon="tune">tune</span>
-            <span data-i18n="dlg_advanced">إعدادات متقدمة</span>
-        </h3>
-<div class="flex flex-col gap-stack-md">
-<label class="flex items-center gap-stack-sm cursor-pointer group">
-<input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent focus:ring-offset-coal-surface transition-all duration-200 group-hover:border-clay-accent group-active:scale-90" id="keep-inst" type="checkbox"/>
-<span class="font-body-md text-cream-text transition-colors duration-200 group-hover:text-white" data-i18n="keep_inst">الاحتفاظ بالموسيقى (Keep Instrumental)</span>
+<div class="bg-coal-bg border border-border-muted rounded-xl p-3.5 flex flex-col gap-3" id="advanced-panel">
+<h3 class="text-xs font-bold text-cream-text flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xs text-clay-accent" data-icon="tune">tune</span>
+<span data-i18n="dlg_advanced">إعدادات متقدمة</span>
+</h3>
+<div class="flex flex-wrap items-center gap-4 text-xs">
+<label class="flex items-center gap-2 cursor-pointer">
+<input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-0" id="keep-inst" type="checkbox"/>
+<span class="text-cream-text text-xs" data-i18n="keep_inst">الاحتفاظ بالموسيقى (Keep Instrumental)</span>
 </label>
-<div class="flex items-center gap-stack-sm">
-<span class="font-label-md text-on-surface-variant" data-i18n="audio_format">صيغة الصوت:</span>
-<select id="fmt-select" class="form-select bg-coal-surface border border-border-muted rounded px-stack-md py-stack-sm text-cream-text focus:outline-none focus:border-clay-accent focus:ring-1 focus:ring-clay-accent font-body-md transition-all duration-300 apple-ease hover:border-on-surface-variant cursor-pointer">
+<div class="flex items-center gap-2">
+<span class="text-on-surface-variant text-xs" data-i18n="audio_format">صيغة الصوت:</span>
+<select class="bg-coal-surface border border-border-muted rounded-lg px-2.5 py-1 text-cream-text text-xs focus:outline-none focus:border-clay-accent cursor-pointer" id="fmt-select">
 <option value="mp3">MP3</option>
 <option value="wav">WAV</option>
 <option value="flac">FLAC</option>
@@ -359,283 +95,572 @@
 </div>
 </div>
 </div>
-<!-- File Dropzone Card -->
-<div class="glass-effect border border-border-muted rounded-lg p-stack-lg flex flex-col gap-stack-md fade-in-up delay-100 hover:shadow-xl transition-shadow duration-300">
-<div class="border-2 border-dashed border-border-muted rounded-lg p-margin-desktop flex flex-col items-center justify-center gap-stack-md hover:border-clay-accent transition-all duration-300 apple-ease cursor-pointer bg-coal-surface/30 group" id="dropzone" role="button" tabindex="0" data-i18n-aria="dropzone_label">
-<span class="material-symbols-outlined text-4xl text-on-surface-variant transition-all duration-300 apple-ease group-hover:text-clay-accent group-hover:scale-110 group-hover:-translate-y-1" data-icon="upload_file" aria-hidden="true">upload_file</span>
-<p class="font-body-md text-body-md text-on-surface-variant text-center transition-colors duration-300 group-hover:text-cream-text" data-i18n="drop_hint_plain">اسحب وأفلت الملفات هنا أو</p>
-<button class="bg-surface-container text-cream-text border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high hover:border-on-surface-variant transition-all duration-300 apple-ease font-label-md text-label-md active:scale-95 shadow-sm" data-i18n="btn_browse_plain">تصفح الملفات</button>
+<!-- منطقة السحب والإفلات (تغذية السحب البصرية من `.drag-over` في styles.css) -->
+<div class="bg-coal-bg border border-border-muted rounded-xl p-4 flex flex-col gap-3">
+<div class="border-2 border-dashed border-border-muted hover:border-clay-accent/80 rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer bg-coal-surface/40 hover:bg-surface-container/30 transition-all group" data-i18n-aria="dropzone_label" id="dropzone" role="button" tabindex="0">
+<span class="material-symbols-outlined text-3xl text-on-surface-variant group-hover:text-clay-accent transition-colors" data-icon="upload_file">upload_file</span>
+<p class="text-xs font-medium text-on-surface-variant group-hover:text-cream-text text-center" data-i18n="drop_hint_plain">اسحب وأفلت الملفات هنا أو</p>
+<button class="bg-surface-container-high hover:bg-surface-container-highest text-cream-text border border-border-muted px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all" data-i18n="btn_browse_plain" type="button">تصفح الملفات</button>
 </div>
-<!-- Status & Options -->
-<div class="flex justify-between items-center bg-coal-surface/40 p-stack-sm rounded border border-border-muted backdrop-blur-sm transition-all duration-300 hover:bg-coal-surface/60">
-<div class="flex items-center gap-stack-sm text-tertiary">
-<span class="material-symbols-outlined animate-bounce" data-icon="check_circle" style="animation-duration: 2s; animation-timing-function: cubic-bezier(0.28, 0.84, 0.42, 1);">check_circle</span>
-<span id="media-verdict" class="font-label-sm text-label-sm tracking-wide"><span data-i18n="out_type_label">نوع الإخراج:</span> <span class="bg-clay-accent/20 text-primary-fixed-dim px-1.5 py-0.5 rounded font-bold ms-1 inline-block" data-i18n="out_video">فيديو</span></span>
+<!-- نوع الإخراج الهدف (بطاقات kind — حالة الاختيار من `.selected`) -->
+<div class="flex items-center justify-between bg-coal-surface px-3 py-2 rounded-lg border border-border-muted text-xs">
+<div class="flex items-center gap-2 text-tertiary">
+<span class="material-symbols-outlined text-sm" data-icon="check_circle">check_circle</span>
+<span class="text-xs font-medium" id="media-verdict">
+<span data-i18n="out_type_label">نوع الإخراج:</span>
+<span class="bg-clay-accent/20 text-clay-accent px-1.5 py-0.5 rounded font-bold ms-1 inline-block" data-i18n="out_video">فيديو</span>
+</span>
 </div>
-<div class="flex gap-stack-sm animate-pulse" style="animation-duration: 3s;">
-<button id="kind-audio" data-kind="audio" class="kind-card text-on-surface-variant opacity-70 px-stack-sm py-unit rounded font-label-sm text-label-sm border border-transparent transition-all duration-300 apple-ease hover:opacity-100 hover:bg-surface-variant/30 hover:scale-105 active:scale-95">MP3</button>
-<button id="kind-video" data-kind="video" class="kind-card selected bg-clay-accent/10 text-clay-accent border border-clay-accent/30 px-stack-sm py-unit rounded font-label-sm text-label-sm transition-all duration-300 apple-ease hover:bg-clay-accent/20 hover:scale-105 active:scale-95">MP4</button>
-</div>
-</div>
-<!-- URL Card -->
-<div id="dl-container" class="w-full">
-<div class="glass-effect border border-border-muted rounded-lg p-stack-lg flex flex-col gap-stack-md fade-in-up delay-200 hover:shadow-lg transition-shadow duration-300">
-<h3 class="font-label-md text-label-md text-cream-text" data-i18n="dl_url_title">تحميل من رابط</h3>
-<div class="flex gap-stack-sm">
-<input id="url-input" class="flex-1 bg-coal-surface/50 border border-border-muted rounded px-stack-md py-stack-sm text-cream-text focus:outline-none focus:border-clay-accent focus:ring-1 focus:ring-clay-accent font-body-md text-body-md transition-all duration-300 apple-ease hover:border-on-surface-variant" placeholder="https://..." type="text"/>
-<button id="btn-download" class="bg-surface-container text-cream-text border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high hover:border-on-surface-variant transition-all duration-300 apple-ease font-label-md text-label-md flex items-center gap-unit active:scale-95 shadow-sm group">
-<span class="material-symbols-outlined transition-transform duration-300 group-hover:translate-y-0.5" data-icon="download" aria-hidden="true">download</span>
-                        <span data-i18n="dl_btn">تحميل</span>
-                    </button>
-</div>
-<div class="flex items-center gap-unit text-on-surface-variant opacity-70 transition-opacity duration-300 hover:opacity-100">
-<span class="material-symbols-outlined text-sm" data-icon="info" aria-hidden="true">info</span>
-<span class="font-label-sm text-label-sm" data-i18n="ytdlp_hint_dl">إن فشل التنزيل، حدّث yt-dlp من الإعدادات ← الأدوات والمساعدة</span>
-</div>
-
-    <div id="dl-progress-wrap" class="hidden w-full h-1.5 bg-border-muted rounded-full overflow-hidden mt-2">
-      <div id="dl-progress" class="h-full bg-clay-accent w-0 rounded-full transition-all duration-300"></div>
-    </div>
-    <p id="dl-result" class="hidden text-clay-accent text-sm mt-2"></p>
-    
+<div class="flex gap-1.5">
+<button class="kind-card px-2.5 py-1 rounded text-xs text-on-surface-variant hover:text-cream-text border border-transparent" data-kind="audio" id="kind-audio" type="button">MP3</button>
+<button class="kind-card selected px-2.5 py-1 rounded text-xs border" data-kind="video" id="kind-video" type="button">MP4</button>
 </div>
 </div>
-<!-- Live player surface (v1 songs scope: session state + real maps, no audio out yet) -->
-<div id="pl-container" class="w-full">
-<div class="glass-effect border border-border-muted rounded-lg p-stack-lg flex flex-col gap-stack-md fade-in-up delay-200 hover:shadow-lg transition-shadow duration-300">
-<h3 class="font-label-md text-label-md text-cream-text" data-i18n="pl_title">المعالجة المباشرة</h3>
-<div class="flex gap-stack-sm">
-<button id="pl-file-btn" class="bg-surface-container text-cream-text border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high hover:border-on-surface-variant transition-all duration-300 apple-ease font-label-md text-label-md active:scale-95 shadow-sm" data-i18n="pl_pick">اختيار ملف</button>
-<button id="pl-prepare" class="bg-surface-container text-cream-text border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high hover:border-on-surface-variant transition-all duration-300 apple-ease font-label-md text-label-md active:scale-95 shadow-sm" data-i18n="pl_prepare">بناء الخريطة</button>
-<button id="pl-play" disabled class="bg-surface-container text-cream-text border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high hover:border-on-surface-variant transition-all duration-300 apple-ease font-label-md text-label-md active:scale-95 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed" data-i18n="pl_play">تشغيل</button>
 </div>
-<span id="pl-file-name" class="font-label-sm text-label-sm text-on-surface-variant truncate" dir="ltr"></span>
-<div id="pl-chunks" class="flex flex-wrap gap-unit" role="group" aria-label="chunks"></div>
-<div id="pl-detail" class="font-label-sm text-label-sm text-cream-text bg-coal-surface/40 border border-border-muted rounded p-stack-sm min-h-8 whitespace-pre-wrap"></div>
-<div class="flex items-center gap-stack-sm">
-<span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="pl_seek">الموضع</span>
-<div class="relative flex-1 flex flex-col gap-unit">
-<input id="pl-seek" type="range" min="0" max="100" step="0.1" value="0" class="w-full accent-[#da7756] cursor-pointer" data-i18n-aria="pl_seek"/>
-<div id="pl-ticks" class="relative h-1.5 rounded bg-coal-surface/60 border border-border-muted overflow-hidden"></div>
-</div>
-<span id="pl-pos" class="font-label-sm text-label-sm text-on-surface-variant w-20 text-left" dir="ltr">0:00</span>
-</div>
-<div class="flex flex-wrap items-center gap-stack-sm">
-<span id="pl-cur" class="font-label-sm text-label-sm text-clay-accent" dir="ltr"></span>
-<span id="pl-seek-note" class="font-label-sm text-label-sm text-on-surface-variant opacity-80" data-i18n="pl_seek_note">المنزلق للفحص فقط — لا يوجد تشغيل صوتي بعد</span>
-</div>
-<span id="pl-status" class="font-label-sm text-label-sm text-on-surface-variant"></span>
-<p id="pl-map" class="hidden text-clay-accent text-sm mt-2 whitespace-pre-wrap"></p>
-</div>
-</div>
-<!-- Visible pipeline stages (Sprint C2)
-     ممسوح بالجولة الثانية (2026-09-21): كان هنا `0%` في `#stage-pct` و«فصل الصوت»
-     في `#stage-name` **نصّاً ثابتاً في الترميز**. ولا يُقرأ اليوم كعمل لأن
-     `#stage-line` عليه `hidden` ولا يُزال إلا بحدث `sep-stage` حقيقي
-     (`paintSepStage` تُرجع مبكراً بلا `lastStage`، ثم تكتب الاسم والنسبة معاً).
-     فهو **كامن لا حيّ** — لكنه من صنف «سطح يعرض قيمة ثابتة تُقرأ كقياس»، ويسقط
-     إن أُظهر السطر من مسار آخر. فالتسمية والنسبة تُكتبان من الكود وحدهما
-     (`src/queue.ts` · `paintSepStage`)، والترميز لا يحمل رقماً ولا مرحلة. -->
-<div id="stage-line" class="hidden flex items-center gap-stack-sm font-label-sm text-label-sm text-on-surface-variant fade-in-up delay-200">
-    <span id="stage-name" class="text-clay-accent font-bold"></span>
-    <div class="flex-1 h-1.5 bg-border-muted rounded-full overflow-hidden">
-        <div id="stage-bar" class="h-full bg-clay-accent/70 w-0 rounded-full transition-all duration-300"></div>
-    </div>
-    <span id="stage-pct" class="w-10 text-left" dir="ltr"></span>
-</div>
-<!-- Action Button -->
-<button class="kashida-text mt-auto w-full bg-clay-accent text-coal-surface font-headline-lg text-headline-lg py-stack-md rounded-lg flex justify-center items-center gap-stack-md transition-all duration-300 apple-ease hover:bg-primary-container hover:-translate-y-1 hover:shadow-[0_12px_24px_-8px_rgba(218,119,86,0.6)] active:scale-[0.98] active:shadow-md fade-in-up delay-300 group" id="btn-separate">
-                <span id="sep-label" data-i18n="btn_sep_song">فصل الصوت</span>
-                <span class="material-symbols-outlined transition-transform duration-300 apple-ease group-hover:rotate-12 group-hover:scale-110" data-icon="content_cut">content_cut</span>
+<!-- التحميل من رابط -->
+<div class="bg-coal-bg border border-border-muted rounded-xl p-3.5 flex flex-col gap-2.5" id="dl-container">
+<h3 class="text-xs font-bold text-cream-text flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xs text-clay-accent" data-icon="link">link</span>
+<span data-i18n="dl_url_title">تحميل من رابط</span>
+</h3>
+<div class="flex gap-2">
+<input class="flex-1 bg-coal-surface border border-border-muted rounded-lg px-3 py-1.5 text-xs text-cream-text placeholder:text-on-surface-variant/40 focus:outline-none focus:border-clay-accent font-mono" id="url-input" placeholder="https://..." type="text"/>
+<button class="bg-surface-container hover:bg-surface-container-high border border-border-muted hover:border-clay-accent/40 text-cream-text px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors" id="btn-download" type="button">
+<span class="material-symbols-outlined text-xs text-clay-accent" data-icon="download">download</span>
+<span data-i18n="dl_btn">تحميل</span>
 </button>
-
-    <p id="sep-result" class="hidden text-clay-accent text-sm mt-2 whitespace-pre-wrap text-center"></p>
-    
 </div>
+<div class="flex items-center gap-1.5 text-[11px] text-on-surface-variant/70">
+<span class="material-symbols-outlined text-[13px]" data-icon="info">info</span>
+<span data-i18n="ytdlp_hint_dl">إن فشل التنزيل، حدّث yt-dlp من الإعدادات ← الأدوات والمساعدة</span>
 </div>
-<!-- Right Sidebar (Batch Queue) -->
-<aside class="w-80 flex-shrink-0 glass-effect border-r border-border-muted flex flex-col h-full z-40 shadow-[-10px_0_20px_-10px_rgba(0,0,0,0.5)]">
-<div class="p-stack-md border-b border-border-muted bg-coal-surface/60 backdrop-blur-md">
-<h2 class="mursala-text font-label-md text-label-md text-clay-accent flex items-center gap-stack-sm drop-shadow-sm w-full">
-<span class="flex items-center gap-stack-sm" data-i18n="queue_title"><span class="material-symbols-outlined" data-icon="format_list_bulleted" aria-hidden="true">format_list_bulleted</span>
-                    طابور المعالجة</span> <span id="batch-counter" class="hidden text-sm mx-2"></span>
-<button id="btn-open-folder" class="ms-auto text-on-surface-variant hover:text-clay-accent transition-colors p-1" data-i18n-title="open_out_folder" title="فتح مجلد الإخراج" data-i18n-aria="open_out_folder">
-<span class="material-symbols-outlined" data-icon="folder_open" aria-hidden="true">folder_open</span>
+<div class="hidden w-full h-1 bg-border-muted rounded-full overflow-hidden" id="dl-progress-wrap">
+<div class="h-full bg-clay-accent w-0 rounded-full transition-all" id="dl-progress"></div>
+</div>
+<p class="hidden text-clay-accent text-xs" id="dl-result"></p>
+</div>
+<!-- المشغّل المباشر (فحص الخريطة) -->
+<div class="bg-coal-bg border border-border-muted rounded-xl p-3.5 flex flex-col gap-2.5" id="pl-container">
+<div class="flex items-center justify-between">
+<h3 class="text-xs font-bold text-cream-text flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xs text-clay-accent" data-icon="graphic_eq">graphic_eq</span>
+<span data-i18n="pl_title">المعالجة المباشرة</span>
+</h3>
+<span class="text-[11px] font-mono text-on-surface-variant truncate max-w-xs" dir="ltr" id="pl-file-name"></span>
+</div>
+<div class="flex gap-2">
+<button class="bg-surface-container border border-border-muted hover:bg-surface-container-high text-cream-text px-2.5 py-1 rounded text-xs" data-i18n="pl_pick" id="pl-file-btn" type="button">اختيار ملف</button>
+<button class="bg-surface-container border border-border-muted hover:bg-surface-container-high text-cream-text px-2.5 py-1 rounded text-xs" data-i18n="pl_prepare" id="pl-prepare" type="button">بناء الخريطة</button>
+<button class="bg-surface-container border border-border-muted text-cream-text px-2.5 py-1 rounded text-xs disabled:opacity-40" data-i18n="pl_play" disabled="" id="pl-play" type="button">تشغيل</button>
+</div>
+<div aria-label="chunks" class="flex flex-wrap gap-1" id="pl-chunks" role="group"></div>
+<div class="text-xs text-cream-text bg-coal-surface border border-border-muted rounded-lg p-2 min-h-6 font-mono" id="pl-detail"></div>
+<div class="flex items-center gap-2">
+<span class="text-[11px] text-on-surface-variant" data-i18n="pl_seek">الموضع</span>
+<div class="relative flex-1">
+<input class="w-full accent-clay-accent cursor-pointer h-1" data-i18n-aria="pl_seek" id="pl-seek" max="100" min="0" step="0.1" type="range" value="0"/>
+<div class="relative h-1 rounded bg-coal-surface border border-border-muted overflow-hidden mt-0.5" id="pl-ticks"></div>
+</div>
+<span class="text-[11px] font-mono text-on-surface-variant w-14 text-left" dir="ltr" id="pl-pos">0:00</span>
+</div>
+<div class="flex items-center justify-between text-[11px]">
+<span class="font-mono text-clay-accent" dir="ltr" id="pl-cur"></span>
+<span class="text-on-surface-variant/70" data-i18n="pl_seek_note" id="pl-seek-note">المنزلق للفحص فقط — لا يوجد تشغيل صوتي بعد</span>
+</div>
+<span class="text-xs text-on-surface-variant" id="pl-status"></span>
+<p class="hidden text-clay-accent text-xs font-mono" id="pl-map"></p>
+</div>
+<!-- خط المرحلة والتقدم -->
+<div class="hidden flex items-center gap-3 bg-coal-bg border border-border-muted rounded-xl p-3" id="stage-line">
+<span class="text-xs font-bold text-clay-accent" id="stage-name"></span>
+<div class="flex-1 h-1.5 bg-coal-surface border border-border-muted rounded-full overflow-hidden">
+<div class="h-full bg-clay-accent w-0 transition-all duration-300" id="stage-bar"></div>
+</div>
+<span class="text-xs font-mono text-cream-text w-12 text-left" dir="ltr" id="stage-pct"></span>
+</div>
+<!-- زرّ الفصل — التسمية حيّة (`#sep-label` يُستعلم داخل المعالج) وزرّ إيقاف الدفعة في الشريط -->
+<button class="mt-auto w-full bg-clay-accent hover:bg-clay-accent/90 text-coal-bg font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 text-sm active:scale-[0.99] transition-all group" id="btn-separate" type="button">
+<span data-i18n="btn_sep_song" id="sep-label">فصل الصوت</span>
+<span class="material-symbols-outlined text-lg transition-transform duration-300 apple-ease group-hover:rotate-12 group-hover:scale-110" data-icon="content_cut">content_cut</span>
 </button>
-                </h2>
+<p class="hidden text-clay-accent text-xs text-center" id="sep-result"></p>
 </div>
-<!-- 🛑 زر الإيقاف الثابت (م٢) — **خارج** منطقة تمرير الطابور عن قصد:
-     `#batch-list` يتحرّك بالتمرير، والزر يجب أن يبقى على الشاشة طوال عمل
-     مهمّة. والهدف يُسمّى نصّاً في #stop-target فلا يُلغي الزرّ مهمّةً لا
-     يراها المستخدم. والنصّ لا يقول «فوراً»: العمليات المنفصلة تُقتل فوراً
-     ونداء الاستدلال الجاري لا يُقطع (التفصيل في src/jobs.ts). -->
-<div id="stop-bar" class="hidden p-stack-sm border-b border-border-muted bg-coal-surface/50 flex flex-col gap-unit">
-<div class="flex items-center justify-between gap-unit">
-<span class="font-label-sm text-label-sm text-clay-accent font-bold" data-i18n="stop_bar_title">مهمّة جارية الآن</span>
-<span id="stop-count" class="font-label-sm text-label-sm text-on-surface-variant" dir="ltr"></span>
+<!-- شريط الطابور الجانبي -->
+<aside class="w-80 border-r border-border-muted bg-coal-surface flex flex-col shrink-0">
+<div class="h-11 px-3.5 border-b border-border-muted flex items-center justify-between bg-coal-bg/40">
+<div class="flex items-center gap-2 text-xs font-bold text-cream-text">
+<span class="material-symbols-outlined text-sm text-clay-accent" data-icon="format_list_bulleted">format_list_bulleted</span>
+<span data-i18n="queue_title">طابور المعالجة</span>
+<span class="hidden text-[10px] bg-surface-container px-1.5 py-0.5 rounded text-on-surface-variant font-mono" id="batch-counter"></span>
 </div>
-<span id="stop-target" class="font-label-sm text-label-sm text-cream-text truncate" dir="ltr"></span>
-<div class="flex items-center gap-unit">
-<button id="btn-stop-job" type="button" class="flex-1 flex items-center justify-center gap-unit bg-error/20 text-error border border-error/40 rounded px-stack-sm py-unit font-label-sm text-label-sm font-bold hover:bg-error/30 transition-colors cursor-pointer" data-i18n-title="stop_button_hint" data-i18n-aria="stop_button_label">
-<span class="material-symbols-outlined text-sm" data-icon="stop_circle" aria-hidden="true">stop_circle</span>
+<button class="text-on-surface-variant hover:text-clay-accent p-1 transition-colors rounded" data-i18n-aria="open_out_folder" data-i18n-title="open_out_folder" id="btn-open-folder" title="فتح مجلد الإخراج" type="button">
+<span class="material-symbols-outlined text-base" data-icon="folder_open">folder_open</span>
+</button>
+</div>
+<!-- شريط إيقاف المهمّة الجارية (م٢) -->
+<div class="hidden p-3 border-b border-border-muted bg-coal-bg/80 flex flex-col gap-2" id="stop-bar">
+<div class="flex items-center justify-between text-xs">
+<span class="text-clay-accent font-bold" data-i18n="stop_bar_title">مهمّة جارية الآن</span>
+<span class="font-mono text-on-surface-variant text-[11px]" dir="ltr" id="stop-count"></span>
+</div>
+<span class="text-xs font-mono text-cream-text truncate" dir="ltr" id="stop-target"></span>
+<div class="flex gap-2">
+<button class="flex-1 bg-error/15 hover:bg-error/25 text-error border border-error/40 py-1 px-2 rounded text-xs font-medium flex items-center justify-center gap-1" data-i18n-aria="stop_button_label" data-i18n-title="stop_button_hint" id="btn-stop-job" type="button">
+<span class="material-symbols-outlined text-xs" data-icon="stop_circle">stop_circle</span>
 <span data-i18n="stop_button_label">إيقاف المهمّة</span>
 </button>
-<button id="btn-stop-all" type="button" class="flex items-center justify-center gap-unit bg-surface-container text-on-surface-variant border border-border-muted rounded px-stack-sm py-unit font-label-sm text-label-sm hover:text-error hover:border-error/40 transition-colors cursor-pointer" data-i18n-title="stop_all_hint">
+<button class="bg-surface-container hover:bg-surface-container-high text-on-surface-variant border border-border-muted py-1 px-2 rounded text-xs" data-i18n-title="stop_all_hint" id="btn-stop-all" type="button">
 <span data-i18n="stop_all_button_label">إلغاء الكل</span>
 </button>
 </div>
-<span id="stop-note" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" role="status" aria-live="polite"></span>
+<span aria-live="polite" class="text-[11px] text-on-surface-variant" id="stop-note" role="status"></span>
 </div>
-<div id="batch-list" class="flex-1 overflow-y-auto p-stack-md flex flex-col gap-stack-sm">
-<!-- حالة الفراغ — **العطل الميداني 2026-09-21**: كان هنا ترميز تصميمي ثابت
-     (صفّان: `track_01_vocals.mp3` بنسبة 33% وشريط تقدّم و«1/3 جاري المعالجة...»،
-     و`podcast_ep44.wav` «في الانتظار») يُقرأ كعمل جارٍ لا وجود له. وسببه المقيس:
-     `restoreBatchState()` تُرجع مبكراً عند غياب `hl.batch` (queue.ts) ولا تمسّ
-     DOM، فيبقى الترميز ظاهراً في كل إقلاع بطابور فارغ. والصفوف **لا تُكتب في
-     الترميز أبداً**: يبنيها `renderBatchList()` وحدها من قائمة الجلسة.
-     ونصّ هذه الحالة من الجدول (`queue_empty`) فلا اسم ملف مكتوب بيد. -->
-<span id="batch-empty" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" role="status" aria-live="polite">
-<span class="block" data-i18n="queue_empty">لا ملفات في الطابور بعد</span>
-<span class="block opacity-80" data-i18n="queue_empty_add">أفلت ملفات في النافذة أو أضف رابطاً لتبدأ المعالجة.</span>
-</span>
+<div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2" id="batch-list">
+<div aria-live="polite" class="text-center py-10 px-4 flex flex-col items-center gap-2 text-on-surface-variant/60" id="batch-empty" role="status">
+<span class="material-symbols-outlined text-3xl opacity-40" data-icon="inbox">inbox</span>
+<span class="text-xs font-medium" data-i18n="queue_empty">لا ملفات في الطابور بعد</span>
+<span class="text-[11px] opacity-75" data-i18n="queue_empty_add">أفلت ملفات في النافذة أو أضف رابطاً لتبدأ المعالجة.</span>
 </div>
-<div class="p-stack-md border-t border-border-muted">
-<h3 class="font-label-md text-label-md text-clay-accent flex items-center gap-stack-sm mb-2">
-<span class="material-symbols-outlined text-sm" data-icon="lan" aria-hidden="true">lan</span>
-                    <span data-i18n="ext_title">وظائف خارجية</span>
-                </h3>
-<div id="ext-list" class="flex flex-col gap-unit">
-<span id="ext-empty" class="font-label-sm text-label-sm text-on-surface-variant opacity-80" data-i18n="ext_empty">لا وظائف خارجية جارية</span>
+</div>
+<div class="p-3 border-t border-border-muted bg-coal-bg/20">
+<div class="flex items-center gap-1.5 text-xs font-bold text-cream-text mb-2">
+<span class="material-symbols-outlined text-xs text-clay-accent" data-icon="lan">lan</span>
+<span data-i18n="ext_title">وظائف خارجية</span>
+</div>
+<div class="flex flex-col gap-1.5 text-xs" id="ext-list">
+<span class="text-[11px] text-on-surface-variant/70 italic" data-i18n="ext_empty" id="ext-empty">لا وظائف خارجية جارية</span>
 </div>
 </div>
 </aside>
 </main>
-<!-- Bottom Log Drawer -->
-<div id="logcard" class="glass-effect border-t border-border-muted flex flex-col z-50 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.5)] collapsed">
-<div class="w-full flex justify-between items-center px-gutter py-stack-sm bg-coal-surface/80 border-b border-border-muted group">
-<button id="log-toggle" type="button" aria-expanded="false" aria-controls="log-view" class="flex-1 flex items-center gap-stack-md text-left hover:bg-surface-container-high transition-colors duration-300 apple-ease cursor-pointer active:bg-surface-variant bg-transparent border-0 p-0">
-    <span class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-unit transition-colors duration-300 group-hover:text-cream-text">
-        <span class="material-symbols-outlined text-sm" data-icon="terminal" aria-hidden="true">terminal</span>
-        <span data-i18n="log_toggle">سجل الأحداث / Activity Log</span>
-    </span>
+<!-- ══════════════════════════════════════════════════════════════════
+     شريط السجلّ السفلي
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="border-t border-border-muted bg-coal-surface flex flex-col z-30 shrink-0 collapsed" id="logcard">
+<div class="h-8 px-3 flex items-center justify-between bg-coal-bg/60 border-b border-border-muted">
+<button aria-controls="log-view" aria-expanded="false" class="flex items-center gap-2 text-xs text-on-surface-variant hover:text-cream-text font-medium cursor-pointer" id="log-toggle" type="button">
+<span class="material-symbols-outlined text-xs" data-icon="terminal">terminal</span>
+<span data-i18n="log_toggle">سجل الأحداث / Activity Log</span>
+<span class="material-symbols-outlined text-xs" data-icon="expand_less">expand_less</span>
 </button>
-    <label class="autoscroll text-xs text-on-surface-variant hover:text-cream-text transition-colors flex items-center gap-unit cursor-pointer">
-        <input type="checkbox" id="autoscroll" class="form-checkbox h-3 w-3 text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent focus:ring-offset-coal-surface transition-all duration-200" checked />
-        <span data-i18n="autoscroll">المتابعة التلقائية</span>
-    </label>
-<div class="flex items-center gap-stack-md">
-    <span class="material-symbols-outlined text-on-surface-variant text-sm transition-transform duration-300 apple-ease group-hover:-translate-y-0.5 group-hover:text-cream-text" data-icon="expand_less" aria-hidden="true">expand_less</span>
+<label class="text-[11px] text-on-surface-variant flex items-center gap-1.5 cursor-pointer">
+<input checked="" class="form-checkbox h-3 w-3 text-clay-accent bg-coal-surface border-border-muted rounded" id="autoscroll" type="checkbox"/>
+<span data-i18n="autoscroll">المتابعة التلقائية</span>
+</label>
+</div>
+<div aria-live="polite" aria-relevant="additions" class="h-20 bg-surface-container-lowest p-2.5 overflow-y-auto font-mono text-[11px] text-on-surface-variant/90 leading-relaxed scroll-smooth" data-i18n-aria="log_toggle" dir="ltr" id="log-view" role="log">
 </div>
 </div>
-<div class="h-32 bg-coal-bg/90 p-stack-sm overflow-y-auto font-mono-code text-mono-code text-on-surface-variant scroll-smooth" dir="ltr" id="log-view" role="log" aria-live="polite" aria-relevant="additions" data-i18n-aria="log_toggle">
-<!-- ع٣ (جولة الجاسوس، 2026-09-21): كان هنا **أربعة سطور سجلّ ثابتة** تُقرأ
-     كسجلّ حقيقي، ومنها `[ERROR] Failed to locate model weights…` — **إنذار
-     كاذب يدعو لإجراء**. وهي لا تُستبدل إلا بنجاح `get_recent_logs`؛ وعند فشله
-     تبقى (قِيس: `afterFailedRefresh {"hidden":false,"text":"…[ERROR] Failed to
-     locate model weights…"}`). واليوم السجلّ **فارغ في الترميز**: يملؤه
-     `src/log.ts` وحده من `logBuffer` (و`refresh()` تكتب حالة انتظار صادقة عند
-     الفشل بدل أن تترك خطأً لم يقع). وترتيب السطور المُنتَجة بيدٌ بقيت في الجدول
-     لأنها نصوص ترجمة مشروعة، لكن **لا عنصر يعرضها** بلا سطر حقيقي. -->
+<!-- ══════════════════════════════════════════════════════════════════
+     شاشة الإعدادات داخل النافذة (`settingsScreen.ts` يبدّل الوضع:
+     يُظهرها ويخفي `<main>` بـ`body.settings-mode` — لا نافذة ثانية).
+     الحاوية `fixed inset-0 top-10`: شاشة كاملة **تحت شريط النافذة**.
+     ══════════════════════════════════════════════════════════════════ -->
+<div aria-modal="true" class="hidden fixed inset-0 top-10 z-[100] bg-coal-surface flex flex-col" data-i18n-aria="settings_title" id="settings-menu" role="dialog">
+<div class="settings-screen-header h-14 border-b border-border-muted bg-coal-surface px-6 flex items-center justify-between shrink-0">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-clay-accent/15 border border-clay-accent/30 flex items-center justify-center text-clay-accent">
+<span class="material-symbols-outlined text-base" data-icon="tune">tune</span>
+</div>
+<div>
+<h2 class="font-bold text-sm text-cream-text" data-i18n="settings_title">الإعدادات</h2>
+<p class="text-[11px] text-on-surface-variant" data-i18n="settings_subtitle">تخصيص محرك الفصل، وتسريع الرسوميات، والمراقبة التلقائية، وبوت تيليجرام.</p>
 </div>
 </div>
-
-<!-- (حُذف مودال «حول البرنامج» `#about-overlay` بقرار المالك في جولة settings2:
-     محتواه صار يُعرض **داخل تبويب «حول البرنامج»** نفسه — `#about-body` هناك.
-     فلم يبقَ مودال لهذا السطح، ولا زرّ `#btn-about` يفتحه.) -->
-<!-- Telegram bot panel (Sprint T1) — its own window on purpose: the settings
-     dropdown is too narrow, and hiding the token field behind its own toggle
-     made the feature impossible to switch on (real field defect, 2026-09-11). -->
-<!-- سؤال مرة واحدة: التشغيل مع النظام (يظهر بعد التثبيت فقط) -->
-  <div id="autostart-overlay" class="hidden fixed inset-0 z-[130] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="autostart-ask-title">
-    <div class="glass-effect border border-border-muted rounded-xl p-stack-lg w-[26rem] max-w-[92vw] flex flex-col gap-stack-md fade-in-up" style="animation-duration: 0.25s;">
-      <h3 id="autostart-ask-title" class="font-label-md text-label-md text-clay-accent" data-i18n="autostart_ask_title">تشغيل HaramLite مع بدء تشغيل ويندوز؟</h3>
-      <p class="font-body-sm text-sm text-on-surface-variant leading-relaxed" data-i18n="autostart_ask_body">سيعمل البرنامج في الخلفية بلا فتح نافذة، فيبقى بوت تيليجرام وتكامل المتصفح جاهزين بعد كل إقلاع. يمكنك تغيير هذا في أي وقت من الإعدادات.</p>
-      <div class="flex gap-stack-sm justify-end">
-        <button id="autostart-no" class="px-stack-md py-unit rounded border border-border-muted text-on-surface-variant hover:text-cream-text font-label-sm text-label-sm cursor-pointer" data-i18n="autostart_no">لا، لاحقاً</button>
-        <button id="autostart-yes" class="px-stack-md py-unit rounded bg-clay-accent text-coal-surface font-label-sm text-label-sm font-bold cursor-pointer" data-i18n="autostart_yes">نعم، شغّله مع النظام</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="tg-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="tg-panel-title">
-<div class="glass-effect border border-border-muted rounded-xl p-stack-lg w-[30rem] max-w-[92vw] max-h-[85vh] overflow-y-auto flex flex-col gap-stack-md fade-in-up" style="animation-duration: 0.25s;">
-<div class="flex justify-between items-center">
-<h3 id="tg-panel-title" class="font-label-md text-label-md text-clay-accent" data-i18n="tg_title">بوت تيليجرام</h3>
-<button id="tg-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit rounded cursor-pointer" title="إغلاق" data-i18n-title="dlg_close" data-i18n-aria="dlg_close">
-<span class="material-symbols-outlined text-sm" data-icon="close">close</span>
+<button class="flex items-center gap-2 bg-surface-container hover:bg-surface-container-high text-cream-text border border-border-muted hover:border-clay-accent/50 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all active:scale-95 cursor-pointer group" id="settings-close" type="button">
+<span class="material-symbols-outlined text-clay-accent text-sm transition-transform duration-200 group-hover:translate-x-1" data-icon="arrow_forward">arrow_forward</span>
+<span data-i18n="settings_back">رجوع</span>
 </button>
 </div>
-<label class="flex items-center gap-stack-sm cursor-pointer group">
-    <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="setting-telegram" type="checkbox"/>
-    <span class="font-body-sm text-cream-text" data-i18n="tg_enable">تفعيل بوت تيليجرام</span>
-</label>
-<label class="flex flex-col gap-unit">
-    <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="tg_token">توكن البوت (من BotFather)</span>
-    <input id="tg-token" type="password" dir="ltr" autocomplete="off" spellcheck="false" placeholder="123456:ABC-DEF…" class="form-input bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent"/>
-</label>
-<label class="flex flex-col gap-unit">
-    <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="tg_owner">معرّف المستخدم المسموح (اختياري)</span>
-    <input id="tg-owner" type="text" dir="ltr" autocomplete="off" spellcheck="false" placeholder="123456789" class="form-input bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent"/>
-</label>
-<label class="flex items-center gap-stack-sm cursor-pointer group">
-    <input class="form-checkbox text-clay-accent bg-coal-surface border-border-muted rounded focus:ring-clay-accent" id="tg-audio-only" type="checkbox"/>
-    <span class="font-body-sm text-cream-text" data-i18n="tg_audio_only">إرسال الصوت فقط (MP3) دائماً</span>
-</label>
-<div id="tg-pair-row" class="flex items-center gap-unit bg-coal-surface border border-border-muted rounded p-unit">
-    <span class="font-label-sm text-label-sm text-on-surface-variant" data-i18n="tg_paircode">رمز الاقتران</span>
-    <span id="tg-pair-code" class="font-label-md text-label-md text-clay-accent tracking-[0.25em]" dir="ltr">------</span>
-    <button id="tg-pair-new" type="button" class="material-symbols-outlined text-sm text-on-surface-variant hover:text-clay-accent cursor-pointer transition-colors ms-auto" title="رمز جديد" data-i18n-title="tg_pair_new" data-i18n-aria="tg_pair_new">refresh</button>
-    <button id="tg-pair-copy" type="button" class="material-symbols-outlined text-sm text-on-surface-variant hover:text-clay-accent cursor-pointer transition-colors" title="نسخ" data-i18n-title="tg_pair_copy" data-i18n-aria="tg_pair_copy">content_copy</button>
+<!-- التبويبات: الحالة المختارة تُرسم من `aria-selected` (يضبطها showTab) -->
+<nav aria-label="settings" class="w-64 border-l border-border-muted bg-coal-surface/60 p-3 flex flex-col gap-1 shrink-0 overflow-y-auto" id="settings-tabs" role="tablist">
+<div class="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/50 px-2 py-1 mb-1" data-i18n="settings_categories">فئات الإعدادات</div>
+<button aria-selected="true" class="settings-tab w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-semibold text-right transition-all" data-i18n="set_group_perf" data-tab-btn="performance" role="tab" type="button">الأداء والمعالجة<span class="material-symbols-outlined text-base" data-icon="speed">speed</span>
+<span class="flex-1">الأداء والمعالجة</span>
+</button>
+<button aria-selected="false" class="settings-tab w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium text-right text-on-surface-variant hover:text-cream-text hover:bg-surface-container border border-transparent transition-all" data-i18n="set_group_watch" data-tab-btn="watch" role="tab" type="button">المراقبة التلقائية<span class="material-symbols-outlined text-base" data-icon="folder_managed">folder_managed</span>
+<span class="flex-1">المراقبة التلقائية</span>
+</button>
+<button aria-selected="false" class="settings-tab w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium text-right text-on-surface-variant hover:text-cream-text hover:bg-surface-container border border-transparent transition-all" data-i18n="set_group_integration" data-tab-btn="bridge" role="tab" type="button">التكامل<span class="material-symbols-outlined text-base" data-icon="extension">extension</span>
+<span class="flex-1">التكامل</span>
+</button>
+<button aria-selected="false" class="settings-tab w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium text-right text-on-surface-variant hover:text-cream-text hover:bg-surface-container border border-transparent transition-all" data-i18n="tg_title" data-tab-btn="telegram" role="tab" type="button">بوت تيليجرام<span class="material-symbols-outlined text-base" data-icon="smart_toy">smart_toy</span>
+<span class="flex-1">بوت تيليجرام</span>
+</button>
+<button aria-selected="false" class="settings-tab w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium text-right text-on-surface-variant hover:text-cream-text hover:bg-surface-container border border-transparent transition-all" data-i18n="set_tab_update" data-tab-btn="update" role="tab" type="button">التحديث والصيانة<span class="material-symbols-outlined text-base" data-icon="build">build</span>
+<span class="flex-1">التحديث والصيانة</span>
+</button>
+<button aria-selected="false" class="settings-tab w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium text-right text-on-surface-variant hover:text-cream-text hover:bg-surface-container border border-transparent transition-all" data-i18n="btn_about" data-tab-btn="about" role="tab" type="button">حول البرنامج<span class="material-symbols-outlined text-base" data-icon="info">info</span>
+<span class="flex-1">حول البرنامج</span>
+</button>
+</nav>
+<!-- ‏`hidden` **خاصية** على اللوحات الست (تقيسها settingsScreen/settingsTabs) —
+     وبلا صنف `flex`: صنف العرض يتغلّب على `[hidden]` فتُعرض اللوحات كلها معاً. -->
+<!-- ⚙️ الأداء والمعالجة -->
+<div class="settings-tab-panel flex-col gap-5 p-6 max-w-4xl w-full overflow-y-auto" data-tab="performance">
+<div class="bg-coal-bg border border-border-muted rounded-xl p-5 flex flex-col gap-4">
+<h3 class="flex items-center gap-2 text-xs font-bold text-cream-text pb-3 border-b border-border-muted">
+<span class="material-symbols-outlined text-clay-accent text-lg" data-icon="bolt">bolt</span>
+<span data-i18n="set_group_perf">الأداء والمعالجة</span>
+</h3>
+<p class="text-[11px] text-on-surface-variant" data-i18n="card_perf_desc">نموذج الفصل وذاكرة الرسوميات (GPU).</p>
+<div class="flex items-center justify-between py-1">
+<div class="flex flex-col gap-0.5 max-w-lg">
+<span class="text-xs font-bold text-cream-text" data-i18n="set_cuda">استخدام تسريع CUDA (NVIDIA)</span>
+<span class="text-[11px] text-on-surface-variant leading-relaxed" data-i18n="set_cuda_desc">تشغيل نموذج الفصل على بطاقة الرسوميات المخصصة بدل المعالج الرئيسي.</span>
 </div>
-<span id="tg-pair-hint" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="tg_pair_hint">أرسل هذا الرمز إلى بوتك في تيليجرام لربط حسابك (صالح 10 دقائق).</span>
-<span id="tg-status" class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed"></span>
-<details class="border-t border-border-muted pt-2">
-    <summary class="font-label-sm text-label-sm text-on-surface-variant cursor-pointer" data-i18n="tg_advanced">إعدادات متقدمة: خادم Bot API محلي (حتى 2GB وبالجودة الأصلية)</summary>
-    <div class="flex flex-col gap-stack-sm mt-2">
-        <input id="tg-local-url" type="text" dir="ltr" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:8081" class="form-input bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent"/>
-        <input id="tg-api-id" type="text" dir="ltr" autocomplete="off" spellcheck="false" placeholder="api_id" class="form-input bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent"/>
-        <input id="tg-api-hash" type="password" dir="ltr" autocomplete="off" spellcheck="false" placeholder="api_hash" class="form-input bg-coal-surface border border-border-muted rounded px-unit py-unit text-cream-text font-label-sm text-label-sm focus:outline-none focus:border-clay-accent"/>
-        <span class="font-label-sm text-label-sm text-on-surface-variant leading-relaxed" data-i18n="tg_local_note">يُشغَّل الخادم من حسابك في my.telegram.org؛ اتركه فارغاً لاستخدام السحابة (حد 50MB إرسال / 20MB استلام).</span>
-    </div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" id="setting-cuda" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-cream-text after:border-border-muted after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-clay-accent border border-border-muted"></div>
+</label>
+</div>
+<div class="hidden flex items-start gap-2.5 bg-tertiary/10 border border-tertiary/30 rounded-lg p-3" id="cuda-hint">
+<span class="material-symbols-outlined text-xs text-tertiary mt-0.5" data-icon="info">info</span>
+<span class="text-xs text-tertiary leading-relaxed" id="cuda-hint-text"></span>
+</div>
+<div class="flex items-center justify-between bg-coal-surface px-3 py-2.5 rounded-lg border border-border-muted text-xs">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-xs text-clay-accent" data-icon="memory">memory</span>
+<span class="text-on-surface-variant" data-i18n="provider_line_label">المزوّد الفعّال حالياً:</span>
+</div>
+<p class="font-mono text-xs text-cream-text font-semibold" data-i18n="cuda_provider_unknown" id="cuda-provider">لم تُجرَّ جلسة فصل بعد — المزوّد الفعّال غير معروف</p>
+</div>
+<div class="flex items-center justify-between py-1 border-t border-border-muted/60 pt-3">
+<div class="flex flex-col gap-0.5 max-w-lg">
+<span class="text-xs font-bold text-cream-text" data-i18n="max_jobs_label">أقصى فصول متزامنة:</span>
+<span class="text-[11px] text-on-surface-variant leading-relaxed" data-i18n="max_jobs_hint">1 هو الافتراضيّ: فصلان معاً بلغا ذروة 7947 من 8192 م.ب (هامش 245 م.ب فقط) على بطاقة 8 جيجا · 2 أسرع لملفّين لكنه يُنفق هذا الهامش.</span>
+</div>
+<select class="bg-coal-surface border border-border-muted rounded-lg px-3 py-1.5 text-xs text-cream-text font-medium focus:outline-none focus:border-clay-accent cursor-pointer" id="max-jobs">
+<option selected="" value="1">1</option>
+<option value="2">2</option>
+</select>
+</div>
+<div class="flex items-center justify-between py-1 border-t border-border-muted/60 pt-3">
+<div class="flex flex-col gap-0.5 max-w-lg">
+<span class="text-xs font-bold text-cream-text" data-i18n="set_notify">إشعارات الانتهاء + صوت خفيف</span>
+<span class="text-[11px] text-on-surface-variant leading-relaxed" data-i18n="set_notify_desc">إشعار في مركز إشعارات ويندوز مع نغمة خفيفة عند انتهاء كل ملف.</span>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" id="setting-notify" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-cream-text after:border-border-muted after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-clay-accent border border-border-muted"></div>
+</label>
+</div>
+</div>
+</div>
+<!-- 📁 المراقبة التلقائية -->
+<div class="settings-tab-panel flex-col gap-5 p-6 max-w-4xl w-full overflow-y-auto" data-tab="watch" hidden="">
+<div class="bg-coal-bg border border-border-muted rounded-xl p-5 flex flex-col gap-4">
+<h3 class="flex items-center gap-2 text-xs font-bold text-cream-text pb-3 border-b border-border-muted">
+<span class="material-symbols-outlined text-clay-accent text-lg" data-icon="folder_managed">folder_managed</span>
+<span data-i18n="set_group_watch">المراقبة التلقائية</span>
+</h3>
+<p class="text-[11px] text-on-surface-variant" data-i18n="card_watch_desc">مراقبة مجلد مخصص ومعالجة ما يُودَع فيه تلقائياً.</p>
+<div class="flex items-center justify-between py-1">
+<div class="flex flex-col gap-0.5 max-w-lg">
+<span class="text-xs font-bold text-cream-text" data-i18n="watch_enable">تفعيل مجلد المراقبة</span>
+<span class="text-[11px] text-on-surface-variant leading-relaxed" data-i18n="watch_enable_desc">مراقبة مجلد محدد ومعالجة أي ملف جديد يُسحب إليه في الخلفية.</span>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" id="setting-watch" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-cream-text after:border-border-muted after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-clay-accent border border-border-muted"></div>
+</label>
+</div>
+<div class="hidden flex flex-col gap-3 p-3 bg-coal-surface border border-border-muted rounded-lg" id="watch-options">
+<div class="flex items-center gap-2">
+<button class="flex items-center gap-1.5 bg-surface-container hover:bg-surface-container-high text-cream-text border border-border-muted px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer" id="btn-watch-folder" type="button">
+<span class="material-symbols-outlined text-xs text-clay-accent" data-icon="folder_open">folder_open</span>
+<span data-i18n="watch_pick">اختيار المجلد</span>
+</button>
+<span class="font-mono text-xs text-on-surface-variant truncate flex-1 bg-surface-container-lowest px-2.5 py-1.5 rounded border border-border-muted/50" dir="ltr" id="watch-path"></span>
+</div>
+<div class="grid grid-cols-2 gap-3 pt-2 border-t border-border-muted/50">
+<div class="flex items-center justify-between">
+<span class="text-xs text-on-surface-variant" data-i18n="watch_mode_label">وضع المعالجة:</span>
+<select class="bg-surface-container-lowest border border-border-muted rounded-lg px-2.5 py-1 text-cream-text text-xs focus:outline-none focus:border-clay-accent" id="watch-mode">
+<option data-i18n="watch_mode_song" value="song">أغنية</option>
+<option data-i18n="watch_mode_clip" value="clip">مقطع عادي</option>
+</select>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-xs text-on-surface-variant" data-i18n="watch_out_kind_label">نوع الإخراج:</span>
+<select class="bg-surface-container-lowest border border-border-muted rounded-lg px-2.5 py-1 text-cream-text text-xs focus:outline-none focus:border-clay-accent" id="watch-out-kind">
+<option data-i18n="watch_out_kind_auto" value="auto">تلقائي</option>
+<option data-i18n="watch_out_kind_video" value="video">فيديو</option>
+<option data-i18n="watch_out_kind_audio" value="audio">صوت فقط (MP3)</option>
+</select>
+</div>
+</div>
+<span class="text-[11px] text-on-surface-variant/70 leading-relaxed" data-i18n="watch_out_kind_hint">«تلقائي» و«فيديو» ينتجان فيديو، ويسقط المحرّك ذكيّاً إلى MP3 إن كان الملف صوتياً. «صوت فقط» ينتج MP3 دائماً.</span>
+<div class="flex items-center justify-between pt-1">
+<span class="text-xs text-clay-accent font-medium" id="watch-status"></span>
+<button class="hidden text-error hover:text-on-error-container text-xs px-2 py-1 rounded bg-error/10 border border-error/30 cursor-pointer flex items-center gap-1" data-i18n="watch_cancel" id="btn-watch-cancel" type="button">
+<span class="material-symbols-outlined text-xs" data-icon="close">close</span> إلغاء الملف الجاري
+                </button>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4 pt-3 border-t border-border-muted">
+<div class="flex items-center justify-between">
+<span class="text-xs text-cream-text" data-i18n="watch_size_label">حجم أقصى للمراقبة (MB):</span>
+<input class="w-24 bg-coal-surface border border-border-muted rounded-lg px-2.5 py-1 text-cream-text font-mono text-xs focus:outline-none focus:border-clay-accent" id="watch-max-size" min="100" step="100" type="number" value="2048"/>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-xs text-cream-text" data-i18n="watch_rescan_label">فاصل المسح الدوري (ثانية):</span>
+<input class="w-20 bg-coal-surface border border-border-muted rounded-lg px-2.5 py-1 text-cream-text font-mono text-xs focus:outline-none focus:border-clay-accent" id="watch-rescan" min="10" step="10" type="number" value="60"/>
+</div>
+</div>
+</div>
+</div>
+<!-- 🔗 التكامل -->
+<div class="settings-tab-panel flex-col gap-5 p-6 max-w-4xl w-full overflow-y-auto" data-tab="bridge" hidden="">
+<div class="bg-coal-bg border border-border-muted rounded-xl p-5 flex flex-col gap-4">
+<h3 class="flex items-center gap-2 text-xs font-bold text-cream-text pb-3 border-b border-border-muted">
+<span class="material-symbols-outlined text-clay-accent text-lg" data-icon="extension">extension</span>
+<span data-i18n="set_group_integration">التكامل</span>
+</h3>
+<p class="text-[11px] text-on-surface-variant" data-i18n="card_bridge_desc">ربط البرنامج بإضافة المتصفح لإرسال المقاطع مباشرة.</p>
+<div class="flex items-center justify-between py-1">
+<div class="flex flex-col gap-0.5 max-w-lg">
+<span class="text-xs font-bold text-cream-text" data-i18n="btn_bridge">تفعيل التكامل مع المتصفح</span>
+<span class="text-[11px] text-on-surface-variant leading-relaxed" data-i18n="btn_bridge_desc">إرسال روابط الفيديو بضغطة ومشاهدتها بعد المعالجة داخل الصفحة.</span>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" id="setting-bridge" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-cream-text after:border-border-muted after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-clay-accent border border-border-muted"></div>
+</label>
+</div>
+<!-- د1: الزرّ يفتح بتفويض `data-open-url` على حاوية التكامل في `wireBridge()` -->
+<div class="p-3 bg-coal-surface border border-border-muted rounded-lg flex flex-col gap-2">
+<p class="text-xs text-on-surface-variant leading-relaxed" id="bridge-ext-status"></p>
+<button class="hidden items-center gap-1.5 text-clay-accent hover:underline text-xs self-start" data-open-url="https://haramlite.com/bridge.html" id="bridge-ext-link" type="button">
+<span class="material-symbols-outlined text-xs" data-icon="open_in_new">open_in_new</span>
+<span data-i18n="bridge_page_link">صفحة إضافة المتصفح — التثبيت والشرح</span>
+</button>
+</div>
+</div>
+</div>
+<!-- 🤖 بوت تيليجرام -->
+<div class="settings-tab-panel flex-col gap-5 p-6 max-w-4xl w-full overflow-y-auto" data-tab="telegram" hidden="">
+<div class="bg-coal-bg border border-border-muted rounded-xl p-5 flex flex-col gap-4">
+<h3 class="flex items-center gap-2 text-xs font-bold text-cream-text pb-3 border-b border-border-muted">
+<span class="material-symbols-outlined text-clay-accent text-lg" data-icon="smart_toy">smart_toy</span>
+<span data-i18n="tg_title">بوت تيليجرام</span>
+</h3>
+<p class="text-[11px] text-on-surface-variant" data-i18n="card_tg_desc">استقبال الفيديوهات وعزل الموسيقى تلقائياً عبر مراسلة البوت.</p>
+<div class="flex items-center justify-between py-1">
+<div class="flex flex-col gap-0.5 max-w-lg">
+<span class="text-xs font-bold text-cream-text" data-i18n="tg_pair_title">لوحة إعدادات واقتران البوت</span>
+<span class="text-[11px] text-on-surface-variant leading-relaxed" data-i18n="tg_pair_desc">إدخال توكن BotFather، واستخراج رمز الاقتران، وتحديد المعرّف الموثوق.</span>
+</div>
+<button class="flex items-center gap-1.5 bg-clay-accent/15 hover:bg-clay-accent/25 text-clay-accent border border-clay-accent/40 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all" id="btn-telegram" type="button">
+<span class="material-symbols-outlined text-xs" data-icon="settings_remote">settings_remote</span>
+<span data-i18n="tg_title">بوت تيليجرام</span>
+<span class="font-mono text-[10px] bg-clay-accent text-coal-bg px-1 rounded font-bold" id="tg-badge"></span>
+</button>
+</div>
+<div class="flex items-center justify-between py-1 border-t border-border-muted pt-3">
+<div class="flex flex-col gap-0.5 max-w-lg">
+<span class="text-xs font-bold text-cream-text" data-i18n="settings_group_mode">وضوح رسائل المجموعة:</span>
+<span class="text-[11px] text-on-surface-variant leading-relaxed" data-i18n="settings_group_mode_hint">«بالمنشن فقط»: لا يرى البوت إلا ما وُجِّه إليه؛ والرسالة التي لا تذكره لا تصله أصلاً في مجموعة privacy mode فيها مفعّل. «كل الرسائل»: يراه ما لم يُقصد به أيضاً، فيلزم إطفاء privacy mode من @BotFather، وإلا لم يصل شيء.</span>
+</div>
+<select class="bg-coal-surface border border-border-muted rounded-lg px-2.5 py-1 text-cream-text text-xs focus:outline-none focus:border-clay-accent" id="tg-group-mode">
+<option data-i18n="settings_group_mode_mentions" selected="" value="mentions">بالمنشن فقط</option>
+<option data-i18n="settings_group_mode_all" value="all">كل الرسائل</option>
+</select>
+</div>
+<div class="flex items-center justify-between py-1 border-t border-border-muted pt-3">
+<div class="flex flex-col gap-0.5 max-w-lg">
+<span class="text-xs font-bold text-cream-text" data-i18n="tg_identity">استخدم اسم HaramLite وصورته للبوت</span>
+<span class="text-[11px] text-on-surface-variant leading-relaxed" data-i18n="tg_identity_hint">الاسم يُعاد إلى ما كان عند الإلغاء. أما الصورة فتُزال عند الإلغاء ولا تُعاد — إذ لا سبيل لقراءة صورة البوت الحالية، فإن كانت لبوتك صورة تريدها فأعِدها من @BotFather. ومعرّف البوت نفسه (@…) لا يُغيَّر من هنا بل من @BotFather وحده.</span>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" id="tg-bot-identity" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-cream-text after:border-border-muted after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-clay-accent border border-border-muted"></div>
+</label>
+</div>
+<span aria-live="polite" class="text-xs text-on-surface-variant block" id="tg-identity-note" role="status"></span>
+<div class="flex flex-wrap items-center gap-3 pt-3 border-t border-border-muted">
+<button class="flex items-center gap-1.5 bg-surface-container hover:bg-surface-container-high text-cream-text border border-border-muted px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer" id="tg-set-commands" type="button">
+<span class="material-symbols-outlined text-xs text-clay-accent" data-icon="terminal">terminal</span>
+<span data-i18n="tg_set_commands">اضبط أوامر البوت</span>
+</button>
+<button class="flex items-center gap-1.5 bg-surface-container hover:bg-surface-container-high text-cream-text border border-border-muted px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer" id="tg-stats" type="button">
+<span class="material-symbols-outlined text-xs text-clay-accent" data-icon="bar_chart">bar_chart</span>
+<span data-i18n="tg_stats">📊 إحصاءات</span>
+</button>
+</div>
+<span aria-live="polite" class="text-xs text-on-surface-variant block" id="tg-commands-note" role="status"></span>
+<span aria-live="polite" class="font-mono text-xs text-on-surface-variant block p-2.5 bg-coal-surface rounded-lg border border-border-muted/40" id="tg-stats-body" role="status"></span>
+</div>
+</div>
+<!-- 🖥️ التحديث والصيانة -->
+<div class="settings-tab-panel flex-col gap-5 p-6 max-w-4xl w-full overflow-y-auto" data-tab="update" hidden="">
+<div class="bg-coal-bg border border-border-muted rounded-xl p-5 flex flex-col gap-4">
+<h3 class="flex items-center gap-2 text-xs font-bold text-cream-text pb-3 border-b border-border-muted">
+<span class="material-symbols-outlined text-clay-accent text-lg" data-icon="desktop_windows">desktop_windows</span>
+<span data-i18n="set_group_system">النظام</span>
+</h3>
+<p class="text-[11px] text-on-surface-variant" data-i18n="card_system_desc">بدء التشغيل مع ويندوز وفحص التحديثات.</p>
+<div class="flex items-center justify-between py-1">
+<div class="flex flex-col gap-0.5 max-w-lg">
+<span class="text-xs font-bold text-cream-text" data-i18n="autostart_label">التشغيل مع بدء تشغيل ويندوز</span>
+<span class="text-[11px] text-on-surface-variant leading-relaxed" data-i18n="autostart_hint">يقلع في الخلفية بلا نافذة، ليبقى بوت تيليجرام وتكامل المتصفح جاهزين — وتفتح النافذة متى شئت من أيقونة الشريط.</span>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" id="setting-autostart" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-cream-text after:border-border-muted after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-clay-accent border border-border-muted"></div>
+</label>
+</div>
+<div class="flex items-center justify-between pt-3 border-t border-border-muted/50">
+<button class="flex items-center gap-1.5 bg-surface-container hover:bg-surface-container-high text-cream-text border border-border-muted px-3.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer" id="btn-update-check" type="button">
+<span class="material-symbols-outlined text-xs text-clay-accent" data-icon="download">download</span>
+<span data-i18n="upd_check">التحقق من التحديثات</span>
+</button>
+<p aria-live="polite" class="hidden text-xs text-on-surface-variant" id="update-status" role="status"></p>
+<button class="hidden items-center gap-1 text-clay-accent hover:underline text-xs cursor-pointer" data-i18n="upd_download" id="btn-update-download" type="button"></button>
+</div>
+</div>
+<div class="bg-coal-bg border border-border-muted rounded-xl p-5 flex flex-col gap-4">
+<h3 class="flex items-center gap-2 text-xs font-bold text-cream-text pb-3 border-b border-border-muted">
+<span class="material-symbols-outlined text-clay-accent text-lg" data-icon="build">build</span>
+<span data-i18n="set_group_tools">الأدوات والمساعدة</span>
+</h3>
+<p class="text-[11px] text-on-surface-variant" data-i18n="card_tools_desc">صيانة أدوات تنزيل الوسائط والتشفير.</p>
+<div class="flex items-center justify-between py-1">
+<div class="flex flex-col gap-0.5 max-w-lg">
+<span class="text-xs font-bold text-cream-text" data-i18n="set_ytdlp_auto">تحديث yt-dlp تلقائياً</span>
+<span class="text-[11px] text-on-surface-variant leading-relaxed" data-i18n="set_ytdlp_auto_desc">فحص وتحديث yt-dlp دورياً لضمان استمرار عمل الروابط.</span>
+</div>
+<div class="flex items-center gap-3">
+<button class="flex items-center gap-1 bg-surface-container hover:bg-surface-container-high text-cream-text border border-border-muted px-2.5 py-1 rounded-lg text-xs" data-i18n-aria="ytdlp_about" data-i18n-title="ytdlp_about" id="btn-upd-ytdlp" type="button">
+<span class="material-symbols-outlined text-xs text-clay-accent" data-icon="refresh">refresh</span>
+<span data-i18n="ytdlp_update_now">تحديث yt-dlp الآن</span>
+</button>
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" id="setting-ytdlp-auto" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-cream-text after:border-border-muted after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-clay-accent border border-border-muted"></div>
+</label>
+</div>
+</div>
+<div class="hidden flex items-start gap-2 bg-error/10 border border-error/30 rounded-lg p-3" id="ytdlp-auto-status">
+<span class="material-symbols-outlined text-xs text-error shrink-0 mt-0.5" data-icon="warning">warning</span>
+<span class="text-xs text-error leading-relaxed">
+<span data-i18n="ytdlp_off_warn">التحديث التلقائي مُطفأ: قد تبقى yt-dlp قديمة فيفشل تنزيل الروابط حتى تحدّثها يدوياً.</span>
+<span class="block font-mono mt-1 text-[11px]" id="ytdlp-local-version"></span>
+</span>
+</div>
+<div class="flex items-center gap-3 pt-3 border-t border-border-muted/50">
+<button class="flex items-center gap-1.5 bg-surface-container hover:bg-surface-container-high text-cream-text border border-border-muted px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer" id="btn-repair-open" type="button">
+<span class="material-symbols-outlined text-xs text-clay-accent" data-icon="healing">healing</span>
+<span data-i18n="btn_repair">فحص وإصلاح المكونات</span>
+</button>
+<button class="flex items-center gap-1.5 bg-surface-container hover:bg-surface-container-high text-cream-text border border-border-muted px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer" id="btn-report" type="button">
+<span class="material-symbols-outlined text-xs text-error" data-icon="bug_report">bug_report</span>
+<span data-i18n="btn_report">الإبلاغ عن مشكلة</span>
+</button>
+</div>
+</div>
+</div>
+<!-- ℹ️ حول البرنامج -->
+<div class="settings-tab-panel flex-col gap-5 p-6 max-w-4xl w-full overflow-y-auto" data-tab="about" hidden="">
+<div class="bg-coal-bg border border-border-muted rounded-xl p-5 flex flex-col gap-4">
+<h3 class="flex items-center gap-2 text-xs font-bold text-cream-text pb-3 border-b border-border-muted">
+<span class="material-symbols-outlined text-clay-accent text-lg" data-icon="info">info</span>
+<span data-i18n="about_title">حول HaramLite</span>
+</h3>
+<p class="text-[11px] text-on-surface-variant" data-i18n="card_about_desc">بيانات الإصدار، والترخيص، والمكتبات المفتوحة المصدر.</p>
+<div class="flex flex-col gap-2.5 text-xs text-cream-text leading-relaxed" id="about-body"></div>
+</div>
+</div>
+</div>
+<!-- ══════════════════════════════════════════════════════════════════
+     النوافذ المنبثقة (تيليجرام · الإقلاع · الإصلاح) والإشعار والبطاقة
+     ══════════════════════════════════════════════════════════════════ -->
+<div aria-labelledby="tg-panel-title" aria-modal="true" class="hidden fixed inset-0 z-[120] flex items-center justify-center bg-black/75 backdrop-blur-sm" id="tg-overlay" role="dialog">
+<div class="bg-coal-surface border border-border-muted rounded-2xl p-6 w-[32rem] max-w-[92vw] max-h-[85vh] overflow-y-auto flex flex-col gap-4">
+<div class="flex justify-between items-center pb-3 border-b border-border-muted">
+<div class="flex items-center gap-2.5">
+<span class="material-symbols-outlined text-clay-accent text-xl" data-icon="smart_toy">smart_toy</span>
+<h3 class="font-bold text-sm text-cream-text" data-i18n="tg_title" id="tg-panel-title">بوت تيليجرام</h3>
+</div>
+<button class="text-on-surface-variant hover:text-cream-text p-1 rounded-lg hover:bg-surface-container cursor-pointer" data-i18n-aria="dlg_close" data-i18n-title="dlg_close" id="tg-close" title="إغلاق" type="button">
+<span class="material-symbols-outlined text-base" data-icon="close">close</span>
+</button>
+</div>
+<label class="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-surface-container/50">
+<input class="form-checkbox text-clay-accent bg-surface-container-lowest border-border-muted rounded focus:ring-0" id="setting-telegram" type="checkbox"/>
+<span class="text-xs font-bold text-cream-text" data-i18n="tg_enable">تفعيل بوت تيليجرام</span>
+</label>
+<label class="flex flex-col gap-1">
+<span class="text-xs text-on-surface-variant" data-i18n="tg_token">توكن البوت (من BotFather)</span>
+<input autocomplete="off" class="bg-surface-container-lowest border border-border-muted rounded-lg px-3 py-2 text-cream-text font-mono text-xs focus:outline-none focus:border-clay-accent" dir="ltr" id="tg-token" placeholder="123456:ABC-DEF…" spellcheck="false" type="password"/>
+</label>
+<label class="flex flex-col gap-1">
+<span class="text-xs text-on-surface-variant" data-i18n="tg_owner">معرّف المستخدم المسموح (اختياري)</span>
+<input autocomplete="off" class="bg-surface-container-lowest border border-border-muted rounded-lg px-3 py-2 text-cream-text font-mono text-xs focus:outline-none focus:border-clay-accent" dir="ltr" id="tg-owner" placeholder="123456789" spellcheck="false" type="text"/>
+</label>
+<label class="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-surface-container/50">
+<input class="form-checkbox text-clay-accent bg-surface-container-lowest border-border-muted rounded focus:ring-0" id="tg-audio-only" type="checkbox"/>
+<span class="text-xs text-cream-text" data-i18n="tg_audio_only">إرسال الصوت فقط (MP3) دائماً</span>
+</label>
+<div class="flex items-center gap-3 bg-coal-bg border border-border-muted rounded-xl p-3" id="tg-pair-row">
+<span class="text-xs text-on-surface-variant" data-i18n="tg_paircode">رمز الاقتران</span>
+<span class="font-mono text-base font-bold text-clay-accent tracking-[0.25em] px-2 py-0.5 rounded bg-coal-surface border border-clay-accent/30" dir="ltr" id="tg-pair-code">------</span>
+<button class="material-symbols-outlined text-sm text-on-surface-variant hover:text-clay-accent cursor-pointer p-1 ms-auto" data-i18n-aria="tg_pair_new" data-i18n-title="tg_pair_new" id="tg-pair-new" title="رمز جديد" type="button">refresh</button>
+<button class="material-symbols-outlined text-sm text-on-surface-variant hover:text-clay-accent cursor-pointer p-1" data-i18n-aria="tg_pair_copy" data-i18n-title="tg_pair_copy" id="tg-pair-copy" title="نسخ" type="button">content_copy</button>
+</div>
+<span class="text-[11px] text-on-surface-variant/80 leading-relaxed" data-i18n="tg_pair_hint" id="tg-pair-hint">أرسل هذا الرمز إلى بوتك في تيليجرام لربط حسابك (صالح 10 دقائق).</span>
+<span class="text-xs text-on-surface-variant" id="tg-status"></span>
+<details class="border-t border-border-muted pt-3">
+<summary class="text-xs text-on-surface-variant cursor-pointer hover:text-cream-text" data-i18n="tg_advanced">إعدادات متقدمة: خادم Bot API محلي (حتى 2GB وبالجودة الأصلية)</summary>
+<div class="flex flex-col gap-2.5 mt-2.5 p-3 bg-surface-container-lowest rounded-xl border border-border-muted">
+<input autocomplete="off" class="bg-coal-surface border border-border-muted rounded-lg px-2.5 py-1.5 text-cream-text font-mono text-xs focus:outline-none focus:border-clay-accent" dir="ltr" id="tg-local-url" placeholder="http://127.0.0.1:8081" spellcheck="false" type="text"/>
+<input autocomplete="off" class="bg-coal-surface border border-border-muted rounded-lg px-2.5 py-1.5 text-cream-text font-mono text-xs focus:outline-none focus:border-clay-accent" dir="ltr" id="tg-api-id" placeholder="api_id" spellcheck="false" type="text"/>
+<input autocomplete="off" class="bg-coal-surface border border-border-muted rounded-lg px-2.5 py-1.5 text-cream-text font-mono text-xs focus:outline-none focus:border-clay-accent" dir="ltr" id="tg-api-hash" placeholder="api_hash" spellcheck="false" type="password"/>
+<span class="text-[11px] text-on-surface-variant/70 leading-relaxed" data-i18n="tg_local_note">يُشغَّل الخادم من حسابك في my.telegram.org؛ اتركه فارغاً لاستخدام السحابة (حد 50MB إرسال / 20MB استلام).</span>
+</div>
 </details>
-<button id="tg-ok" class="self-end bg-surface-container text-cream-text border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high transition-all duration-300 font-label-sm text-label-sm cursor-pointer" data-i18n="about_ok">حسناً</button>
+<button class="self-end bg-clay-accent text-coal-bg font-bold px-5 py-2 rounded-xl hover:bg-clay-accent/90 transition-colors text-xs cursor-pointer" data-i18n="about_ok" id="tg-ok" type="button">حسناً</button>
 </div>
 </div>
-<!-- In-app toast (fallback when system notification is unavailable) -->
-<div id="toast" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-[110] bg-surface-container border border-clay-accent/40 rounded px-stack-md py-stack-sm text-cream-text font-body-sm text-sm shadow-xl"></div>
-
-<!-- Bridge completion card (browser-initiated jobs) -->
-<div id="bridge-card" class="hidden fixed bottom-4 right-4 z-[110] glass-effect border border-border-muted rounded-xl p-stack-md flex flex-col gap-unit shadow-xl max-w-xs">
-<div class="flex justify-between items-center">
-<span class="font-label-sm text-label-sm text-clay-accent font-bold" data-i18n="bridge_card_title">🎵 اكتمل طلب المتصفح</span>
-<button id="bridge-card-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit cursor-pointer" data-i18n-aria="dlg_close">✕</button>
+<div aria-labelledby="autostart-ask-title" aria-modal="true" class="hidden fixed inset-0 z-[130] flex items-center justify-center bg-black/75 backdrop-blur-sm" id="autostart-overlay" role="dialog">
+<div class="bg-coal-surface border border-border-muted rounded-xl p-5 w-[26rem] max-w-[92vw] flex flex-col gap-3">
+<h3 class="font-bold text-xs text-clay-accent" data-i18n="autostart_ask_title" id="autostart-ask-title">تشغيل HaramLite مع بدء تشغيل ويندوز؟</h3>
+<p class="text-xs text-on-surface-variant leading-relaxed" data-i18n="autostart_ask_body">سيعمل البرنامج في الخلفية بلا فتح نافذة، فيبقى بوت تيليجرام وتكامل المتصفح جاهزين بعد كل إقلاع. يمكنك تغيير هذا في أي وقت من الإعدادات.</p>
+<div class="flex gap-2 justify-end pt-2">
+<button class="px-3 py-1.5 rounded-lg border border-border-muted text-on-surface-variant hover:text-cream-text text-xs cursor-pointer" data-i18n="autostart_no" id="autostart-no" type="button">لا، لاحقاً</button>
+<button class="px-3.5 py-1.5 rounded-lg bg-clay-accent text-coal-bg text-xs font-bold cursor-pointer hover:bg-clay-accent/90" data-i18n="autostart_yes" id="autostart-yes" type="button">نعم، شغّله مع النظام</button>
 </div>
-<span id="bridge-card-text" class="font-body-sm text-sm text-cream-text"></span>
-<button id="bridge-card-open" class="bg-clay-accent text-coal-surface rounded px-stack-sm py-unit font-label-sm text-label-sm font-bold self-start hover:bg-primary-container transition-all duration-300 cursor-pointer" data-i18n="bridge_card_open">📂 فتح مجلد النتائج</button>
 </div>
-
-<!-- Repair wizard (Sprint C1) -->
-<div id="repair-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="repair-title">
-<div class="glass-effect border border-border-muted rounded-xl p-stack-lg w-[28rem] max-w-[92vw] flex flex-col gap-stack-md fade-in-up" style="animation-duration: 0.25s;">
-<div class="flex justify-between items-center">
-<h3 id="repair-title" class="font-label-md text-label-md text-clay-accent" data-i18n="repair_title">مكوّنات ناقصة</h3>
-<button id="repair-close" class="text-on-surface-variant hover:text-cream-text transition-colors p-unit rounded cursor-pointer" title="إغلاق" data-i18n-title="dlg_close" data-i18n-aria="dlg_close">
-<span class="material-symbols-outlined text-sm" data-icon="close">close</span>
+</div>
+<div aria-labelledby="repair-title" aria-modal="true" class="hidden fixed inset-0 z-[120] flex items-center justify-center bg-black/75 backdrop-blur-sm" id="repair-overlay" role="dialog">
+<div class="bg-coal-surface border border-border-muted rounded-xl p-5 w-[28rem] max-w-[92vw] flex flex-col gap-3.5">
+<div class="flex justify-between items-center pb-2 border-b border-border-muted">
+<h3 class="font-bold text-xs text-clay-accent" data-i18n="repair_title" id="repair-title">مكوّنات ناقصة</h3>
+<button class="text-on-surface-variant hover:text-cream-text p-1 rounded cursor-pointer" data-i18n-aria="dlg_close" data-i18n-title="dlg_close" id="repair-close" title="إغلاق" type="button">
+<span class="material-symbols-outlined text-base" data-icon="close">close</span>
 </button>
 </div>
-<p class="font-body-sm text-sm text-on-surface-variant leading-relaxed" data-i18n="repair_desc">بعض مكوّنات التشغيل مفقودة (حذف يدوي أو نسخة محمولة). سيتم تنزيلها تلقائياً من GitHub والتحقق من بصمتها قبل التثبيت.</p>
-<div id="repair-list" class="flex flex-col gap-unit"></div>
-<div id="repair-progress-wrap" class="hidden h-1.5 bg-border-muted rounded-full overflow-hidden">
-<div id="repair-progress" class="h-full bg-clay-accent w-0 rounded-full transition-all duration-300"></div>
+<p class="text-xs text-on-surface-variant leading-relaxed" data-i18n="repair_desc">بعض مكوّنات التشغيل مفقودة (حذف يدوي أو نسخة محمولة). سيتم تنزيلها تلقائياً من GitHub والتحقق من بصمتها قبل التثبيت.</p>
+<div class="flex flex-col gap-1.5" id="repair-list"></div>
+<div class="hidden h-1.5 bg-surface-container-lowest rounded-full overflow-hidden" id="repair-progress-wrap">
+<div class="h-full bg-clay-accent w-0 transition-all duration-300" id="repair-progress"></div>
 </div>
-<div id="repair-result" class="hidden font-body-sm text-sm"></div>
-<div class="flex justify-end gap-stack-sm">
-<button id="repair-cancel" class="bg-coal-surface text-on-surface-variant border border-border-muted px-stack-md py-stack-sm rounded hover:bg-surface-container-high transition-all duration-300 font-label-sm text-label-sm cursor-pointer" data-i18n="repair_later">لاحقاً</button>
-<button id="repair-all" class="bg-clay-accent text-coal-surface px-stack-md py-stack-sm rounded font-label-sm text-label-sm font-bold hover:bg-primary-container transition-all duration-300 cursor-pointer" data-i18n="repair_all">إصلاح الكل</button>
+<div class="hidden text-xs" id="repair-result"></div>
+<div class="flex justify-end gap-2 pt-2">
+<button class="bg-surface-container text-on-surface-variant border border-border-muted px-3 py-1.5 rounded-lg text-xs cursor-pointer hover:text-cream-text" data-i18n="repair_later" id="repair-cancel" type="button">لاحقاً</button>
+<button class="bg-clay-accent text-coal-bg px-3.5 py-1.5 rounded-lg text-xs font-bold hover:bg-clay-accent/90 cursor-pointer" data-i18n="repair_all" id="repair-all" type="button">إصلاح الكل</button>
 </div>
 </div>
 </div>
-
+<div class="hidden fixed bottom-12 left-1/2 -translate-x-1/2 z-[150] bg-surface-container border border-clay-accent/40 rounded-lg px-4 py-2 text-cream-text text-xs" id="toast"></div>
+<div class="hidden fixed bottom-12 right-6 z-[140] bg-coal-surface border border-border-muted rounded-xl p-3.5 flex flex-col gap-2 max-w-xs" id="bridge-card">
+<div class="flex justify-between items-center">
+<span class="text-xs font-bold text-clay-accent" data-i18n="bridge_card_title">🎵 اكتمل طلب المتصفح</span>
+<button class="text-on-surface-variant hover:text-cream-text cursor-pointer p-0.5" data-i18n-aria="dlg_close" id="bridge-card-close" type="button">✕</button>
+</div>
+<span class="text-xs text-cream-text" id="bridge-card-text"></span>
+<button class="bg-clay-accent text-coal-bg rounded px-2.5 py-1 text-xs font-bold self-start hover:bg-clay-accent/90 cursor-pointer" data-i18n="bridge_card_open" id="bridge-card-open" type="button">📂 فتح مجلد النتائج</button>
+</div>
+<input id="media-path" type="hidden"/>
   <script type="module" src="/src/main.ts"></script>
-<input type="hidden" id="media-path" />
 </body></html>

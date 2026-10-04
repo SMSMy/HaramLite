@@ -992,9 +992,11 @@ export function wireSeparate(): void {
     session.endRun('batch');
     sepBtnEl().disabled = false;
     const key = session.getCurrentMode() === 'song' ? 'btn_sep_song' : 'btn_sep_clip';
+    // نفس بنية زرّ التصميم الجديد في index.html (التسمية ثم الأيقونة) —
+    // كي لا يقفز ترتيبه بعد أول دفعة.
     sepBtnEl().innerHTML =
-      `<span class="material-symbols-outlined transition-transform duration-300 apple-ease group-hover:rotate-12 group-hover:scale-110" data-icon="content_cut">content_cut</span>
-       <span id="sep-label" data-i18n="${key}">${t(key)}</span>`;
+      `<span id="sep-label" data-i18n="${key}">${t(key)}</span>
+       <span class="material-symbols-outlined text-lg transition-transform duration-300 apple-ease group-hover:rotate-12 group-hover:scale-110" data-icon="content_cut">content_cut</span>`;
     if (result) {
       // ملخّص الدفعة يميّز الملغى (عطل ميداني 2026-09-21): كان يقول `1/2` ويُحصي
       // الملغى **فشلاً**. واليوم يقول المنجَز من المجموع، ويسمّي الملغى وحده في
