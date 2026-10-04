@@ -118,7 +118,7 @@ Get-FileHash .\HaramLite_*_x64-setup.exe -Algorithm SHA256
 
 **تتطلّب تطبيق HaramLite لسطح المكتب** (ويندوز 10/11) — بدونه لا تعمل.
 
-**[التثبيت من متجر كروم](https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg)** · صلاحياتها الثلاث (`contextMenus` · `nativeMessaging` · `activeTab`) ونطاق عملها (`youtube.com`) موثّقة في [`docs/STORE.md`](docs/STORE.md).
+**[التثبيت من متجر كروم](https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg)** · صلاحياتها الأربع (`contextMenus` · `nativeMessaging` · `activeTab` · `storage`) ونطاق عملها (`youtube.com`) موثّقة في [`docs/STORE.md`](docs/STORE.md).
 
 ## للمطورين
 

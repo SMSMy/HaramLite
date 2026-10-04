@@ -114,7 +114,7 @@ A free Chrome extension: send the current link to the app with one click, then w
 
 **It requires the HaramLite desktop app** (Windows 10/11) — it does not work without it.
 
-**[Install from the Chrome Web Store](https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg)** · Its three permissions (`contextMenus` · `nativeMessaging` · `activeTab`) and its single host scope (`youtube.com`) are documented in [`docs/STORE.md`](docs/STORE.md) *(in Arabic)*.
+**[Install from the Chrome Web Store](https://chromewebstore.google.com/detail/kaijaffkolenjhfcbaepmjndheahhikg)** · Its four permissions (`contextMenus` · `nativeMessaging` · `activeTab` · `storage`) and its single host scope (`youtube.com`) are documented in [`docs/STORE.md`](docs/STORE.md) *(in Arabic)*.
 
 ## For developers
 

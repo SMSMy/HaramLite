@@ -247,6 +247,9 @@ www.haramlite.com. 1 IN CNAME smsmy.github.io.
 **activeTab**
 > Reads the URL of the active tab only at the moment the user clicks the extension, so that URL can be handed to their desktop app for processing. There is no background access, no browsing-history access and no access to any other tab or site.
 
+**storage**
+> Keeps two interface preferences on the user's own device only - the preferred processing mode (Song / Clip) and the interface language - via `chrome.storage.local`. Nothing in it is sent anywhere.
+
 **Host permission for `*://*.youtube.com/*`**
 > A content script runs on YouTube pages only, to add two buttons to the video player ("process this video" and "watch without music") and to play the audio that was processed locally on the user's machine in sync with the page video. It reads no other content on the page, stores nothing, downloads nothing itself, and never sends anything off the device. It does not download media, does not access cookies or login state, and calls no network API: it only overlays locally processed audio on a video the user is already watching.
 
@@ -257,6 +260,7 @@ www.haramlite.com. 1 IN CNAME smsmy.github.io.
 | `contextMenus` | «إضافة عنصر واحد «أرسل إلى HaramLite» في قائمة الزر الأيمن، ليرسل المستخدم الرابط أو الصفحة أو الفيديو إلى تطبيقه المكتبي. لا يضيف غيره ولا يقرأ بيانات الصفحة.» |
 | `nativeMessaging` | «للتخاطب مع تطبيق HaramLite المكتبي الذي ثبّته المستخدم على جهازه. تُمرَّر إليه الرابط الذي اختار معالجته ورسائل حالة قصيرة عبر قناة Native Messaging المحلية. لا شيء يُرسَل إلى المطوّر أو إلى أي خادم، والإضافة نفسها لا تُجري أي طلب شبكة. المضيف يُسجّله التطبيق، وعلى المستخدم تفعيل التكامل من إعداداته، وبدونه لا تفعل الإضافة شيئاً.» |
 | `activeTab` | «قراءة رابط التبويب النشط لحظة نقر المستخدم على الإضافة فقط، لتسليمه إلى تطبيقه المكتبي. لا وصول في الخلفية، ولا سجل تصفح، ولا وصول إلى أي تبويب أو موقع آخر.» |
+| `storage` | «حفظ تفضيلين للواجهة على جهاز المستخدم وحده — وضع المعالجة المفضّل (Song / Clip) ولغة الواجهة — عبر `chrome.storage.local`. لا شيء منهما يُرسَل إلى أي مكان.» |
 | محتوى في `*://*.youtube.com/*` | «سكربت محتوى يعمل على صفحات يوتيوب فقط لإضافة زرّين إلى المشغّل («عالج هذا الفيديو» و«شاهد بعد إزالة الموسيقى») وتشغيل الصوت المعالَج محلياً بتزامن مع الفيديو. لا يقرأ محتوى آخر، ولا يُرسل شيئاً خارج الجهاز.» |
 
 #### سؤال «الكود البعيد» (Remote code)
