@@ -7995,7 +7995,7 @@ mod tests {
     #[test]
     fn tokens_are_redacted_from_any_outgoing_text() {
         let cfg = TgConfig {
-            token: "88360566:AAH_supersecret_part".into(),
+            token: "1234567890:AAH_supersecret_part".into(),
             owner_id: Some(7),
             audio_only: false,
             local_url: None,

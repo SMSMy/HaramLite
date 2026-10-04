@@ -172,19 +172,19 @@ mod tests {
 
     #[test]
     fn plaintext_is_recognised_and_empty_stays_empty() {
-        assert!(!is_sealed("88360566:AAHsecret"));
+        assert!(!is_sealed("1234567890:AAHsecret"));
         assert!(is_sealed("dpapi:v1:0011ff"));
         assert_eq!(seal_setting(""), "");
         assert_eq!(open_setting(""), "");
         // A plaintext value passes through `open_setting` untouched, so an
         // upgraded install keeps working before the first re-save.
-        assert_eq!(open_setting("88360566:AAHsecret"), "88360566:AAHsecret");
+        assert_eq!(open_setting("1234567890:AAHsecret"), "1234567890:AAHsecret");
     }
 
     #[cfg(target_os = "windows")]
     #[test]
     fn dpapi_seals_and_opens_on_this_machine() {
-        let secret = "88360566:AAH_test_token_value";
+        let secret = "1234567890:AAH_test_token_value";
         let sealed = seal(secret).expect("DPAPI must be available on Windows");
         assert!(is_sealed(&sealed), "marker expected: {sealed}");
         assert!(

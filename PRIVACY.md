@@ -1,6 +1,6 @@
 # Privacy Policy — HaramLite Bridge (browser extension)
 
-**Last updated: 2026-09-25**
+**Last updated: 2026-10-04**
 
 HaramLite Bridge is a companion extension for the **HaramLite** desktop application, which the user installs and
 runs on their own computer. The extension exists for one purpose: to hand a video link the user explicitly chose
@@ -38,6 +38,17 @@ the user's own folders on the user's own machine. No part of that data reaches t
   **the manifest declares no `host_permissions` at all**, so the extension holds no standing host access beyond that
   content-script scope.
 
+## The desktop application, and Telegram
+
+This policy covers the browser extension. The HaramLite desktop application has its own policy,
+served at `haramlite.com/PRIVACY.html`. In one sentence, for the one feature that reaches beyond
+this device: if you enable the application's **optional Telegram bot**, the messages you send it
+travel through **Telegram's servers** like any chat — Telegram is a third party for that feature —
+and the bot's replies and results come back through the same channel. The processing itself still
+happens on your machine. The application policy carries the full disclosure (what is stored, the
+sealed token, logs); this pointer exists so the extension policy is never read as "nothing ever
+leaves the device, no exceptions" without it.
+
 ## Children
 
 The extension is not directed at children and collects no data from anyone.
@@ -62,4 +73,6 @@ Questions or reports: open an issue in the project repository — https://github
 المستخدم، **والرابط الذي اختاره صراحةً مع الوضع المختار** يُمرَّران عبر **قناة Native Messaging المحلية** إلى تطبيق
 HaramLite على الجهاز نفسه، ومعهما **رسائل حالة قصيرة**. وكل ما ينتجه التطبيق (الوسائط والملفات وإعداداته) يُكتب في
 مجلدات المستخدم على جهازه. وسكربت الصفحة يعمل **على يوتيوب ويوتيوب ميوزيك وحدهما** لوضع أزرار المعالجة وتشغيل
-الصوت المُنتَج محلياً، ولا يعمل على أي موقع آخر.
+الصوت المُنتَج محلياً، ولا يعمل على أي موقع آخر. **وتيليجرام**: تفعيل بوت تيليجرام في التطبيق المكتبي (اختياري)
+يجعل رسائلك تمرّ عبر خوادم تيليجرام كأي محادثة — تيليجرام طرف ثالث لهذه الميزة وحدها، والمعالجة نفسها تبقى على
+جهازك — والإفصاح الكامل في سياسة التطبيق: `haramlite.com/PRIVACY.html`.
