@@ -54,7 +54,7 @@ export function verdictHtml(outKind: 'audio' | 'video'): string {
   // text-primary-fixed-dim (#ffb59d) instead of text-clay-accent: the clay
   // chip background lifts the panel, and clay-on-clay only reached 4.17:1
   // (this token is 7.62:1) — measured, see the audit in the report.
-  return `<span data-i18n="out_type_label">${t('out_type_label')}</span> <span class="bg-clay-accent/20 text-primary-fixed-dim px-1.5 py-0.5 rounded font-bold mr-1 inline-block" data-i18n="${key}">${t(key)}</span>`;
+  return `<span data-i18n="out_type_label">${t('out_type_label')}</span> <span class="bg-clay-accent/20 text-primary-fixed-dim px-1.5 py-0.5 rounded font-bold ms-1 inline-block" data-i18n="${key}">${t(key)}</span>`;
 }
 
 /** Validate a pasted/dropped path BEFORE any backend call. Returns cleaned path or null. */
