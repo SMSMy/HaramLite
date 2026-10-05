@@ -20,9 +20,11 @@
 <p class="font-body-lg text-cream-text text-sm font-semibold tracking-wide flex items-baseline gap-unit justify-center"><span data-i18n="tagline_pre">الموسيقى لا تليق بقلبٍ يريد</span> <span class="kashida-text text-clay-accent" data-i18n="tagline_hl">الطمأنينة</span><span aria-hidden="true">.</span></p></div>
 <div class="flex items-center gap-stack-md">
 <div id="lang-toggle" class="flex items-center gap-stack-md cursor-pointer group">
-<button class="text-on-surface-variant hover:bg-surface-variant/80 transition-all duration-300 apple-ease p-unit rounded font-label-md text-label-md hover:scale-105 active:scale-95">EN</button>
+<!-- ‏`data-lang` يسمّي الزرّ: «EN» يختار الإنجليزية و«AR» العربية — لا قلب أعمى.
+     والتلوين النشط يُشتقّ من اللغة الحالية في `wireLang` لا من ترميز ثابت. -->
+<button data-lang="en" class="text-on-surface-variant hover:bg-surface-variant/80 transition-all duration-300 apple-ease p-unit rounded font-label-md text-label-md hover:scale-105 active:scale-95">EN</button>
 <div class="h-4 w-px bg-border-muted"></div>
-<button class="text-clay-accent font-bold hover:bg-surface-variant/80 transition-all duration-300 apple-ease p-unit rounded font-label-md text-label-md hover:scale-105 active:scale-95 drop-shadow-sm">AR</button>
+<button data-lang="ar" class="text-clay-accent font-bold hover:bg-surface-variant/80 transition-all duration-300 apple-ease p-unit rounded font-label-md text-label-md hover:scale-105 active:scale-95 drop-shadow-sm">AR</button>
 </div>
 <div class="relative flex items-center gap-stack-md cursor-pointer group">
 <button id="btn-settings" class="text-on-surface-variant hover:bg-surface-variant/80 transition-all duration-300 apple-ease p-unit rounded hover:scale-110 active:scale-90 hover:text-cream-text">
