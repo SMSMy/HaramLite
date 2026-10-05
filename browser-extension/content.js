@@ -1435,7 +1435,7 @@ function keptStretchAround(kept, gapStart, gapEnd) {
     if (inc && inc.pump && typeof inc.pump.catch === 'function') {
       // فشل المضخّة بعد الالتحاق لا يُترك استثناءً بلا التقاط (لا unhandled):
       // السطح الحيّ يُبلغ، والمشاهدة تستمر بما أُلحق — تفصيله الحيّ مع المنتج.
-      inc.pump.catch((e) => { try { console.warn('[HaramLite Bridge] incremental pump failed:', e && e.message); } catch { /* gone */ } });
+      inc.pump.catch((e) => { try { console.warn('[HaramLite Bridge] incremental pump failed:', errText(e, 'pump failed')); } catch { /* gone */ } });
     }
     // Duration gate: song outputs mirror silence cuts (mapped via kept);
     // without kept-ranges the timelines must coincide.
