@@ -1,7 +1,7 @@
 {
   "why": "خطّ أساس مقيس لبوّابات Rust — يُحدَّث بـ--update بعد مراجعة السبب، ولا يُخفَّض لتُمرَّر بوّابة.",
-  "clippy_unique_warnings": 14,
-  "tests_passed": 447,
+  "clippy_unique_warnings": 16,
+  "tests_passed": 460,
   "tests_ignored": 5,
   "tests": [
     "atomic::tests::a_failed_write_keeps_the_old_file_and_leaves_no_temp",
@@ -17,7 +17,10 @@
     "bridge::m6b_spy_probe::the_page_dir_sweep_deletes_a_source_that_lives_inside_it",
     "bridge::m6b_spy_probe::the_wire_contract_distinguishes_modes_and_page_kept_mirrors_kept_in_clip",
     "bridge::tests::a_failed_page_audio_extraction_keeps_the_previous_file",
+    "bridge::tests::a_partially_written_page_audio_is_served_with_done_false",
+    "bridge::tests::a_priority_request_is_stored_and_the_order_is_returned",
     "bridge::tests::a_raw_message_is_never_a_valid_subcode",
+    "bridge::tests::an_empty_existing_page_audio_serves_an_empty_slice_with_the_flag",
     "bridge::tests::bridge_source_removal_rules",
     "bridge::tests::cancel_removes_file_drains_queue_zeroes_pending",
     "bridge::tests::cold_start_grace_keeps_fresh_drops_with_zero_grace",
@@ -33,6 +36,7 @@
     "bridge::tests::page_audio_sweep_never_reaches_outside_its_dir",
     "bridge::tests::page_slices_clamp_encode_and_flag_done",
     "bridge::tests::per_request_mode_parses_song_and_clip_only",
+    "bridge::tests::priority_without_page_audio_is_refused_and_without_count_stores_only",
     "bridge::tests::refused_overlong_frame_must_not_desync_the_port",
     "bridge::tests::registry_drift_is_classified_and_every_deviation_needs_repair",
     "bridge::tests::stale_host_manifest_is_detected",
@@ -202,6 +206,15 @@
     "seal::tests::dpapi_seals_and_opens_on_this_machine",
     "seal::tests::hex_codec_round_trips_and_rejects_junk",
     "seal::tests::plaintext_is_recognised_and_empty_stays_empty",
+    "segqueue::tests::empty_queue_is_valid",
+    "segqueue::tests::natural_order_is_ascending_from_one",
+    "segqueue::tests::out_of_range_requests_are_ignored_silently",
+    "segqueue::tests::priority_at_four_puts_four_first_then_the_skipped_tail",
+    "segqueue::tests::priority_at_the_last_segment_rotates_completely",
+    "segqueue::tests::segment_of_maps_seconds_to_one_based_windows",
+    "segqueue::tests::single_segment_queue_never_moves",
+    "segqueue::tests::the_latest_request_wins_over_an_earlier_one",
+    "segqueue::tests::without_a_request_the_natural_order_stays",
     "separator::tests::a_cancelled_engine_call_returns_the_typed_cancel",
     "separator::tests::a_given_analysis_is_logged_instead_of_rescanned",
     "separator::tests::analyze_marks_suspect_spans_with_padding",
@@ -456,5 +469,5 @@
     "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
     "clippy": "clippy 0.1.95 (59807616e1 2026-04-14)"
   },
-  "measured_at": "2026-09-25 · قياس محلي"
+  "measured_at": "2026-10-05 · قياس محلي"
 }
