@@ -318,6 +318,17 @@ fn handle_host_message(msg: &serde_json::Value) {
                 Err(e) => reply_err(E_ENGINE, &e),
             }
         }
+        "prioritize_page_audio" => {
+            // الدفعة ب (المرحلة ٣): الصفحة تطلب أولوية معالجة من موضعها —
+            // رقم المقطع واحد الأساس من `segqueue::SEGMENT_SECS`. يُحفظ في
+            // الحالة ليتخدمه مُنتِج المقاطع (المرحلة ٤، غير مشحونة)، والترتيب
+            // الناتج يُعاد للصفحة لتظهر تأكيداً صادقاً.
+            let seg = msg.get("segment").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            match set_page_priority(seg) {
+                Ok(order) => reply_ok(serde_json::json!({ "ok": true, "order": order })),
+                Err(e) => reply_err(E_BAD_INPUT, &e),
+            }
+        }
         other => reply_err(E_UNKNOWN_MESSAGE, &format!("unknown message type: {other}")),
     }
 }
@@ -534,18 +545,90 @@ pub fn slice_bytes(bytes: &[u8], offset: usize, len: usize) -> (usize, String, b
 /// Serve ONLY the recorded last page-audio (same rule as open_file — the
 /// browser never passes arbitrary paths, so an extension bug can never
 /// turn this into a file-read primitive).
+///
+/// **الدفعة ب — الخدمة أثناء الكتابة**: الملف الذي يقدَّم للصفحة قد يكون
+/// **نامياً** (مُنتِج المقاطع يكتب فيه شيئاً فشيئاً — المرحلة ٤). الحجم
+/// المُعلَن هو **المكتوب فعلاً** الآن، وعلم `done` يأتي من حالة الجسر
+/// (`last.page_audio_done` — غائبة في الحالات القديمة ⇒ صادقة، توافق خلفي)
+/// **و**وصول العدّاد إلى النهاية. فقبل اكتمال الإنتاج تُخدَم البايتات الجاهزة
+/// بـ`done:false` بدل رفضٍ كامل، والفشل يبقى **قبل أول بايت فقط** (لا مسار
+/// في الحالة أصلاً) بنصّه المعروف الذي يقيسه حارس الإضافة الحيّ.
 fn serve_page_audio_slice(offset: usize, len: usize) -> Result<serde_json::Value, String> {
     let st = read_state();
-    let path = st
-        .get("last")
+    let last = st.get("last");
+    let path = last
         .and_then(|l| l.get("page_audio"))
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .ok_or_else(|| "لا يوجد صوت صفحة مكتمل بعد".to_string())?
         .to_string();
-    let bytes = std::fs::read(&path).map_err(|e| format!("تعذر قراءة صوت الصفحة: {e}"))?;
-    let (off, hex, done) = slice_bytes(&bytes, offset, len);
-    Ok(serde_json::json!({ "total": bytes.len(), "offset": off, "data": hex, "done": done }))
+    // غائبة ⇒ صادقة (توافق خلفي مع حالات قبل المعالجة التدريجية).
+    let produced = last
+        .and_then(|l| l.get("page_audio_done"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    serve_slice_from(std::path::Path::new(&path), produced, offset, len)
+}
+
+/// النقي القابل للاختبار داخل [`serve_page_audio_slice`]: قراءة الملف **كما
+/// هو الآن** وتقطيعه بعلم الإنتاج. الملف الفارغ (موجود بلا بايتات) يُخدَم
+/// بمقطع فارغ وعلم الإنتاج — لا خطأ: «قبل أول بايت» هو غياب المسار وحده.
+fn serve_slice_from(
+    path: &std::path::Path,
+    produced: bool,
+    offset: usize,
+    len: usize,
+) -> Result<serde_json::Value, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("تعذر قراءة صوت الصفحة: {e}"))?;
+    let (off, hex, at_end) = slice_bytes(&bytes, offset, len);
+    Ok(serde_json::json!({
+        "total": bytes.len(),
+        "offset": off,
+        "data": hex,
+        "done": produced && at_end,
+    }))
+}
+
+/// الدفعة ب (المرحلة ٣): طلب أولوية من الصفحة — النقي القابل للاختبار.
+/// يضع `last.page_priority` (رقم المقطع واحد الأساس كما وصل) ويعيد الترتيب
+/// المحسوب من `segqueue` حين يكون عدد المقاطع معلَناً في الحالة
+/// (`last.page_segments` — يكتبه مُنتِج المقاطع؛ غيابه ⇒ ترتيب فارغ
+/// والطلب يُحفظ ظاهراً للمنتج القادم).
+fn apply_priority(
+    st: &serde_json::Value,
+    seg: usize,
+) -> Result<(serde_json::Value, Vec<usize>), String> {
+    let has_audio = st
+        .get("last")
+        .and_then(|l| l.get("page_audio"))
+        .and_then(|v| v.as_str())
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    if !has_audio {
+        return Err("لا يوجد صوت صفحة بعد لأولويته".to_string());
+    }
+    let n = st
+        .get("last")
+        .and_then(|l| l.get("page_segments"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as usize;
+    let mut q = crate::segqueue::SegmentQueue::new(n);
+    q.prioritize_from(seg);
+    let order = q.order().to_vec();
+    let mut out = st.clone();
+    if let Some(last) = out.get_mut("last").and_then(|v| v.as_object_mut()) {
+        last.insert("page_priority".into(), serde_json::json!(seg));
+    }
+    Ok((out, order))
+}
+
+/// اليد الحاملة للحالة داخل [`apply_priority`]: تقرأ وتكتب عبر المساعدين
+/// القائمين (الكتابة ذرّية)، وترجع الترتيب للردّ.
+fn set_page_priority(seg: usize) -> Result<Vec<usize>, String> {
+    let st = read_state();
+    let (next, order) = apply_priority(&st, seg)?;
+    write_state(&next);
+    Ok(order)
 }
 
 /// Directory for compact in-page audio (NOT the user's folder — no clutter).
@@ -771,6 +854,10 @@ fn last_ok_payload(job: &LastJob<'_>) -> serde_json::Value {
         "vocals": vocals.map(|p| p.to_string_lossy().into_owned()),
         "video": video.map(|p| p.to_string_lossy().into_owned()),
         "page_audio": page_audio.map(|p| p.to_string_lossy().into_owned()),
+        // الدفعة ب: علم اكتمال الإنتاج لصوت الصفحة — المسار التدريجي (المرحلة
+        // ٤، غير مشحونة) يكتب `false` مبكراً ويقلبه هنا؛ حتى ذلك الحين كل
+        // ملف يُسجَّل مكتمل فتظل خدمة الشرائح كما كانت (توافق خلفي).
+        "page_audio_done": true,
         "kept": served_kept,
         // خريطة مسار clip وحدها: في مسار الأغنية يصف `kept` صوت الصفحة أصلاً.
         "page_kept": if matches!(mode, Mode::Clip) { served_kept.to_vec() } else { Vec::new() },
@@ -2519,6 +2606,96 @@ mod tests {
         assert_eq!(hex3.len(), PAGE_SLICE_MAX * 2);
         assert!(!done3, "clamped end stops before total");
         assert!(hex3.len() < 1_000_000);
+    }
+
+    /// الدفعة ب (المرحلة ١ — شرط القبول): ملف مكتوب جزئياً ⇒ الشريحة تُخدَم
+    /// بـ`done:false`، والـ`total` هو **المكتوب فعلاً** (ينمو بين النداءات).
+    #[test]
+    fn a_partially_written_page_audio_is_served_with_done_false() {
+        let lock = test_serial();
+        let _g = lock.lock().unwrap_or_else(|p| p.into_inner());
+        let dir = std::env::temp_dir().join(format!("hl_serve_grow_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("page.mp3");
+        // أول نداء: نصف الملف مكتوب.
+        let first = vec![0x11u8; 1000];
+        std::fs::write(&path, &first).unwrap();
+        let v = serve_slice_from(&path, false, 0, PAGE_SLICE_MAX).unwrap();
+        assert_eq!(v["total"], 1000, "total = what is written now");
+        assert_eq!(v["done"], false, "growing file is not done");
+        assert_eq!(v["offset"], 0);
+        // والنمو بين النداءين يُرى: النداء الثاني يقرأ الحجم الجديد.
+        let second = vec![0x22u8; 2500];
+        std::fs::write(&path, &second).unwrap();
+        let v2 = serve_slice_from(&path, false, 1000, PAGE_SLICE_MAX).unwrap();
+        assert_eq!(v2["total"], 2500, "total grew with the file");
+        assert_eq!(v2["offset"], 1000);
+        assert_eq!(v2["done"], false);
+        // وبعد علم الإنتاج على الملف المكتمل ⇒ done صادقاً عند النهاية.
+        let v3 = serve_slice_from(&path, true, 2000, PAGE_SLICE_MAX).unwrap();
+        assert_eq!(v3["total"], 2500);
+        assert_eq!(v3["done"], true);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    /// ملف موجود بلا بايتات (الكاتب فتحه ولم يكتب) ⇒ مقطع فارغ بعلم الإنتاج،
+    /// لا `engine_error`: الفشل «قبل أول بايت» هو غياب المسار وحده — والنصّ
+    /// المعروف نفسه يقيسه حارس الإضافة الحيّ (RUST_NO_PAGE_AUDIO_MSG).
+    #[test]
+    fn an_empty_existing_page_audio_serves_an_empty_slice_with_the_flag() {
+        let lock = test_serial();
+        let _g = lock.lock().unwrap_or_else(|p| p.into_inner());
+        let dir = std::env::temp_dir().join(format!("hl_serve_empty_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("page.mp3");
+        std::fs::write(&path, b"").unwrap();
+        let v = serve_slice_from(&path, false, 0, PAGE_SLICE_MAX).unwrap();
+        assert_eq!(v["total"], 0);
+        assert_eq!(v["data"], "");
+        assert_eq!(v["done"], false);
+        // وغياب المسار كله يبقى الخطأ الوحيد بنصّه المثبَّت.
+        let missing = serve_slice_from(&dir.join("nope.mp3"), true, 0, PAGE_SLICE_MAX);
+        assert!(missing.is_err());
+        assert!(missing.unwrap_err().contains("تعذر قراءة صوت الصفحة"));
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    /// الدفعة ب (المرحلة ٣ — شرط القبول حرفياً): طابور `[1..6]` وأولوية على 4
+    /// ⇒ `4,5,6,1,2,3` — تُخزَّن في الحالة ويُعاد الترتيب للصفحة. ورفض الضغط
+    /// (بلا طلب) يبقى الترتيب الطبيعي (اختبار `segqueue` نفسه).
+    #[test]
+    fn a_priority_request_is_stored_and_the_order_is_returned() {
+        let st = serde_json::json!({
+            "last": {
+                "page_audio": "C:\\tmp\\page.mp3",
+                "page_segments": 6,
+            }
+        });
+        let (next, order) = apply_priority(&st, 4).unwrap();
+        assert_eq!(order, vec![4, 5, 6, 1, 2, 3]);
+        assert_eq!(next["last"]["page_priority"], 4, "stored for the producer");
+        // وآخر طلب يفوز (دوران على التسلسل الأصلي دائماً).
+        let (_, order2) = apply_priority(&st, 2).unwrap();
+        assert_eq!(order2, vec![2, 3, 4, 5, 6, 1]);
+        // طلب خارج النطاق يُتجاهل ⇒ الترتيب الطبيعي هو المُعلَن للصفحة.
+        let (next3, order3) = apply_priority(&st, 99).unwrap();
+        assert_eq!(order3, vec![1, 2, 3, 4, 5, 6]);
+        assert_eq!(next3["last"]["page_priority"], 99, "kept as received");
+    }
+
+    /// أولوية بلا صوت صفحة أصلاً ⇒ رفض مسمّى (bad_input)، وبلا عدد مقاطع
+    /// معلَن ⇒ الطلب يُحفظ والترتيب فارغ (للمنتج القادم لا اليوم).
+    #[test]
+    fn priority_without_page_audio_is_refused_and_without_count_stores_only() {
+        let none = serde_json::json!({ "running": null });
+        let err = apply_priority(&none, 4).unwrap_err();
+        assert!(err.contains("لا يوجد صوت صفحة"));
+        let no_count = serde_json::json!({ "last": { "page_audio": "C:\\tmp\\p.mp3" } });
+        let (next, order) = apply_priority(&no_count, 3).unwrap();
+        assert!(order.is_empty(), "no producer count yet ⇒ no order claimed");
+        assert_eq!(next["last"]["page_priority"], 3);
     }
 
     /// Decision 3: with no outputs at all there is simply no page-audio

@@ -22,6 +22,7 @@ mod repair;
 mod reverb_delay;
 mod scratch;
 mod seal;
+mod segqueue;
 mod separator;
 mod session;
 mod settings;
