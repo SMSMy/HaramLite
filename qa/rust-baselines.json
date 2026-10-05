@@ -1,7 +1,7 @@
 {
   "why": "خطّ أساس مقيس لبوّابات Rust — يُحدَّث بـ--update بعد مراجعة السبب، ولا يُخفَّض لتُمرَّر بوّابة.",
   "clippy_unique_warnings": 14,
-  "tests_passed": 468,
+  "tests_passed": 472,
   "tests_ignored": 5,
   "tests": [
     "atomic::tests::a_failed_write_keeps_the_old_file_and_leaves_no_temp",
@@ -233,6 +233,10 @@
     "separator::tests::e2e_separation_is_measurable_on_generated_sample",
     "separator::tests::ep_watcher_catches_ort_errors",
     "separator::tests::inference_threads_leaves_air",
+    "separator::tests::place_with_fade_at_offset_zero_writes_directly",
+    "separator::tests::place_with_fade_clamps_at_the_buffer_end",
+    "separator::tests::place_with_fade_crossfades_the_seam_linearly",
+    "separator::tests::place_with_fade_zero_fade_is_a_direct_overwrite",
     "separator::tests::provider_file_roundtrips_isolated",
     "separator::tests::report_separate_ab_inference_vs_build",
     "separator::tests::separates_tone_mixture_end_to_end",

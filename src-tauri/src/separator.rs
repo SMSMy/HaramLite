@@ -674,6 +674,96 @@ fn demix(
     Ok(source)
 }
 
+/// خيط اللحام الخطي عند كل درز — **الآلية القائمة حرفياً** (‏`silence.rs`
+/// Expert D2ج: 50ms؛ كانت 12ms فبقيت نقرات على محتوى ساطع). لا اختراع.
+const SEAM_FADE_MS: u32 = 50;
+
+/// Place `part` at `offset` inside `out` with a linear crossfade of `fade`
+/// samples against whatever is already there. Pure — unit-tested without the
+/// model. `offset == 0` writes directly (no left neighbour to fade against).
+fn place_with_fade(out: &mut [f32], offset: usize, part: &[f32], fade: usize) {
+    for (k, &v) in part.iter().enumerate() {
+        let pos = offset + k;
+        if pos >= out.len() {
+            break;
+        }
+        if offset == 0 || k >= fade {
+            out[pos] = v;
+        } else {
+            let t = (k as f32 + 1.0) / (fade as f32 + 1.0);
+            out[pos] = out[pos] * (1.0 - t) + v * t;
+        }
+    }
+}
+
+/// الفصل المجزأ (المرحلة ٤أ‑2): demix لكل نافذة **بسياق التداخل**، ثم خياطة
+/// بـ`crossfade` خطي 50ms عند كل درز (آلية `silence.rs` القائمة).
+///
+/// **مسار الهوية حرفياً**: خطة واحدة هوية (ملف ≤ `window_secs`) ⇒ نداء
+/// [`demix`] على الملف كاملاً — بلا قصّ ولا خياطة. هذا ما تمرّ به اختبارات
+/// E2E القائمة (ملفاتها 6 ثوانٍ).
+///
+/// النوات تُغطّي الطول بالضبط ([`crate::segments::plan_windows`])؛ نطاق
+/// المعالجة يتوسّع بـ`overlap_secs` (الافتراضي عند النداء [`SUSPECT_PAD_SECS`])
+/// كي لا يجوع نموذج MDX عند الحواف.
+fn demix_segmented(
+    session: &mut MdxSession,
+    mix: &[Vec<f32>; 2],
+    sr: u32,
+    window_secs: f64,
+    overlap_secs: f64,
+    progress: &dyn Fn(f32) -> bool,
+) -> Result<[Vec<f32>; 2], SepError> {
+    let n = mix[0].len().min(mix[1].len());
+    if n == 0 {
+        return Ok([Vec::new(), Vec::new()]);
+    }
+    if sr == 0 {
+        return Err(SepError::InvalidInput("sample rate must be > 0".into()));
+    }
+
+    let total_secs = n as f64 / sr as f64;
+    let plan = crate::segments::plan_windows(total_secs, window_secs, overlap_secs);
+
+    // الهوية: ملف ≤ النافذة ⇒ demix الكامل القائم، حرفياً.
+    if plan.len() == 1 && plan[0].is_identity() {
+        return demix(session, mix, progress);
+    }
+    if plan.is_empty() {
+        return Err(SepError::InvalidInput("empty window plan".into()));
+    }
+
+    let fade = ((SEAM_FADE_MS as usize * sr as usize) / 1000).max(2);
+    let mut vocals = [vec![0.0f32; n], vec![0.0f32; n]];
+    let windows = plan.len() as f32;
+
+    for (wi, w) in plan.iter().enumerate() {
+        let a = ((w.start * sr as f64) as usize).min(n);
+        let b = ((w.end() * sr as f64) as usize).min(n);
+        if a >= b {
+            return Err(SepError::InvalidInput(format!(
+                "empty demix slice at window {}: [{a}, {b})",
+                w.index
+            )));
+        }
+        let slice = [mix[0][a..b].to_vec(), mix[1][a..b].to_vec()];
+        let base = wi as f32;
+        let part = demix(session, &slice, &|p| progress((base + p) / windows))?;
+        if part[0].len() != b - a || part[1].len() != b - a {
+            return Err(SepError::Inference(format!(
+                "window {} returned {} samples, expected {}",
+                w.index,
+                part[0].len(),
+                b - a
+            )));
+        }
+        for c in 0..2 {
+            place_with_fade(&mut vocals[c], a, &part[c], fade);
+        }
+    }
+    Ok(vocals)
+}
+
 /// Expert D2أ/D2ب: whole-mix analysis from the normalized WAV (seconds
 /// against MDX minutes — always logged by the caller, never silent).
 /// - `dense`: sustained-music gate (≥6 consecutive conf>0.5 windows) → the
@@ -811,9 +901,18 @@ pub fn separate(
     let mut session = MdxSession::load(use_cuda)?;
     let build_ms = t_build.elapsed().as_secs_f32() * 1000.0;
 
-    // UVR5 :499 — whole-file inference; the analysis above is diagnostics only.
+    // UVR5 :499 — whole-file inference on short inputs (identity path inside
+    // `demix_segmented`). Longer files split into 300s windows with overlap
+    // context and a 50ms seam crossfade (Phase 4-أ — segmented demix).
     let t_inf = std::time::Instant::now();
-    let vocals_src = demix(&mut session, &mix, &|p| progress(p))?;
+    let vocals_src = demix_segmented(
+        &mut session,
+        &mix,
+        sample_rate,
+        crate::segments::SEGMENT_SECS,
+        SUSPECT_PAD_SECS,
+        &|p| progress(p),
+    )?;
     let inference_ms = t_inf.elapsed().as_secs_f32() * 1000.0;
     tracing::info!(
         target: "sep",
@@ -1971,5 +2070,50 @@ mod tests {
             "ونصّه جملة الإلغاء الواحدة"
         );
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ─── 4أ‑2: seam crossfade (`place_with_fade`) — pure, no model ──────────
+
+    /// أول نافذة (offset=0) تكتب مباشرة — لا جار أيسر ليخاط به.
+    #[test]
+    fn place_with_fade_at_offset_zero_writes_directly() {
+        let mut out = vec![9.0f32; 8];
+        place_with_fade(&mut out, 0, &[1.0, 2.0, 3.0, 4.0], 2);
+        assert_eq!(out, vec![1.0, 2.0, 3.0, 4.0, 9.0, 9.0, 9.0, 9.0]);
+    }
+
+    /// الدرز: خطي من القيم القائمة إلى الجديدة عبر `fade` عيّنة، ثم الكتابة
+    /// المباشرة. آلية `silence.rs` Expert D2ج — لا اختراع.
+    #[test]
+    fn place_with_fade_crossfades_the_seam_linearly() {
+        let mut out = vec![1.0f32; 6];
+        // fade=2 ⇒ العيّنتان 0 و1 تتداخلان خطياً، ثم كتابة مباشرة.
+        place_with_fade(&mut out, 2, &[0.0, 0.0, 0.0, 0.0], 2);
+        // k=0: t=1/3 ⇒ 1*(2/3)+0*(1/3) = 2/3
+        // k=1: t=2/3 ⇒ 1*(1/3)+0*(2/3) = 1/3
+        // k>=2: مباشر = 0
+        assert!((out[2] - 2.0 / 3.0).abs() < 1e-6, "got {}", out[2]);
+        assert!((out[3] - 1.0 / 3.0).abs() < 1e-6, "got {}", out[3]);
+        assert_eq!(out[4], 0.0);
+        assert_eq!(out[5], 0.0);
+        // ويسار الدرز لم يُمَس.
+        assert_eq!(out[0], 1.0);
+        assert_eq!(out[1], 1.0);
+    }
+
+    /// الجزء الأطول من الباقي يتوقّف عند حدّ المخرج — لا فيض.
+    #[test]
+    fn place_with_fade_clamps_at_the_buffer_end() {
+        let mut out = vec![0.0f32; 3];
+        place_with_fade(&mut out, 1, &[1.0, 2.0, 3.0, 4.0], 0);
+        assert_eq!(out, vec![0.0, 1.0, 2.0]);
+    }
+
+    /// `fade=0` ⇒ كتابة مباشرة كاملة، لا نافذة تداخل إطلاقاً.
+    #[test]
+    fn place_with_fade_zero_fade_is_a_direct_overwrite() {
+        let mut out = vec![5.0f32; 4];
+        place_with_fade(&mut out, 1, &[1.0, 2.0], 0);
+        assert_eq!(out, vec![5.0, 1.0, 2.0, 5.0]);
     }
 }
