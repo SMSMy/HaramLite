@@ -93,7 +93,7 @@
     },
     {
       "path": "browser-extension/content.js",
-      "sha256": "b23aba88dd1e1f005bcaa60baf68a13618e666fb8f13c18d7afc8b1ec8278e2b"
+      "sha256": "6971287c72c80289c3f740429094b2de279d184eb0eba2bae5192d55155829a8"
     },
     {
       "path": "browser-extension/popup.js",
@@ -109,11 +109,11 @@
     },
     {
       "path": "src-tauri/src/bridge.rs",
-      "sha256": "b575b6cafd011ca05568162164072a055de5ef40a5f05dfe3d1fa4c76491294c"
+      "sha256": "5c9f6d7a9d84646705d3bf428434549001a65373b5a408a771339f2493f0d2ef"
     },
     {
       "path": "src-tauri/src/pipeline.rs",
-      "sha256": "e9054b14c633112538203e04a89aca490fcefd0ab0a3d92cfb9fdb870d81d423"
+      "sha256": "65b53b54852ba60f22b571e5fa4ed9b6cbf8192507e1057f0b199f923d5fa467"
     },
     {
       "path": "src-tauri/src/m6b_clip_guard.rs",
