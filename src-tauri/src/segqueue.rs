@@ -12,12 +12,8 @@
 //!
 //! **وحدّ النطاق**: هذه الوحدة **نقية** (ترتيب لا جدولة). مَن يستهلك الترتيب
 //! هو مُنتِج المقاطع المجزأ (المرحلة ٤ — **غير مشحونة**: راجع سطر التدقيق)،
-//! والتزامن يُدار عنده لا هنا. الحجم في **ثوانٍ** لا مقاطع: 300 ثانية
-//! (قرار المالك، صريح) بتداخل تديره مرحلة الإنتاج لا هذا الترتيب.
-
-/// طول المقطع الوحيد المعلَن بالثواني (قرار المالك — صريح في التكليف).
-/// يقرؤه مسار الأولوية في الجسر لحساب رقم المقطع من موضع الطلب.
-pub const SEGMENT_SECS: f64 = 300.0;
+//! والتزامن يُدار عنده لا هنا. حجم المقطع **300 ثانية** (قرار المالك، صريح) يُعلَن ويُستهلك حيث يُقاس:
+//! ثابت الصفحة/المنتج — لا هنا حيث لا مستهلك لثابت ميت.
 
 /// ترتيب المقاطع `[1..n]` بأولوية قابلة للتغيير. الأرقام **واحدة الأساس**
 /// (المقطع الأول = 1) كما يتكلم بها البروتوكول والصفحة.
@@ -38,14 +34,6 @@ impl SegmentQueue {
         &self.order
     }
 
-    pub fn len(&self) -> usize {
-        self.order.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.order.is_empty()
-    }
-
     /// أولوية للمقطع `seg`: يصير ترتيباً `[seg..n, 1..seg-1]`. طلبٌ خارج
     /// `[1..n]` يُتجاهل بصمت (لا حالة ولا خطأ) — الصفحة قد تحسب مقطعاً من
     /// مدة تقديرية تغيّرت. آخر طلب يفوز (الدوران على التسلسل الأصلي).
@@ -59,14 +47,6 @@ impl SegmentQueue {
         out.extend(1..seg);
         self.order = out;
     }
-
-    /// رقم المقطع الذي يقع فيه موضع زمني بالثواني (واحدة الأساس).
-    pub fn segment_of(secs: f64) -> usize {
-        if !secs.is_finite() || secs <= 0.0 {
-            return 1;
-        }
-        ((secs / SEGMENT_SECS).floor() as usize) + 1
-    }
 }
 
 #[cfg(test)]
@@ -77,17 +57,14 @@ mod tests {
     fn natural_order_is_ascending_from_one() {
         let q = SegmentQueue::new(6);
         assert_eq!(q.order(), &[1, 2, 3, 4, 5, 6]);
-        assert_eq!(q.len(), 6);
-        assert!(!q.is_empty());
+        assert_eq!(q.order().len(), 6);
     }
 
     #[test]
     fn empty_queue_is_valid() {
-        let q = SegmentQueue::new(0);
-        assert!(q.is_empty());
-        let mut q = q;
+        let mut q = SegmentQueue::new(0);
         q.prioritize_from(1); // لا شيء لدورانه — بلا حالة
-        assert!(q.is_empty());
+        assert!(q.order().is_empty());
     }
 
     /// **شرط قبول المرحلة ٣ حرفياً**: طابور `[1..6]`، أولوية على 4 ⇒ `4,5,6,1,2,3`.
@@ -137,16 +114,5 @@ mod tests {
         let mut q = SegmentQueue::new(1);
         q.prioritize_from(1);
         assert_eq!(q.order(), &[1]);
-    }
-
-    #[test]
-    fn segment_of_maps_seconds_to_one_based_windows() {
-        assert_eq!(SegmentQueue::segment_of(0.0), 1);
-        assert_eq!(SegmentQueue::segment_of(299.9), 1);
-        assert_eq!(SegmentQueue::segment_of(300.0), 2);
-        assert_eq!(SegmentQueue::segment_of(1500.0), 6);
-        assert_eq!(SegmentQueue::segment_of(-3.0), 1);
-        assert_eq!(SegmentQueue::segment_of(f64::NAN), 1);
-        assert_eq!(SegmentQueue::segment_of(f64::INFINITY), 1);
     }
 }
