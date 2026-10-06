@@ -1,7 +1,7 @@
 {
   "why": "خطّ أساس مقيس لبوّابات Rust — يُحدَّث بـ--update بعد مراجعة السبب، ولا يُخفَّض لتُمرَّر بوّابة.",
   "clippy_unique_warnings": 14,
-  "tests_passed": 483,
+  "tests_passed": 486,
   "tests_ignored": 8,
   "tests": [
     "atomic::tests::a_failed_write_keeps_the_old_file_and_leaves_no_temp",
@@ -233,6 +233,8 @@
     "segqueue::tests::without_a_request_the_natural_order_stays",
     "separator::tests::a_cancelled_engine_call_returns_the_typed_cancel",
     "separator::tests::a_given_analysis_is_logged_instead_of_rescanned",
+    "separator::tests::a_short_segment_is_reported_not_panicked",
+    "separator::tests::a_sink_error_stops_the_run_and_is_reported",
     "separator::tests::analyze_marks_suspect_spans_with_padding",
     "separator::tests::cached_window_equals_recomputed_window",
     "separator::tests::continuous_loud_audio_yields_empty_suspect_gate_trigger",
@@ -251,6 +253,7 @@
     "separator::tests::separates_tone_mixture_end_to_end",
     "separator::tests::the_cancel_stop_is_typed_in_the_production_path",
     "separator::tests::the_same_window_in_two_batch_contexts_is_identical",
+    "separator::tests::the_sink_sees_every_segment_once_in_order_with_exact_ranges",
     "session::tests::report_scripted_session",
     "session::tests::seek_flush_drops_heard_maps_at_jump",
     "settings::tests::a_plaintext_file_from_an_older_build_still_loads",
