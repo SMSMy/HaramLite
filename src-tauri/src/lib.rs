@@ -960,30 +960,31 @@ fn register_native_host(app: tauri::AppHandle, browser: String) -> Result<String
 /// آخر اتصالها خلفها) — فالتصنيف الآن ثلاثي: `extension_now` (دقائق) ·
 /// `extension_seen` (وجود في السجلّ) · غياب. والإصلاح **في العرض لا التسجيل**
 /// — `host_seen` و`seen_within` لم يُمَسا.
+///
+/// **التصنيف دالة نقية** ([`classify_host_recency`]) كي يُقاس بلا AppHandle
+/// — ومُفسِد «أعِد الشهر» يُسقط اختبارها.
 #[tauri::command]
 fn bridge_status(app: tauri::AppHandle) -> serde_json::Value {
     // هل اتصل متصفح بهذا التطبيق من قبل؟ لا يمكن لتطبيق مكتبي أن يعدّ إضافات
     // المتصفح المثبَّتة، لكن المضيف يُسجّل أصل كل إضافة تتصل به — وسجلّ حديث
     // يعني أن الإضافة موجودة، وسجلّ غائب أو قديم يعني «لا نعرف» فيُوجَّه
     // المستخدم إلى صفحة الإضافة بدل أن يُترك يخمّن.
-    /// «الآن» = دقائق (١-ب) — لا شهر.
-    const NOW_SECS: u64 = 5 * 60;
-    /// وجود في السجلّ (30 يوم) — **ليس** «متصل الآن»؛ يُستعمل لعرض
-    /// «آخر اتصال قبل …» فقط. ولا يُستنتج الغياب بعده.
-    const PRESENCE_SECS: u64 = 30 * 24 * 3600;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let (extension_now, extension_seen, extension_minutes_ago, extension_days_ago, extension_origin) =
         match bridge::host_seen() {
-            Some((ts, origin)) => (
-                bridge::seen_within(ts, now, NOW_SECS),
-                bridge::seen_within(ts, now, PRESENCE_SECS),
-                Some(now.saturating_sub(ts) / 60),
-                Some(now.saturating_sub(ts) / 86_400),
-                origin,
-            ),
+            Some((ts, origin)) => {
+                let (is_now, is_seen) = classify_host_recency(ts, now);
+                (
+                    is_now,
+                    is_seen,
+                    Some(now.saturating_sub(ts) / 60),
+                    Some(now.saturating_sub(ts) / 86_400),
+                    origin,
+                )
+            }
             None => (false, false, None, None, String::new()),
         };
     serde_json::json!({
@@ -994,6 +995,99 @@ fn bridge_status(app: tauri::AppHandle) -> serde_json::Value {
         "extension_days_ago": extension_days_ago,
         "extension_origin": extension_origin,
     })
+}
+
+/// «الآن» = **دقائق** (١-ب) — لا شهر. اتصال خلال [`HOST_NOW_SECS`] ⇒
+/// `(now=true, seen=true)`؛ وخلال [`HOST_PRESENCE_SECS`] فقط ⇒
+/// `(now=false, seen=true)` («آخر اتصال قبل …» بلا ادّعاء «الآن»)؛ وما
+/// بعده ⇒ `(false, false)` — **ولا يُستنتج الغياب** (قاعدة `host_seen`).
+///
+/// **نقي** (`seen_within` نفسه) كي يُقاس بلا AppHandle — ومُفسِد «أعِد
+/// الحدّ إلى 30 يوماً» يُسقط اختبارها.
+fn classify_host_recency(ts: u64, now: u64) -> (bool, bool) {
+    (
+        bridge::seen_within(ts, now, HOST_NOW_SECS),
+        bridge::seen_within(ts, now, HOST_PRESENCE_SECS),
+    )
+}
+
+/// «الآن» = 5 دقائق — **دقائق لا شهر** (١-ب). لو صار 30 يوماً سقط اختبار
+/// `host_recency_now_is_minutes_not_a_month`.
+const HOST_NOW_SECS: u64 = 5 * 60;
+/// وجود في السجلّ (30 يوم) — **ليس** «متصل الآن»؛ يُستعمل لعرض
+/// «آخر اتصال قبل …» فقط. ولا يُستنتج الغياب بعده.
+const HOST_PRESENCE_SECS: u64 = 30 * 24 * 3600;
+
+/// **١-ب — قياس تصنيف الحداثة** (كانت الاختبارات تمرّر `extension_now`
+/// جاهزاً فمُفسِد «أعِد الشهر» لا يُسقط شيئاً). الحدود المطلوبة حرفياً:
+/// `now − 10 دقائق` ⇒ `now=false` · `now − دقيقة` ⇒ `now=true` ·
+/// `now − يومان` ⇒ `seen=true` و`now=false`.
+///
+/// **المُفسِد**: لو عاد `HOST_NOW_SECS` إلى `30 * 24 * 3600` (شهر) سقط
+/// `host_recency_now_is_minutes_not_a_month` عند حدّ الـ10 دقائق.
+#[cfg(test)]
+mod host_recency_tests {
+    use super::*;
+
+    const NOW: u64 = 1_700_000_000;
+
+    #[test]
+    fn host_recency_now_is_minutes_not_a_month() {
+        // قبل 10 دقائق: خارج حدّ الدقائق (5) — لا «الآن».
+        let (is_now, is_seen) = classify_host_recency(NOW - 10 * 60, NOW);
+        assert!(!is_now, "10 دقائق ليست «الآن» — حدّ الدقائق لا الشهر");
+        assert!(is_seen, "10 دقائق ما تزال داخل نافذة الوجود");
+    }
+
+    #[test]
+    fn host_recency_a_minute_ago_is_now() {
+        let (is_now, is_seen) = classify_host_recency(NOW - 60, NOW);
+        assert!(is_now, "دقيقة واحدة = «الآن»");
+        assert!(is_seen);
+    }
+
+    #[test]
+    fn host_recency_two_days_is_seen_but_not_now() {
+        let (is_now, is_seen) = classify_host_recency(NOW - 2 * 24 * 3600, NOW);
+        assert!(!is_now, "يومان ليسا «الآن»");
+        assert!(is_seen, "يومان داخل نافذة الوجود (30 يوماً) — لا يُستنتج الغياب");
+    }
+
+    /// **المُفسِد المضبوط**: لو صار الحدّ 30 يوماً، الـ10 دقائق تصبح
+    /// «الآن» ⇒ هذا الاختبار يُسقط بالحرف.
+    #[test]
+    fn the_month_mutant_would_be_caught() {
+        // نسخة مُصلحة من التصنيف بحدّ شهر — تُثبت أن القياس يلتقطها.
+        fn classify_with_month(ts: u64, now: u64) -> (bool, bool) {
+            const MONTH: u64 = 30 * 24 * 3600;
+            (
+                bridge::seen_within(ts, now, MONTH),
+                bridge::seen_within(ts, now, HOST_PRESENCE_SECS),
+            )
+        }
+        let (mutant_now, _) = classify_with_month(NOW - 10 * 60, NOW);
+        assert!(
+            mutant_now,
+            "نسخة الشهر تقول «الآن» عند 10 دقائق — وهذا بالضبط ما يلتقطه \
+             `host_recency_now_is_minutes_not_a_month`"
+        );
+        // والإنتاج يقول العكس:
+        let (prod_now, _) = classify_host_recency(NOW - 10 * 60, NOW);
+        assert!(!prod_now, "الإنتاج يجب ألا يُعدّ 10 دقائق «الآن»");
+    }
+
+    /// الحدّ الاسمي مثبَّت: 5 دقائق لا 30 يوماً (وليس assert على const).
+    #[test]
+    fn now_threshold_is_five_minutes() {
+        let computed_now = 5 * 60u64;
+        let exported = HOST_NOW_SECS;
+        assert_eq!(exported, computed_now, "HOST_NOW_SECS must stay 5 minutes");
+        assert_ne!(
+            exported,
+            30 * 24 * 3600,
+            "HOST_NOW_SECS must NOT be a month"
+        );
+    }
 }
 /// هل يشغّل ويندوز البرنامج مع الإقلاع؟ (يُقرأ من الريجستري مباشرة)
 #[tauri::command]
