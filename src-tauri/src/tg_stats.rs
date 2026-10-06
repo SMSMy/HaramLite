@@ -468,8 +468,14 @@ mod tests {
             if !st.success() {
                 let body = std::fs::read_to_string(&log).unwrap_or_default();
                 let lines: Vec<&str> = body.lines().filter(|l| !l.trim().is_empty()).collect();
-                let tail = &lines[lines.len().saturating_sub(4)..];
-                failed.push(format!("الابن {i} ({st}) ⇒ {}", tail.join(" ¦ ")));
+                // **السبب لا الملخّص**: سطر الانهيار (`panicked at`) والسطر الذي
+                // يليه — وذيل المخرَج ملخّصُ الهارنس لا سببَ الفشل.
+                let cause = lines
+                    .iter()
+                    .position(|l| l.contains("panicked at"))
+                    .map(|i| lines[i..(i + 2).min(lines.len())].join(" ¦ "))
+                    .unwrap_or_else(|| lines[lines.len().saturating_sub(3)..].join(" ¦ "));
+                failed.push(format!("الابن {i} ({st}) ⇒ {cause}"));
             }
         }
 
