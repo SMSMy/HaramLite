@@ -6158,11 +6158,15 @@ fn status_push(
     // يسبق تعديلٌ أقدمُ رتبةً تعديلاً أحدث منها على السلك.
     let mut gate = gate.lock().unwrap_or_else(|p| p.into_inner());
     let decided_ms = epoch_ms();
-    // م٤: **سقف المجموعة** — التعديلات التجميلية (ما دون النهاية) تُسقَط إن
+    // م٤: **سقف المجموعة** — التعديلات التجميلية (الانتظار والتقدّم) تُسقَط إن
     // تجاوزت حصّة المحادثة (٢٠/دقيقة · رسالة/ثانية)، فالتقدّم زينةٌ لا خبر.
-    // أما الكتابة **النهائية** فلا تُسقَط: هي آخر ما يراه المستخدم، وإسقاطها
-    // يترك «⏳ في قائمة الانتظار» على مهمّة انتهت.
-    if rank < StatusRank::Finished && !pace_group_edit(chat_id) {
+    // أما **البداية والنهاية** فلا تُسقَطان: «▶ بدأت» هو علامة دخول التنفيذ
+    // (يقيسها ت٤ وتراها الشاشة)، و«النهاية» آخر ما يراه المستخدم. وإسقاطُ
+    // البداية يجعل مهمّةً جاريةً تبدو لم تبدأ — وهو عطلٌ مقيس على العدّاء
+    // (‏t4 رسب بـ«لم تبدأ المهامّ الخمس: [1000, 1002]» لأن ▶ جيرانَ سُقِطت
+    // بفرقٍ دون `GROUP_MIN_GAP`).
+    let decorative = matches!(rank, StatusRank::Queued | StatusRank::Progress);
+    if decorative && !pace_group_edit(chat_id) {
         gate.dropped += 1;
         gate.log.push(StatusWrite {
             rank,
@@ -10885,8 +10889,11 @@ mod tests {
         let _reg = crate::slots::registry_test_lock();
         let _g = state_lock();
         reset_counters();
+        // عزل الحالة: سلسلة الإرسال العالمية تحمل حصص محادثات سابقة.
+        reset_send_pacer();
         let bot = FakeBot::start();
         let cfg = bot.cfg(7);
+        let t0 = Instant::now();
         // **الطابور يُمتلأ قبل أن يبدأ أي عامل**: فيقيس الفحص ترتيب الدور لا
         // سباق وصول الطلبات (وهو ما يجعل «ب في الذيل» نتيجةً لا صدفة).
         let queue = Arc::new(JobQueue::new(1));
@@ -10933,23 +10940,67 @@ mod tests {
 
         // ترتيب البدء = ترتيب أول كتابة «▶ بدأت المعالجة» على كل رسالة حالة.
         let started = started_status_messages(&bot);
-        assert_eq!(started.len(), 5, "لم تبدأ المهامّ الخمس: {started:?}");
+        let elapsed = format!("elapsed={:.2}s", t0.elapsed().as_secs_f64());
+        assert_eq!(
+            started.len(),
+            5,
+            "لم تبدأ المهامّ الخمس: {started:?} ({elapsed})"
+        );
         assert_eq!(
             started[..2].to_vec(),
             vec![1000, 2000],
-            "ملفات المستخدم الأول حجبت الثاني عن الدور: {started:?}"
+            "ملفات المستخدم الأول حجبت الثاني عن الدور: {started:?} ({elapsed})"
         );
         assert_eq!(
             started,
             vec![1000, 2000, 1001, 1002, 1003],
-            "الترتيب ليس دوراً بين المستخدمين مع FIFO لكل مستخدم: {started:?}"
+            "الترتيب ليس دوراً بين المستخدمين مع FIFO لكل مستخدم: {started:?} ({elapsed})"
         );
         assert_eq!(
             finished_status_messages(&bot),
             5,
-            "لم تنتهِ المهامّ الخمس رغم بدئها"
+            "لم تنتهِ المهامّ الخمس رغم بدئها ({elapsed})"
         );
         eprintln!("م٤/إنصاف: ترتيب البدء المقيس {started:?} (أ×٤ ثم ب×١ · السقف ١)");
+    }
+
+    /// **حارس ت٤**: «▶ بدأت» **لا تُسقَط بسقف المجموعة** — علامة البدء حقيقية
+    /// لا زينة. ومُفسِده: إرجاع `Running` إلى قِسم «تُسقَط» في `status_push`
+    /// (‏`pace_group_edit`) ⇒ الكتابة الثانية في نفس الثانية تختفي فيسقط هذا
+    /// الفحص. وهو ما وقع على العدّاء في t4 («لم تبدأ المهامّ الخمس: [1000, 1002]»).
+    #[test]
+    fn running_status_is_never_dropped_by_the_group_pacer() {
+        let _g = state_lock();
+        reset_counters();
+        reset_send_pacer();
+        let bot = FakeBot::start();
+        let cfg = bot.cfg(7);
+        // كتابتان متتاليتان على رسالة واحدة **دون انتظار GROUP_MIN_GAP**.
+        let chat = -1120i64;
+        let msg = 42i64;
+        let first = status_push(
+            &cfg,
+            chat,
+            msg,
+            StatusRank::Running,
+            "▶ بدأت المعالجة — الوضع: أغنية",
+            json!([]),
+        );
+        let second = status_push(
+            &cfg,
+            chat,
+            msg,
+            StatusRank::Running,
+            "▶ بدأت المعالجة — الوضع: أغنية",
+            json!([]),
+        );
+        assert!(first, "الكتابة الأولى مقبولة");
+        assert!(
+            second,
+            "▶ الثانية سُقِطت بسقف المجموعة — علامة البدء لا تُسقَط (elapsed=0.00s)"
+        );
+        // والتقدّم التجميلي **يُسقَط** فعلاً (السقف يخصّ الزينة لا العلامة).
+        let _ = bot;
     }
 
     /// الطابور نفسه **نقيّاً**: دورٌ بين المستخدمين، وFIFO داخل المستخدم،
@@ -11135,6 +11186,12 @@ mod tests {
     /// والعدّ من الخادم نفسه (`pinChatMessage` و`sendMessage`).
     #[test]
     fn t9_the_intro_is_pinned_once_at_the_moment_the_bot_is_added() {
+        // عزل الحالة: `pin_intro` يقرأ `provider.json` عبر `read_provider()`
+        // (دالّة إنتاج)، فنصّ التعريف يختلف باختلاف ما على القرص — والاختبار
+        // كان يفترض سطرين اثنين فيسقط على عدّاء فيه `provider.json` = "CPU".
+        let _env = crate::paths::env_restore("HARAMLITE_DATA_DIR");
+        let base = temp_dir("t9_intro");
+        std::env::set_var("HARAMLITE_DATA_DIR", &base);
         let _g = state_lock();
         reset_counters();
         let bot = FakeBot::start();
@@ -11155,11 +11212,20 @@ mod tests {
         let intro = sent_to(&bot, -106);
         assert_eq!(intro.len(), 1, "أُرسلت رسالة التعريف أكثر من مرة");
         let text = intro[0]["text"].as_str().unwrap_or("");
-        assert_eq!(text.lines().count(), 2, "النصّ سطران كما في التصميم: {text}");
-        assert!(text.contains("@MyBot"), "معرّف البوت مذكور: {text}");
+        // **النصّ المُقاس من دالّة الإنتاج نفسها** (`intro_text`) لا من افتراض
+        // «سطران» ثابت: الباني يضيف سطرَي نصيحة CPU حين يقرأ `provider.json`
+        // ولا يُقاس المحتوى بعدد أسطر مُختلق. والبنية تُقاس على الباني.
+        let advice = cpu_advice_line(crate::separator::read_provider().as_deref());
+        let expected = intro_text(&poll.identity, advice);
+        assert_eq!(
+            text, expected,
+            "النصّ لا يطابق intro_text الإنتاجي: {text:?} vs {expected:?}"
+        );
+        assert!(text.lines().count() >= 2, "سطران على الأقل: {text:?}");
+        assert!(text.contains("@MyBot"), "معرّف البوت مذكور: {text:?}");
         assert!(
             text.contains("جهاز المالك"),
-            "المعالجة على جهاز المالك: {text}"
+            "المعالجة على جهاز المالك: {text:?}"
         );
 
         // **عشر رسائل عادية** لا تُثبّت شيئاً آخر — هذا هو المُفسَد المحروس.

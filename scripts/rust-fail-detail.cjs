@@ -34,18 +34,25 @@ function failingTestDetail(out) {
     const detail = (lines[i + 1] || '').trim();
     if (!panics.has(m[1])) panics.set(m[1], { location: m[2], message: detail });
   }
-  /** الزمن الفردي: `test NAME ... ok <0.12s>` — يُقرأ إن ظهر بهذه الصورة. */
+  /** الزمن الفردي: `test NAME ... ok <0.12s>` — يُقرأ إن ظهر بهذه الصورة.
+   *  و`cargo test` لا يطبع زمناً للاختبار **الفاشل** ⇒ الفحص يُدرجه في رسالة
+   *  التأكيد نفسها (`elapsed=300.02s`)، ويُستخرَج من هنا. */
   const times = new Map();
   for (const line of lines) {
     const m = line.match(/^test\s+(\S+)\s+\.\.\.\s+\w+\s+<([\d.]+)s>/);
     if (m) times.set(m[1], m[2] + 's');
   }
-  return failed.map((name) => ({
-    name,
-    location: (panics.get(name) || {}).location || '(بلا سطر panicked — قد يكون فشل تأكيد داخل test)',
-    message: (panics.get(name) || {}).message || '(بلا رسالة)',
-    elapsed: times.get(name) || '(لم يُطبَع زمن فردي)',
-  }));
+  return failed.map((name) => {
+    const p = panics.get(name) || {};
+    // من رسالة الفشل نفسها: `elapsed=300.02s` (يُكتبها الاختبار في assert).
+    const fromMsg = /elapsed=([\d.]+)s/.exec(p.message || '');
+    return {
+      name,
+      location: p.location || '(بلا سطر panicked — قد يكون فشل تأكيد داخل test)',
+      message: p.message || '(بلا رسالة)',
+      elapsed: times.get(name) || (fromMsg ? fromMsg[1] + 's' : '(لم يُطبَع زمن فردي)'),
+    };
+  });
 }
 
 module.exports = { failingTestDetail };
