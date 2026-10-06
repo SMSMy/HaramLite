@@ -107,3 +107,40 @@ describe('٢-ج · كتلة تيليجرام مفكّكة إلى بنود برم
     expect(ar).toMatch(/حدّ.*لا يبدأ محادثة خاصة/);
   });
 });
+
+describe('٢-د · #tg-stats-body له عنوان مرئي', () => {
+  it('يوجد عنصر تسمية ظاهر أو aria-label لـ#tg-stats-body', () => {
+    const doc = indexHtml;
+    const hasLabelFor = /<label[^>]*for=["']tg-stats-body["']/.test(doc);
+    const hasAriaLabel = /id=["']tg-stats-body["'][^>]*aria-label=/.test(doc)
+      || /aria-label=[^>]*id=["']tg-stats-body["']/.test(doc);
+    const statsIdx = doc.indexOf('id="tg-stats-body"');
+    expect(statsIdx, '#tg-stats-body موجود').toBeGreaterThan(-1);
+    const before = doc.slice(Math.max(0, statsIdx - 600), statsIdx);
+    const hasVisibleTitle = /data-i18n="tg_stats_label"|data-i18n="tg_stats_title"/.test(before)
+      || /<label[^>]*>/.test(before);
+    expect(
+      hasLabelFor || hasAriaLabel || hasVisibleTitle,
+      '#tg-stats-body بلا عنوان مرئي (لا label ولا aria-label ولا سطر)',
+    ).toBe(true);
+  });
+
+  it('ولـ#tg-commands-note تسمية أو aria-label كذلك (الشقيق)', () => {
+    const doc = indexHtml;
+    const hasLabelFor = /<label[^>]*for=["']tg-commands-note["']/.test(doc);
+    const hasAriaLabel = /id=["']tg-commands-note["'][^>]*aria-label=/.test(doc)
+      || /aria-label=[^>]*id=["']tg-commands-note["']/.test(doc);
+    expect(
+      hasLabelFor || hasAriaLabel,
+      '#tg-commands-note بلا تسمية (لا label ولا aria-label)',
+    ).toBe(true);
+  });
+
+  it('التسمية الظاهرة لها مفتاح ترجمة في الجدولين', () => {
+    const ar = i18n.ar as Record<string, string>;
+    const en = i18n.en as Record<string, string>;
+    const key = 'tg_stats_label';
+    expect(ar[key], 'tg_stats_label عربي').toBeTruthy();
+    expect(en[key], 'tg_stats_label إنجليزي').toBeTruthy();
+  });
+});
