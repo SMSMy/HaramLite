@@ -665,6 +665,9 @@ export function wireBridge(): void {
       localStorage.setItem('hl.bridge', on ? '1' : '0');
       if (cb) cb.checked = on;
       pushSettings();
+      // ١-ج: الحالة لا تتحدّث عند تبديل المفتاح بلا هذا النداء —
+      // `renderBridgeExt` كان يُترك على قراءة قديمة حتى الإقلاع التالي.
+      await refreshBridgeExt();
     } catch (e) {
       // Revert the checkbox to backend truth — never display a lie.
       try {
@@ -673,6 +676,8 @@ export function wireBridge(): void {
       } catch { /* dev builds — leave as-is */ }
       showToast(`✗ ${errText(e).slice(0, 120)}`);
       invoke('push_log', { level: 'error', message: `bridge toggle failed: ${e}` });
+      // حتى عند الفشل: اعرض الحالة الحقيقية بعد محاولة التراجع.
+      await refreshBridgeExt();
     }
   }
 
