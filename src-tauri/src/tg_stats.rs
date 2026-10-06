@@ -18,13 +18,25 @@
 //! العملية (`Mutex`) يُسلسل خيوط التطبيق، لكنه **لا يرى عملية أخرى** — ومسار
 //! CLI عمليةٌ ثانية تعمل فعلاً (المُقيِّمات و`release:verify` تشغّله، والمالك قد
 //! يشغّله والتطبيق مفتوح). قِيس الفقد: ٤ عمليات × ٥٠ تسليماً ⇒ سُجّل ٥٢ من ٢٠٠.
-//! فالقفل الحاكم صار **فتحاً حصرياً لملف قفل** (`share_mode(0)`): مقبضٌ يمنع
-//! غيره من فتح المسار، **وتُطلقه النواة بموت صاحبه** — فلا قفل يتيم بعد انهيار،
-//! ولا انتظار أبدي (مهلة [`LOCK_WAIT`] ثم خطأ مُعلَن).
 //!
-//! **وحدّه المعلَن**: على غير ويندوز لا يُنفَّذ الحصر (`std` لا يعطي `share_mode`
-//! هناك) — فالقفل يعود داخل العملية وحدها، والضياع بين العمليات يبقى قائماً على
-//! تلك المنصّة. والمنتج على ويندوز (`slots.rs` و`pipeline.rs` يصرّحان بالمثل).
+//! **والقفل الحاكم اليوم قفلُ نواةٍ حاجب** ([`std::fs::File::lock`]): الحائز
+//! يعمل، والمنتظر **ينتظر ثم يدخل** — بلا سبين وبلا مهلة. وقبله كان **فتحاً
+//! حصرياً** (`share_mode(0)`) في حلقة سبين مع **مهلة ثابتة** ثم `Err`، وذلك
+//! **حدٌّ ثابت على مقدار غير محدود**: القسم الحرج يحوي `sync_all`، وقِيس زمنُه
+//! **5.2ms** فارغاً و**740ms** تحت حمل إدخال/إخراج، والالتقاط غير عادل (الحائز
+//! يعيد الأخذ قبل أن يستيقظ النائم) ⇒ قِيس الانتظار **17.6ms** وسيطاً مع ٤
+//! عمليات و**265.7ms** (وأقصى **2208ms**) مع ١٦. فمهلةُ ٥ ثوانٍ تُسقط منتظراً
+//! **لا عطلَ فيه** فيضيع تسليمه — وهو ما رُصد على العدّاء (run `37496605095`:
+//! «سُجّل ٤٠ من ١٦٠» = عمليةٌ أتمّت وعملياتٌ سقطت عند أول كتابة).
+//!
+//! **وحدُّ الانتظار الآن هو عملُ الحائز وحده**: النواة تُحرِّر القفل بموت صاحبه
+//! (فلا قفل يتيم بعد انهيار)، والقسم الحرج سلسلة عمليات ملفات قصيرة ثابتة ⇒
+//! «لا انتظار أبدي» باقية، لكن **بضمانة النواة لا بمهلةٍ تُسقط تسليماً**.
+//!
+//! **وحدّه المعلَن**: الحصر بين العمليات صار قائماً على كل منصّة يُنفِّذ فيها
+//! `std` قفلَ الملفات (`LockFileEx` على ويندوز و`flock` على غيره) بدل ويندوز
+//! وحده — **ولم يُقَس هنا إلا على ويندوز**؛ والمنتج على ويندوز
+//! (`slots.rs` و`pipeline.rs` يصرّحان بالمثل).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -36,10 +48,6 @@ pub const STATS_DIR: &str = "stats";
 /// **قفل عبور العمليات**: ملفٌ بجانب مجلد الإحصاءات لا داخله، فلا يظهر في
 /// تعداد سجلات المستخدمين (ت٧ يفحص التعداد).
 const LOCK_FILE: &str = "stats.lock";
-/// كم يُنتظر القفل قبل أن يُعلَن الفشل — وحدٌّ صريح لا انتظار أبدي.
-const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
-/// الفاصل بين محاولات أخذ القفل.
-const LOCK_POLL: std::time::Duration = std::time::Duration::from_millis(2);
 /// وسم المؤقت — الشكل نفسه الذي تستعمله بقية كتابات التطبيق.
 const TAG: &str = "json";
 /// أقصى طول لاسمٍ محفوظ. **سقفنا نحن** لا سقف تلغرام: الغرض أن يبقى الملف
@@ -69,63 +77,33 @@ fn lock_path(app_data: &Path) -> PathBuf {
     app_data.join("telegram").join(LOCK_FILE)
 }
 
-/// فتح ملف القفل **حصرياً** (ويندوز): `share_mode(0)` يمنع أي فتحٍ آخر للمسار
-/// ما دام المقبض مفتوحاً — وهي الحصرية الوحيدة التي **تُطلقها النواة بموت
-/// صاحبها**، فلا قفل يتيم.
-#[cfg(windows)]
-fn open_lock_exclusive(lock: &Path) -> std::io::Result<std::fs::File> {
-    use std::os::windows::fs::OpenOptionsExt;
-    std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        // **بلا اقتطاع**: القفل مقبضٌ لا محتوى، واقتطاعُ ملفٍ يملكه غيرنا ممنوع
-        // (و`clippy` يطلب تعريف السلوك صراحةً).
-        .truncate(false)
-        .share_mode(0)
-        .open(lock)
-}
-
-/// خارج ويندوز: لا حصر بين العمليات (`std` لا يعطي `share_mode`) — الحدّ معلَن
-/// في رأس الملف، والقفل يبقى داخل العملية.
-#[cfg(not(windows))]
-fn open_lock_exclusive(lock: &Path) -> std::io::Result<std::fs::File> {
-    std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(lock)
-}
-
-/// يأخذ القفل العابر للعمليات، أو يُعلن الفشل بعد [`LOCK_WAIT`].
+/// **يأخذ القفل العابر للعمليات — وانتظارُه حجبٌ في النواة لا سبينٌ بمهلة.**
 ///
-/// و**الفشل يُعلَن** (`Err`) ولا يُتابَع بلا قفل: كتابةٌ بلا قفل تُسقط زيادات
-/// غيرها بصمت — وهو العطل المقيس نفسه بعينه.
+/// والمسار: فتح ملف القفل (بلا اقتطاع: القفل مقبضٌ لا محتوى، واقتطاعُ ملفٍ
+/// يملكه غيرنا ممنوع — و`clippy` يطلب تعريف السلوك صراحةً) ثم
+/// [`std::fs::File::lock`] — قفلٌ حاجب بطابور انتظار من النواة.
+///
+/// و**الفشل الحقيقي** (تعذّر فتح الملف أو تعذّر القفل) يُعلَن (`Err`) ولا
+/// يُتابَع بلا قفل: كتابةٌ بلا قفل تُسقط زيادات غيرها بصمت — وهو العطل المقيس
+/// نفسه بعينه. وأما **التنازع فليس فشلاً**: المنتظر ينتظر ثم يدخل.
 fn acquire_file_lock(app_data: &Path) -> Result<std::fs::File, String> {
     let path = lock_path(app_data);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("تعذّر إنشاء {}: {e}", parent.display()))?;
     }
-    let deadline = std::time::Instant::now() + LOCK_WAIT;
-    loop {
-        match open_lock_exclusive(&path) {
-            Ok(f) => return Ok(f),
-            Err(e) => {
-                // `ERROR_SHARING_VIOLATION` (32) ⇒ غيره يمسكه الآن: انتظار.
-                let held = e.raw_os_error() == Some(32);
-                if !held || std::time::Instant::now() >= deadline {
-                    return Err(format!(
-                        "تعذّر أخذ قفل الإحصاءات {} بعد {:?}: {e}",
-                        path.display(),
-                        LOCK_WAIT
-                    ));
-                }
-                std::thread::sleep(LOCK_POLL);
-            }
-        }
-    }
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&path)
+        .map_err(|e| format!("تعذّر فتح قفل الإحصاءات {}: {e}", path.display()))?;
+    // **حجب حتى يُحرَّر**: لا `try_lock` في حلقة (سبين غير عادل أثبتَ القياس
+    // أنه يُسقط منتظرين) ولا مهلة (حدٌّ ثابت على مقدار غير محدود).
+    file.lock()
+        .map_err(|e| format!("تعذّر أخذ قفل الإحصاءات {}: {e}", path.display()))?;
+    Ok(file)
 }
 
 /// مجلد الإحصاءات: `<data_dir>/telegram/stats`.
@@ -443,6 +421,11 @@ mod tests {
     ///
     /// والعملية الفرعية هي **ثنائي الاختبار نفسه** يُعاد تشغيله بمرشّح هذه
     /// الدالة ووسمٍ بيئي يحمل مجلد العمل — فلا ثنائي مساعد ولا اعتمادية جديدة.
+    ///
+    /// **ومخرَج كل ابن يُحفَظ في ملف** (لا في `null`): العدّاء قال «سُجّل ٤٠ من
+    /// ١٦٠» ولم يقل لماذا، لأن سبب فشل الأبناء كان يُهرَق. وملفٌّ لا أنبوب: لا
+    /// نقرأ شيئاً قبل `wait` فلا نُعلّق على أنبوبٍ ممتلئ. **وحالة الأبناء
+    /// تُفحص قبل العدّ** لأن العدّ كان يُسقط أولاً فيحجب السبب.
     #[test]
     fn no_delivery_is_lost_between_processes() {
         const CHILD_ENV: &str = "HL_TGSTATS_CHILD_DIR";
@@ -461,54 +444,130 @@ mod tests {
         let root = tmp("xproc");
         let exe = std::env::current_exe().expect("مسار ثنائي الاختبار");
         let mut kids = Vec::new();
-        for _ in 0..PROCS {
-            kids.push(
+        for i in 0..PROCS {
+            let log = root.join(format!("child-{i}.log"));
+            let out = std::fs::File::create(&log).expect("سجلّ الابن");
+            let err = out.try_clone().expect("نسخة سجلّ الابن");
+            kids.push((
+                i,
+                log,
                 std::process::Command::new(&exe)
-                    .args(["--exact", CHILD_TEST, "--test-threads=1"])
-                    // بلا أنابيب: لا نقرأ مخرجهما فلا نحتاجها (ولا نُعلّق).
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
+                    // و`--nocapture`: مخرَج الابن (وفيه نصّ انهياره) إلى سجلّه
+                    // مباشرةً، لا محتجزاً في هارنس libtest.
+                    .args(["--exact", CHILD_TEST, "--test-threads=1", "--nocapture"])
+                    .stdout(std::process::Stdio::from(out))
+                    .stderr(std::process::Stdio::from(err))
                     .env(CHILD_ENV, root.as_os_str())
                     .spawn()
                     .expect("تشغيل عملية فرعية"),
-            );
+            ));
         }
         let mut failed = Vec::new();
-        for mut k in kids {
+        for (i, log, mut k) in kids {
             let st = k.wait().expect("انتظار العملية الفرعية");
             if !st.success() {
-                failed.push(st);
+                let body = std::fs::read_to_string(&log).unwrap_or_default();
+                let lines: Vec<&str> = body.lines().filter(|l| !l.trim().is_empty()).collect();
+                let tail = &lines[lines.len().saturating_sub(4)..];
+                failed.push(format!("الابن {i} ({st}) ⇒ {}", tail.join(" ¦ ")));
             }
         }
 
-        // **العدد أولاً** (الادّعاء الأصلي): بلا قفلٍ عابر للعمليات تُقرأ القيمة
-        // نفسها مرّتين فتُكتب مرّة — فينقص العدّ. ويُقاس الفقد رقماً لا وصفاً
-        // (قِيس على المُفسَد: «سُجّل ١ من ١٦٠» و«٤٢ من ١٦٠» في تشغيلين).
+        // **حالة العمليات أولاً**: كتابةٌ فشلت بصوتٍ عالٍ ليست أفضل من ضياعٍ
+        // صامت، **وسببُ فشل الابن هو ما يفسّر نقص العدّ** — وقلبُ الترتيب
+        // (العدّ أولاً) هو ما جعل عدّاء run `37496605095` يقول «سُجّل ٤٠ من ١٦٠»
+        // ولا يقول لماذا. وسببُ كل ابن مكتوبٌ في سجلّه لا في `null`.
         let rec = load(&root, 7).expect("سجلّ بعد العمليات");
-        assert_eq!(
-            rec.files,
-            ROUNDS * PROCS as u64,
-            "ضاعت زيادات بين العمليات: سُجّل {} من {} — القفل لا يعبر العمليات",
-            rec.files,
-            ROUNDS * PROCS as u64
-        );
-        assert_eq!(
-            rec.bytes,
-            ROUNDS * PROCS as u64,
-            "الحجم لم يجمع كل الزيادات"
-        );
-        // **ثمّ حالة العمليات**: كتابةٌ فشلت بصوتٍ عالٍ ليست أفضل من ضياعٍ صامت
-        // — فمجموعٌ صحيح مع عملية فاشلة يعني أن الكتابة الفاشلة لم تُدوَّن.
+        let expected = ROUNDS * PROCS as u64;
         assert!(
             failed.is_empty(),
-            "{} عملية فرعية فشلت (أولها {:?}) رغم أن المجموع صحّ",
+            "{} من {PROCS} عمليات فرعية فشلت والعدّ {} من {expected}: {}",
             failed.len(),
-            failed.first()
+            rec.files,
+            failed.join(" · ")
         );
+        // **ثمّ العدد** (الادّعاء الأصلي): بلا قفلٍ عابر للعمليات تُقرأ القيمة
+        // نفسها مرّتين فتُكتب مرّة — فينقص العدّ. ويُقاس الفقد رقماً لا وصفاً
+        // (قِيس على المُفسَد: «سُجّل ١ من ١٦٠» و«٤٢ من ١٦٠» في تشغيلين).
+        assert_eq!(
+            rec.files, expected,
+            "ضاعت زيادات بين العمليات: سُجّل {} من {} — القفل لا يعبر العمليات (كل الأبناء نجحوا)",
+            rec.files, expected
+        );
+        assert_eq!(rec.bytes, expected, "الحجم لم يجمع كل الزيادات");
         eprintln!(
             "م٥/عبر العمليات: {PROCS} عمليات × {ROUNDS} تسليماً ⇒ سُجّل {} من {}",
-            rec.files,
-            ROUNDS * PROCS as u64
+            rec.files, expected
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **القفل ينتظر ولا يُسقط منتظرَه** — الحارس **الحتمي** لعطل العدّاء
+    /// (run `37496605095`: «سُجّل ٤٠ من ١٦٠»).
+    ///
+    /// عمليةٌ تحجز القفل ثم **تحتفظ به أطول من المهلة القديمة** (`LOCK_WAIT` = ٥ ث)
+    /// ثم تُطلقه؛ والمنتظر يجب أن **ينجح** بعد التحرير — لا أن يفشل عند ٥ ث.
+    /// فالمقيس على العدّاء كان مهلةً ثابتة تنتهي على منتظرٍ لا عطلَ فيه؛ وهذا
+    /// الاختبار يثبّت أن الانتظار **لا سقف مصطنع له**.
+    ///
+    /// **والمُفسَد**: إعادة المهلة الثابتة (سبين + `Err`) ⇒ يسقط هنا **حتماً**
+    /// عند ٥ ث، بلا حاجة إلى حملٍ ولا إلى حظّ. (وحدُّه المعلَن: يثبّت انتظاراً
+    /// **أطول من المهلة القديمة**، ولا يُثبت «لا سقف أبداً».)
+    #[test]
+    fn a_waiter_outlives_a_hold_longer_than_the_old_deadline() {
+        const HOLD_MS_ENV: &str = "HL_TGSTATS_HOLD_MS";
+        const HOLD_DIR_ENV: &str = "HL_TGSTATS_HOLD_DIR";
+        const THIS: &str = "tg_stats::tests::a_waiter_outlives_a_hold_longer_than_the_old_deadline";
+        /// أطول من المهلة القديمة (٥ ث) بهامش يقين.
+        const HOLD_MS: u64 = 6_200;
+
+        // —— فرع العملية الحاجزة: تحجز القفل، تُعلن الحجز، تنتظر، تُطلق وتخرج.
+        if let Ok(ms) = std::env::var(HOLD_MS_ENV) {
+            let dir = std::env::var(HOLD_DIR_ENV).expect("مجلد الحجز");
+            let _held = acquire_file_lock(Path::new(&dir)).expect("حجز القفل في العملية الحاجزة");
+            std::fs::write(Path::new(&dir).join("held"), b"1").expect("إشارة الحجز");
+            std::thread::sleep(std::time::Duration::from_millis(
+                ms.parse().expect("مدة الحجز"),
+            ));
+            return;
+        }
+
+        let root = tmp("waiter");
+        let exe = std::env::current_exe().expect("مسار ثنائي الاختبار");
+        let mut holder = std::process::Command::new(&exe)
+            .args(["--exact", THIS, "--test-threads=1"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .env(HOLD_MS_ENV, HOLD_MS.to_string())
+            .env(HOLD_DIR_ENV, root.as_os_str())
+            .spawn()
+            .expect("تشغيل العملية الحاجزة");
+        // لا نبدأ انتظارنا إلا بعد أن يصير القفل محجوزاً فعلاً (وإلا سبقناه).
+        let marker = root.join("held");
+        let started = std::time::Instant::now();
+        while !marker.exists() {
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(30),
+                "العملية الحاجزة لم تحجز القفل خلال ٣٠ ث"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        // القفل محجوز الآن: هذا النداء يجب أن **ينتظر** حتى يُحرَّر.
+        let waiting = std::time::Instant::now();
+        let rec = note_delivery(&root, 7, "منتظر", 1).expect(
+            "الكاتب المنتظر فشل — القفل يُسقط منتظرَه بمهلة بدل أن ينتظر (عطل run 37496605095)",
+        );
+        let waited = waiting.elapsed();
+        let st = holder.wait().expect("انتظار العملية الحاجزة");
+        assert!(st.success(), "العملية الحاجزة فشلت: {st:?}");
+        assert_eq!(rec.files, 1, "تسليم المنتظر لم يُدوَّن");
+        // ولولا الانتظار الحقيقي لكان هذا «نجاحاً» كاذباً (لو لم يحجز الابن أصلاً).
+        assert!(
+            waited >= std::time::Duration::from_millis(3_000),
+            "لم ينتظر فعلاً ({waited:?}) — لا يبدو أن العملية الحاجزة أخذت القفل"
+        );
+        eprintln!(
+            "م٥/القفل ينتظر: حُجز القفل {HOLD_MS}ms والمنتظر دخل بعد {waited:?} (تسليم واحد مُدوَّن)"
         );
         let _ = std::fs::remove_dir_all(&root);
     }
