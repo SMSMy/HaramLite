@@ -1,7 +1,7 @@
 {
   "why": "خطّ أساس مقيس لبوّابات Rust — يُحدَّث بـ--update بعد مراجعة السبب، ولا يُخفَّض لتُمرَّر بوّابة.",
   "clippy_unique_warnings": 14,
-  "tests_passed": 482,
+  "tests_passed": 483,
   "tests_ignored": 8,
   "tests": [
     "atomic::tests::a_failed_write_keeps_the_old_file_and_leaves_no_temp",
@@ -360,6 +360,7 @@
     "telegram::tests::pairing_flow_is_one_shot_and_budgeted",
     "telegram::tests::pairing_gate_blocks_everyone_until_the_owner_is_set",
     "telegram::tests::repeated_status_reads_do_not_reset_the_verify_clock",
+    "telegram::tests::running_status_is_never_dropped_by_the_group_pacer",
     "telegram::tests::scratch_guard_deletes_what_it_tracked_and_nothing_else",
     "telegram::tests::slash_commands_answer_in_the_chat_and_a_stranger_gets_silence",
     "telegram::tests::status_json_takes_pair_slot_before_status",
