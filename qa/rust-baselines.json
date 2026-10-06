@@ -1,8 +1,9 @@
 {
   "why": "خطّ أساس مقيس لبوّابات Rust — يُحدَّث بـ--update بعد مراجعة السبب، ولا يُخفَّض لتُمرَّر بوّابة.",
   "clippy_unique_warnings": 14,
-  "tests_passed": 477,
-  "tests_ignored": 6,  "tests": [
+  "tests_passed": 482,
+  "tests_ignored": 8,
+  "tests": [
     "atomic::tests::a_failed_write_keeps_the_old_file_and_leaves_no_temp",
     "atomic::tests::an_atomic_write_reads_back_byte_for_byte",
     "atomic::tests::no_temporary_file_survives_a_successful_write",
