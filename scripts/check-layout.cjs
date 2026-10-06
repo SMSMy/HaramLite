@@ -11,6 +11,21 @@
  * logically (`end-0` / `inset-inline-end: 0`) makes the overflow zero in BOTH
  * directions while Arabic keeps its previous geometry (16…272).
  *
+ * UPDATE 2026-10-06 (measured — this is what un-blocked CI)
+ * --------------------------------------------------------
+ * That dropdown became the full-frame settings SCREEN in `edb1c11`
+ * (`#settings-menu` is `fixed inset-0 top-10` now), so NO shipped element is
+ * logical-anchored any more, and the old end-edge demand could not be met by any
+ * correct page: the guard failed with drift 448/184/1284px at widths
+ * 1084/820/1920 — in `ltr` only, because the flipped-edge clone is not the
+ * shipped box. The probe now measures the SHIPPED clone first and demands:
+ *   · a frame that spans the window must run 0…innerWidth (today's design), or
+ *   · a shrink-wrapped panel must sit on the end edge (the design it was born in).
+ * A shipped-vs-clone agreement check keeps the probe from being trusted when it
+ * does not model the page. Falsifiability is preserved both ways — see the runs
+ * in docs/AUDIT.md (planted 256px physical panel ⇒ fails; planted overflow ⇒ fails).
+ * It never builds anything; `dist/` must exist (`pnpm build:web`). It measures
+ *
  * WHAT IT CHECKS
  * --------------
  * It serves the built UI from `dist/`, opens it in a headless browser, and for
@@ -954,9 +969,23 @@ function runProbe(args) {
 
       const start = measure(true);
       const end = measure(false);
+      // ── والنسخة **المشحونة** (2026-10-06) — بلا قلبٍ للحواف ──────────────────
+      // نفس الأصناف ونفس الكتلة الحاوية ⇒ تقيس الشكل القائم فعلاً. بها صار المسبار
+      // **يتبع الشكل المشحون**: إطارٌ يمتدّ في النافذة اليوم (`fixed inset-0` بعد
+      // `edb1c11` تصميم Clay & Coal)، ولوحةٌ مصغَّرة 256px في زمن «المنسدلة» الذي
+      // وُلد فيه هذا المسبار. (وقياس 2026-10-06: `start`/`end` تنكمشان إلى 636px
+      // لأن الحواف مقلوبة، والصفّ المشحون 1084px ⇒ فالمقارنة بالحواف المقلوبة
+      // كانت تقارن الصفحة بشكلٍ لم يعد قائماً.)
+      clone.style.insetInlineStart = '';
+      clone.style.insetInlineEnd = '';
+      const shipped = clone.getBoundingClientRect();
       const vwProbe = window.innerWidth;
       probe = {
         panelWidth: +start.width.toFixed(2),
+        viewportWidth: +vwProbe.toFixed(2),
+        shippedLeft: +shipped.left.toFixed(2),
+        shippedRight: +shipped.right.toFixed(2),
+        shippedWidth: +shipped.width.toFixed(2),
         containingBlockLeft: +start.hostLeft.toFixed(2),
         containingBlockRight: +start.hostRight.toFixed(2),
         startEdgeLeft: +start.left.toFixed(2),
@@ -1513,13 +1542,39 @@ async function main() {
           if (!data.menuFound || !data.menuVisible) {
             problems.push(`${dir}@${width}: ${data.menuProblem || '#settings-menu could not be made visible'}`);
           }
-          // The measured panel and the probe's end-edge prediction must agree:
-          // if they do not, the probe is not modelling the shipped geometry and
-          // its predicted-overflow number cannot be trusted either.
+          // ── اتّساق المسبار مع **الشكل المشحون** (2026-10-06) ──────────────────
+          // الحارس وُلد وفي الصفحة «منسدلة 256px» ملتصقة بحافة النهاية (`end-0`)،
+          // فكان يشترط `menuRow.left == endEdgeLeft`. ثم صارت الشاشة `fixed inset-0`
+          // (‏`edb1c11`) ⇒ لا حافةَ التصاقٍ أصلاً، والشرط القديم كان يقارن الصفحة
+          // بشكلٍ مضى (‏drift 448/184/1284px على 1084/820/1920).
+          // والفحص الآن **يتبع الشكل القائم**:
+          //   · إطارٌ يمتدّ في النافذة (‏`width ≈ innerWidth`) ⇒ يُشترط امتداده 0…innerWidth.
+          //   · ولو عاد لوحةً مصغَّرة ⇒ يعود شرط الالتصاق بحافة النهاية كما صُمِّم.
+          // ولا يُقبل مسبارٌ لا تطابق نسختُه المشحونة الصفَّ القائم (مرجعٌ باطل).
           if (data.menuRow && data.probe) {
-            const drift = Math.abs(data.menuRow.left - data.probe.endEdgeLeft);
-            if (drift > 1) {
-              problems.push(`${dir}@${width}: measured #settings-menu left=${data.menuRow.left} but the end-edge probe predicts ${data.probe.endEdgeLeft} (drift ${drift.toFixed(2)}px) — probe and page disagree`);
+            const p = data.probe;
+            const row = data.menuRow;
+            const vw = data.viewport.width;
+            const cloneAgrees =
+              Math.abs(row.left - p.shippedLeft) <= 1 &&
+              Math.abs(row.right - p.shippedRight) <= 1 &&
+              Math.abs(row.width - p.shippedWidth) <= 1;
+            if (!cloneAgrees) {
+              problems.push(
+                `${dir}@${width}: الشكل المشحون لا يطابق نسخةً من الصف نفسه في كتلته الحاوية ` +
+                `(الصفحة ${row.left}…${row.right} بعرض ${row.width} · النسخة ${p.shippedLeft}…${p.shippedRight} بعرض ${p.shippedWidth}) ` +
+                '— مسبارٌ بلا مرجع، فحكمُه باطل',
+              );
+            }
+            if (row.width >= vw - 1) {
+              if (Math.abs(row.left) > 1 || Math.abs(row.right - vw) > 1) {
+                problems.push(
+                  `${dir}@${width}: إطار الشاشة يجب أن يمتدّ في النافذة (‏${row.left}…${row.right} مقابل 0…${vw}) ` +
+                  '— الشكل المشحون إطارٌ ممتدّ (`fixed inset-0`)',
+                );
+              }
+            } else if (Math.abs(row.left - p.endEdgeLeft) > 1) {
+              problems.push(`${dir}@${width}: measured #settings-menu left=${row.left} but the end-edge probe predicts ${p.endEdgeLeft} (drift ${Math.abs(row.left - p.endEdgeLeft).toFixed(2)}px) — probe and page disagree`);
             }
           }
 
@@ -1587,8 +1642,14 @@ async function main() {
             note('WARNING: the page never stopped moving within 3s — the numbers below may be a mid-flight reading');
           }
           if (data.probe) {
-            note(`probe: panel ${data.probe.panelWidth}px in containing block [${data.probe.containingBlockLeft}…${data.probe.containingBlockRight}] · start-edge(left-0) right=${data.probe.startEdgeRight} ⇒ predicted overflow ${data.probe.predictedOverflowAtStartEdge}px · end-edge(right-0) right=${data.probe.endEdgeRight} ⇒ predicted overflow ${data.probe.predictedOverflowAtEndEdge}px`);
-            if (width === 1084 && dir === 'ltr' && data.probe.predictedOverflowAtStartEdge < 50) {
+            note(`probe: shipped ${data.probe.shippedWidth}px at [${data.probe.shippedLeft}…${data.probe.shippedRight}] · flipped-edge clone ${data.probe.panelWidth}px in containing block [${data.probe.containingBlockLeft}…${data.probe.containingBlockRight}] · start-edge(left-0) right=${data.probe.startEdgeRight} ⇒ predicted overflow ${data.probe.predictedOverflowAtStartEdge}px · end-edge(right-0) right=${data.probe.endEdgeRight} ⇒ predicted overflow ${data.probe.predictedOverflowAtEndEdge}px`);
+            // فرضية الحارس الأصلية (العطب الذي وُلد منه): لوحةٌ مصغَّرة ملتصقة بالحافة
+            // **المعاكسة** تتجاوز النافذة في ltr. ولا تُشترط إلا إن كان الشكل المشحون
+            // لوحةً مصغَّرة فعلاً — فالإطار الممتدّ لا يتجاوز شيئاً بطبيعته (وهذا سبب
+            // توقّف هذا الشرط عن الانطباق بعد `edb1c11`، لا عطبٌ في الصفحة).
+            if (data.probe.shippedWidth < data.viewport.width - 1
+                && width === 1084 && dir === 'ltr'
+                && data.probe.predictedOverflowAtStartEdge < 50) {
               problems.push(`ltr@1084: the start-edge (left-0) probe predicts only ${data.probe.predictedOverflowAtStartEdge}px of overflow — the guard's own premise is no longer true, investigate before trusting a green run`);
             }
           } else if (data.probeError) {
