@@ -805,16 +805,87 @@ fn demix_segmented(
     mix: &[Vec<f32>; 2],
     progress: &dyn Fn(f32) -> bool,
 ) -> Result<[Vec<f32>; 2], SepError> {
-    demix_segmented_with_steps(session, mix, crate::segments::SEGMENT_STEPS, progress)
+    demix_segmented_with_steps(session, mix, crate::segments::SEGMENT_STEPS, progress, None)
+}
+
+/// كما [`demix_segmented`] لكن **بمصرف**: كل مقطع يُسلَّم لحظة اكتماله (المرحلة ٤أ
+/// — الإصدار التدريجي). يُنادى من [`separate`] عند وجود مصرف فقط.
+fn demix_segmented_to(
+    session: &mut MdxSession,
+    mix: &[Vec<f32>; 2],
+    progress: &dyn Fn(f32) -> bool,
+    sink: &dyn SegmentSink,
+) -> Result<[Vec<f32>; 2], SepError> {
+    demix_segmented_with_steps(
+        session,
+        mix,
+        crate::segments::SEGMENT_STEPS,
+        progress,
+        Some(sink),
+    )
+}
+
+/// **مصرف المقطع المنتهي** — يُنادى بعد اكتمال كل مقطع وقبل الانتقال إلى الذي
+/// يليه، وعيّناته كاملة في `part` (أول عيّنة فيه = `plan.emit_start`).
+///
+/// **ولماذا هنا بالذات**: هذا الموضع الوحيد الذي توجد فيه عيّنات المقطع
+/// **النهائية** قبل أن تختلط ببقية الملف — فهو نقطة الإصدار التدريجي التي
+/// ينتظرها المُنتِج (‏`seg-0001.mp3…`)، وبدونه لا يُخدَم بايت واحد قبل اكتمال
+/// الملف كله.
+///
+/// **وحدّ الدلالة**: `Err` **تُوقف الفصل** — منتجٌ لا يستطيع الكتابة لا يجوز أن
+/// يُكمِل بصمت ثم يَعِد المشاهد بشيء لم يُكتب.
+pub trait SegmentSink {
+    fn segment_ready(
+        &self,
+        plan: &crate::segments::SegmentPlan,
+        part: &[Vec<f32>; 2],
+    ) -> Result<(), SepError>;
+}
+
+/// **نقي وقابل للاختبار بلا نموذج**: يمشي على الخطة مقطعاً مقطعاً — يُنتج ثم
+/// **يُصدر** ثم يجمع في مصفوفتين بطول `n`. المُنتِج والمُصدِر إغلاقان، فالترتيب
+/// والحدود وفشل الإصدار كلها تُقاس بلا عتاد ولا I/O ولا ٦٣٧ ميجابايت.
+fn drive_segments<P, E>(
+    plan: &[crate::segments::SegmentPlan],
+    n: usize,
+    mut produce: P,
+    mut emit: E,
+) -> Result<[Vec<f32>; 2], SepError>
+where
+    P: FnMut(&crate::segments::SegmentPlan) -> Result<[Vec<f32>; 2], SepError>,
+    E: FnMut(&crate::segments::SegmentPlan, &[Vec<f32>; 2]) -> Result<(), SepError>,
+{
+    let mut vocals = [vec![0.0f32; n], vec![0.0f32; n]];
+    for seg in plan {
+        let part = produce(seg)?;
+        let len = seg.emit_end - seg.emit_start;
+        // طول أقصر من نطاق الإصدار = عطب في المُنتِج لا في المُصدِر: يُعلَن
+        // بخطئه بدل `panic` الصامت الذي كان يُخفي سببه.
+        if part[0].len() < len || part[1].len() < len {
+            return Err(SepError::InvalidInput(format!(
+                "المقطع {} أنتج {} عيّنة والنطاق يحتاج {}",
+                seg.index + 1,
+                part[0].len(),
+                len
+            )));
+        }
+        for c in 0..2 {
+            vocals[c][seg.emit_start..seg.emit_start + len].copy_from_slice(&part[c][..len]);
+        }
+        emit(seg, &part)?;
+    }
+    Ok(vocals)
 }
 
 /// كما [`demix_segmented`] لكن بعدد خطوات المقطع — للاختبار القصير
-/// (نفس الشبكة العالمية ونفس الإحماء، بلا استثناء).
+/// (نفس الشبكة العالمية ونفس الإحماء، بلا استثناء) وبمصرف اختياري.
 fn demix_segmented_with_steps(
     session: &mut MdxSession,
     mix: &[Vec<f32>; 2],
     segment_steps: usize,
     progress: &dyn Fn(f32) -> bool,
+    sink: Option<&dyn SegmentSink>,
 ) -> Result<[Vec<f32>; 2], SepError> {
     let n = mix[0].len().min(mix[1].len());
     if n == 0 {
@@ -825,21 +896,24 @@ fn demix_segmented_with_steps(
         return Err(SepError::InvalidInput("empty segment plan".into()));
     }
     // الهوية: مقطع واحد يغطّي الملف ⇒ demix الكامل القائم، حرفياً.
+    // (ولا مصرف هنا: لا مقطع «منتهٍ» قبل الكل في هذا المسار.)
     if plan.len() == 1 && plan[0].is_identity(n) {
         return demix(session, mix, progress);
     }
 
     let segments = plan.len() as f32;
-    let mut vocals = [vec![0.0f32; n], vec![0.0f32; n]];
-    for (si, seg) in plan.iter().enumerate() {
-        let base = si as f32;
-        let part = demix_segment(session, mix, seg, &|p| progress((base + p) / segments))?;
-        let len = seg.emit_end - seg.emit_start;
-        for c in 0..2 {
-            vocals[c][seg.emit_start..seg.emit_start + len].copy_from_slice(&part[c]);
-        }
-    }
-    Ok(vocals)
+    drive_segments(
+        &plan,
+        n,
+        |seg| {
+            let base = seg.index as f32;
+            demix_segment(session, mix, seg, &|p| progress((base + p) / segments))
+        },
+        |seg, part| match sink {
+            Some(s) => s.segment_ready(seg, part),
+            None => Ok(()),
+        },
+    )
 }
 
 /// Expert D2أ/D2ب: whole-mix analysis from the normalized WAV (seconds
@@ -947,6 +1021,7 @@ pub fn separate(
     use_cuda: bool,
     progress: &dyn Fn(f32) -> bool,
     analysis: Option<&MixAnalysis>,
+    sink: Option<&dyn SegmentSink>,
 ) -> Result<StemPaths, SepError> {
     let (left, right, sample_rate) = read_wav_stereo(input_wav)?;
     tracing::info!(target: "sep", "mix loaded: {} samples @{}", left.len(), sample_rate);
@@ -984,7 +1059,11 @@ pub fn separate(
     // segments (step-aligned windows, m=1 warmup, hard-cut finalized prefixes
     // — no crossfade). See `segments.rs` for the measured misalignment cause.
     let t_inf = std::time::Instant::now();
-    let vocals_src = demix_segmented(&mut session, &mix, &|p| progress(p))?;
+    let vocals_src = match sink {
+        // الإصدار التدريجي: كل مقطع يُسلَّم لحظة اكتماله (المرحلة ٤أ).
+        Some(s) => demix_segmented_to(&mut session, &mix, &|p| progress(p), s)?,
+        None => demix_segmented(&mut session, &mix, &|p| progress(p))?,
+    };
     let inference_ms = t_inf.elapsed().as_secs_f32() * 1000.0;
     tracing::info!(
         target: "sep",
@@ -1204,7 +1283,7 @@ mod tests {
         let mix_path = tmp.join("mix.wav");
         write_wav_stereo_f32(&mix_path, &l, &r, E2E_SR).unwrap();
 
-        let stems = separate(&mix_path, &tmp.join("out"), false, &|_| true, None)
+        let stems = separate(&mix_path, &tmp.join("out"), false, &|_| true, None, None)
             .expect("separation must succeed on a generated 44.1k stereo WAV");
         let (vl, vr, vsr) = read_wav_stereo(&stems.vocals).expect("vocals stem must be readable");
         let (il, ir, isr) =
@@ -1409,6 +1488,7 @@ mod tests {
                 tracing::debug!(target: "sep_test", "progress {:.0}%", p * 100.0);
                 true
             },
+            None,
             None,
         )
         .expect("separation failed");
@@ -1635,7 +1715,7 @@ mod tests {
         write_wav_stereo_f32(&wav, &l, &r, sr).unwrap();
         let t0 = std::time::Instant::now();
         let stems =
-            separate(&wav, &tmp.join("out"), true, &|_| true, None).expect("CUDA separation");
+            separate(&wav, &tmp.join("out"), true, &|_| true, None, None).expect("CUDA separation");
         eprintln!(
             "SMOKE: 12s audio separated on CUDA in {:.1}s",
             t0.elapsed().as_secs_f32()
@@ -1770,8 +1850,8 @@ mod tests {
             analysis.suspect.len(), analysis.scored_windows);
 
         // Full path keeps the merge sample-exact (silence passes through).
-        let stems =
-            separate(&wav, &tmp.join("out"), false, &|_| true, None).expect("separation failed");
+        let stems = separate(&wav, &tmp.join("out"), false, &|_| true, None, None)
+            .expect("separation failed");
         let (vl, _, _) = read_wav_stereo(&stems.vocals).unwrap();
         let (il, _, _) = read_wav_stereo(&stems.instrumental).unwrap();
         assert_eq!(
@@ -2115,6 +2195,7 @@ mod tests {
                 false
             },
             None,
+            None,
         );
         let elapsed = started.elapsed();
         assert!(
@@ -2279,8 +2360,8 @@ mod tests {
         let mut session = MdxSession::load(false).expect("MDX session");
 
         let full = demix(&mut session, &mix, &|_| true).expect("whole-file demix");
-        let seg =
-            demix_segmented_with_steps(&mut session, &mix, 2, &|_| true).expect("segmented demix");
+        let seg = demix_segmented_with_steps(&mut session, &mix, 2, &|_| true, None)
+            .expect("segmented demix");
 
         for c in 0..2 {
             assert_eq!(seg[c].len(), full[c].len());
@@ -2477,7 +2558,7 @@ mod tests {
         let mix = [l, r];
         let mut session = MdxSession::load(false).expect("MDX session");
         let full = demix(&mut session, &mix, &|_| true).expect("full");
-        let seg = demix_segmented_with_steps(&mut session, &mix, 2, &|_| true).expect("seg");
+        let seg = demix_segmented_with_steps(&mut session, &mix, 2, &|_| true, None).expect("seg");
         for c in 0..2 {
             let r_full = rms(&full[c]);
             let r_diff = rms_diff(&seg[c], &full[c]);
@@ -2489,5 +2570,112 @@ mod tests {
                  (limit 1e-5)"
             );
         }
+    }
+
+    // ─── نقطة الإصدار التدريجي (المرحلة ٤أ) — نقيّة، بلا نموذج ولا عتاد ──────
+
+    /// مقطع اختباري قصير: خطوتان ⇒ `2 × 195840 = 391680` عيّنة (~8.9 ث)،
+    /// فتبقى المصفوفات صغيرة والاختبار في الميلي ثانية.
+    fn short_plan(segments: usize) -> (usize, Vec<crate::segments::SegmentPlan>) {
+        let seg_len = 2 * crate::segments::DEMIX_STEP;
+        let total = seg_len * segments + 500; // ذيل صغير يُقفل آخر مقطع
+        (
+            total,
+            crate::segments::plan_segments_with(total, CHUNK_SIZE, 2),
+        )
+    }
+
+    /// **حارس ٤أ**: المصرف يرى **كل مقطع مرة واحدة بالضبط، بترتيب الخطة،
+    /// ونطاقه `[emit_start, emit_end)` نفسه** — لا نطاق مُختلق ولا ترتيب مقلوب.
+    /// ومُفسِده: إسقاط نداء، أو عكس الترتيب، أو تمرير نطاق مُزاح ⇒ يسقط.
+    #[test]
+    fn the_sink_sees_every_segment_once_in_order_with_exact_ranges() {
+        let (total, plan) = short_plan(3);
+        assert_eq!(plan.len(), 4, "ثلاثة مقاطع كاملة + ذيل");
+        let seen = std::cell::RefCell::new(Vec::new());
+        let vocals = drive_segments(
+            &plan,
+            total,
+            |seg| {
+                let len = seg.emit_end - seg.emit_start;
+                let v = vec![seg.index as f32 + 1.0; len];
+                Ok([v.clone(), v])
+            },
+            |seg, part| {
+                seen.borrow_mut()
+                    .push((seg.index, seg.emit_start, seg.emit_end, part[0].len()));
+                Ok(())
+            },
+        )
+        .expect("drive");
+        let got = seen.into_inner();
+        assert_eq!(got.len(), plan.len(), "نداء واحد لكل مقطع");
+        for (i, (idx, a, b, plen)) in got.iter().enumerate() {
+            let seg = &plan[i];
+            assert_eq!(*idx, seg.index, "الترتيب هو ترتيب الخطة");
+            assert_eq!(*a, seg.emit_start, "بداية النطاق");
+            assert_eq!(*b, seg.emit_end, "نهاية النطاق");
+            assert_eq!(
+                *plen,
+                seg.emit_end - seg.emit_start,
+                "طول العيّنات المُسلَّمة = نطاق الإصدار"
+            );
+        }
+        // والجمع صحيح: كل نطاق يحمل قيمته الخاصة (لا فجوة ولا تراكب).
+        for seg in &plan {
+            let want = seg.index as f32 + 1.0;
+            assert_eq!(vocals[0][seg.emit_start], want);
+            assert_eq!(vocals[0][seg.emit_end - 1], want);
+            assert_eq!(vocals[1][seg.emit_start], want);
+            assert_eq!(vocals[1][seg.emit_end - 1], want);
+        }
+    }
+
+    /// **والجانب السلبي**: خطأ من المصرف **يوقف** الفصل ويُبلَّغ — ولا يُبتلع،
+    /// ولا تكمل المقاطع التالية بعد الفشل.
+    #[test]
+    fn a_sink_error_stops_the_run_and_is_reported() {
+        let (total, plan) = short_plan(2);
+        assert!(plan.len() >= 2);
+        let calls = std::cell::Cell::new(0usize);
+        let err = drive_segments(
+            &plan,
+            total,
+            |seg| {
+                let v = vec![0.0f32; seg.emit_end - seg.emit_start];
+                Ok([v.clone(), v])
+            },
+            |seg, _part| {
+                calls.set(calls.get() + 1);
+                if seg.index == 0 {
+                    Err(SepError::InvalidInput("sink says no".into()))
+                } else {
+                    Ok(())
+                }
+            },
+        )
+        .expect_err("must fail");
+        assert!(matches!(err, SepError::InvalidInput(_)));
+        assert_eq!(calls.get(), 1, "توقّف عند أول فشل ولم يُكمل");
+    }
+
+    /// **وحدّ السلامة**: مُنتِج يعطي عيّنات أقل من نطاقه يُعلَن بخطأ صريح —
+    /// لا `panic` من `copy_from_slice` ولا قصّ صامت.
+    #[test]
+    fn a_short_segment_is_reported_not_panicked() {
+        let (total, plan) = short_plan(2);
+        let err = drive_segments(
+            &plan,
+            total,
+            |seg| {
+                let len = seg.emit_end - seg.emit_start;
+                let take = if seg.index == 1 { len - 1 } else { len };
+                let v = vec![0.0f32; take];
+                Ok([v.clone(), v])
+            },
+            |_, _| Ok(()),
+        )
+        .expect_err("must fail");
+        assert!(matches!(err, SepError::InvalidInput(_)));
     }
 }

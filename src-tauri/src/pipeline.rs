@@ -941,6 +941,9 @@ pub fn process_file(
             use_cuda,
             &sep_progress,
             clip_analysis.as_ref(),
+            // مصرف المقاطع: يُوصَل من الجسر في خطوة لاحقة من المرحلة ٤أ.
+            // و`None` هنا = السلوك القائم حرفياً (لا إصدار تدريجي بعد).
+            None,
         )
         .map_err(|e| {
             let _ = std::fs::remove_dir_all(&work_dir);
@@ -2106,10 +2109,12 @@ mod tests {
 
         // (١) **المحرّك**: فشلٌ حقيقي من `separate` والراية مضبوطة ⇒ `ERROR`.
         let (engine_failure, engine_lines) = capture_events(|| {
-            let e = match separator::separate(&missing, &dir.join("out"), false, &|_| true, None) {
-                Ok(_) => panic!("مدخل غير موجود لا يجوز أن ينجح"),
-                Err(e) => e,
-            };
+            let e =
+                match separator::separate(&missing, &dir.join("out"), false, &|_| true, None, None)
+                {
+                    Ok(_) => panic!("مدخل غير موجود لا يجوز أن ينجح"),
+                    Err(e) => e,
+                };
             sep_err(e)
         });
         assert!(
