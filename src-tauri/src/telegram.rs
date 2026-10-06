@@ -8247,34 +8247,56 @@ mod tests {
     /// pair_slot (= it is parked on the second lock, not on the first).
     #[test]
     fn status_json_takes_pair_slot_before_status() {
-        // Several attempts: a child that has not been scheduled yet looks
-        // exactly like one that took `status` first.
-        let mut pair_slot_taken_first = false;
-        for _ in 0..10 {
-            let held_status = status().lock().unwrap_or_else(|p| p.into_inner());
-            let finished = Arc::new(AtomicBool::new(false));
-            let flag = finished.clone();
-            let child = std::thread::spawn(move || {
-                let _ = status_json();
-                flag.store(true, Ordering::SeqCst);
-            });
-            std::thread::sleep(Duration::from_millis(50));
-            let parked_on_status = !finished.load(Ordering::SeqCst);
-            let holds_pair_slot = pair_slot().try_lock().is_err();
-            drop(held_status); // let the child through, whatever it did
-            let _ = child.join();
-            assert!(
-                finished.load(Ordering::SeqCst),
-                "the child must finish once status is free"
-            );
-            if parked_on_status && holds_pair_slot {
-                pair_slot_taken_first = true;
+        // **حدثٌ بمهلة مسقوفة لا نوم** (كان: `sleep(50ms)` × ١٠ محاولات، ويُفترض أن
+        // الابن جُدول خلالها — وهو رهانٌ على الجدولة يكسره عدّاء محمَّل: خيطٌ لم
+        // يُجدول يبدو كخيطٍ أخذ `status` أولاً، فتُهدر المحاولات العشر كلها).
+        //
+        // والبروتوكول الآن: هذه الخيوط تُمسك `status`، والابن **يُعلن دخوله**
+        // `status_json`، ثم يُنتظر **الأثر المرئي للترتيب**: أن يصير `pair_slot`
+        // مأخوذاً. فإن أخذ الابن `status` أولاً **لن** يُرى `pair_slot` مأخوذاً
+        // أبداً (هو محجوب عندنا) ⇒ تنتهي المهلة ويُسمّى العطل بنصّه.
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let held_status = status().lock().unwrap_or_else(|p| p.into_inner());
+        let entered = Arc::new(AtomicBool::new(false));
+        let finished = Arc::new(AtomicBool::new(false));
+        let (e, f) = (entered.clone(), finished.clone());
+        let child = std::thread::spawn(move || {
+            e.store(true, Ordering::SeqCst); // **دخل الابن** — حدثٌ قبل أي حكم
+            let _ = status_json();
+            f.store(true, Ordering::SeqCst);
+        });
+        let mut entered_seen = false;
+        while std::time::Instant::now() < deadline {
+            if entered.load(Ordering::SeqCst) {
+                entered_seen = true;
                 break;
             }
+            std::thread::sleep(Duration::from_millis(1));
         }
+        // **الأثر**: `pair_slot` مأخوذ و`status` عندنا ⇒ الابن محجوب على الثاني.
+        let mut holds_pair_slot = false;
+        while std::time::Instant::now() < deadline && !finished.load(Ordering::SeqCst) {
+            if pair_slot().try_lock().is_err() {
+                holds_pair_slot = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let parked_on_status = !finished.load(Ordering::SeqCst);
+        drop(held_status); // أطلق الابن مهما فعل
+        let _ = child.join();
         assert!(
-            pair_slot_taken_first,
-            "status_json must take pair_slot BEFORE status (٤.ب.٩)"
+            entered_seen,
+            "الابن لم يدخل status_json خلال المهلة — القياس بلا موضوع"
+        );
+        assert!(
+            holds_pair_slot && parked_on_status,
+            "status_json must take pair_slot BEFORE status (٤.ب.٩): \
+             pair_slot_held={holds_pair_slot} · parked={parked_on_status}"
+        );
+        assert!(
+            finished.load(Ordering::SeqCst),
+            "the child must finish once status is free"
         );
     }
 
