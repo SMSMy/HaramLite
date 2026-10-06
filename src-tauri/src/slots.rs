@@ -1775,23 +1775,74 @@ mod tests {
         .expect("لا ذعر في خيط الاكتساب")
     }
 
-    /// يكتسب على خيط آخر **ويُبقي** الحارس حيّاً `hold` مدّة، ثم يُسقطه.
-    /// (يُستعمل لترتيب حكم «منتقص ⇒ مهلة» ثم «بعد التحرير ⇒ فوراً».)
-    fn acquire_held_on_thread(
-        name: &str,
-        limit: u32,
-        hold: Duration,
-    ) -> std::thread::JoinHandle<bool> {
+    /// **إعلانَا الحاجز** — ليعتمد المستدعي على **حدث** لا على مضيّ زمن.
+    ///
+    /// وهذا أصل عطل **مقيس** كان هنا: نومٌ ٦٠ms ثم `assert!(busy.waited)` —
+    /// وهو **رهان على الجدولة** كسره العدّاء (الخيط لم يكن قد أخذ الفتحة بعد
+    /// ⇒ الاكتساب الثاني مرّ بلا انتظار ⇒ `waited == false`). فصار الانتظار
+    /// **إعلاناً بمهلة مسقوفة**.
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    enum HeldEvent {
+        /// الفتحة **مأخوذة الآن**: الحارس حيّ في خيط الحاجز — دليلٌ لا افتراض.
+        Acquired,
+        /// الحارس أُسقط ⇒ الفتحة حُرّة.
+        Released,
+    }
+
+    /// **سقف انتظار الإعلان** — سقفُ فشلٍ لا شرط نجاح: بلوغه **يُسقط** برسالة
+    /// تسمّي المنتظَر، فلا يمرّ ثقبُ «إعلانٌ لم يصل» صامتاً.
+    const HELD_EVENT_TIMEOUT: Duration = Duration::from_secs(5);
+
+    /// مقبض حاجز: قناة إعلاناته + خيطه.
+    struct HeldSlot {
+        events: std::sync::mpsc::Receiver<HeldEvent>,
+        thread: std::thread::JoinHandle<bool>,
+    }
+
+    impl HeldSlot {
+        /// ينتظر الإعلان التالي **بمهلة مسقوفة**، ويسقط مُسمّياً إن لم يصل.
+        fn wait_for(&self, want: HeldEvent, what: &str) {
+            match self.events.recv_timeout(HELD_EVENT_TIMEOUT) {
+                Ok(got) if got == want => {}
+                Ok(got) => panic!("إعلان غير متوقَّع: انتُظر {want:?} ({what}) فوصل {got:?}"),
+                Err(e) => panic!(
+                    "لم يصل إعلان {want:?} ({what}) خلال {HELD_EVENT_TIMEOUT:?}: {e} — \
+                     سقفُ فشلٍ لا انتظارٌ أطول"
+                ),
+            }
+        }
+
+        /// يُنهي خيط الحاجز ويعيد نتيجته (`true` = حمل الفتحة فعلاً).
+        fn join(self) -> bool {
+            self.thread.join().unwrap_or(false)
+        }
+    }
+
+    /// يكتسب على خيط آخر، **ويُعلن** لحظة الأخذ ولحظة الإطلاق، ويُبقي الحارس
+    /// حيّاً `hold` مدّة. (يُستعمل لترتيب حكم «منتقص ⇒ مهلة» ثم «بعد التحرير ⇒
+    /// فوراً».)
+    ///
+    /// **و`hold` مُحرِّض لا افتراض**: من انتظر `Acquired` يعرف أن الفتحة مأخوذة
+    /// **الآن**، فلم يبقَ في القياس رهانٌ على أن الجدولة أنجزت في ٦٠ms.
+    fn acquire_held_on_thread(name: &str, limit: u32, hold: Duration) -> HeldSlot {
         let n = name.to_string();
-        std::thread::spawn(move || {
+        let (tx, events) = std::sync::mpsc::channel();
+        let thread = std::thread::spawn(move || {
             match acquire_named(&n, limit, Duration::from_secs(10)) {
-                Ok(_guard) => {
+                Ok(guard) => {
+                    // **الإعلان بعد الاكتساب مباشرةً**: قبله لا يحقّ لأحد أن
+                    // يفترض أن الفتحة مأخوذة، وبعده هي مأخوذة والحارس حيّ.
+                    let _ = tx.send(HeldEvent::Acquired);
                     std::thread::sleep(hold);
-                    true // الحارس يُسقط عند خروج الخيط
+                    // تُحرَّر **قبل** إعلان التحرير، فلا يُعلَن تحريرٌ لم يقع.
+                    drop(guard);
+                    let _ = tx.send(HeldEvent::Released);
+                    true // الحارس أُسقط هنا
                 }
                 Err(_) => false,
             }
-        })
+        });
+        HeldSlot { events, thread }
     }
 
     /// **فتحة فورية واحدة** — محاولة بمهلة **صفر** على **خيط نقيّ** جديد.
@@ -3681,9 +3732,15 @@ mod tests {
         // (٢) محجوزة تُحرَّر أثناء الانتظار ⇒ انتظار مُعلَن **بزمنه المقيس**،
         // و**الإعلان قبل الحجب لا بعده**: نُسجّل لحظة الإعلان ولحظة الاكتساب
         // ونقارنهما. الحاجز يُمسَك على خيط آخر مدّةً (800ms) أطول من مهلة
-        // القياس (400ms)، فالتوقيت مضبوط لا رهين مصادفة جدولة.
+        // القياس (400ms).
+        //
+        // **وكان هنا نومٌ ٦٠ms ثم يُفترض أن الخيط أخذ الفتحة** — وهو الرهان
+        // نفسه على الجدولة الذي أسقط هذا الفحص على العدّاء (`assert!(busy.waited)`
+        // و`waited == false`: الخيط لم يكن قد أخذ الفتحة، فالاكتساب الثاني مرّ
+        // بلا انتظار). فصار الانتظار **إعلاناً بمهلة مسقوفة**: بلوغ `Acquired`
+        // دليلٌ أن الفتحة مأخوذة الآن.
         let holder = acquire_held_on_thread(&name, 1, Duration::from_millis(800));
-        std::thread::sleep(Duration::from_millis(60));
+        holder.wait_for(HeldEvent::Acquired, "أخذ الحاجز الفتحة");
         let announced_at = Arc::new(Mutex::new(None::<std::time::Instant>));
         let acquired_at = Arc::new(Mutex::new(None::<std::time::Instant>));
         let (aa, ac) = (announced_at.clone(), acquired_at.clone());
@@ -3720,7 +3777,10 @@ mod tests {
             "ت-ب/الإعلان الصادق: حرّة ⇒ waited=false · محجوزة ⇒ waited=true بعد {:?} (المقيس في المستدعي {measured:?})",
             busy.waited_for
         );
-        assert!(holder.join().unwrap_or(false), "الحاجز كان يحمل الرمز فعلاً");
+        // **والتحرير بإعلان لا بمضيّ ٨٠٠ms**: ننتظر `Released` (وهي بعد إسقاط
+        // الحارس) ثم نُنهي الخيط، فلا يبقى في الفحص انتظارٌ بلا دليل.
+        holder.wait_for(HeldEvent::Released, "إطلاق الحاجز الفتحة");
+        assert!(holder.join(), "الحاجز كان يحمل الرمز فعلاً");
     }
 
     /// عملية ثالثة: تتحقّق أن السقف كامل بعد موت الحاجز.
@@ -4144,8 +4204,10 @@ mod tests {
         // ويُمسَك على خيط آخر **مدّة** (لا نداءً عابراً): وإلا لتحرّر قبل حكم
         // «الرمزان محجوزان» فصار الحكم على زوج حرّ — قياس بلا موضوع.
         let second = acquire_held_on_thread(&name, MAX_LIMIT, Duration::from_millis(600));
-        // ننتظر قليلاً حتى يقع الاكتساب فعلاً قبل الحكم (لا مصادفة جدولة).
-        std::thread::sleep(Duration::from_millis(100));
+        // **انتظار الإعلان لا نوم**: «أُخذ الرمز» حدثٌ يُنتظر بمهلة مسقوفة —
+        // والنوم ١٠٠ms كان الرهان نفسه على الجدولة (وهو ما أسقط شقيقه في
+        // `a_free_slot_is_taken_without_waiting_and_a_taken_one_reports_its_wait`).
+        second.wait_for(HeldEvent::Acquired, "أخذ الرمز الثاني");
 
         // وفحص العكس: الرمزان محجوزان الآن ⇒ حصرية ثانية تنتهي مهلتها.
         // (وطلبها على هذا الخيط مرفوض تراكبياً — فيُقاس على خيط آخر.)
@@ -4157,7 +4219,7 @@ mod tests {
         );
 
         // بعد التحرير: الحصرية تنجح فوراً — لا رمز ضاع ولا رمز زاد.
-        assert!(second.join().unwrap_or(false), "الرمز الثاني أُخذ فعلاً");
+        assert!(second.join(), "الرمز الثاني أُخذ فعلاً");
         drop(held);
         let (ok4, err4, waited4) = acquire_measured_on_thread(&name, 1, Duration::from_secs(5));
         assert!(ok4, "الرمزان حُرّان بعد التحرير: {err4}");
