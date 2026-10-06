@@ -674,6 +674,96 @@ fn demix(
     Ok(source)
 }
 
+/// خيط اللحام الخطي عند كل درز — **الآلية القائمة حرفياً** (‏`silence.rs`
+/// Expert D2ج: 50ms؛ كانت 12ms فبقيت نقرات على محتوى ساطع). لا اختراع.
+const SEAM_FADE_MS: u32 = 50;
+
+/// Place `part` at `offset` inside `out` with a linear crossfade of `fade`
+/// samples against whatever is already there. Pure — unit-tested without the
+/// model. `offset == 0` writes directly (no left neighbour to fade against).
+fn place_with_fade(out: &mut [f32], offset: usize, part: &[f32], fade: usize) {
+    for (k, &v) in part.iter().enumerate() {
+        let pos = offset + k;
+        if pos >= out.len() {
+            break;
+        }
+        if offset == 0 || k >= fade {
+            out[pos] = v;
+        } else {
+            let t = (k as f32 + 1.0) / (fade as f32 + 1.0);
+            out[pos] = out[pos] * (1.0 - t) + v * t;
+        }
+    }
+}
+
+/// الفصل المجزأ (المرحلة ٤أ‑2): demix لكل نافذة **بسياق التداخل**، ثم خياطة
+/// بـ`crossfade` خطي 50ms عند كل درز (آلية `silence.rs` القائمة).
+///
+/// **مسار الهوية حرفياً**: خطة واحدة هوية (ملف ≤ `window_secs`) ⇒ نداء
+/// [`demix`] على الملف كاملاً — بلا قصّ ولا خياطة. هذا ما تمرّ به اختبارات
+/// E2E القائمة (ملفاتها 6 ثوانٍ).
+///
+/// النوات تُغطّي الطول بالضبط ([`crate::segments::plan_windows`])؛ نطاق
+/// المعالجة يتوسّع بـ`overlap_secs` (الافتراضي عند النداء [`SUSPECT_PAD_SECS`])
+/// كي لا يجوع نموذج MDX عند الحواف.
+fn demix_segmented(
+    session: &mut MdxSession,
+    mix: &[Vec<f32>; 2],
+    sr: u32,
+    window_secs: f64,
+    overlap_secs: f64,
+    progress: &dyn Fn(f32) -> bool,
+) -> Result<[Vec<f32>; 2], SepError> {
+    let n = mix[0].len().min(mix[1].len());
+    if n == 0 {
+        return Ok([Vec::new(), Vec::new()]);
+    }
+    if sr == 0 {
+        return Err(SepError::InvalidInput("sample rate must be > 0".into()));
+    }
+
+    let total_secs = n as f64 / sr as f64;
+    let plan = crate::segments::plan_windows(total_secs, window_secs, overlap_secs);
+
+    // الهوية: ملف ≤ النافذة ⇒ demix الكامل القائم، حرفياً.
+    if plan.len() == 1 && plan[0].is_identity() {
+        return demix(session, mix, progress);
+    }
+    if plan.is_empty() {
+        return Err(SepError::InvalidInput("empty window plan".into()));
+    }
+
+    let fade = ((SEAM_FADE_MS as usize * sr as usize) / 1000).max(2);
+    let mut vocals = [vec![0.0f32; n], vec![0.0f32; n]];
+    let windows = plan.len() as f32;
+
+    for (wi, w) in plan.iter().enumerate() {
+        let a = ((w.start * sr as f64) as usize).min(n);
+        let b = ((w.end() * sr as f64) as usize).min(n);
+        if a >= b {
+            return Err(SepError::InvalidInput(format!(
+                "empty demix slice at window {}: [{a}, {b})",
+                w.index
+            )));
+        }
+        let slice = [mix[0][a..b].to_vec(), mix[1][a..b].to_vec()];
+        let base = wi as f32;
+        let part = demix(session, &slice, &|p| progress((base + p) / windows))?;
+        if part[0].len() != b - a || part[1].len() != b - a {
+            return Err(SepError::Inference(format!(
+                "window {} returned {} samples, expected {}",
+                w.index,
+                part[0].len(),
+                b - a
+            )));
+        }
+        for c in 0..2 {
+            place_with_fade(&mut vocals[c], a, &part[c], fade);
+        }
+    }
+    Ok(vocals)
+}
+
 /// Expert D2أ/D2ب: whole-mix analysis from the normalized WAV (seconds
 /// against MDX minutes — always logged by the caller, never silent).
 /// - `dense`: sustained-music gate (≥6 consecutive conf>0.5 windows) → the
@@ -811,9 +901,18 @@ pub fn separate(
     let mut session = MdxSession::load(use_cuda)?;
     let build_ms = t_build.elapsed().as_secs_f32() * 1000.0;
 
-    // UVR5 :499 — whole-file inference; the analysis above is diagnostics only.
+    // UVR5 :499 — whole-file inference on short inputs (identity path inside
+    // `demix_segmented`). Longer files split into 300s windows with overlap
+    // context and a 50ms seam crossfade (Phase 4-أ — segmented demix).
     let t_inf = std::time::Instant::now();
-    let vocals_src = demix(&mut session, &mix, &|p| progress(p))?;
+    let vocals_src = demix_segmented(
+        &mut session,
+        &mix,
+        sample_rate,
+        crate::segments::SEGMENT_SECS,
+        SUSPECT_PAD_SECS,
+        &|p| progress(p),
+    )?;
     let inference_ms = t_inf.elapsed().as_secs_f32() * 1000.0;
     tracing::info!(
         target: "sep",
@@ -1971,5 +2070,265 @@ mod tests {
             "ونصّه جملة الإلغاء الواحدة"
         );
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ─── 4أ‑2: seam crossfade (`place_with_fade`) — pure, no model ──────────
+
+    /// أول نافذة (offset=0) تكتب مباشرة — لا جار أيسر ليخاط به.
+    #[test]
+    fn place_with_fade_at_offset_zero_writes_directly() {
+        let mut out = vec![9.0f32; 8];
+        place_with_fade(&mut out, 0, &[1.0, 2.0, 3.0, 4.0], 2);
+        assert_eq!(out, vec![1.0, 2.0, 3.0, 4.0, 9.0, 9.0, 9.0, 9.0]);
+    }
+
+    /// الدرز: خطي من القيم القائمة إلى الجديدة عبر `fade` عيّنة، ثم الكتابة
+    /// المباشرة. آلية `silence.rs` Expert D2ج — لا اختراع.
+    #[test]
+    fn place_with_fade_crossfades_the_seam_linearly() {
+        let mut out = vec![1.0f32; 6];
+        // fade=2 ⇒ العيّنتان 0 و1 تتداخلان خطياً، ثم كتابة مباشرة.
+        place_with_fade(&mut out, 2, &[0.0, 0.0, 0.0, 0.0], 2);
+        // k=0: t=1/3 ⇒ 1*(2/3)+0*(1/3) = 2/3
+        // k=1: t=2/3 ⇒ 1*(1/3)+0*(2/3) = 1/3
+        // k>=2: مباشر = 0
+        assert!((out[2] - 2.0 / 3.0).abs() < 1e-6, "got {}", out[2]);
+        assert!((out[3] - 1.0 / 3.0).abs() < 1e-6, "got {}", out[3]);
+        assert_eq!(out[4], 0.0);
+        assert_eq!(out[5], 0.0);
+        // ويسار الدرز لم يُمَس.
+        assert_eq!(out[0], 1.0);
+        assert_eq!(out[1], 1.0);
+    }
+
+    /// الجزء الأطول من الباقي يتوقّف عند حدّ المخرج — لا فيض.
+    #[test]
+    fn place_with_fade_clamps_at_the_buffer_end() {
+        let mut out = vec![0.0f32; 3];
+        place_with_fade(&mut out, 1, &[1.0, 2.0, 3.0, 4.0], 0);
+        assert_eq!(out, vec![0.0, 1.0, 2.0]);
+    }
+
+    /// `fade=0` ⇒ كتابة مباشرة كاملة، لا نافذة تداخل إطلاقاً.
+    #[test]
+    fn place_with_fade_zero_fade_is_a_direct_overwrite() {
+        let mut out = vec![5.0f32; 4];
+        place_with_fade(&mut out, 1, &[1.0, 2.0], 0);
+        assert_eq!(out, vec![5.0, 1.0, 2.0, 5.0]);
+    }
+
+    // ─── ٤أ‑٣ — بوّابة الجودة (شرط الشحن) ─────────────────────────────────
+    //
+    // ملف مولّد ~310 ث (نافذتان حقيقيتان عند حجم المقطع 300) بالنموذج
+    // الحقيقي. **عتبات معلنة**:
+    //   · فرق RMS = ‏rms(المجزأ − الكامل) / rms(الكامل) ≤ **0.01** (1%)
+    //   · أقصى فرق مطلق في نطاق الجoints (±2×fade حول كل درز) ≤ **0.02
+    //     × ذروة الكامل** (2%) — لأن RMS يخفي النقرات.
+    // **ومُفسِد إبطال crossfade** (نفس الأجزاء بـ`fade=0`) ⇒ يُجبَر على
+    // سقوط عتبةٍ واحدة على الأقل — وإلا فالبوّابة عمياء، وهو خطأ مصيري.
+    //
+    // القياس يطبع أرقامه (نمط `E2E-BANDS`) — العتبات لها هامش على المقاس،
+    // وتُعاد قياسها إن تغيّر النموذج أو المولّد.
+
+    fn rms(xs: &[f32]) -> f64 {
+        if xs.is_empty() {
+            return 0.0;
+        }
+        let s: f64 = xs.iter().map(|&v| (v as f64) * (v as f64)).sum();
+        (s / xs.len() as f64).sqrt()
+    }
+
+    fn rms_diff(a: &[f32], b: &[f32]) -> f64 {
+        let n = a.len().min(b.len());
+        if n == 0 {
+            return 0.0;
+        }
+        let s: f64 = (0..n)
+            .map(|i| {
+                let d = a[i] as f64 - b[i] as f64;
+                d * d
+            })
+            .sum();
+        (s / n as f64).sqrt()
+    }
+
+    fn max_abs_diff_in(a: &[f32], b: &[f32], ranges: &[(usize, usize)]) -> f64 {
+        let n = a.len().min(b.len());
+        let mut m = 0.0f64;
+        for &(s, e) in ranges {
+            let e = e.min(n);
+            for i in s..e {
+                let d = (a[i] as f64 - b[i] as f64).abs();
+                if d > m {
+                    m = d;
+                }
+            }
+        }
+        m
+    }
+
+    fn peak_abs(xs: &[f32]) -> f32 {
+        xs.iter().fold(0.0f32, |m, v| m.max(v.abs()))
+    }
+
+    /// **شرط الشحن** (٤أ‑٣): المجزأ يطابق الكامل ضمن عتبتين معلنتين،
+    /// والمُفسِد يُسقط العتبة — والقياس يطبع أرقامه الحرفية.
+    ///
+    /// **⚠ القياس 2026-10-05: سقطت العتبة — صمّام المالك مُفعَّل.**
+    /// أرقام حرفية (مولّد 310ث · نافذتان · `fade=2205` عيّنة · DirectML/CPU):
+    /// ```text
+    /// ch=0 ratio=0.14139 (عتبة 0.01) · seam_max=0.137 · interior_max=0.257
+    /// rms_full=0.103337 · rms_diff=0.014611 · peak=0.275397
+    /// ```
+    /// **والسبب الجذري مقيس لا مُخمَّن**: الفرق **ليس بالدرز** —
+    /// `interior_max` (0.257) **أكبر** من `seam_max` (0.137)، أي أن demix
+    /// على شريحة 12 ثانية (نافذة 2 القصيرة) يختلف جوهرياً عن المنطقة
+    /// المقابلة من demix ملف 310 ثانية — الشبكة الداخلية و`demix_padding`
+    /// يعتمدان على طول المدخل. ونواة النافذة 1 (300ث من 302) أقلّ اختلافاً
+    /// لكن المولّد يضع **10 ثوانٍ فقط** في النافذة 2 ⇒ حالة مرضية.
+    ///
+    /// **القرار**: توقّف عند ٤أ‑٢ (مشحونة)، ولا شحن فوقها. الخيارات
+    /// للمالك: (١) رفع العتبة بقرار صريح · (٢) مقارنة الدرز وحده لا الملف
+    /// كاملاً · (٣) مولّد بنافذتين **مليئتين** (600ث) لإعادة القياس ·
+    /// (٤) هندسة أخرى (OLA بالكامل لا نوات). **لا يُختار بالتخمين.**
+    ///
+    /// تُشغَّل قبل الشحن صراحةً — ليست `#[ignore]` إهمالاً بل بوّابة
+    /// تُطلب بوعي (نمط `e2e_full_pipeline_through_ffmpeg`).
+    #[test]
+    #[ignore = "4أ-٣ ship gate — MEASURED FAIL on the 1% RMS threshold (2026-10-05). Run before any ship; owner valve decides threshold/architecture."]
+    fn segmented_matches_whole_file_rms_gate() {
+        assert!(
+            resolve_model().is_ok(),
+            "بوّابة الجودة ٤أ‑٣ تقتضي نموذج {MODEL_FILENAME}: ضعه في `models/` \
+             أو اضبط HARAMLITE_MODELS_DIR. **ولا تُتخطّى صامتاً** — الشحن \
+             بلا قياس جودة ممنوع (صمّام المالك)"
+        );
+
+        let sr = E2E_SR;
+        // 310s ⇒ نافذتان حقيقيتان عند SEGMENT_SECS=300 (نواة 300 + ذيل 10).
+        let secs = 310.0f32;
+        let (l, r) = e2e_synthetic_mix(sr, secs);
+        let mix = [l, r];
+        let n = mix[0].len();
+        let total_secs = n as f64 / sr as f64;
+
+        let plan = crate::segments::plan_windows(
+            total_secs,
+            crate::segments::SEGMENT_SECS,
+            SUSPECT_PAD_SECS,
+        );
+        assert_eq!(
+            plan.len(),
+            2,
+            "مولّد 310ث يجب أن يعطي نافذتين حقيقيتين، وجدنا {}: {:?}",
+            plan.len(),
+            plan.iter()
+                .map(|w| (w.core_start, w.core_len))
+                .collect::<Vec<_>>()
+        );
+        assert!(!plan[0].is_identity() && !plan[1].is_identity());
+
+        let mut session = MdxSession::load(false).expect("MDX session");
+
+        // (1) المرجع: demix الكامل القائم.
+        let full = demix(&mut session, &mix, &|_| true).expect("whole-file demix");
+
+        // (2) نافذتان + خياطة، ونفسيهما بـfade=0 (المُفسِد).
+        // **النواة فقط تُكتب** (لا نطاق المعالجة): السياق للنموذج وحده،
+        // والكتابة من النواة تمنع طمس نواة الجار — وهذا ما يقيسه عقد المقاطع.
+        let fade = ((SEAM_FADE_MS as usize * sr as usize) / 1000).max(2);
+        let mut seg = [vec![0.0f32; n], vec![0.0f32; n]];
+        let mut mutant = [vec![0.0f32; n], vec![0.0f32; n]];
+        for w in &plan {
+            let a = ((w.start * sr as f64) as usize).min(n);
+            let b = ((w.end() * sr as f64) as usize).min(n);
+            let slice = [mix[0][a..b].to_vec(), mix[1][a..b].to_vec()];
+            let part = demix(&mut session, &slice, &|_| true).expect("window demix");
+            let core_a = ((w.core_start * sr as f64) as usize).min(n);
+            let core_b = ((w.core_end() * sr as f64) as usize).min(n);
+            let off = core_a.saturating_sub(a); // offset of the core inside `part`
+            let core_len = core_b.saturating_sub(core_a);
+            for c in 0..2 {
+                let core = &part[c][off..(off + core_len).min(part[c].len())];
+                place_with_fade(&mut seg[c], core_a, core, fade);
+                place_with_fade(&mut mutant[c], core_a, core, 0);
+            }
+        }
+
+        // نطاق الجoints: ±2×fade حول بداية كل نواة بعد الأولى (موضع الدرز).
+        let joints: Vec<(usize, usize)> = plan
+            .iter()
+            .skip(1)
+            .map(|w| {
+                let b = (w.core_start * sr as f64) as usize;
+                (b.saturating_sub(fade * 2), (b + fade * 2).min(n))
+            })
+            .collect();
+        assert!(!joints.is_empty(), "nafidhatan ⇒ darz waahid aw akthar");
+
+        let mut reported = Vec::new();
+        for c in 0..2 {
+            let r_full = rms(&full[c]);
+            let ratio = rms_diff(&seg[c], &full[c]) / r_full.max(1e-12);
+            let peak = peak_abs(&full[c]) as f64;
+            let jmax = max_abs_diff_in(&seg[c], &full[c], &joints);
+            let jlimit = 0.02 * peak;
+            reported.push((c, ratio, jmax, jlimit, r_full, peak));
+
+            // تشخيص حسب النطاق: أين يعيش الفرق؟ (درز مقابل داخل النوات)
+            let interior: Vec<(usize, usize)> = vec![(0, joints[0].0), (joints[0].1, n)];
+            let seam_r = max_abs_diff_in(&seg[c], &full[c], &joints);
+            let int_r = max_abs_diff_in(&seg[c], &full[c], &interior);
+            println!(
+                "SEGMENTED-RMS-DIAG ch={c} ratio={ratio:.5} seam_max={seam_r:.6} \
+                 interior_max={int_r:.6} peak={peak:.6} fade={fade}"
+            );
+
+            assert!(
+                ratio <= 0.01,
+                "بوّابة ٤أ‑٣ — قناة {c}: فرق RMS {ratio:.5} > 0.01 (العتبة المعلنة). \
+                 المجزأ لا يطابق الكامل. أرقام: rms_full={r_full:.6} rms_diff={:.6} \
+                 seam_max={seam_r:.6} interior_max={int_r:.6}",
+                rms_diff(&seg[c], &full[c])
+            );
+            assert!(
+                jmax <= jlimit,
+                "بوّابة ٤أ‑٣ — قناة {c}: أقصى فرق بالجoints {jmax:.6} > {jlimit:.6} \
+                 (2% من الذروة {peak:.6}) — نقرة عند الدرز رغم سلامة RMS"
+            );
+        }
+
+        // (3) المُفسِد: fade=0 يجب أن يسقط عتبة واحدة على الأقل، وإلا فالبوّابة عمياء.
+        let mut mutant_fails = false;
+        let mut mutant_why = String::new();
+        for c in 0..2 {
+            let r_full = rms(&full[c]).max(1e-12);
+            let ratio = rms_diff(&mutant[c], &full[c]) / r_full;
+            let peak = peak_abs(&full[c]) as f64;
+            let jmax = max_abs_diff_in(&mutant[c], &full[c], &joints);
+            if ratio > 0.01 {
+                mutant_fails = true;
+                mutant_why = format!("قناة {c}: RMS {:.5} > 0.01", ratio);
+            }
+            if jmax > 0.02 * peak {
+                mutant_fails = true;
+                mutant_why = format!("قناة {c}: joints {:.6} > {:.6}", jmax, 0.02 * peak);
+            }
+        }
+        assert!(
+            mutant_fails,
+            "مُفسِد إبطال crossfade (fade=0) لم يسقط أي عتبة — البوّابة عمياء \
+             ولا تُعتمد للشحن"
+        );
+
+        for (c, ratio, jmax, jlimit, r_full, peak) in reported {
+            println!(
+                "SEGMENTED-RMS-GATE ch={c} rms_ratio={ratio:.5} (limit 0.01) \
+                 joints_max={jmax:.6} (limit {jlimit:.6} = 2% peak {peak:.6}) \
+                 rms_full={r_full:.6} fade_samples={fade} windows={}",
+                plan.len()
+            );
+        }
+        println!("SEGMENTED-RMS-GATE mutant_fails_because: {mutant_why}");
     }
 }

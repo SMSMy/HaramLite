@@ -23,7 +23,7 @@
     "fetch:resources": "node scripts/fetch-resources.cjs",
     "verify:resources": "node scripts/fetch-resources.cjs --verify-only",
     "versions:check": "node scripts/verify-versions.cjs",
-    "ext:guard": "node scripts/check-extension-sync.cjs && node scripts/check-css-toplevel.cjs && node scripts/check-extension-i18n.cjs && node scripts/check-extension-i18n-jsdom.cjs",
+    "ext:guard": "node scripts/check-extension-sync.cjs && node scripts/check-css-toplevel.cjs && node scripts/check-extension-i18n.cjs && node scripts/check-extension-i18n-jsdom.cjs && node scripts/check-incremental-watch.cjs && node scripts/check-incremental-watch.cjs --selfcheck",
     "ext:mutants": "node scripts/check-extension-mutants.cjs && node scripts/check-extension-i18n-mutants.cjs",
     "ext:i18n": "node scripts/check-extension-i18n.cjs",
     "ext:i18n:live": "node scripts/check-extension-i18n-jsdom.cjs",

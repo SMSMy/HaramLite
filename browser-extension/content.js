@@ -98,6 +98,11 @@
       'fetch.failed': 'تعذر الجلب',
       'fetch.decodeFailed': 'تعذر قراءة الصوت المفلتر',
       'fetch.unsupported': 'صيغة غير مدعومة في المتصفح',
+      // الدفعة ب: الجلب التدريجي والطبقة
+      'fetch.stalled': 'توقّف إنتاج صوت الصفحة عن النمو — أعد المحاولة بعد قليل',
+      'watch.incremental.waiting': 'المعالجة لم تصل إلى هنا بعد',
+      'watch.incremental.priority': 'اجعل الأولوية لهذا المقطع',
+      'watch.incremental.sent': 'سيبدأ التطبيق من المقطع {n} — والباقي يليه',
       // سطر المشاهدة
       'watch.line': '▶ مشاهدة مفلترة — الصوت من المعالجة المحلية',
       'watch.lineAgo': '▶ مشاهدة مفلترة — الصوت من المعالجة المحلية (عولجت في {s} ث)',
@@ -176,6 +181,11 @@
       'fetch.failed': 'Fetch failed',
       'fetch.decodeFailed': 'Could not read the filtered audio',
       'fetch.unsupported': 'Format not supported in this browser',
+      // Batch B: incremental fetch and the priority overlay
+      'fetch.stalled': 'Page-audio production stopped growing — retry shortly',
+      'watch.incremental.waiting': 'Processing has not reached this point yet',
+      'watch.incremental.priority': 'Prioritize from here',
+      'watch.incremental.sent': 'The app will start from segment {n} — the rest follows',
       'watch.line': '▶ Filtered watching — audio from local processing',
       'watch.lineAgo': '▶ Filtered watching — audio from local processing (processed in {s}s)',
       'watch.needMap': '✗ Build the map first — press “Process this video”',
@@ -1161,35 +1171,191 @@ function keptStretchAround(kept, gapStart, gapEnd) {
     } catch { /* gone */ }
   }
 
-  async function fetchPageAudio(onProg) {
-    const parts = [];
-    let offset = 0;
-    let total = 0;
-    for (;;) {
-      const r = await native({ type: 'result_file', offset, len: 262144 });
-      /* **ردّ فشل مسمّى** (`{ok:false, code, error}`) — يُرمى بخطأ يحمل رمزه ليترجمه
-       * `errText`؛ وهذا هو العطل الميداني المقيس (بلاغ المالك 2026-09-23): التطبيق
-       * يردّ `engine_error` («لا يوجد صوت صفحة مكتمل بعد» — `bridge.rs:433-440`) فكان
-       * يُعرض «رد فارغ من التطبيق — أعد المحاولة»، وهو نصّ يصف **غياب** الردّ لا سببه،
-       * ويُخفي الرمز الذي يحمله الردّ فعلاً. و`native()` لا يرمي هنا: `ok` التي يفحصها
-       * هي `ok` **النقل** (`background.js` يمرّر حمولة المضيف كما هي في `resp`)،
-       * فحمولة المضيف الفاشلة تصل مُحلَّلة لا مرميَّة. */
-      if (r && r.ok === false) throw bridgeError(r);
-      const f = r && r.file;
-      // و`fetch.emptyReply` لا يبقى إلّا لغياب `file` فعلاً (لا ردّ)، وسِواه «ملف ناقص».
-      if (!f) throw new Error(t('fetch.emptyReply'));
-      if (typeof f.data !== 'string') throw new Error(t('fetch.partialFile'));
+  /* ── الدفعة ب: الجلب التدريجي — ملف نامٍ يُخدَم وهو يُكتب ──────────────────
+   * **السبب الجذري المقيس**: لا يُخدَم بايت واحد قبل اكتمال المعالجة كاملة.
+   * هنا طرفا العميل:
+   *   (١) حلقة الجلب **لا تتوقف عند `total` المتنامي** ولا ترمي `partialFile`
+   *       على النموّ — `done` هو الحاسم وحده، والصمت الطويل (كاتب متوقف)
+   *       سقفُه **مُعلَن** (`FETCH_LIMITS`) بمفتاح مسمّى (`fetch.stalled`).
+   *   (٢) ملف نامٍ (`done:false` من النداء الأول) + MediaSource ⇒ إلحاق كل
+   *       شريحة عند وصولها بالترتيب (`audio/mpeg`)، و`QuotaExceededError`
+   *       يُعالج بحذف ما شُوّت قبل موضع التشغيل بهامش مُعلَن. وأي فشل ⇒
+   *       العودة للسلوك القديم (انتظار الكامل) — **بلا استثناء يفلت**.
+   * المسار المكتمل (`done:true` من النداء الأول) هو سلوك اليوم حرفياً:
+   * الميزة ساكنة حتى يُشحن مُنتِج المقاطع (المرحلة ٤ — راجع التدقيق). */
+  const PAGE_SLICE_LEN = 262144;       // نفس سقف الجسر (PAGE_SLICE_MAX)
+  const FETCH_LIMITS = { polls: 150, ms: 2000 }; // 150 × 2s ⇒ خمس دقائق صمت
+  const SEGMENT_SECS = 300;            // قرار المالك: مقاطع خمس دقائق
+  const OVERLAY_AHEAD_SECS = 2;        // هامش «لم يصل هنا بعد» قبل الحدّ المخدوم
+  const OVERLAY_KEEP_BEHIND_SECS = 30; // هامش حذف الأمام عند امتلاء مخزن MSE
+  const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+  const onceEvent = (el, ev) => new Promise((resolve) => el.addEventListener(ev, resolve, { once: true }));
+
+  async function sliceAt(offset) {
+    const r = await native({ type: 'result_file', offset, len: PAGE_SLICE_LEN });
+    /* **ردّ فشل مسمّى** (`{ok:false, code, error}`) — يُرمى بخطأ يحمل رمزه ليترجمه
+     * `errText`؛ وهذا هو العطل الميداني المقيس (بلاغ المالك 2026-09-23): التطبيق
+     * يردّ `engine_error` («لا يوجد صوت صفحة مكتمل بعد») فكان يُعرض «رد فارغ
+     * من التطبيق»، وهو نصّ يصف غياب الردّ لا سببه. و`native()` لا يرمي هنا:
+     * `ok` التي يفحصها هي `ok` **النقل**، فحمولة المضيف الفاشلة تصل مُحلَّلة. */
+    if (r && r.ok === false) throw bridgeError(r);
+    const f = r && r.file;
+    // و`fetch.emptyReply` لا يبقى إلّا لغياب `file` فعلاً (لا ردّ)، وسِواه «ملف ناقص».
+    if (!f) throw new Error(t('fetch.emptyReply'));
+    if (typeof f.data !== 'string') throw new Error(t('fetch.partialFile'));
+    return f;
+  }
+
+  /** حلقة التجميع إلى Blob — تقبل أن `total` ينمو بين النداءات: `done` هو
+   * الحاسم وحده، وشبكة الأمان القديمة (`offset >= total` ⇒ كسر) كانت هي
+   * العلّة نفسها: تكسر على ملف نامٍ فيرمي الفحص الأخير `partialFile`. */
+  async function collectToBlob(first, onProg) {
+    const parts = [first.data];
+    let offset = first.offset + first.data.length / 2;
+    let total = first.total || 0;
+    let done = !!first.done;
+    let quiet = 0;
+    while (!done) {
+      const f = await sliceAt(offset);
       total = f.total || 0;
+      done = !!f.done;
+      if (!f.data.length && !done) {
+        // وصل العدّاد إلى المكتوب حالياً والكاتب ما يزال يعمل: انتظار محدود.
+        if (++quiet > FETCH_LIMITS.polls) throw new Error(t('fetch.stalled'));
+        await sleepMs(FETCH_LIMITS.ms);
+        continue;
+      }
+      quiet = 0;
       parts.push(f.data);
       offset = f.offset + f.data.length / 2;
-      if (onProg) onProg(total > 0 ? offset / total : 0);
-      if (f.done) break;
-      if (total > 0 && offset >= total) break; // safety net
+      if (onProg) onProg(total > 0 ? Math.min(offset / total, 1) : 0);
     }
     const flat = parts.join('');
     if (total > 0 && flat.length / 2 !== total) throw new Error(t('fetch.partialFile'));
     return URL.createObjectURL(new Blob([hexToBytes(flat)], { type: 'audio/mpeg' }));
   }
+
+  /** المسار القديم (سلوك اليوم): تجميع كامل إلى Blob — **محمّل للنموّ** الآن. */
+  async function fetchPageAudio(onProg) {
+    return collectToBlob(await sliceAt(0), onProg);
+  }
+
+  /** **إلحاق واحد بحارس الامتلاء**: `QuotaExceededError` ⇒ حذف
+   * `[0, التشغيل − الهامش]` ثم إعادة إلحاق واحدة — ما عدا ذلك يُرمى. */
+  async function appendWithQuotaGuard(sb, bytes, frontSecs) {
+    if (sb.updating) await onceEvent(sb, 'updateend');
+    try {
+      sb.appendBuffer(bytes);
+    } catch (e) {
+      if (!e || e.name !== 'QuotaExceededError') throw e;
+      let end = 0;
+      try { end = sb.buffered.length ? sb.buffered.end(sb.buffered.length - 1) : 0; } catch { /* gone */ }
+      const cutTo = Math.max(0, (frontSecs() || 0) - OVERLAY_KEEP_BEHIND_SECS);
+      if (cutTo > 0 && cutTo < end) {
+        try { sb.remove(0, cutTo); } catch { /* gone */ }
+        if (sb.updating) await onceEvent(sb, 'updateend');
+      }
+      sb.appendBuffer(bytes);
+    }
+    await onceEvent(sb, 'updateend');
+  }
+
+  /** **المضخّة التدريجية**: تفتح `MediaSource('audio/mpeg')` وتلحق الشريحة
+   * الأولى بعد `sourceopen` (فتُطلق `loadedmetadata` عند المستدعي)، ثم تكمل
+   * في الخلفية حتى `done` فتُنهي القناة. وحدّ مُعلَن: مدة الصوت على MSE تبقى
+   * تقديرية حتى النهاية (تُضبط من مدة الفيديو عند الالتحاق) — تفاعل آلة
+   * المزامنة مع ملف نامٍ يُختبَر حياً مع المنتج (المرحلة ٤، غير مشحونة). */
+  async function pumpMediaSource(first, onProg, frontSecs, estimateSecs) {
+    const ms = new MediaSource();
+    const url = URL.createObjectURL(ms);
+    const sourceOpen = onceEvent(ms, 'sourceopen');
+    const pump = (async () => {
+      await sourceOpen;
+      const sb = ms.addSourceBuffer('audio/mpeg');
+      try { ms.duration = Math.max(estimateSecs() || 0, 0.1); } catch { /* gone */ }
+      let offset = first.offset + first.data.length / 2;
+      let total = first.total || 0;
+      let done = !!first.done;
+      await appendWithQuotaGuard(sb, hexToBytes(first.data), frontSecs);
+      if (onProg) onProg(total > 0 ? Math.min(offset / total, 1) : 0);
+      let quiet = 0;
+      while (!done) {
+        const f = await sliceAt(offset);
+        total = f.total || 0;
+        done = !!f.done;
+        if (!f.data.length && !done) {
+          if (++quiet > FETCH_LIMITS.polls) throw new Error(t('fetch.stalled'));
+          await sleepMs(FETCH_LIMITS.ms);
+          continue;
+        }
+        quiet = 0;
+        await appendWithQuotaGuard(sb, hexToBytes(f.data), frontSecs);
+        offset = f.offset + f.data.length / 2;
+        if (onProg) onProg(total > 0 ? Math.min(offset / total, 1) : 0);
+      }
+      if (ms.readyState === 'open') {
+        try { ms.endOfStream(); } catch { /* gone */ }
+      }
+    })();
+    return { url, pump, ms };
+  }
+
+  /** **بوابة الطريق**: الشريحة الأولى تحسم — مكتمل ⇒ مسار اليوم (Blob)؛ نامٍ
+   * ⇒ MediaSource إن توفّر وإلّا تجميعاً كاملاً متحمّلاً للنموّ. */
+  async function openPageAudio(onProg, frontSecs, estimateSecs) {
+    const first = await sliceAt(0);
+    if (first.done) return { url: await collectToBlob(first, onProg), mode: 'full' };
+    const supported = typeof MediaSource !== 'undefined' && typeof MediaSource.isTypeSupported === 'function' &&
+      MediaSource.isTypeSupported('audio/mpeg');
+    if (!supported) return { url: await collectToBlob(first, onProg), mode: 'full' };
+    const p = await pumpMediaSource(first, onProg, frontSecs, estimateSecs);
+    return { url: p.url, mode: 'mse', pump: p.pump };
+  }
+
+  /** **الطبقة (المرحلة ٣)**: يقفز المشاهد إلى ما لم تُعالجه بعد ⇒ طبقة شبه
+   * شفافة بأيقونة التطبيق دوّارة ونصّ الحال وزرّ «اجعل الأولوية» — الضغط
+   * يرسل `prioritize_page_audio` برقم المقطع (خمس دقائق) ويخفي الطبقة.
+   * والقيمة تُحسم من الموضع الحالي نحو الأمام في طابور التطبيق
+   * (`segqueue`: من هنا فصاعداً ثم المتخطّاة لاحقاً). */
+  function showPriorityOverlay(video, segment) {
+    const rect = video.getBoundingClientRect();
+    const ov = document.createElement('div');
+    ov.id = 'haramlite-priority-overlay';
+    ov.style.cssText = 'position:fixed;z-index:2147483646;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(15,15,14,0.85);color:#F5F2ED;font:500 13px sans-serif;text-align:center;padding:16px;border:1px solid #DA7756;border-radius:12px;';
+    ov.style.top = rect.top + 'px';
+    ov.style.left = rect.left + 'px';
+    ov.style.width = rect.width + 'px';
+    ov.style.height = rect.height + 'px';
+    const style = document.createElement('style');
+    style.textContent = '@keyframes hl-priority-spin{to{transform:rotate(360deg)}}';
+    ov.appendChild(style);
+    const icon = document.createElement('img');
+    try { icon.src = chrome.runtime.getURL('icon128.png'); } catch { icon.alt = ''; }
+    icon.alt = 'HaramLite';
+    icon.style.cssText = 'width:44px;height:44px;animation:hl-priority-spin 1.6s linear infinite;';
+    const txt = document.createElement('div');
+    txt.textContent = t('watch.incremental.waiting');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = t('watch.incremental.priority');
+    btn.style.cssText = 'background:#DA7756;color:#141413;border:0;border-radius:8px;padding:8px 14px;font:700 13px sans-serif;cursor:pointer;';
+    ov.append(icon, txt, btn);
+    document.body.appendChild(ov);
+    const remove = () => { try { ov.remove(); } catch { /* gone */ } };
+    btn.addEventListener('click', () => {
+      remove();
+      native({ type: 'prioritize_page_audio', segment })
+        .then(() => toast(fill(t('watch.incremental.sent'), { n: segment }), 2500))
+        .catch((e) => toast('✗ ' + errText(e, t('fetch.failed')), 4000));
+    });
+    return remove;
+  }
+
+  /* سطح قياس حارس الدفعة ب (jsdom): أسماء مساحة محدودة لا واجهة مستخدم. */
+  window.__hlIncremental = {
+    fetchPageAudio, openPageAudio, collectToBlob, showPriorityOverlay,
+    PAGE_SLICE_LEN, SEGMENT_SECS, FETCH_LIMITS, OVERLAY_AHEAD_SECS,
+  };
 
   function watchLine() {
     return LAST && LAST.seconds
@@ -1210,29 +1376,66 @@ function keptStretchAround(kept, gapStart, gapEnd) {
     }
     setWatchBtn('fetching');
     let url = null;
+    let inc = null;          // وضع mse: {pump} — ساكن حتى يُشحن المنتج (المرحلة ٤)
+    const audioRef = { current: null }; // موضع التشغيل لِحارس امتلاء المخزن
+    const onProg = (p) => {
+      if (watchBtn) watchBtn.textContent = fill(t('btn.watch.fetchingPct'), { pct: Math.round(p * 100) });
+    };
     try {
-      url = await fetchPageAudio((p) => {
-        if (watchBtn) watchBtn.textContent = fill(t('btn.watch.fetchingPct'), { pct: Math.round(p * 100) });
-      });
+      const opened = await openPageAudio(onProg,
+        () => (audioRef.current ? audioRef.current.currentTime : 0),
+        () => { try { return video.duration || 0; } catch { return 0; } });
+      url = opened.url;
+      if (opened.mode === 'mse') inc = opened;
     } catch (e) {
       setWatchBtn('ready');
       toast('✗ ' + errText(e, t('fetch.failed')), 4000);
       return;
     }
+    const awaitMeta = (a) => new Promise((resolve, reject) => {
+      const to = setTimeout(() => reject(new Error(t('fetch.decodeFailed'))), 15000);
+      a.addEventListener('loadedmetadata', () => { clearTimeout(to); resolve(); }, { once: true });
+      a.addEventListener('error', () => { clearTimeout(to); reject(new Error(t('fetch.unsupported'))); }, { once: true });
+    });
     const audio = new Audio();
     audio.preload = 'auto';
     audio.src = url;
+    audioRef.current = audio;
     try {
-      await new Promise((resolve, reject) => {
-        const to = setTimeout(() => reject(new Error(t('fetch.decodeFailed'))), 15000);
-        audio.addEventListener('loadedmetadata', () => { clearTimeout(to); resolve(); }, { once: true });
-        audio.addEventListener('error', () => { clearTimeout(to); reject(new Error(t('fetch.unsupported'))); }, { once: true });
-      });
+      await awaitMeta(audio);
     } catch (e) {
-      URL.revokeObjectURL(url);
-      setWatchBtn('ready');
-      toast('✗ ' + errText(e), 4000);
-      return;
+      // ‏MSE فشل قبل الجاهزية ⇒ **العودة للقديم مرة واحدة**: انتظار الكامل
+      // (السلوك الحالي) — بلا استثناء يفلت؛ وفشل القديم نفسه ⇒ خروج كما كان.
+      if (inc) {
+        try { URL.revokeObjectURL(url); } catch { /* gone */ }
+        try {
+          url = await fetchPageAudio(onProg);
+        } catch (e2) {
+          setWatchBtn('ready');
+          toast('✗ ' + errText(e2, t('fetch.failed')), 4000);
+          return;
+        }
+        inc = null;
+        audio.src = url;
+        try {
+          await awaitMeta(audio);
+        } catch (e3) {
+          try { URL.revokeObjectURL(url); } catch { /* gone */ }
+          setWatchBtn('ready');
+          toast('✗ ' + errText(e3), 4000);
+          return;
+        }
+      } else {
+        try { URL.revokeObjectURL(url); } catch { /* gone */ }
+        setWatchBtn('ready');
+        toast('✗ ' + errText(e), 4000);
+        return;
+      }
+    }
+    if (inc && inc.pump && typeof inc.pump.catch === 'function') {
+      // فشل المضخّة بعد الالتحاق لا يُترك استثناءً بلا التقاط (لا unhandled):
+      // السطح الحيّ يُبلغ، والمشاهدة تستمر بما أُلحق — تفصيله الحيّ مع المنتج.
+      inc.pump.catch((e) => { try { console.warn('[HaramLite Bridge] incremental pump failed:', errText(e, 'pump failed')); } catch { /* gone */ } });
     }
     // Duration gate: song outputs mirror silence cuts (mapped via kept);
     // without kept-ranges the timelines must coincide.
@@ -1538,6 +1741,28 @@ function keptStretchAround(kept, gapStart, gapEnd) {
       try { video.pause(); } catch { /* gone */ }
       stopWatch();
     });
+    // المرحلة ٣ (الصفحة): قفزة إلى ما لم يُخدَم بعد ⇒ طبقة الأولوية. الحدّ
+    // المخدوم = نهاية ما أُلحق فعلاً (MSE buffered) — والوضع الكامل (اليوم)
+    // بلا طبقة أصلاً لأن الملف كامل من النداء الأول.
+    let overlayRemove = null;
+    if (inc) {
+      on(video, 'seeking', () => {
+        try {
+          const want = mapFullToCut(video.currentTime || 0, kept);
+          const b = audio.buffered;
+          const frontier = b && b.length ? b.end(b.length - 1) : 0;
+          if (want > frontier + OVERLAY_AHEAD_SECS) {
+            if (overlayRemove) overlayRemove();
+            overlayRemove = showPriorityOverlay(video, Math.floor(want / SEGMENT_SECS) + 1);
+            w.overlayRemove = overlayRemove;
+          } else if (overlayRemove) {
+            overlayRemove();
+            overlayRemove = null;
+            w.overlayRemove = null;
+          }
+        } catch { /* gone */ }
+      });
+    }
     on(video, 'ended', () => { stopWatch(); });
     // Declared mute + 1x clamp on both sides (+ player API guard).
     video.muted = true;
@@ -1708,6 +1933,7 @@ function keptStretchAround(kept, gapStart, gapEnd) {
     w.paceTimer = 0;
     w.pace = null;
     w.selfRate = null;
+    if (w.overlayRemove) { try { w.overlayRemove(); } catch { /* gone */ } w.overlayRemove = null; }
     for (const [el, ev, fn] of w.handlers) {
       try { el.removeEventListener(ev, fn); } catch { /* gone */ }
     }

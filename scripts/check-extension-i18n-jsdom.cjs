@@ -1113,9 +1113,10 @@ async function main() {
     /* ⑭ زرّ الوضع لم يُحقن ⇒ لا سبيل لاختيار الوضع من الصفحة. */
     ['⑭ زرّ الوضع لم يُحقن (#haramlite-yt-mode مفقود)',
       { content: sub(CONTENT.js, /    controls\.prepend\(mb\);\n/, '') }, 'fall'],
-    /* ⑮ ردّ `result_file` المسمّى عاد يُعرض «رد فارغ» (عطل المالك الحرفي). */
+    /* ⑮ ردّ `result_file` المسمّى عاد يُعرض «رد فارغ» (عطل المالك الحرفي).
+     * (الدفعة ب: السطر انتقل إلى `sliceAt` بمسافة 4 — المُفسِد نفسه بنقشه الجديد.) */
     ['⑮ الفشل المسمّى من `result_file` يُعرض «رد فارغ» بدل رمزه (عطل المالك)',
-      { content: sub(CONTENT.js, /      if \(r && r\.ok === false\) throw bridgeError\(r\);\n/, '') }, 'fall'],
+      { content: sub(CONTENT.js, /    if \(r && r\.ok === false\) throw bridgeError\(r\);\n/, '') }, 'fall'],
     /* ⑯ التفضيل المخزَّن للغة لم يُقرأ ⇒ المبدّل لا يغلب لغة المتصفّح. */
     ['⑯ التفضيل المخزَّن للغة مُهمَل ⇒ `hl.lang` لا يغلب لغة المتصفّح',
       { popup: { ...SHIPPED, js: sub(SHIPPED.js, /const saved = storedLang\(got && got\[LANG_KEY\]\);/, 'const saved = null;') } }, 'fall'],

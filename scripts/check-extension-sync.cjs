@@ -1580,8 +1580,15 @@ const SCHED_NAMES = ['setInterval', 'setTimeout', 'requestAnimationFrame', 'setI
  *   · `setTimeout` 8 ⇒ 9: مؤقّت واحد في `toggleModeMenu` لإرجاع المستمع بعد إدراج
  *     القائمة — حرفياً نفس نمط `toggleWatchMenu` القائم (‏`setTimeout(…, 0)`).
  * وكل زيادة جديدة بعد اليوم تُسقط هذه الفحوص حتى تُضاف وعياً هنا. */
+// العدّادات على قياس الشجرة الحالية (الدفعة ب): setTimeout +1 (دالة التوقيف
+// sleepMs في الجلب التدريجي) · on( +1 (خطّاف طبقة الأولوية على seeking —
+// **مسجَّل بعد** معالج المزامنة لأن مستخرج الكتل يأخذ أول معالج seeking
+// بالحرفيّة نفسها) · addEventListener +2 (مُعين الانتظار onceEvent + زرّ الطبقة).
+// الجلب التدريجي) · on( +1 (خطّاف طبقة الأولوية على seeking — **مسجَّل بعد**
+// معالج المزامنة لأن  يأخذ أول معالج seeking بالحرفيّة نفسها)
+// · addEventListener +2 ( + زرّ الطبقة).
 const COUNT_WANT = {
-  setInterval: 5, setTimeout: 9, on: 10, addEventListener: 16,
+  setInterval: 5, setTimeout: 10, on: 11, addEventListener: 18,
   requestAnimationFrame: 0, setImmediate: 0, queueMicrotask: 0,
   propHandlers: 0, timerProps: 6,
 };
@@ -1848,7 +1855,7 @@ const CONST_FALSE_RE = /\bif\s*\(\s*(?:false|0|null|undefined|''|""|!\s*(?:true|
 const constFalseHits = (text) => (stripComments(text).match(CONST_FALSE_RE) || []);
 ok(`لا شرط ثابت كاذب في الملف المشحون: if (false) · if (0) · if (null) · if (undefined) · if (!true) · if ('') (وجد ${constFalseHits(src).length})`,
   constFalseHits(src).length === 0, constFalseHits(src).join(' · '));
-const W_STATE_PROPS = ['audio', 'drift', 'gap', 'gapTimer', 'handlers', 'held', 'loadLogged', 'pace', 'paceTimer', 'pendingLead', 'prevMuted', 'prevRate', 'selfRate', 'selfSeek', 'stalled', 'tracePulse', 'url', 'video'];
+const W_STATE_PROPS = ['audio', 'drift', 'gap', 'gapTimer', 'handlers', 'held', 'loadLogged', 'overlayRemove', 'pace', 'paceTimer', 'pendingLead', 'prevMuted', 'prevRate', 'selfRate', 'selfSeek', 'stalled', 'tracePulse', 'url', 'video'];
 const wPropsOf = (text) => {
   const out = new Set();
   const re = /\bw\.([A-Za-z_$][\w$]*)/g;
