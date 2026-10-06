@@ -56,36 +56,59 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+# ── انقسام حكم الرست عن حكم الواجهة/الحرّاس (2026-10-06 · fix/ci-split) ──────
+#
+# **العطل المقيس** (run `37455359233` على `ef824f7`): البوّابة الحمراء `Rust baseline gate`
+# كانت **الخطوة ١١ من ٦٥**، وسقوطها **تجاهل الخطوات ١٢–٣٢ (٢١ بوّابة)**: tsc · Frontend
+# build · vitest · **Layout guard** · settings parity · extension guards · version ·
+# matrix · site … ⇒ **عطلٌ واحد في الرست يُعمي كل بوّابات الواجهة**.
+#
+# **العلاج — مهمّتان مستقلّتان** بلا `needs` بينهما:
+#   · `rust-gate` — كل ما يخصّ الرست (تجميع · اختبارات · clippy · fmt · cargo-deny).
+#   · `ui-gate` — كل بوّابات الواجهة والحرّاس (tsc · build · vitest · layout · …).
+# فتُشغَّل بوّابات الواجهة **دائماً ولو سقط الرست**.
+#
+# **و`gate` مُجمِّع رفيع** يحمل الاسم القديم (`gate` = فحص الحالة المطلوب في حماية `main`
+# — انظر `docs/CONTRIBUTING.md` و`docs/AUDIT.md`) كي **تبقى دلالة الفشل كما هي**: يفشل
+# إن سقط أيٌّ منهما، ويمرّ إن نجح كلاهما. وهو **لا يكرّر أي فحص**.
+#
+# **وأسماء المهمّات**: القديم `gate` (خطوة واحدة جامعة) ⇒ الجديد `rust-gate` + `ui-gate`
+# + مُجمِّع `gate`. و`e2e-release-gate` **بلا تغيير**.
+#
+# **و`continue-on-error` ممنوع** (يخفي فشلاً)، و**لا خطوة ولا حارس حُذف** — الجميع باقٍ
+# بأسمائه ونظمه كما هو، ومُوزَّع على المهمّتين فقط.
 jobs:
-  gate:
+  # ── حكم الرست: تجميع واختبارات وclippy وfmt وcargo-deny ──
+  # لا `pnpm install`: سكربتات `rust:gates` و`rust:mutants` تطلب Node builtins وحدها
+  # (‏`fs` · `path` · `child_process` · `./rust-fail-detail.cjs`) ⇒ تُنفَّذ بـ`pnpm run`
+  # بلا `node_modules`. والمداد الثقيل (النموذج 63.7MB + ffmpeg/ffprobe ~434MB) **هنا
+  # وحده** — `ui-gate` لا يحتاجه ولا يكرّره.
+  rust-gate:
     runs-on: windows-latest
     # مهلة مُعلَنة بدل الافتراضية — والوثائق تقول حرفاً: `Default: 360` دقيقة، فعدّاء
     # يتعلّق يستهلك **ستّ ساعات** بلا أن يُسقط شيئاً.
     # **المقيس** (`gh api .../runs/<id>/jobs` على **المئة تشغيل الأحدث**: ٩٠ منها بمهمّة
-    # `gate` ناجحة): زمن هذه المهمّة ٣٫٥٢–١٣٫٣٧ دقيقة، الوسيط ٥٫٤٣ ⇒ ٤٥ دقيقة هامشها ٣٫٤×
-    # على أسوأ ما قيس.
-    # **وحدّ القياس**: كل تلك التشغيلات كانت على نسخة هذا السير بـ**٢٩** خطوة مُسمّاة،
-    # وهذه الشجرة فيها **٣٣**، منها **٧ لم تُشغَّل في CI ولا مرّة** (‏rust:gates ·
-    # separation:entry · release:assets · redist:guard · release:parity ·
-    # site:latest-trust · guards:selfcheck:all) ⇒ الهامش **مُعلَن لا مُدَّعى**.
+    # `gate` ناجحة): زمن المهمّة الجامعة القديمة ٣٫٥٢–١٣٫٣٧ دقيقة، الوسيط ٥٫٤٣ ⇒ ٤٥
+    # دقيقة هامشها ٣٫٤× على أسوأ ما قيس. و`rust-gate` وحدها أثقل نصفٍ (‏18 د ٢٤ ث
+    # لخطوة `Rust baseline gate` على العدّاء في run `37455359233`) ⇒ تبقى ٤٥.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       # Node 20 كان دون أرضية أدوات الاختبار: `jsdom@30` يعلن `engines: ^22.22.2 || ^24.15.0 || >=26`
       # و`undici@8` يطلب `>=22.19.0`، فكانت خطوة `vitest` تفشل بـ
       # `webidl.util.markAsUncloneable is not a function` — وقد ظهر ذلك في أول دفع بعد
       # توصيل البوّابة (2026-09-17) لا قبلها. (وعلى جهاز المالك Node 25 فالاختبارات تمرّ.)
+      # (وهنا لِـ`pnpm run` وحده — لا vitest.)
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -96,9 +119,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-
-      - name: Install frontend deps
-        run: pnpm install
 
       # tauri-build validates bundle.resources paths (tauri.conf.json:54-58) BEFORE
       # compiling anything, and bin/ + models/ + vc_redist.x64.exe are gitignored —
@@ -149,7 +169,7 @@ jobs:
 
       # **رقمان كانا يُقالان بالعين صارا باباً يُغلق البناء** (تدقيق م٥ · 2026-09-21):
       # `cargo test` كان بلا أي قيد على العدد — فحذف اختبارات يمرّ أخضر و«٣٤٩ ناجحاً» يبقى
-      # صحيحاً حتى اللحظة التي يكفّ فيها؛ و`clippy` بلا `-D warnings` — فتحذير جديد يمرّ أخضر.
+      # صحيحاً حتى اللحظة يكفّ فيها؛ و`clippy` بلا `-D warnings` — فتحذير جديد يمرّ أخضر.
       # وهذه البوّابة تقرأ الرقمين من تشغيل حقيقي وتقابلهما بخطّ أساس **مكتوب ومُراجَع**
       # (`qa/rust-baselines.json`): مواضع clippy الفريدة · صفر فاشل · والناجح لا يقلّ عن الأساس
       # · **وجرد أسماء الاختبارات** (اختبار غاب ⇒ يسقط · واختبار جديد ⇒ يُقبل بتصريح).
@@ -209,6 +229,33 @@ jobs:
           & $deny --version
           & $deny --all-features --manifest-path src-tauri/Cargo.toml --config deny.toml check
 
+  # ── حكم الواجهة والحرّاس: tsc · بناء · vitest · layout · وكل الحارسات ──
+  # **تُشغَّل دائماً ولو سقط `rust-gate`** — لا `needs` بين المهمّتين.
+  # **ولا مداد ثقيل هنا**: لا نموذج ولا ffmpeg — `ui-gate` لا يحتاجهما.
+  # (وليس هذا غلطاً في النطاق: كل ما تحته Node + Chrome المثبَّت على العدّاء.)
+  ui-gate:
+    runs-on: windows-latest
+    # مهلة مُعلَنة — والحدّ الأعلى من القديمة الجامعة (٤٥) محفوظ لأن `guards:selfcheck:all`
+    # و`ext:mutants` و`site:check` مجموعتها أثقل من صفر.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      # Node 24 — انظر التعليق في `rust-gate` (‏jsdom/undici engines).
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install frontend deps
+        run: pnpm install
+
       # إسناد الإصدار (سبرنت 0.2.7 · ب-٢): يولّد `build-info.json` و SBOM بصيغة CycloneDX
       # من الرسم المقيس (‏597 حزمة Cargo + 207 npm). ويفشل — **ولا يكتب شيئاً** — إن اختلف
       # الإصدار بين الملفات الأربعة، لأن ملف إسناد يحمل إصداراً غير الذي يُبنى كذب.
@@ -222,7 +269,7 @@ jobs:
       # `tsc` يتحقّق من الأنواع ولا يبني الحزمة: تقسيم src/main.ts (البند ١٢) كشف
       # أن CI لم يُشغّل `vite build` ولا مرّة — فانكسار البناء (استيراد دائري،
       # وحدة مفقودة، خطأ Rollup) كان يمرّ أخضر. البناء هنا ~١ ثانية + tailwind
-      # ~٠.٦ ثانية، ولا يحتوي fetch_redist.js كي لا ينزّل شيئاً في البوابة.
+      # ~٠٫٦ ثانية، ولا يحتوي fetch_redist.js كي لا ينزّل شيئاً في البوابة.
       - name: Frontend build (tailwind + vite)
         run: pnpm build:web
 
@@ -290,6 +337,8 @@ jobs:
       # الحارس يقرأ المصادر **بعد نزع التعليقات** ويقابل كل ملف بقائمة مسموحة صريحة
       # (ملف + عدد متوقَّع)، فيمنع الثامن بلا إعلان. ويفشل بصوت عالٍ (exit 2) على
       # «صفر موضع» أو مجلد مصادر مفقود — «صفر مدخل ليس نجاحاً». بلا اعتماديات.
+      # (Node script يقرأ مصادر الرست — **لا يترجم ولا يختبرها** ⇒ في `ui-gate` كي يبقى
+      # حكماً مستقلاً عن سقوط `rust:gates`.)
       - name: Separation entry guard (one entry, one wrapper)
         run: pnpm separation:entry
 
@@ -346,6 +395,36 @@ jobs:
       # تعليق «البوّابة الخامسة عشرة» أعلاه صادقاً كما هو.
       - name: Bridge error-code gate (every Rust code carries both translations)
         run: pnpm bridge:codes
+
+  # ── مُجمِّع `gate` — الاسم القديم لفحص الحالة المطلوب في حماية `main` ──
+  #
+  # **لا يكرّر أي فحص** — سطر تحقّق وحيد يفشل إن سقط أيٌّ من المهمّتين.
+  # **ودلالة الفشل كما هي**: فحص الحالة `gate` يحمرّ إن سقط الرست أو الواجهة.
+  # (‏`if: always()` كي يعمل حتى لو سُحبت إحداهما — والنتيجة `cancelled` ≠ `success`
+  # فتسقط المُجمِّع أيضاً، وهو الصحيح: لا خضرة على تشغيلٍ أُلغي.)
+  #
+  # **واسم الخطوة بلا نقطتين عاريتين** — حارس `check-release-parity.cjs` يقرأ `ci.yml`
+  # فحصاً نصّياً ويسقط على `": "` في اسم غير مقتبس (درس مقيس من هذه الشجرة نفسها).
+  gate:
+    name: gate
+    needs: [rust-gate, ui-gate]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate rust and ui verdicts (fail if either failed)
+        run: |
+          echo "rust-gate => ${{ needs.rust-gate.result }}"
+          echo "ui-gate   => ${{ needs.ui-gate.result }}"
+          if [ "${{ needs.rust-gate.result }}" != "success" ]; then
+            echo "::error::rust-gate did not succeed (${{ needs.rust-gate.result }})"
+            exit 1
+          fi
+          if [ "${{ needs.ui-gate.result }}" != "success" ]; then
+            echo "::error::ui-gate did not succeed (${{ needs.ui-gate.result }})"
+            exit 1
+          fi
+          echo "both gates green"
 
   # ── Release gate (ARCHIVE/ROADMAP.md §٧.ب بند ٥ · §6) — workflow_dispatch ONLY ──
   #

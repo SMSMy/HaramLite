@@ -3072,3 +3072,17 @@ HTML المنشور، وتشغيل سكربت الصفحة المشحون في `
 - **الأرقام صريحة** في البوّابة: `print_gate_line` يطبع `rms_full` و`rms_diff` (مطلقَين) و`ratio` — لا التباس. والعتبة **`< 1e-5`** · و`1e-3` = خطأ منطقي لا عددي.
 - **المجموعة**: **477/0/8** · clippy **12** موضعاً (تحسّن عن 14 — بلا تحذير جديد) · `rust:gates --update` بسبب إعادة تصميم المخطِّط (الاختبارات القديمة لـ`plan_windows`/`place_with_fade` حُذفت مع الوحدة، واستُبدلت باختبارات الشبكة العالمية).
 - **حدود أمانة**: لا قياس على ملف ساعتين (بيد المالك حصراً) · لا دمج · لا دفع · بند 8 (كلام وموسيقى حقيقيان) بانتظار ملفات المالك · القياس الآلي على `e2e_synthetic_mix` (بند 1 الحقيقي مستقل).
+
+## فصل حكم الرست عن حكم الواجهة في CI — فرع `fix/ci-split` (2026-10-06)
+
+- **العطل المقيس** (run `37455359233` على `ef824f7`): البوّابة الحمراء `Rust baseline gate` كانت **الخطوة ١١ من ٦٥**، وسقوطها **تجاهل الخطوات ١٢–٣٢ (٢١ بوّابة)**: `tsc` · `Frontend build` · `vitest` · **`Layout guard`** · `settings parity` · extension guards · `version` · `matrix` · `site` … ⇒ **عطلٌ واحد في الرست يُعمي كل بوّابات الواجهة**.
+- **العلاج — مهمّتان مستقلّتان** بلا `needs` بينهما (‏`.github/workflows/ci.yml`):
+  - **`rust-gate`** (١٢ خطوة): checkout · Node · pnpm · Rust+clippy · cache · stub resources · fetch model+ffmpeg/ffprobe · verify · **`rust:gates`** · `rust:mutants` · `cargo fmt --check` · cargo-deny. **ولا `pnpm install`**: سكربتات `rust:gates`/`rust:mutants` تطلب Node builtins وحدها. والمداد الثقيل (النموذج 63.7MB + الأدوات ~434MB) **هنا وحده**.
+  - **`ui-gate`** (٢٢ خطوة): checkout · pnpm · Node · `pnpm install` · `build:info` · `tsc` · `build:web` · `test:web` · **`check-layout.cjs`** · `settings:parity` · `ext:guard` · `ext:mutants` · `versions:check` · `matrix-check` · `separation:entry` · `site:check` · `release:assets` · `redist:guard` · `release:parity` · `site:latest-trust` · `guards:selfcheck:all` · `bridge:codes`. **ولا مداد ثقيل** — تُشغَّل **دائماً ولو سقط الرست**.
+  - **`gate`** (مُجمِّع رفيع، `needs: [rust-gate, ui-gate]` + `if: always()`): سطر تحقّق وحيد يفشل إن سقط أيٌّ منهما — **يحفظ اسم فحص الحالة المطلوب** في حماية `main` (‏`gate`) و**دلالة الفشل كما هي**. **ولا يكرّر أي فحص**.
+  - **`e2e-release-gate`**: بلا تغيير.
+- **أسماء المهمّات**: القديم `gate` (خطوة واحدة جامعة ٣٠ فحصاً) ⇒ الجديد `rust-gate` + `ui-gate` + مُجمِّع `gate`.
+- **بقي دلالة الفشل**: `continue-on-error` **ممنوع** · **لا خطوة ولا حارس حُذف** · لا عتبة ولا رقم أساس مُخفَّض · لا منطق حارس مُمسوس · **ولا نقطتان عاريتان** في أسماء الخطوات (‏`check-release-parity.cjs` يقرأ `ci.yml` فحصاً نصّياً — تحقّق: **0** مخالفة).
+- **الدليل البنيوي** (‏PyYAML 6.0.3): المهمّات `['rust-gate', 'ui-gate', 'gate', 'e2e-release-gate']` · `rust-gate` بلا `needs` · `ui-gate` بلا `needs` · `gate` بـ`needs=[rust-gate, ui-gate]` و`if=always()`. **وإذا سقط `Rust baseline gate` اليوم**: تُشغَّل **كل خطوات `ui-gate` الـ٢٢** (كان ٢١ فحصاً/خطوة تُتجاهَل) · ويسقط من `rust-gate` وحدها ما بقي بعد الخطوة الفاشلة (‏`rust:mutants` · `fmt` · cargo-deny = ٣ خطوات). **والمُجمِّع `gate` يحمرّ** ⇒ حماية `main` ترى الفشل.
+- **البوّابات الإلزامية** (من `package.json`): `pnpm release:parity` ✓ · `pnpm matrix:check` ✓ (20/20 — والآثار الغائبة وضع CI المتسامح) · `pnpm doc:commands` ✓ (158 رمزاً) · `pnpm guards:selfcheck:all` ✓ (18/18 ضوابط · 85/85 مُفسَدات · 18/18 صفر مدخل). *(الأولى سقطت على worktree بلا `node_modules` — ليست عطلاً في التغيير؛ بعد `pnpm install` مرت.)*
+- **التسليم**: التزام واحد على `fix/ci-split` · **لا دفع · لا دمج**.
