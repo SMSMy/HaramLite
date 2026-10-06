@@ -183,10 +183,19 @@ fn free_bytes(_dir: &Path) -> Option<u64> {
     None
 }
 
+/// **ميزانية استقرار الحجم** — وهي الميزانية نفسها التي كان يمثّلها
+/// `for _ in 0..20` بنوم 1500ms (٣٠ ث)، لكن **مكتوبةً على الساعة**: دورةٌ
+/// تأخّرت على آلة محمَّلة **لا تُنقص** عدد المحاولات، والدورات تُستأنف حتى
+/// تنقضي الميزانية — فالسقف زمنه معلَن لا عددُ لفّات.
+const STABLE_BUDGET: Duration = Duration::from_secs(30);
+/// دورة الاستطلاع بين قراءتين (نفس ما كان: 1500ms).
+const STABLE_POLL: Duration = Duration::from_millis(1500);
+
 /// Wait until the file size stops changing (copy/download in progress).
 fn wait_stable(p: &Path, stop: &AtomicBool, cancel_file: &AtomicBool) -> Result<u64, String> {
     let mut last = 0u64;
-    for _ in 0..20 {
+    let deadline = std::time::Instant::now() + STABLE_BUDGET;
+    while std::time::Instant::now() < deadline {
         if stop.load(Ordering::SeqCst) {
             return Err("توقف المراقبة".into());
         }
@@ -200,7 +209,7 @@ fn wait_stable(p: &Path, stop: &AtomicBool, cancel_file: &AtomicBool) -> Result<
             return Ok(len);
         }
         last = len;
-        std::thread::sleep(Duration::from_millis(1500));
+        std::thread::sleep(STABLE_POLL);
     }
     Err("لم يستقر حجم الملف — قد يكون ما يزال قيد التنزيل".into())
 }
