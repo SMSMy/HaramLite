@@ -10,6 +10,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import indexHtml from '../../index.html?raw';
+import { i18n } from '../i18n';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const stylesCss = readFileSync(join(REPO_ROOT, 'src', 'styles.css'), 'utf8');
@@ -61,5 +62,48 @@ describe('٢-ب · العمود الجانبي 18rem', () => {
     expect(nav, 'nav#settings-tabs موجود').not.toBeNull();
     expect(nav![0], 'w-72 على التنقّل').toContain('w-72');
     expect(nav![0], 'لا w-64 قديم').not.toContain('w-64');
+  });
+});
+
+describe('٢-ج · كتلة تيليجرام مفكّكة إلى بنود برموز', () => {
+  it('settings_group_mode_hint ليس فقرة متصلة — فيه بنود مفصولة', () => {
+    const ar = i18n.ar.settings_group_mode_hint;
+    const en = i18n.en.settings_group_mode_hint;
+    const isSplit = (s: string): boolean =>
+      s.includes('<li') || s.includes('<br') || (s.match(/\n/g) ?? []).length >= 2;
+    expect(isSplit(ar), 'التلميح ar متصل بلا بنود').toBe(true);
+    expect(isSplit(en), 'التلميح en متصل بلا بنود').toBe(true);
+  });
+
+  it('لكل بند رمز في أوّله (لا نصّ عارٍ)', () => {
+    const hasLeadingSymbol = (s: string): boolean => {
+      const items = s.split(/<li[^>]*>/).slice(1).map((x) => x.replace(/<\/li>[\s\S]*/, ''));
+      if (items.length < 2) return false;
+      const withSymbol = items.filter((it) => {
+        const t = it.replace(/<[^>]+>/g, '').trim();
+        return /^[\p{S}\p{P}✓✅❌♾️⚠️▶•→🎯📢🔒💬]/u.test(t);
+      });
+      return withSymbol.length >= items.length;
+    };
+    expect(hasLeadingSymbol(i18n.ar.settings_group_mode_hint), 'بنود ar بلا رموز').toBe(true);
+    expect(hasLeadingSymbol(i18n.en.settings_group_mode_hint), 'بنود en بلا رموز').toBe(true);
+  });
+
+  it('المحتوى المطلوب باقٍ — مربوط باختبارات tgGroupMode', () => {
+    const ar = i18n.ar.settings_group_mode_hint;
+    const en = i18n.en.settings_group_mode_hint;
+    for (const needle of [
+      'منشن', 'privacy mode', 'اسمح دائماً', 'بطاقة موافقة', 'قائمة السماح',
+      'لا يعالج البوت إلا ما وُجِّه إليه',
+    ] as const) {
+      expect(ar, needle).toContain(needle);
+    }
+    expect(en).toContain('mention');
+    expect(en).toContain('privacy mode');
+    expect(en).toContain('Always allow');
+    expect(en).toContain('approval card');
+    expect(en).toContain('allow list');
+    expect(en.toLowerCase()).toMatch(/cannot start a private chat/);
+    expect(ar).toMatch(/حدّ.*لا يبدأ محادثة خاصة/);
   });
 });

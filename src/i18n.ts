@@ -134,7 +134,7 @@ const i18n = {
     settings_group_mode: 'وضوح رسائل المجموعة:',
     settings_group_mode_mentions: 'بالمنشن فقط',
     settings_group_mode_all: 'كل الرسائل',
-    settings_group_mode_hint: '«بالمنشن فقط»: لا يعالج البوت إلا ما وُجِّه إليه — اذكره مع الرابط. والرسالة التي لا تذكره لا تصله أصلاً في مجموعة privacy mode فيها مفعّل. «كل الرسائل»: يرى ما لم يُقصد به أيضاً، فيلزم إطفاء privacy mode من @BotFather، وحينها يُرسَل رابط غير المسموح إلى خاصّ المالك كبطاقة موافقة (✅ اسمح · ❌ ارفض · ♾️ اسمح دائماً) ولا معالجة قبل ضغطته؛ و«اسمح دائماً» تُضيفه إلى قائمة السماح. ومن ليس في القائمة لا تُشغَّل له معالجة. (حدّ: البوت لا يبدأ محادثة خاصة مع عضو لم يبدأها.)',
+    settings_group_mode_hint: '<ul class="list-none p-0 m-0 flex flex-col gap-1"><li>🎯 «بالمنشن فقط»: لا يعالج البوت إلا ما وُجِّه إليه — اذكره مع الرابط. والرسالة التي لا تذكره لا تصله أصلاً في مجموعة privacy mode فيها مفعّل.</li><li>📢 «كل الرسائل»: يرى ما لم يُقصد به أيضاً، فيلزم إطفاء privacy mode من @BotFather.</li><li>✅ بطاقة موافقة: يُرسَل رابط غير المسموح إلى خاصّ المالك (✅ اسمح · ❌ ارفض · ♾️ اسمح دائماً) ولا معالجة قبل ضغطته.</li><li>🔒 قائمة السماح: «اسمح دائماً» تُضيفه إلى القائمة، ومن ليس فيها لا تُشغَّل له معالجة.</li><li>⚠️ الحدّ: البوت لا يبدأ محادثة خاصة مع عضو لم يبدأها.</li></ul>',
     // م٥: هوية البوت والأوامر والإحصاءات. والنصوص **لا تَعِد بما لم يُنفَّذ**:
     // المربّع يعرض واقع `identity.applied`، وتغيير `@…` يُذكر كحدّ.
     tg_identity: 'استخدم اسم HaramLite وصورته للبوت',
@@ -500,7 +500,7 @@ const i18n = {
     settings_group_mode: 'Group message visibility:',
     settings_group_mode_mentions: 'Mentions only',
     settings_group_mode_all: 'All messages',
-    settings_group_mode_hint: 'Mentions only: the bot processes only what is addressed to it — mention it with the link. With privacy mode on in a group, a message that does not mention it never reaches it at all. All messages: it also sees what was not addressed to it, so privacy mode must be turned off from @BotFather; then a non-allowed member\'s link is sent to the owner\'s private chat as an approval card (✅ Allow · ❌ Deny · ♾️ Always allow) and nothing is processed before that press, while "always allow" adds them to the allow list. Anyone not on the list never starts processing. (Limit: the bot cannot start a private chat with a member who has not started one.)',
+    settings_group_mode_hint: '<ul class="list-none p-0 m-0 flex flex-col gap-1"><li>🎯 Mentions only: the bot processes only what is addressed to it — mention it with the link. With privacy mode on in a group, a message that does not mention it never reaches it at all.</li><li>📢 All messages: it also sees what was not addressed to it, so privacy mode must be turned off from @BotFather.</li><li>✅ An approval card: a non-allowed member\'s link is sent to the owner\'s private chat (✅ Allow · ❌ Deny · ♾️ Always allow) and nothing is processed before that press.</li><li>🔒 Allow list: "always allow" adds them to the allow list; anyone not on the list never starts processing.</li><li>⚠️ Limit: the bot cannot start a private chat with a member who has not started one.</li></ul>',
     tg_paircode: 'Pairing code',
     tg_pair_hint: 'Send this code to your bot on Telegram to link your account (valid 10 minutes).',
     tg_advanced: 'Advanced: local Bot API server (up to 2GB, original quality)',
