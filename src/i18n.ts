@@ -781,12 +781,32 @@ export function currentLang(): 'ar' | 'en' {
 
 export { i18n };
 
+/** تلوين زرّي اللغة من **اللغة الحالية** — لا ترميز ثابت في HTML: كان «AR»
+ *  مضيئاً بحرف في الترميز فبقي كذلك بعد التبديل للإنجليزية فيبدو الزرّ
+ *  معطّلاً (النتيجة الثانية المقيسة للعطل). */
+function paintLangButtons(): void {
+  for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#lang-toggle button[data-lang]'))) {
+    const active = b.dataset.lang === lang;
+    b.classList.toggle('text-clay-accent', active);
+    b.classList.toggle('font-bold', active);
+    b.classList.toggle('text-on-surface-variant', !active);
+  }
+}
+
 export function wireLang(): void {
-  document.getElementById('lang-toggle')?.addEventListener('click', () => {
-    lang = lang === 'ar' ? 'en' : 'ar';
+  document.getElementById('lang-toggle')?.addEventListener('click', (ev) => {
+    // ج-١ (0.3.0): «EN» يختار الإنجليزية و«AR» العربية — **لا قلب**: الضغط على
+    // لغتك الحالية لا يغيّر شيئاً (كان يقلب دائماً: «AR» وأنت عربي ⇒ إنجليزية).
+    const btn = (ev.target as HTMLElement).closest?.('button[data-lang]') as HTMLButtonElement | null;
+    if (!btn) return;
+    const want: 'ar' | 'en' = btn.dataset.lang === 'en' ? 'en' : 'ar';
+    if (want === lang) return;
+    lang = want;
     localStorage.setItem('hl.lang', lang);
     document.documentElement.lang = lang;
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+    paintLangButtons();
     location.reload(); // simplest reliable full relabel
   });
+  paintLangButtons();
 }

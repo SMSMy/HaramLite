@@ -26,10 +26,13 @@
 </div>
 <div class="flex items-center gap-3">
 <!-- Language Pill — الحاوية معرّف تاريخي (`#lang-toggle`) وهدف معالج اللغة -->
+<!-- ‏`data-lang` يسمّي كل زرّ: «EN» يختار الإنجليزية و«AR» العربية — لا قلب أعمى.
+     والتلوين النشط يُشتقّ من اللغة الحالية في `wireLang`/`paintLangButtons` لا من
+     ترميز ثابت (كان «AR» مضيئاً بحرف فيبقى مضيئاً بعد التبديل للإنجليزية). -->
 <div class="flex items-center bg-surface-container border border-border-muted rounded-md px-1.5 py-0.5 gap-1.5 text-[11px]" id="lang-toggle">
-<button class="text-on-surface-variant hover:text-cream-text font-medium px-1 transition-colors" type="button">EN</button>
+<button class="text-on-surface-variant hover:text-cream-text font-medium px-1 transition-colors" data-lang="en" type="button">EN</button>
 <div class="h-2.5 w-px bg-border-muted"></div>
-<button class="text-clay-accent font-bold px-1" type="button">AR</button>
+<button class="text-clay-accent font-bold px-1" data-lang="ar" type="button">AR</button>
 </div>
 <button class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface-container hover:bg-surface-container-high border border-border-muted hover:border-clay-accent/40 text-cream-text text-xs transition-all active:scale-95 group" id="btn-settings" type="button">
 <span class="material-symbols-outlined text-[16px] text-clay-accent transition-transform duration-300 group-hover:rotate-45" data-icon="settings">settings</span>
