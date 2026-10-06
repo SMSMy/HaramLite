@@ -2918,9 +2918,19 @@ mod tests {
     /// **ولا يكفي «الملف موجود»**: `Set-Content` يُنشئ الملف **ثم** يكتب فيه،
     /// فنافذة «موجود وفارغ» قائمة — رُصدت فعلاً في تشغيل متوازٍ
     /// (`ParseIntError { kind: Empty }`). فيُنتظر **رقم مقروء** لا ملفٌّ موجود.
+    ///
+    /// **⚠ ورفعُ سقف الإقلاع مُعلَن (2026-10-06): ٢٠ ث ← ٦٠ ث.** والسبب مقيس:
+    /// هذا الانتظار يقيس **إقلاع `pwsh`** (والسكربت نفسه يُقلع `pwsh` آخر قبله)،
+    /// ورُصد انقضاؤه فعلاً — **مرّة في `pnpm rust:gates` كامل** و**مرّتين من ٣٠**
+    /// في قياس تحت ٤٠ حارق معالج — بالرسالة نفسها «رقم الابن لم يُكتب خلال ٢٠ ث».
+    /// والقصد من السقف أن **يفشل بصوت عالٍ** إن كان بناء الأمر لا ينام، لا أن
+    /// يقيس سرعة إقلاع باور شل على آلة محمَّلة ⇒ ٦٠ ث تُبقي القصد وتُزيل الرهان
+    /// على زمن الإقلاع (وهي لا تُكلِّف شيئاً في المسار السليم: الانتظار ينتهي
+    /// بمجرّد ظهور الرقم).
     #[cfg(windows)]
     fn wait_for_live_child(pid_file: &Path) -> u32 {
-        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        const START_BUDGET: Duration = Duration::from_secs(60);
+        let deadline = std::time::Instant::now() + START_BUDGET;
         let mut pid = 0u32;
         while std::time::Instant::now() < deadline {
             if let Ok(p) = std::fs::read_to_string(pid_file)
@@ -2933,7 +2943,10 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(25));
         }
-        assert!(pid != 0, "رقم الابن لم يُكتب خلال 20 ث — القياس بلا شجرة باطل");
+        assert!(
+            pid != 0,
+            "رقم الابن لم يُكتب خلال {START_BUDGET:?} — القياس بلا شجرة باطل"
+        );
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         while !pid_alive_native(pid) && std::time::Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(25));
