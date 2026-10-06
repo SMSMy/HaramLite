@@ -1,7 +1,7 @@
 {
   "why": "خطّ أساس مقيس لبوّابات Rust — يُحدَّث بـ--update بعد مراجعة السبب، ولا يُخفَّض لتُمرَّر بوّابة.",
   "clippy_unique_warnings": 14,
-  "tests_passed": 472,
+  "tests_passed": 477,
   "tests_ignored": 6,
   "tests": [
     "atomic::tests::a_failed_write_keeps_the_old_file_and_leaves_no_temp",
@@ -85,6 +85,11 @@
     "effects::tests::full_chain_stays_finite_and_hits_target",
     "filters::tests::exciter_generates_third_harmonic",
     "filters::tests::highpass_kills_dc_passes_treble",
+    "host_recency_tests::host_recency_a_minute_ago_is_now",
+    "host_recency_tests::host_recency_now_is_minutes_not_a_month",
+    "host_recency_tests::host_recency_two_days_is_seen_but_not_now",
+    "host_recency_tests::now_threshold_is_five_minutes",
+    "host_recency_tests::the_month_mutant_would_be_caught",
     "ipc_guard::tests::a_missing_or_corrupt_nonce_file_yields_nothing",
     "ipc_guard::tests::a_saved_nonce_round_trips_and_accepts_only_itself",
     "ipc_guard::tests::a_window_of_one_keeps_exactly_one_path",
@@ -481,5 +486,5 @@
     "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
     "clippy": "clippy 0.1.95 (59807616e1 2026-04-14)"
   },
-  "measured_at": "2026-10-05 · قياس محلي"
+  "measured_at": "2026-10-06 · قياس محلي"
 }
