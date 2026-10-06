@@ -113,7 +113,7 @@
     },
     {
       "path": "src-tauri/src/pipeline.rs",
-      "sha256": "65b53b54852ba60f22b571e5fa4ed9b6cbf8192507e1057f0b199f923d5fa467"
+      "sha256": "df8fd95367dacbe93108fbade14716169267c239d5bf4e06a5d75ec1dfa2cb37"
     },
     {
       "path": "src-tauri/src/m6b_clip_guard.rs",
