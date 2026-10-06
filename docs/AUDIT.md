@@ -2945,3 +2945,93 @@ HTML المنشور، وتشغيل سكربت الصفحة المشحون في `
 — **إشارة علوق لا فشل**. **ولم يتكرّر في 12 تشغيلاً بعده**، **ولم أُعدّل شيئاً بسببه**: علّةٌ لا
 تُعاد إنتاجها لا تُصلَح تخميناً. **والفرضية مطروحة للفحص لا حكماً**، والمرشَّح الباقي أن علوقاً
 داخلياً في مسار الخادم المزيّف (أحاديّ الخيط) يحدث تحت شرط لم أقِسه.
+
+### 2026-10-06 — نقل إصلاح t4/t9 إلى الفرع الافتراضي `main`: أساسٌ أزرق **447→448**، ومُفسِدٌ أسقط الحارس بيدي
+
+**لماذا**: `main` (الفرع الافتراضي، وأساس خط التسليم) **أحمر على العدّاء** باختبار واحد —
+`telegram::tests::t4_a_user_with_four_files_does_not_block_another_user` (run `37490000109`:
+**1 فاشل · 446 ناجح < أساس 447**). والسبب الجذري مُثبَت في `fix/rust-flake` (الالتزام `458960f`)،
+وهذا البند ينقل الإصلاح **إلى `main`** بلا أي تعديل آخر.
+
+**الفرع**: `fix/main-flake` من `origin/main` @ `57f222f`، في شجرة معزولة `wt-main-flake`.
+**لا دفع · لا دمج · لا حذف.**
+
+| الالتزام | العنوان | ما فيه |
+|---|---|---|
+| `79eac05` | `fix(telegram): never drop Running status and assert intro from production fn` | **`cherry-pick 458960f`** — `telegram.rs` +77/−11 · `scripts/rust-fail-detail.cjs` +14/−7 |
+| `1349f98` | `chore(baseline): pin the new pacer guard test (447 -> 448)` | `qa/rust-baselines.json`: سطر الرقم + سطر الاسم (إضافة صافية) |
+| (هذا القسم) | `docs(audit): …` | `docs/AUDIT.md` — قسم جديد بنهاية الملف |
+
+**ما نُقل بالحرف** — والدليل على أنه «بالحرف» لا «بالنيّة»:
+`git diff fix/rust-flake fix/main-flake -- src-tauri/src/telegram.rs` = **سطر واحد**، وهو سطر `main`
+نفسه في اختبار التنقيح (`token: "88360566:…"` مقابل `"1234567890:…"`) **لا يمسّه الإصلاح**؛
+و`scripts/rust-fail-detail.cjs` **متطابق تماماً** بين الفرعين:
+1. **`status_push`**: الإسقاط بسقف المجموعة صار مقصوراً على **الزينة** —
+   `let decorative = matches!(rank, StatusRank::Queued | StatusRank::Progress)` بدل
+   `rank < StatusRank::Finished` ⇒ **`Running` · `CancelRequested` · `Finished` · `Cancelled` لا تُسقَط**.
+2. **`t9`**: عزل `HARAMLITE_DATA_DIR` (‏`paths::env_restore` + `temp_dir`) وقياس النصّ على
+   `intro_text()` الإنتاجي مع `cpu_advice_line(read_provider())` — بدل افتراض «سطران».
+3. **`t4`**: `reset_send_pacer()` لعزل حصص المحادثات + `elapsed=` في رسائل التأكيد.
+4. **`rust-fail-detail.cjs`**: استخراج `elapsed=…` من نصّ الفشل (‏`cargo test` لا يطبع زمناً للاختبار **الفاشل**).
+5. **حارس جديد**: `telegram::tests::running_status_is_never_dropped_by_the_group_pacer`.
+
+**البوّابات — كل صفّ مُخرَج تشغيل حقيقي لا ادعاء**:
+
+| البوّابة | الأمر | المخرَج (حرفياً) |
+|---|---|---|
+| `cargo test --lib` | `C:\Users\hshli\.cargo\bin\cargo.exe test --lib` | `test result: ok. 448 passed; 0 failed; 5 ignored; … finished in 137.24s` · exit 0 |
+| `cargo fmt --check` | `cargo fmt --check` | بلا أي مخرَج · exit 0 |
+| `pnpm rust:gates` | `pnpm rust:gates` (شجرة نظيفة ساكنة، من `package.json`) | `✓ … clippy 14/14 موضعاً فريداً · اختبارات 448 ناجح (الأساس 448) · 0 فاشل · 5 مُهمَل · الجرد 448/448 اسماً والغائب صفر` · exit 0 |
+| تسلسل مقيَّد | `cargo test --lib -- --test-threads=2` | `test result: ok. 448 passed; 0 failed; 5 ignored; … finished in 211.33s` · exit 0 |
+
+**جرد الأسماء — إضافة صافية لا نقص**: قِيس من مخرَج التشغيل نفسه (لا بالعين): الأساس **447** اسماً
+⇒ الحيّ **448** · المضاف **1** · **الغائب 0** · `tests_ignored` **5 → 5**، والاسم الجديد في موضعه
+الأبجدي بالضبط (بين `…repeated_status_reads…` و`…scratch_guard…`). و`tests_passed` **447 → 448**؛
+**لا رقم نُزِّل ولا اسم حُذف** (مُتحقَّقٌ آلياً بمقارنة الجردين).
+
+**المُفسِد — شغّلته بيدي فأسقط الحارس**: أعدتُ `Running` إلى قسم «تُسقَط»
+(`let decorative = rank < StatusRank::Finished;`) ⇒ المخرَج الحرفي:
+```
+thread 'telegram::tests::running_status_is_never_dropped_by_the_group_pacer' (20048) panicked at src\telegram.rs:10998:9:
+▶ الثانية سُقِطت بسقف المجموعة — علامة البدء لا تُسقَط (elapsed=0.00s)
+test telegram::tests::running_status_is_never_dropped_by_the_group_pacer ... FAILED
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 452 filtered out; finished in 0.22s
+error: test failed, to rerun pass `--lib`     (exit 101)
+```
+ثم أُزيل المُفسِد (`git checkout -- src-tauri/src/telegram.rs`) و`git diff HEAD` = **صفر**.
+
+**وحدّ أُعلنه بصراحة (لا أُجمّله)**: **`t4` نفسه لم يسقط تحت المُفسِد على هذه الآلة** — شُغّل وحده
+**تحت المُفسِد** فمرّ `ok` في **5.25 ث** وبالترتيب الصحيح `[1000, 2000, 1001, 1002, 1003]`.
+والسبب أن الإسقاط **حسّاس التوقيت**: محلياً تتباعد كتابتا الرسالة الواحدة أكثر من `GROUP_MIN_GAP`
+(١ ث) فلا تُسقَط، وعلى العدّاء تنهار المسافة فتُسقَط «▶ بدأت». ⇒ **الحارس الجديد هو الكاشف الحتمي**
+(كتابتان متتاليتان على رسالة واحدة بلا انتظار)، و`t4` عرضٌ توقيتي للعطل نفسه لا كاشفٌ له.
+**فأنا لم أُثبِت أن `t4` يسقط على العدّاء بهذا المُفسِد** — أثبتُّ أن الحارس يسقط به، وأن `t4` يمرّ محلياً في الحالين.
+
+**وحدّ ثانٍ (رقم لا مطابقة)**: التكليف توقّع **8 مُهمَل**؛ والمقيس على `main` **5**، وهو **رقم `main`
+نفسه** في خطّ الأساس (`tests_ignored: 5`). و«8» رقم خط التسليم (`fix/rust-flake` @ `483`/`8`)
+وفيه ثلاثة اختبارات مُهمَلة **لا يحملها `main`**. فلم أرفع الرقم إلى ٨ ولم أخفّضه.
+
+**وحدّ ثالث (بيئة الشجرة المعزولة — عطل بيئي لا كودي)**: `wt-main-flake` وُلد بلا الأصول المُتجاهَلة،
+فسقط أول `cargo test` من `tauri-build` بـ`resource path ..\bin doesn't exist` (exit 101). والعلاج
+**بيئي**: `bin/` و`models/` **junction** إلى المستودع الأم، و`src-tauri/vc_redist.x64.exe` **hardlink**.
+وكلها في `.gitignore` ⇒ `git status --porcelain` **نظيف** ولم يدخل أيٌّ منها في التزام.
+
+**وحدّ رابع (ما لم أُثبِته)**: لا حكم CI محلياً — **العدّاء لم يُحكَم عليه بعد**، والحكم بعده.
+و`main` **لا يحمل التزام فصل السير** (`rust-gate` = **0** ذِكر في `.github/workflows/ci.yml`،
+والبوّابة الحمراء فيه هي `Rust baseline gate` التي تشغّل `pnpm rust:gates` مباشرةً) ⇒ فالحكم القادم
+قد يأتي بالبنية القديمة كما في `fix/settings-polish`. **ولا صورة عدّاء ولا تشغيل `--test-threads=2` على العدّاء.**
+
+**وحدود النطاق**: ملف واحد للكود تغيّر (`src-tauri/src/telegram.rs`) + الأداة (`scripts/rust-fail-detail.cjs`)
++ الأساس (`qa/rust-baselines.json`) + هذا التدقيق (`docs/AUDIT.md`). **لم تُمسّ**:
+`.github/workflows/ci.yml` · أي ملف واجهة · `separator.rs` · `bridge.rs` · `browser-extension/` (عمل
+متوازٍ على فرع آخر). **والترويسة الحية (`:3`) لم تُمسّ**، ولم يُمسّ أيٌّ من المواضع الأحد عشر القائمة
+التي تذكر العقد التاريخي في هذا الملف — **أُضيف في هذا القسم سطران يذكرانه** (العدّاد
+**11 ⟶ 13**، مُتحقَّقاً بالعدّ لا بالتقدير، وكلّها مُعفاة **بالملف** كما ينصّ حارس `agent:doc`)،
+**ولا إشارة حيّة واحدة** (‏`live references: none`).
+
+**وحدّ خامس (حارس بيئي أحمر قبل عملي وبعده — لا من عملي)**: `pnpm agent:doc` يسقط بـ
+`✗ AGENT.md is MISSING ON DISK` لأن الملف **مُتجاهَل** في git ولا يوجد في أيّ شجرة معزولة.
+**والدليل أنه ليس من عملي**: السقوط نفسه **بالمخرَج نفسه** في شجرة `wt-rust-flake` (فرع آخر لم أمسّه)،
+وشرط السقوط **(A) وجود الملف على القرص** لا الإشارات (و`(D) live references: none`)،
+**و`agent:doc` غير موصول بـ`ci.yml` على `main`** (٠ ذِكر) ⇒ لا يحكم على هذا الفرع عند الدفع.
+**ولم أُنشئ `AGENT.md`** لأنه خارج نطاق كتابتي ولا يصحّ اختراع حالة لا يحملها المستودع.
