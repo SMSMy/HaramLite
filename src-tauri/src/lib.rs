@@ -953,28 +953,44 @@ fn register_native_host(app: tauri::AppHandle, browser: String) -> Result<String
 
 /// Sprint E3: live integration status for the persistent checkbox —
 /// ground truth is manifest + registry, never the cached setting.
+///
+/// **١-ب (2026-10-05)**: «الآن» = **دقائق** لا شهر. كان `MONTH_SECS = 30 يوم`
+/// يُعدّ أي اتصال خلال شهر «متصل الآن» ⇒ شارة خضراء كاذبة. والقاعدة
+/// الموثّقة باقية: **لا يُستنتج الغياب من سجلّ قديم** (إضافة أُزيلت تترك
+/// آخر اتصالها خلفها) — فالتصنيف الآن ثلاثي: `extension_now` (دقائق) ·
+/// `extension_seen` (وجود في السجلّ) · غياب. والإصلاح **في العرض لا التسجيل**
+/// — `host_seen` و`seen_within` لم يُمَسا.
 #[tauri::command]
 fn bridge_status(app: tauri::AppHandle) -> serde_json::Value {
     // هل اتصل متصفح بهذا التطبيق من قبل؟ لا يمكن لتطبيق مكتبي أن يعدّ إضافات
     // المتصفح المثبَّتة، لكن المضيف يُسجّل أصل كل إضافة تتصل به — وسجلّ حديث
     // يعني أن الإضافة موجودة، وسجلّ غائب أو قديم يعني «لا نعرف» فيُوجَّه
     // المستخدم إلى صفحة الإضافة بدل أن يُترك يخمّن.
-    const MONTH_SECS: u64 = 30 * 24 * 3600;
+    /// «الآن» = دقائق (١-ب) — لا شهر.
+    const NOW_SECS: u64 = 5 * 60;
+    /// وجود في السجلّ (30 يوم) — **ليس** «متصل الآن»؛ يُستعمل لعرض
+    /// «آخر اتصال قبل …» فقط. ولا يُستنتج الغياب بعده.
+    const PRESENCE_SECS: u64 = 30 * 24 * 3600;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let (extension_seen, extension_days_ago, extension_origin) = match bridge::host_seen() {
-        Some((ts, origin)) => (
-            bridge::seen_within(ts, now, MONTH_SECS),
-            Some(now.saturating_sub(ts) / 86_400),
-            origin,
-        ),
-        None => (false, None, String::new()),
-    };
+    let (extension_now, extension_seen, extension_minutes_ago, extension_days_ago, extension_origin) =
+        match bridge::host_seen() {
+            Some((ts, origin)) => (
+                bridge::seen_within(ts, now, NOW_SECS),
+                bridge::seen_within(ts, now, PRESENCE_SECS),
+                Some(now.saturating_sub(ts) / 60),
+                Some(now.saturating_sub(ts) / 86_400),
+                origin,
+            ),
+            None => (false, false, None, None, String::new()),
+        };
     serde_json::json!({
         "enabled": bridge::is_registered(&app),
+        "extension_now": extension_now,
         "extension_seen": extension_seen,
+        "extension_minutes_ago": extension_minutes_ago,
         "extension_days_ago": extension_days_ago,
         "extension_origin": extension_origin,
     })
