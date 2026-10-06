@@ -87,6 +87,12 @@ body.settings-mode .settings-tab-panel:not([hidden]) {
 /* حالة التبويب المختار تُرسم من `aria-selected` وحدها (يضبطها `showTab`) —
    والترميز يحمل بقية مظهر الزرّ؛ قاعدة أساسية على الصنف كانت تتعارض مع
    أصناف الترميز بنفس الرتبة (styles.css يُحمَّل بعد tailwind) فأُلغيت. */
+/* ٢-أ: التسميات لا تلتفّ سطرين. القاعدة على الزرّ نفسه لأن `applyLang()`
+   يكتب `innerHTML` ويمسح span.flex-1 — فلا يبقى صنف HTML بعد الترجمة.
+   (12px هي الحدّ المقروء عربياً — لا تصغير خطّ ولا ellipsis.) */
+.settings-tab {
+  white-space: nowrap;
+}
 .settings-tab[aria-selected="true"] {
     background-color: rgba(218, 119, 86, 0.15);
     border-color: rgba(218, 119, 86, 0.4);
