@@ -14,7 +14,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import indexHtml from '../../index.html?raw';
 
 const h = vi.hoisted(() => ({
-  invoke: vi.fn(async () => null),
+  // بلا نوع مُستنتَج: `vi.fn(async () => null)` يستنتج `Promise<null>` فيرفض
+  // `mockImplementation` التي تعيد حمولات أخرى — خطأ `tsc` لم تُسقطه vitest.
+  invoke: vi.fn(),
   listen: vi.fn(async () => () => {}),
 }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: h.invoke }));
@@ -29,19 +31,6 @@ function mountApp(): void {
 
 const status = (): HTMLElement => document.getElementById('bridge-ext-status') as HTMLElement;
 const cb = (): HTMLInputElement => document.getElementById('setting-bridge') as HTMLInputElement;
-
-/** يبرمج `bridge_status` ليعيد `payload` في كل نداء (عدّاد للنداءات). */
-function programStatus(payload: object): { calls: () => number } {
-  let n = 0;
-  h.invoke.mockImplementation(async (cmd: string) => {
-    if (cmd === 'bridge_status') {
-      n += 1;
-      return payload;
-    }
-    return 'ok';
-  });
-  return { calls: () => n };
-}
 
 describe('١-ج · applyBridge تستدعي refreshBridgeExt بعد التبديل', () => {
   beforeEach(() => {

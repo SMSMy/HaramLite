@@ -18,7 +18,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import indexHtml from '../../index.html?raw';
 
 const h = vi.hoisted(() => ({
-  invoke: vi.fn(async () => null),
+  // بلا نوع مُستنتَج: `vi.fn(async () => null)` يستنتج `Promise<null>` فيرفض
+  // `mockImplementation` التي تعيد حمولات أخرى — وهذا خطأ `tsc` لم تُسقطه vitest.
+  invoke: vi.fn(),
 }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: h.invoke }));
 vi.mock('@tauri-apps/plugin-opener', () => ({ openUrl: vi.fn(async () => undefined) }));
