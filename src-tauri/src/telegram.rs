@@ -8520,8 +8520,13 @@ mod tests {
         };
 
         // ننتظر ظهور المهمّة في السِجلّ العام (‏`slots::active_jobs`) ثم نحكم.
+        // **ومهلةٌ على الساعة لا عددُ محاولات** (كان `for _ in 0..300` بنوم ‏5ms):
+        // العدد يعني أن دورةً تأخّرت على آلة محمَّلة **تُنقص** المحاولات، فيسقط
+        // الفحص لأن العدّاد نفد لا لأن المهمّة غابت. والميزانية الاسمية 1.5 ث ⇒
+        // صارت **٥ ث** صراحةً (سخيّة عمداً: تُقصِّر عمر الفشل لا النجاح).
         let mut live = false;
-        for _ in 0..300 {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
             if slots::active_jobs()
                 .iter()
                 .any(|j| j.label == job_label(7, 7))
@@ -9799,7 +9804,11 @@ mod tests {
         let stop = Arc::new(AtomicBool::new(false));
         let (tx, _rx) = chan();
         spawn_poll_thread(cfg, stop.clone(), tx, new_oversize_store());
-        for _ in 0..200 {
+        // **ومهلةٌ على الساعة لا عددُ محاولات** (كان `for _ in 0..200` بنوم ‏10ms):
+        // سقفُ العدد يُنقَص كلّما تأخّرت دورة على آلة محمَّلة، فيسقط الفحص لأن
+        // المحاولات نفدت لا لأن التسجيل لم يقع. والاسمي 2 ث ⇒ **٥ ث** صراحةً.
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
             // **م٤**: صار التسجيل تسجيليْن — إفراغٌ افتراضيّ وقائمةُ المالك —
             // فينتظر الفحص كليهما (وحارسُه اختبار التسجيل نفسه).
             if bot.count("setMyCommands") > 0
