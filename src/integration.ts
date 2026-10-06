@@ -665,6 +665,9 @@ export function wireBridge(): void {
       localStorage.setItem('hl.bridge', on ? '1' : '0');
       if (cb) cb.checked = on;
       pushSettings();
+      // ١-ج: الحالة لا تتحدّث عند تبديل المفتاح بلا هذا النداء —
+      // `renderBridgeExt` كان يُترك على قراءة قديمة حتى الإقلاع التالي.
+      await refreshBridgeExt();
     } catch (e) {
       // Revert the checkbox to backend truth — never display a lie.
       try {
@@ -673,6 +676,8 @@ export function wireBridge(): void {
       } catch { /* dev builds — leave as-is */ }
       showToast(`✗ ${errText(e).slice(0, 120)}`);
       invoke('push_log', { level: 'error', message: `bridge toggle failed: ${e}` });
+      // حتى عند الفشل: اعرض الحالة الحقيقية بعد محاولة التراجع.
+      await refreshBridgeExt();
     }
   }
 
@@ -740,34 +745,69 @@ export function wireBridge(): void {
 /* ── هل إضافة المتصفح موجودة؟ ─────────────────────────────────────────────
    تطبيق مكتبي لا يستطيع تعداد إضافات المتصفح، لكن مضيف Native Messaging
    يسجّل أصل كل إضافة تتصل به (كروم وفايرفوكس يمرّران الأصل كوسيط أول).
-   سجلّ حديث ⇒ الإضافة موجودة؛ لا سجلّ أو سجلّ قديم ⇒ «لا نعرف»، فنعرض رابط
-   صفحة الإضافة بدل أن نترك المستخدم يخمّن. لا يُستنتج الغياب من سجلّ قديم
-   أبداً: إضافة أُزيلت تترك آخر اتصالها خلفها. */
-type BridgeExt = { extension_seen: boolean; extension_days_ago: number | null };
+   **١-ب (2026-10-05) — الحالة تعرض الحقيقة**:
+   - `enabled=false` ⇒ **«الجسر موقوف»** ويُخفى `#bridge-ext-link` (المفتاح
+     معطَّل ولا يجوز ادّعاء اتصال).
+   - `extension_now` (**دقائق** لا شهر) ⇒ «✓ الإضافة متصلة الآن».
+   - `extension_seen` (وجود في السجلّ) ⇒ «آخر اتصال قبل …» **بلا** ادّعاء
+     «الآن» — والقاعدة الموثّقة باقية: لا يُستنتج الغياب من سجلّ قديم.
+   - غياب ⇒ «لم يتصل بعد» + الرابط.
+   لا يبقى `#bridge-ext-status` **فارغاً أبداً** (١-د: الفقرة الفارغة لا
+   تنتج صفاً فيبدو القسم متقلّصاً). */
+type BridgeExt = {
+  enabled: boolean;
+  extension_now: boolean;
+  extension_seen: boolean;
+  extension_minutes_ago: number | null;
+  extension_days_ago: number | null;
+};
 
-function renderBridgeExt(info: BridgeExt | null): void {
+function agoLabel(minutes: number | null, days: number | null, lang: string): string {
+  const m = minutes ?? 0;
+  const d = days ?? 0;
+  if (m < 60) return lang === 'ar' ? `قبل ${m} دقيقة` : `${m} minute(s) ago`;
+  if (d < 1) {
+    const hrs = Math.floor(m / 60);
+    return lang === 'ar' ? `قبل ${hrs} ساعة` : `${hrs} hour(s) ago`;
+  }
+  return lang === 'ar' ? `قبل ${d} يوم` : `${d} day(s) ago`;
+}
+
+/** تُصدَّر للاختبار (١-ب): العرض وحده — التسجيل (`host_seen`) بلا مساس. */
+export function renderBridgeExt(info: BridgeExt | null): void {
   const status = document.getElementById('bridge-ext-status');
   const link = document.getElementById('bridge-ext-link');
+  const lang = currentLang();
+  // المفتاح معطَّل أو الحالة مجهولة ⇒ «الجسر موقوف» — لا ادّعاء اتصال.
+  const bridgeOff = !info || !info.enabled;
   if (status) {
-    if (!info) {
-      status.textContent = '';
-    } else if (info.extension_seen) {
-      const d = info.extension_days_ago ?? 0;
-      status.textContent = currentLang() === 'ar'
-        ? (d <= 0 ? '✓ الإضافة متصلة الآن' : `✓ الإضافة متصلة — آخر اتصال قبل ${d} يوم`)
-        : (d <= 0 ? '✓ Extension connected now' : `✓ Extension connected — last call ${d} day(s) ago`);
+    if (bridgeOff) {
+      status.textContent = lang === 'ar' ? 'الجسر موقوف' : 'Bridge is off';
+      status.className = 'font-label-sm text-label-sm text-on-surface-variant leading-relaxed px-unit';
+    } else if (info.extension_now) {
+      status.textContent = lang === 'ar' ? '✓ الإضافة متصلة الآن' : '✓ Extension connected now';
       status.className = 'font-label-sm text-label-sm text-tertiary leading-relaxed px-unit';
+    } else if (info.extension_seen) {
+      const when = agoLabel(info.extension_minutes_ago, info.extension_days_ago, lang);
+      status.textContent = lang === 'ar'
+        ? `آخر اتصال مع الإضافة ${when}`
+        : `Last extension contact ${when}`;
+      status.className = 'font-label-sm text-label-sm text-on-surface-variant leading-relaxed px-unit';
     } else {
-      status.textContent = currentLang() === 'ar'
+      status.textContent = lang === 'ar'
         ? 'لم يتصل أي متصفح بعد. إن لم تكن الإضافة مثبَّتة فثبّتها من هنا:'
         : 'No browser has called yet. If the extension is not installed, get it here:';
       status.className = 'font-label-sm text-label-sm text-on-surface-variant leading-relaxed px-unit';
     }
   }
   if (link) {
-    const show = !info || !info.extension_seen;
-    link.classList.toggle('hidden', !show);
-    link.classList.toggle('flex', show);
+    // الرابط: مسار التثبيت/إعادة الربط. **يُخفى عند enabled=false** (١-ب)
+    // وعند الاتصال الفوري (لا حاجة للتثبيت). وعند «آخر اتصال قديم» يظهر —
+    // فالقاعدة «لا يُستنتج الغياب من سجلّ قديم» تمنع إخفائه كأن الإضافة
+    // اختفت؛ والمستخدم يحتاج مسار إعادة الربط.
+    const showLink = !bridgeOff && !info!.extension_now;
+    link.classList.toggle('hidden', !showLink);
+    link.classList.toggle('flex', showLink);
   }
 }
 

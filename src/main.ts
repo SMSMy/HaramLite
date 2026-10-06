@@ -180,9 +180,9 @@ async function init(): Promise<void> {
 
   applyLang();
 
-  wire();
-  wireHiddenAdvancedPanel();
-  restoreBatchState();
+  // ١-أ: جلب الإصدار **قبل** `wire()` — و`fillAbout()` يقرأ
+  // `session.getAppVersion()` داخل `wireAbout()`، فالتالي يعرض «—».
+  // الشارة في الترويسة كانت تبدو صحيحة لأنها تُملأ بعد الجلب مباشرة.
   try {
     const info = await invoke<{ app: string; version: string }>('ping');
     session.setAppVersion(info.version);
@@ -192,6 +192,10 @@ async function init(): Promise<void> {
   } catch (e) {
     console.error(e);
   }
+
+  wire();
+  wireHiddenAdvancedPanel();
+  restoreBatchState();
   
   // Audit 2026-09-03: no forced yt-dlp update here — the backend
   // `ytdlp-update` thread already checks on its 24h cadence, and a second
