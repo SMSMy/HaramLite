@@ -1,116 +1,132 @@
-//! مخطِّط نوافذ الفصل المجزأ (المرحلة ٤أ‑1) — **نقي**: لا I/O ولا عتاد.
+//! مخطِّط مقاطع الفصل المجزأ — **نقي**: لا I/O ولا عتاد.
 //!
-//! **العلّة**: الملفات الطويلة (أطول من 300 ثانية — حجم المقطع، قرار المالك)
-//! تُعالَج اليوم دفعة واحدة، فلا يكتب المنتج صوت صفحة قبل اكتمال الكل، وأي
-//! قفزة في المنتصف تنتظر كل ما قبلها. الفصل المجزأ يقطّع النطاق إلى مقاطع
-//! تشغيل، ويُعطي كل مقطع **سياق تداخل** عند الحوافّ كي لا يجوع النموذج، ثم
-//! يُخاط النتائج بـ`crossfade` (المرحلة ٤أ‑2 — آلية fade القائمة، بلا اختراع).
+//! **العلّة المقيسة** (2026-10-05): إزاحة المقطع الثاني 300 ثانية =
+//! `13230000 mod 195840 = 108720` = **0.5551 خطوة** ⇒ لا محاذاة مع شبكة demix
+//! أبداً، وحساسية النموذج للإزاحة `ratio=1.385` (أكبر من الإشارة) — أي إشارتان
+//! غير مترابطتين. والضابط (نفس المدخل مرتين) `rms_diff=0` ⇒ المسار حتمي.
 //!
-//! **وحدّ النطاق**: هذه الوحدة تخطيط فقط. التنفيذ (`separator.rs`) والمنتج
-//! (`bridge`) وكتابة الملفات **خارجها** — ولا ثابت 300 مخزّن هنا (درس
-//! `segqueue`: بلا مستهلك ⇒ بلا ميت؛ القيمة تُمرَّر من حيث تُقاس).
+//! **الحل**: خطة نوافذ عالمية واحدة — كل `start` ∈ مضاعفات [`DEMIX_STEP`] من
+//! الصفر العالمي (مبدأ مزيج `demix`). والحدّ الفاصل بين المقاطع **قاطع**:
+//! تُصدَر البادئة المنتهية فقط، بلا crossfade (بقاؤه يعيد الخطأ عند الحدود).
 //!
-//! **مسار الهوية حرفياً**: ملف ≤ طول النافذة ⇒ نافذة واحدة تساوي نواتها تساوي
-//! `[0, total]` — المستدعي يمرّ بمسار الملف الكامل القائم بلا crossfade.
+//! **وحدّ النطاق**: تخطيط فقط. التنفيذ في `separator.rs`، والمنتج في `bridge`.
+//!
+//! **مسار الهوية حرفياً**: ملف ≤ مقطع واحد ⇒ مقطع واحد يغطّي `[0, total)` —
+//! والمستدعي يمرّ بمسار الملف الكامل القائم.
 
-/// حجم مقطع التشغيل بالثواني (قرار المالك، صريح). **يُستهلك حيث يُقاس**:
-/// مخطِّط النوافذ هنا · العميل (`content.js` `SEGMENT_SECS`) · ونداء
-/// `demix_segmented` في `separator.rs`. أُعيد بعد أن صار له مستهلك رست
-/// (درس `segqueue`: بلا مستهلك ⇒ حُذف؛ لا `#[allow(dead_code)]`).
-pub const SEGMENT_SECS: f64 = 300.0;
+/// خطوة شبكة demix بالعيّنات — `(1 − 0.25) × 261120 = 195840` (حقيقة مقيسة).
+/// **ممنوع** مساس حشو البداية العالمي (`demix_padding`) أو وزن هانّ — أي
+/// «تحسين» هناك يكسر المطابقة.
+pub const DEMIX_STEP: usize = 195_840;
 
-/// نافذة مخطَّطة واحدة على خطّ الزمن المطلق (بالثواني).
+/// عدد خطوات الشبكة في مقطع واحد — **67** (قرار المالك، مؤكد بالحساب).
+/// الطول الفعلي = `67 × 195840 = 13,121,280` عيّنة ≈ **297.53 ث** @44.1kHz.
+pub const SEGMENT_STEPS: usize = 67;
+
+/// `TRIM` من `separator.rs` (‏`N_FFT/2 = 3840`) — إزاحة العيّنة الأصلية داخل
+/// المزيج المُحشّى. تُستعمل لحساب أي نافذة تُنهي أي عيّنة؛ **لا تُغيَّر**.
+pub const DEMIX_TRIM: usize = 3_840;
+
+/// مقطع مخطَّط واحد على شبكة demix العالمية (كل المواقع **عيّنات**).
 ///
-/// **النواة** (`core_start`/`core_len`) هي مقطع التشغيل الذي يُكتب ويُخدَم —
-/// النوات متجاورة بلا تداخل، ورقم المقطع في البروتوكول هو `index + 1` (واحد
-/// الأساس، كما يتكلم `content.js` و`segqueue`).
-///
-/// **نطاق المعالجة** (`start`/`len`) يوسّع النواة بـ`overlap` على الجانبين
-/// (مقيَّد بـ`[0, total]`) كي يرى النموذج سياق الحوافّ.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Window {
-    /// فهرس صفري. رقم مقطع التشغيل = `index + 1`.
+/// - **نطاق الإصدار** `[emit_start, emit_end)` في المجال الأصلي: حدوده
+///   مضاعفات [`DEMIX_STEP`] (الآخر قد يُقفل بطول الملف).
+/// - **النوافذ** `first_window..=last_window` على الشبكة العالمية (مبدأ
+///   المزيج المُحشّى = `k × DEMIX_STEP`).
+/// - **الإحماء**: `first_window` قد يسبق النافذة الأولى التي تُسهم في
+///   `emit_start` بمقدار نافذة واحدة (`m = 1`) — تُحاسَب ولا تُكتَب منها
+///   عيّنة قبل `emit_start`. أول مقطع: لا إحماء (`first_window = 0`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SegmentPlan {
+    /// فهرس صفري. رقم المقطع في البروتوكول = `index + 1`.
     pub index: usize,
-    /// بداية نطاق المعالجة (بالثواني).
-    pub start: f64,
-    /// طول نطاق المعالجة (بالثواني).
-    pub len: f64,
-    /// بداية النواة — بداية مقطع التشغيل.
-    pub core_start: f64,
-    /// طول النواة — طول مقطع التشغيل (آخر مقطع قد يقصر).
-    pub core_len: f64,
+    /// أول عيّنة أصلية تُصدَر (مضاعف [`DEMIX_STEP`]، أو 0).
+    pub emit_start: usize,
+    /// نهاية نطاق الإصدار (حصرية) — مضاعف [`DEMIX_STEP`]، أو `total` لآخر مقطع.
+    pub emit_end: usize,
+    /// أول نافذة demix تُعالَج (تشمل الإحماء `m = 1`).
+    pub first_window: usize,
+    /// آخر نافذة demix تُعالَج (شاملة).
+    pub last_window: usize,
 }
 
-impl Window {
-    /// صحيح فقط حين يساوي نطاق المعالجة النواة بالضبط — أي لا سياق
-    /// ولا crossfade. هذا هو **مسار الهوية** للمستدعي.
-    pub fn is_identity(&self) -> bool {
-        self.start == self.core_start && self.len == self.core_len
+impl SegmentPlan {
+    /// صحيح فقط حين يغطّي المقطع الملف كاملاً بنافذة إحماء واحدة أو صفر —
+    /// مسار الهوية للمستدعي (demix الكامل القائم).
+    pub fn is_identity(&self, total_samples: usize) -> bool {
+        self.emit_start == 0 && self.emit_end >= total_samples
     }
 
-    /// نهاية النواة الحصرية (بالثواني).
-    pub fn core_end(&self) -> f64 {
-        self.core_start + self.core_len
-    }
-
-    /// نهاية نطاق المعالجة الحصرية (بالثواني).
-    pub fn end(&self) -> f64 {
-        self.start + self.len
+    /// عدد نوافذ المعالجة.
+    pub fn window_count(&self) -> usize {
+        self.last_window.saturating_sub(self.first_window) + 1
     }
 }
 
-/// يخطّط نوافذ الفصل المجزأ لملف طوله `total_secs`.
+/// مبدأ النافذة `k` في المزيج المُحشّى (الصفر العالمي) = `k × DEMIX_STEP`.
+#[inline]
+pub fn window_start(k: usize) -> usize {
+    k * DEMIX_STEP
+}
+
+/// أصغر نافذة تُسهم في العيّنة المُحشّاة `p` (النافذة تغطّي
+/// `[k·step, k·step + chunk_len)`).
+fn first_window_covering(p: usize, chunk_len: usize) -> usize {
+    if p < chunk_len {
+        0
+    } else {
+        (p - chunk_len) / DEMIX_STEP + 1
+    }
+}
+
+/// أكبر نافذة تُسهم في العيّنة المُحشّاة `p`.
+fn last_window_covering(p: usize) -> usize {
+    p / DEMIX_STEP
+}
+
+/// يخطّط المقاطع لملف طوله `total_samples` عيّنة، على شبكة [`DEMIX_STEP`].
 ///
-/// النوات تُغطّي `[0, total_secs]` بعرض `window_secs` (الآخر قد يقصر) — عقد
-/// مقاطع التشغيل (`SEGMENT_SECS = 300` ورقم المقطع `index + 1`). كل نواة
-/// تتوسّع بـ`overlap_secs` على الجانبين لسياق demix، مقيَّدة بالملف.
+/// النوات: `[0, S)`, `[S, 2S)`, … حيث `S = SEGMENT_STEPS × DEMIX_STEP`
+/// (وآخر مقطع قد يقصر عند `total_samples`). كل حدّ ∈ مضاعفات `step`.
+pub fn plan_segments(total_samples: usize, chunk_len: usize) -> Vec<SegmentPlan> {
+    plan_segments_with(total_samples, chunk_len, SEGMENT_STEPS)
+}
+
+/// كما [`plan_segments`] لكن بعدد خطوات المقطع — للاختبار القصير (نفس
+/// الشبكة ونفس الإحماء `m = 1`، بلا استثناء).
 ///
-/// **الهوية (حرفياً)**: `total_secs <= window_secs` ⇒ نافذة واحدة تساوي
-/// نواتها تساوي `[0, total]` ([`Window::is_identity`]) — المطلوب من المستدعي
-/// أن يمرّ بالمسار القائم للملف الكامل دون crossfade.
-///
-/// مدخلات غير صالحة (`total_secs <= 0` · `window_secs <= 0` · `overlap_secs < 0`
-/// · أو أي غير منتهٍ/NaN) ⇒ خطة فارغة — لا حالة ولا خطأ، على نمط
-/// [`livemap::split_plan`] (ولكن برفض صريح لغير المنتهي: NaN و∞ يُفسدان
-/// الحلقة أدناه).
-pub fn plan_windows(total_secs: f64, window_secs: f64, overlap_secs: f64) -> Vec<Window> {
-    if !total_secs.is_finite()
-        || total_secs <= 0.0
-        || !window_secs.is_finite()
-        || window_secs <= 0.0
-        || !overlap_secs.is_finite()
-        || overlap_secs < 0.0
-    {
+/// لكل مقطع `j` بنطاق إصدار `[a, b)` (أصلي):
+/// - `first_window = max(0, first_covering(TRIM+a) − 1)` — إحماء `m = 1`
+///   (مؤكَّد بالحساب: أقصى تغطية لعيّنة = نافذتان لأن `step/CHUNK = 0.75`).
+/// - `last_window = last_covering(TRIM+b−1)` — حتى تنتهي كل عيّنات النطاق.
+pub fn plan_segments_with(
+    total_samples: usize,
+    chunk_len: usize,
+    segment_steps: usize,
+) -> Vec<SegmentPlan> {
+    if total_samples == 0 || chunk_len == 0 || DEMIX_STEP == 0 || segment_steps == 0 {
         return Vec::new();
     }
-
-    // ملف ≤ النافذة: نافذة هوية واحدة — بلا توسيع سياق إطلاقاً.
-    if total_secs <= window_secs {
-        return vec![Window {
-            index: 0,
-            start: 0.0,
-            len: total_secs,
-            core_start: 0.0,
-            core_len: total_secs,
-        }];
-    }
-
+    let seg_len = segment_steps * DEMIX_STEP;
     let mut out = Vec::new();
-    let mut core_start = 0.0f64;
+    let mut emit_start = 0usize;
     let mut index = 0usize;
-    while core_start < total_secs {
-        let core_len = (total_secs - core_start).min(window_secs);
-        let core_end = core_start + core_len;
-        let start = (core_start - overlap_secs).max(0.0);
-        let end = (core_end + overlap_secs).min(total_secs);
-        out.push(Window {
+    while emit_start < total_samples {
+        let emit_end = (emit_start + seg_len).min(total_samples);
+        // العيّنات في المجال المُحشّى: p = TRIM + j
+        let p_start = DEMIX_TRIM + emit_start;
+        let p_end = DEMIX_TRIM + emit_end - 1; // آخر عيّنة في النطاق
+        let first_cover = first_window_covering(p_start, chunk_len);
+        let first_window = first_cover.saturating_sub(1); // m = 1 warmup
+        let last_window = last_window_covering(p_end);
+        out.push(SegmentPlan {
             index,
-            start,
-            len: end - start,
-            core_start,
-            core_len,
+            emit_start,
+            emit_end,
+            first_window,
+            last_window,
         });
-        core_start = core_end;
+        emit_start = emit_end;
         index += 1;
     }
     out
@@ -120,119 +136,220 @@ pub fn plan_windows(total_secs: f64, window_secs: f64, overlap_secs: f64) -> Vec
 mod tests {
     use super::*;
 
-    /// الحدود المعلنة في التكليف حرفياً: 0 · 299 · 300 · 301 · 900.
-    const WINDOW: f64 = 300.0;
-    const OVERLAP: f64 = 2.0;
+    /// حجم قطعة demix — `HOP × (DIM_T − 1) = 1024 × 255 = 261120`.
+    const CHUNK_LEN: usize = 261_120;
+    /// معدّل العيّنات الذي تُقاس عليه الأطوال (عقود المولّد والبوابة).
+    const SR: u32 = 44_100;
 
-    #[test]
-    fn zero_or_negative_total_plans_nothing() {
-        assert!(plan_windows(0.0, WINDOW, OVERLAP).is_empty());
-        assert!(plan_windows(-1.0, WINDOW, OVERLAP).is_empty());
-    }
+    // ─── حارس المحاذاة (الاتهام الأول) — نقي، بلا نموذج، دائم ────────────
 
+    /// **كل `start` في كل مقطع ∈ مضاعفات `step` من الصفر العالمي** —
+    /// و**حدود المقاطع (النوات) مضاعفات `step`**.
+    ///
+    /// كان يسقط على المخطِّط القديم (أنوية 300 ثانية: `13230000 mod 195840 =
+    /// 108720`). ويبقى حارساً دائماً — لو مرّ على مخطِّط غير محاذٍ فالتشخيص
+    /// خاطئ ولا يُبنى فوقه.
     #[test]
-    fn invalid_window_or_overlap_plans_nothing() {
-        assert!(plan_windows(600.0, 0.0, OVERLAP).is_empty());
-        assert!(plan_windows(600.0, WINDOW, -1.0).is_empty());
-        // غير منتهٍ/NaN مرفوض صراحة — وإلا حلّقت الحلقة أو فسدت الحدود.
-        assert!(plan_windows(f64::NAN, WINDOW, OVERLAP).is_empty());
-        assert!(plan_windows(f64::INFINITY, WINDOW, OVERLAP).is_empty());
-        assert!(plan_windows(600.0, f64::NAN, OVERLAP).is_empty());
-        assert!(plan_windows(600.0, WINDOW, f64::NAN).is_empty());
-    }
-
-    /// **مسار الهوية حرفياً** — ملف 299 (< 300) ⇒ نافذة واحدة تساوي نواتها.
-    #[test]
-    fn file_just_below_window_is_one_identity_window() {
-        let p = plan_windows(299.0, WINDOW, OVERLAP);
-        assert_eq!(p.len(), 1);
-        assert_eq!(p[0].index, 0);
-        assert_eq!(p[0].core_start, 0.0);
-        assert_eq!(p[0].core_len, 299.0);
-        assert!(p[0].is_identity(), "النواة = المعالجة = [0, 299]");
-    }
-
-    /// ملف 300 (= النافذة) — الهوية نفسها، بلا توسيع سياق.
-    #[test]
-    fn file_exactly_at_window_is_one_identity_window() {
-        let p = plan_windows(WINDOW, WINDOW, OVERLAP);
-        assert_eq!(p.len(), 1);
-        assert_eq!(p[0].core_len, WINDOW);
-        assert!(p[0].is_identity(), "النواة = المعالجة = [0, 300]");
-    }
-
-    /// ملف 301: نواتان — 300 + 1، ونطاق المعالجة يتوسّع بالسياق.
-    #[test]
-    fn file_just_over_window_splits_into_two_with_context() {
-        let p = plan_windows(301.0, WINDOW, OVERLAP);
-        assert_eq!(p.len(), 2);
-        assert!(!p[0].is_identity());
-        assert_eq!(p[0].core_start, 0.0);
-        assert_eq!(p[0].core_len, 300.0);
-        assert_eq!(p[1].core_start, 300.0);
-        assert_eq!(p[1].core_len, 1.0);
-        // سياق المعالجة: يسار الأول مقيَّد بـ0، ويمينه يمتد إلى نهاية الملف
-        // (302 تُقيَّد بـ301); ويسار الثاني −overlap (داخل الأول)، ويمينه
-        // مقيَّد بالنهاية. منطقة التداخل [298, 301] هي سياق كلٍّ منهما.
-        assert_eq!(p[0].start, 0.0);
-        assert!((p[0].end() - 301.0).abs() < 1e-9);
-        assert!((p[1].start - 298.0).abs() < 1e-9);
-        assert!((p[1].end() - 301.0).abs() < 1e-9);
-        assert!((p[1].start - p[0].core_end()).abs() < 1e-9 + OVERLAP);
-    }
-
-    /// ملف 900: ثلاث نوات **مليئة** 300 — لا شذرة ذيل (لا اختراع).
-    #[test]
-    fn nine_hundred_is_three_full_segments() {
-        let p = plan_windows(900.0, WINDOW, OVERLAP);
-        assert_eq!(p.len(), 3);
-        for (i, w) in p.iter().enumerate() {
-            assert_eq!(w.index, i);
-            assert_eq!(w.core_start, i as f64 * WINDOW);
-            assert_eq!(w.core_len, WINDOW);
+    fn every_window_start_is_a_multiple_of_step_from_global_zero() {
+        // ملف 310 ث ⇒ مقطعان على الأقل عند SEGMENT_STEPS=67 (~297.5ث).
+        let total = (310.0 * SR as f64) as usize;
+        let plan = plan_segments(total, CHUNK_LEN);
+        assert!(
+            plan.len() >= 2,
+            "310s ⇒ nafidhatan aw akthar, got {}",
+            plan.len()
+        );
+        for seg in &plan {
+            assert_eq!(
+                seg.emit_start % DEMIX_STEP,
+                0,
+                "segment {} emit_start {} is NOT a multiple of step {} (remainder {})",
+                seg.index,
+                seg.emit_start,
+                DEMIX_STEP,
+                seg.emit_start % DEMIX_STEP
+            );
+            if seg.emit_end < total {
+                assert_eq!(
+                    seg.emit_end % DEMIX_STEP,
+                    0,
+                    "segment {} emit_end {} is NOT a multiple of step {} (remainder {})",
+                    seg.index,
+                    seg.emit_end,
+                    DEMIX_STEP,
+                    seg.emit_end % DEMIX_STEP
+                );
+            }
+            for k in seg.first_window..=seg.last_window {
+                let start = window_start(k);
+                assert_eq!(
+                    start % DEMIX_STEP,
+                    0,
+                    "segment {} window {} start {} not on the global grid",
+                    seg.index,
+                    k,
+                    start
+                );
+                assert_eq!(start, k * DEMIX_STEP);
+            }
         }
-        assert_eq!(p[2].core_end(), 900.0);
     }
 
-    /// النوات تُغطّي `[0, total]` بالضبط، متجاورة بلا فجوة ولا تداخل نوات.
+    /// الأرقام المقيسة مثبتة: `step` · بقايا إزاحة 300ث · وحدّ التغطية.
+    #[test]
+    fn the_measured_step_and_offset_facts_stay_pinned() {
+        let chunk_size = 261_120usize; // HOP * (DIM_T - 1)
+        let step = ((1.0 - 0.25) * chunk_size as f64) as usize;
+        // الربط بالثابت المُصدَّر (لا assert على const — يثير clippy).
+        let exported = DEMIX_STEP;
+        assert_eq!(step, exported, "DEMIX_STEP must stay 195840");
+        let offset_300s = 300 * SR as usize;
+        assert_eq!(
+            offset_300s % exported,
+            108_720,
+            "300s @44.1kHz leaves 108720 samples = 0.5551 step — never aligned"
+        );
+        assert!(
+            (exported as f64 / chunk_size as f64 - 0.75).abs() < 1e-12,
+            "step/CHUNK = 0.75 ⇒ max two windows cover any sample"
+        );
+    }
+
+    /// **إحماء m = 1 مؤكَّد بالحساب**: أول مقطع بلا إحماء، وما بعده
+    /// `first_window = first_covering − 1` بالضبط.
+    #[test]
+    fn warmup_is_exactly_one_window_except_the_first_segment() {
+        let seg_len = SEGMENT_STEPS * DEMIX_STEP;
+        let total = seg_len * 2 + 1000;
+        let plan = plan_segments(total, CHUNK_LEN);
+        assert_eq!(plan.len(), 3);
+        // أول مقطع: لا إحماء — النافذة 0 هي أول نافذة تُسهم في العيّنة 0.
+        assert_eq!(plan[0].first_window, 0);
+        assert_eq!(plan[0].emit_start, 0);
+        // المقطع الثاني: إحماء واحد قبل أول نافذة تُسهم في emit_start.
+        let p_start = DEMIX_TRIM + plan[1].emit_start;
+        let first_cover = first_window_covering(p_start, CHUNK_LEN);
+        assert_eq!(
+            plan[1].first_window + 1,
+            first_cover,
+            "warmup must be exactly one window before first_cover"
+        );
+        assert!(plan[1].first_window < first_cover);
+    }
+
+    /// أقصى تغطية لعيّنة = نافذتان (الحساب الذي يؤكّد `m = 1`).
+    #[test]
+    fn at_most_two_windows_cover_any_sample() {
+        // step/CHUNK = 0.75 < 1 ⇒ أي عيّنة تقع في نافذتين كحدّ أقصى.
+        // (قيم محسوبة لا const literals — وإلا أثار assert clippy.)
+        let chunk_size = 261_120usize;
+        let step = ((1.0 - 0.25) * chunk_size as f64) as usize;
+        assert!(step < chunk_size);
+        assert!(
+            2 * step > chunk_size,
+            "otherwise three windows could overlap"
+        );
+    }
+
+    // ─── الحدود الشاذة ──────────────────────────────────────────────────
+
+    #[test]
+    fn empty_input_plans_nothing() {
+        assert!(plan_segments(0, CHUNK_LEN).is_empty());
+        assert!(plan_segments(100, 0).is_empty());
+    }
+
+    /// ملف أقصر من مقطع ⇒ مقطع واحد هوية.
+    #[test]
+    fn file_shorter_than_one_segment_is_a_single_identity_segment() {
+        let total = SEGMENT_STEPS * DEMIX_STEP - 1;
+        let plan = plan_segments(total, CHUNK_LEN);
+        assert_eq!(plan.len(), 1);
+        assert!(plan[0].is_identity(total));
+        assert_eq!(plan[0].emit_start, 0);
+        assert_eq!(plan[0].emit_end, total);
+        assert_eq!(plan[0].first_window, 0);
+    }
+
+    /// مقطع بنافذة واحدة (أصغر حالات المعالجة).
+    #[test]
+    fn a_segment_spanning_a_single_window_is_planned() {
+        // طول صغير جداً لكنه يحتاج نافذة واحدة على الأقل.
+        let total = 1000;
+        let plan = plan_segments(total, CHUNK_LEN);
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].window_count(), 1);
+        assert_eq!(plan[0].first_window, 0);
+        assert_eq!(plan[0].last_window, 0);
+    }
+
+    /// مقطع على الذيل: آخر مقطع يُقفل بطول الملف لا بمضاعف step.
+    #[test]
+    fn the_tail_segment_closes_at_total() {
+        let seg_len = SEGMENT_STEPS * DEMIX_STEP;
+        let total = seg_len + 500; // ذيل صغير بعد مقطع كامل
+        let plan = plan_segments(total, CHUNK_LEN);
+        assert_eq!(plan.len(), 2);
+        assert_eq!(plan[0].emit_end, seg_len);
+        assert_eq!(plan[1].emit_start, seg_len);
+        assert_eq!(plan[1].emit_end, total, "tail closes at total");
+    }
+
+    /// البداية عند الصفر: emit_start=0 وfirst_window=0.
+    #[test]
+    fn start_at_zero_has_no_warmup() {
+        let total = SEGMENT_STEPS * DEMIX_STEP * 2;
+        let plan = plan_segments(total, CHUNK_LEN);
+        assert_eq!(plan[0].emit_start, 0);
+        assert_eq!(plan[0].first_window, 0);
+    }
+
+    /// النوات تُغطّي `[0, total]` بالضبط، متجاورة بلا فجوة ولا تداخل.
     #[test]
     fn cores_tile_the_file_exactly() {
-        for total in [299.0, 300.0, 301.0, 450.0, 900.0, 1201.0] {
-            let p = plan_windows(total, WINDOW, OVERLAP);
-            let mut cursor = 0.0;
-            for w in &p {
-                assert!(
-                    (w.core_start - cursor).abs() < 1e-9,
-                    "gap/overlap at {}",
-                    w.index
-                );
-                assert!(w.core_len > 0.0);
-                cursor = w.core_end();
+        let seg_len = SEGMENT_STEPS * DEMIX_STEP;
+        for total in [
+            1000usize,
+            seg_len - 1,
+            seg_len,
+            seg_len + 1,
+            seg_len * 2,
+            seg_len * 2 + 7,
+        ] {
+            let plan = plan_segments(total, CHUNK_LEN);
+            let mut cursor = 0usize;
+            for s in &plan {
+                assert_eq!(s.emit_start, cursor, "gap/overlap at segment {}", s.index);
+                assert!(s.emit_end > s.emit_start);
+                cursor = s.emit_end;
             }
-            assert!(
-                (cursor - total).abs() < 1e-9,
-                "total={total} cursor={cursor}"
-            );
+            assert_eq!(cursor, total, "total={total} cursor={cursor}");
         }
     }
 
-    /// رقم المقطع في البروتوكول = `index + 1` (واحد الأساس — `content.js`/`segqueue`).
+    /// رقم المقطع في البروتوكول = `index + 1` (واحد الأساس).
     #[test]
     fn segment_numbers_are_one_based() {
-        let p = plan_windows(900.0, WINDOW, OVERLAP);
-        let nums: Vec<usize> = p.iter().map(|w| w.index + 1).collect();
+        let total = SEGMENT_STEPS * DEMIX_STEP * 3;
+        let plan = plan_segments(total, CHUNK_LEN);
+        let nums: Vec<usize> = plan.iter().map(|s| s.index + 1).collect();
         assert_eq!(nums, vec![1, 2, 3]);
     }
 
-    /// `overlap = 0` ⇒ نطاق المعالجة = النواة (لا سياق) — والهوية لملف واحد
-    /// تبقى هوية، ومتعددة النوافذ تبقى بلا توسيع.
+    /// النطاق المعالج لكل مقطع يكفي لإنهاء كل عيّنات إصداره.
     #[test]
-    fn zero_overlap_keeps_processing_equal_to_core() {
-        let one = plan_windows(300.0, WINDOW, 0.0);
-        assert!(one[0].is_identity());
-        let two = plan_windows(301.0, WINDOW, 0.0);
-        assert_eq!(two.len(), 2);
-        assert!(two[0].is_identity());
-        assert!(two[1].is_identity());
+    fn windows_suffice_to_finalize_the_emit_range() {
+        let seg_len = SEGMENT_STEPS * DEMIX_STEP;
+        let total = seg_len + 10_000;
+        for seg in plan_segments(total, CHUNK_LEN) {
+            // بعد last_window تنتهي كل العيّنات قبل (last_window+1)*step − TRIM
+            let finalized = (seg.last_window + 1) * DEMIX_STEP - DEMIX_TRIM;
+            assert!(
+                finalized > seg.emit_end - 1,
+                "segment {}: finalized {finalized} does not reach emit_end {}",
+                seg.index,
+                seg.emit_end
+            );
+        }
     }
 }
