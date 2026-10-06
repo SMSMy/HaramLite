@@ -975,20 +975,25 @@ fn bridge_status(app: tauri::AppHandle) -> serde_json::Value {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let (extension_now, extension_seen, extension_minutes_ago, extension_days_ago, extension_origin) =
-        match bridge::host_seen() {
-            Some((ts, origin)) => {
-                let (is_now, is_seen) = classify_host_recency(ts, now);
-                (
-                    is_now,
-                    is_seen,
-                    Some(now.saturating_sub(ts) / 60),
-                    Some(now.saturating_sub(ts) / 86_400),
-                    origin,
-                )
-            }
-            None => (false, false, None, None, String::new()),
-        };
+    let (
+        extension_now,
+        extension_seen,
+        extension_minutes_ago,
+        extension_days_ago,
+        extension_origin,
+    ) = match bridge::host_seen() {
+        Some((ts, origin)) => {
+            let (is_now, is_seen) = classify_host_recency(ts, now);
+            (
+                is_now,
+                is_seen,
+                Some(now.saturating_sub(ts) / 60),
+                Some(now.saturating_sub(ts) / 86_400),
+                origin,
+            )
+        }
+        None => (false, false, None, None, String::new()),
+    };
     serde_json::json!({
         "enabled": bridge::is_registered(&app),
         "extension_now": extension_now,
@@ -1052,7 +1057,10 @@ mod host_recency_tests {
     fn host_recency_two_days_is_seen_but_not_now() {
         let (is_now, is_seen) = classify_host_recency(NOW - 2 * 24 * 3600, NOW);
         assert!(!is_now, "يومان ليسا «الآن»");
-        assert!(is_seen, "يومان داخل نافذة الوجود (30 يوماً) — لا يُستنتج الغياب");
+        assert!(
+            is_seen,
+            "يومان داخل نافذة الوجود (30 يوماً) — لا يُستنتج الغياب"
+        );
     }
 
     /// **المُفسِد المضبوط**: لو صار الحدّ 30 يوماً، الـ10 دقائق تصبح
