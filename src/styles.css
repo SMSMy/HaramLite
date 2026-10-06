@@ -55,7 +55,7 @@ body.settings-mode #logcard {
    والتنقّل في العمود الأول (يمين RTL)، واللوحة النشطة في البقية. */
 body.settings-mode #settings-menu {
   display: grid;
-  grid-template-columns: 16rem minmax(0, 1fr);
+  grid-template-columns: 18rem minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
 }
 body.settings-mode .settings-screen-header {

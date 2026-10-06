@@ -48,3 +48,18 @@ describe('٢-أ · تسميات التبويبات لا تلتفّ سطرين', 
     );
   });
 });
+
+describe('٢-ب · العمود الجانبي 18rem', () => {
+  it('grid-template-columns يبدأ بـ18rem لا 16rem', () => {
+    const m = stylesCss.match(/grid-template-columns:\s*(\d+)rem\s+minmax/);
+    expect(m, 'grid-template-columns موجود في styles.css').not.toBeNull();
+    expect(m![1], 'العمود الجانبي').toBe('18');
+  });
+
+  it('nav#settings-tabs عرضه w-72 (18rem) لا w-64 (16rem)', () => {
+    const nav = indexHtml.match(/<nav[^>]*id="settings-tabs"[^>]*>/);
+    expect(nav, 'nav#settings-tabs موجود').not.toBeNull();
+    expect(nav![0], 'w-72 على التنقّل').toContain('w-72');
+    expect(nav![0], 'لا w-64 قديم').not.toContain('w-64');
+  });
+});
