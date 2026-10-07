@@ -1,7 +1,7 @@
 {
   "why": "خطّ أساس مقيس لبوّابات Rust — يُحدَّث بـ--update بعد مراجعة السبب، ولا يُخفَّض لتُمرَّر بوّابة.",
   "clippy_unique_warnings": 14,
-  "tests_passed": 488,
+  "tests_passed": 490,
   "tests_ignored": 8,
   "tests": [
     "atomic::tests::a_failed_write_keeps_the_old_file_and_leaves_no_temp",
@@ -318,6 +318,7 @@
     "slots::tests::the_held_slots_connector_counts_holders_not_registrations",
     "slots::tests::the_job_registry_is_empty_after_success_failure_and_panic",
     "slots::tests::the_limit_is_clamped_to_the_card_ceiling",
+    "slots::tests::the_newcomer_criterion_is_ordering_not_a_thread_start_bet",
     "slots::tests::the_orphan_guard_sees_our_own_sleeper_and_ignores_a_foreign_one",
     "slots::tests::the_real_wrapper_fails_fast_on_a_missing_file_and_leaves_no_trace",
     "slots::tests::the_slot_messages_carry_the_bridge_anchor",
@@ -431,6 +432,7 @@
     "telegram::tests::under_a_saturated_send_queue_a_kill_update_is_still_read_and_acts",
     "tg_stats::tests::a_hostile_display_name_cannot_add_lines_or_grow_the_file",
     "tg_stats::tests::a_missing_record_is_reported_as_missing_and_creates_no_file",
+    "tg_stats::tests::a_waiter_outlives_a_hold_longer_than_the_old_deadline",
     "tg_stats::tests::no_delivery_is_lost_between_processes",
     "tg_stats::tests::sizes_are_readable_across_units",
     "tg_stats::tests::t6_the_numbers_grow_and_the_file_never_does",
