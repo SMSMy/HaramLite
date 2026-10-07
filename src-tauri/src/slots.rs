@@ -1425,6 +1425,7 @@ fn separation_body<'a>(
     progress: &'a dyn Fn(f32) -> bool,
     stage: &'a dyn Fn(&str, f32),
     sink: Option<&'a dyn crate::separator::SegmentSink>,
+    priority: Option<&'a dyn Fn() -> usize>,
 ) -> impl FnOnce(&CancelToken) -> Result<PipelineOutput, String> + 'a {
     move |token| {
         pipeline::process_file(
@@ -1439,6 +1440,7 @@ fn separation_body<'a>(
             progress,
             stage,
             sink,
+            priority,
         )
         .map_err(|e| e.to_string())
     }
@@ -1468,6 +1470,7 @@ pub fn run_separation(
     progress: &dyn Fn(f32) -> bool,
     stage: &dyn Fn(&str, f32),
     sink: Option<&dyn crate::separator::SegmentSink>,
+    priority: Option<&dyn Fn() -> usize>,
 ) -> Result<PipelineOutput, String> {
     run_separation_as(
         &slot_name(),
@@ -1482,6 +1485,7 @@ pub fn run_separation(
         progress,
         stage,
         sink,
+        priority,
     )
 }
 
@@ -1503,6 +1507,7 @@ pub fn run_separation_registered(
     progress: &dyn Fn(f32) -> bool,
     stage: &dyn Fn(&str, f32),
     sink: Option<&dyn crate::separator::SegmentSink>,
+    priority: Option<&dyn Fn() -> usize>,
 ) -> Result<PipelineOutput, String> {
     run_body_in(
         job,
@@ -1519,6 +1524,7 @@ pub fn run_separation_registered(
             progress,
             stage,
             sink,
+            priority,
         ),
     )
 }
@@ -1538,6 +1544,7 @@ fn run_separation_as(
     progress: &dyn Fn(f32) -> bool,
     stage: &dyn Fn(&str, f32),
     sink: Option<&dyn crate::separator::SegmentSink>,
+    priority: Option<&dyn Fn() -> usize>,
 ) -> Result<PipelineOutput, String> {
     run_registered_with(
         slot_name,
@@ -1555,6 +1562,7 @@ fn run_separation_as(
             progress,
             stage,
             sink,
+            priority,
         ),
     )
 }
@@ -3724,6 +3732,7 @@ mod tests {
             false,
             &|_| true,
             &|_, _| {},
+            None,
             None,
         );
         assert!(result.is_err(), "ملف غير موجود لا ينجح");

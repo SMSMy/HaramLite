@@ -712,6 +712,16 @@ fn state_run_done(st: &serde_json::Value) -> bool {
         .unwrap_or(false)
 }
 
+/// طلبُ الأولوية الحيّ من الحالة قبل كل مقطع (٤-ب): `last.page_priority`
+/// واحد-أساس كما وصل من الصفحة — غيابه أو الحالات الأقدم ⇒ `0` =
+/// الترتيب الطبيعيّ، وآخرُ طلبٍ فائز لأن `write_state` ذرّية.
+fn state_priority_request(st: &serde_json::Value) -> usize {
+    st.get("last")
+        .and_then(|l| l.get("page_priority"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as usize
+}
+
 /// النقي القابل للاختبار داخل [`serve_page_audio_slice`]: قراءة الملف **كما
 /// هو الآن** وتقطيعه بعلم الإنتاج. الملف الفارغ (موجود بلا بايتات) يُخدَم
 /// بمقطع فارغ وعلم الإنتاج — لا خطأ: «قبل أول بايت» هو غياب المسار وحده.
@@ -1515,6 +1525,10 @@ fn handle_request(
             let units =
                 crate::unit_sink::UnitSink::new(crate::segments::DEMIX_STEP, &mut unit_encoder);
             let units_reader = units.reader();
+            // قراءة طلب الأولوية الحيّ قبل كل مقطع (٤-ب): آخرُ طلبٍ في
+            // الحالة يُقدَّم إن كان ضمن المتبقّيّ. رخيصة: قراءة حالة صغيرة
+            // كل ~5 دقائق من معالجة، والغياب ⇒ الترتيب الطبيعيّ.
+            let priority_reader = || state_priority_request(&read_state());
             // م١: المدخل الواحد — الطلب القادم من المتصفح يأخذ فتحة جهاز.
             let res = slots::run_separation(
                 "bridge",
@@ -1543,6 +1557,11 @@ fn handle_request(
                     }));
                 },
                 if units_enabled { Some(&units) } else { None },
+                if units_enabled {
+                    Some(&priority_reader as &dyn Fn() -> usize)
+                } else {
+                    None
+                },
             );
             units.finish();
             let units_degraded = units_reader
@@ -2953,6 +2972,28 @@ mod tests {
         assert!(state_run_done(
             &serde_json::json!({ "last": { "page_audio_done": true } })
         ));
+    }
+
+    /// طلبُ الأولوية يُقرأ من الحالة كما وصل (واحد-أساس) — والغياب وحالات
+    /// ما قبل الحقل ⇒ صفر = الترتيب الطبيعيّ.
+    #[test]
+    fn priority_request_reads_the_latest_request_from_state() {
+        assert_eq!(
+            state_priority_request(&serde_json::json!({ "running": {} })),
+            0,
+            "أثناء التشغيل قبل أي طلب: طبيعيّ"
+        );
+        assert_eq!(
+            state_priority_request(&serde_json::json!({
+                "last": { "page_audio_done": false, "page_priority": 41 }
+            })),
+            41,
+            "آخرُ طلبٍ مخزَّن يفوز"
+        );
+        assert_eq!(
+            state_priority_request(&serde_json::json!({ "last": {} })),
+            0
+        );
     }
 
     /// الدفعة ب (المرحلة ٣ — شرط القبول حرفياً): طابور `[1..6]` وأولوية على 4

@@ -819,6 +819,9 @@ pub fn process_file(
     // فيُصدر البادئة النهائية بعد كل نافذة، و`None` في كل مسار آخر =
     // السلوك القائم حرفياً بلا إصدار تدريجي.
     sink: Option<&dyn crate::separator::SegmentSink>,
+    // مقدّمُ الأولوية (٤-ب): يُسأل قبل كل مقطع عن رقمه المطلوب (واحد-أساس،
+    // 0 = لا طلب) فتُقدَّم طلباتُ المستخدم المتأخرة.
+    priority: Option<&dyn Fn() -> usize>,
 ) -> Result<PipelineOutput, PipelineError> {
     let started = std::time::Instant::now();
     // Held for the whole run: any second path attempting this file gets a
@@ -948,6 +951,7 @@ pub fn process_file(
             // مصرف الوحدات (٤أ/٣): `Some` يُوصَل من الجسر، و`None` =
             // السلوك القائم حرفياً.
             sink,
+            priority,
         )
         .map_err(|e| {
             let _ = std::fs::remove_dir_all(&work_dir);
@@ -1773,6 +1777,7 @@ mod tests {
             &|_| true,
             &|_, _| {},
             None,
+            None,
         );
         assert!(r.is_err(), "missing input must fail");
         assert!(
@@ -2003,6 +2008,7 @@ mod tests {
                 &|_| true,
                 &|_, _| {},
                 None,
+                None,
             )
         };
 
@@ -2115,12 +2121,18 @@ mod tests {
 
         // (١) **المحرّك**: فشلٌ حقيقي من `separate` والراية مضبوطة ⇒ `ERROR`.
         let (engine_failure, engine_lines) = capture_events(|| {
-            let e =
-                match separator::separate(&missing, &dir.join("out"), false, &|_| true, None, None)
-                {
-                    Ok(_) => panic!("مدخل غير موجود لا يجوز أن ينجح"),
-                    Err(e) => e,
-                };
+            let e = match separator::separate(
+                &missing,
+                &dir.join("out"),
+                false,
+                &|_| true,
+                None,
+                None,
+                None,
+            ) {
+                Ok(_) => panic!("مدخل غير موجود لا يجوز أن ينجح"),
+                Err(e) => e,
+            };
             sep_err(e)
         });
         assert!(

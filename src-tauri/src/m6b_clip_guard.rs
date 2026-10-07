@@ -504,6 +504,7 @@ fn clip_run_keeps_the_deliverable_full_length_and_kept_ranges_empty() {
         &|_| true,
         &|_, _| {},
         None,
+        None,
     );
     let out = res.expect("تشغيل clip على مقطع sparse");
 
@@ -597,6 +598,7 @@ fn clip_video_run_keeps_the_deliverable_full_length() {
         &crate::proc::CancelToken::new(),
         &|_| true,
         &|_, _| {},
+        None,
         None,
     );
     let out = res.expect("تشغيل clip على فيديو sparse");

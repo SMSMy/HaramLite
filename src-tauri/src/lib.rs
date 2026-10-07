@@ -592,7 +592,7 @@ async fn separate_file(
             if throttle::emit_4hz().allow("sep-stage") {
                 let _ = app.emit("sep-stage", serde_json::json!({ "stage": stage, "pct": p.clamp(0.0, 1.0) }));
             }
-        }, None)?;
+        }, None, None)?;
         tracing::info!(target: "pipe", "program-path separate finished ({}; {})",
             throttle::emit_4hz().report("sep-progress"), throttle::emit_4hz().report("sep-stage"));
 

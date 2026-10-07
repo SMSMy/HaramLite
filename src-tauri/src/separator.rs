@@ -820,7 +820,14 @@ fn demix_segmented(
     mix: &[Vec<f32>; 2],
     progress: &dyn Fn(f32) -> bool,
 ) -> Result<[Vec<f32>; 2], SepError> {
-    demix_segmented_with_steps(session, mix, crate::segments::SEGMENT_STEPS, progress, None)
+    demix_segmented_with_steps(
+        session,
+        mix,
+        crate::segments::SEGMENT_STEPS,
+        progress,
+        None,
+        None,
+    )
 }
 
 /// كما [`demix_segmented`] لكن **بمصرف**: كل مقطع يُسلَّم لحظة اكتماله (المرحلة ٤أ
@@ -830,6 +837,7 @@ fn demix_segmented_to(
     mix: &[Vec<f32>; 2],
     progress: &dyn Fn(f32) -> bool,
     sink: &dyn SegmentSink,
+    priority: Option<&dyn Fn() -> usize>,
 ) -> Result<[Vec<f32>; 2], SepError> {
     demix_segmented_with_steps(
         session,
@@ -837,6 +845,7 @@ fn demix_segmented_to(
         crate::segments::SEGMENT_STEPS,
         progress,
         Some(sink),
+        priority,
     )
 }
 
@@ -912,18 +921,29 @@ fn materialize_emit(
 /// **نقي وقابل للاختبار بلا نموذج**: يمشي على الخطة مقطعاً مقطعاً — يُنتج ثم
 /// **يُصدر** ثم يجمع في مصفوفتين بطول `n`. المُنتِج والمُصدِر إغلاقان، فالترتيب
 /// والحدود وفشل الإصدار كلها تُقاس بلا عتاد ولا I/O ولا ٦٣٧ ميجابايت.
+///
+/// **والترتيب نفسه اختيارٌ بالأولوية** (٤-ب): قبل كل مقطع يُسأل المُقدِّم عن
+/// رقم المقطع المطلوب (واحد-أساس، `0` = لا طلب) فإن كان ضمن المتبقّيّ قُدِّم،
+/// وإلا الأصغر متبقياً — وكلٌّ مرة واحدة وآخرُ طلبٍ فائز. والجمع بمواضع
+/// مطلقة فالناتج مطابق بالبايت لأيّ ترتيب (حارس random-order)، والتقدّم
+/// بعدّاد المكتمل لا فهرس المقطع فيظلّ تصاعدياً تحت إعادة الترتيب.
 fn drive_segments<P, E>(
     plan: &[crate::segments::SegmentPlan],
     n: usize,
     mut produce: P,
     mut emit: E,
+    priority: Option<&dyn Fn() -> usize>,
 ) -> Result<[Vec<f32>; 2], SepError>
 where
     P: FnMut(&crate::segments::SegmentPlan) -> Result<[Vec<f32>; 2], SepError>,
     E: FnMut(&crate::segments::SegmentPlan, &[Vec<f32>; 2]) -> Result<(), SepError>,
 {
     let mut vocals = [vec![0.0f32; n], vec![0.0f32; n]];
-    for seg in plan {
+    let mut remaining: std::collections::BTreeSet<usize> = (0..plan.len()).collect();
+    while let Some(idx) =
+        next_segment_by_priority(&mut remaining, priority.map(|f| f()).unwrap_or(0))
+    {
+        let seg = &plan[idx];
         let part = produce(seg)?;
         let len = seg.emit_end - seg.emit_start;
         // طول أقصر من نطاق الإصدار = عطب في المُنتِج لا في المُصدِر: يُعلَن
@@ -944,6 +964,25 @@ where
     Ok(vocals)
 }
 
+/// اختيار المقطع التالي بالأولوية — نقيّ: الطلب (واحد-أساس، `0` = لا طلب)
+/// يُقدَّم إن كان ضمن المتبقّيّ، وإلا الأصغر متبقياً؛ ويُزال بمجرد اختياره
+/// فلا مقطع يمرّ مرتين مهما تكرّر الطلب، والفراغ ⇒ لا شيء.
+fn next_segment_by_priority(
+    remaining: &mut std::collections::BTreeSet<usize>,
+    request: usize,
+) -> Option<usize> {
+    if remaining.is_empty() {
+        return None;
+    }
+    let picked = if request >= 1 && remaining.contains(&(request - 1)) {
+        request - 1
+    } else {
+        *remaining.iter().next().expect("فحصنا الفراغ أعلاه")
+    };
+    remaining.remove(&picked);
+    Some(picked)
+}
+
 /// كما [`demix_segmented`] لكن بعدد خطوات المقطع — للاختبار القصير
 /// (نفس الشبكة العالمية ونفس الإحماء، بلا استثناء) وبمصرف اختياري.
 fn demix_segmented_with_steps(
@@ -952,6 +991,7 @@ fn demix_segmented_with_steps(
     segment_steps: usize,
     progress: &dyn Fn(f32) -> bool,
     sink: Option<&dyn SegmentSink>,
+    priority: Option<&dyn Fn() -> usize>,
 ) -> Result<[Vec<f32>; 2], SepError> {
     let n = mix[0].len().min(mix[1].len());
     if n == 0 {
@@ -968,23 +1008,29 @@ fn demix_segmented_with_steps(
     }
 
     let segments = plan.len() as f32;
+    // التقدّم بعدّ **المكتمل** لا فهرس المقطع: متطابقٌ في الترتيب الطبيعيّ
+    // (الفهرس = العدّاد) وتصاعديٌّ تحت إعادة الترتيب بالأولوية.
+    let mut done = 0usize;
     drive_segments(
         &plan,
         n,
         |seg| {
-            let base = seg.index as f32;
+            let base = done as f32;
             // **المصرف يُسلَّم داخل `demix_segment`** لأن الإصدار صار **بالنافذة**
             // لا بالمقطع: ما صار نهائياً بعد كل نافذة يخرج فوراً.
-            demix_segment(
+            let part = demix_segment(
                 session,
                 mix,
                 seg,
                 &|p| progress((base + p) / segments),
                 sink,
-            )
+            );
+            done += 1;
+            part
         },
         // والإصدار وقع داخل المقطع؛ ودور `drive_segments` هنا جمع الناتج فقط.
         |_seg, _part| Ok(()),
+        priority,
     )
 }
 
@@ -1094,6 +1140,7 @@ pub fn separate(
     progress: &dyn Fn(f32) -> bool,
     analysis: Option<&MixAnalysis>,
     sink: Option<&dyn SegmentSink>,
+    priority: Option<&dyn Fn() -> usize>,
 ) -> Result<StemPaths, SepError> {
     let (left, right, sample_rate) = read_wav_stereo(input_wav)?;
     tracing::info!(target: "sep", "mix loaded: {} samples @{}", left.len(), sample_rate);
@@ -1132,8 +1179,9 @@ pub fn separate(
     // — no crossfade). See `segments.rs` for the measured misalignment cause.
     let t_inf = std::time::Instant::now();
     let vocals_src = match sink {
-        // الإصدار التدريجي: كل مقطع يُسلَّم لحظة اكتماله (المرحلة ٤أ).
-        Some(s) => demix_segmented_to(&mut session, &mix, &|p| progress(p), s)?,
+        // الإصدار التدريجي: كل مقطع يُسلَّم لحظة اكتماله (المرحلة ٤أ)،
+        // وترتيبُ المعالجة يسأل الأولوية قبل كل مقطع (٤-ب).
+        Some(s) => demix_segmented_to(&mut session, &mix, &|p| progress(p), s, priority)?,
         None => demix_segmented(&mut session, &mix, &|p| progress(p))?,
     };
     let inference_ms = t_inf.elapsed().as_secs_f32() * 1000.0;
@@ -1355,8 +1403,16 @@ mod tests {
         let mix_path = tmp.join("mix.wav");
         write_wav_stereo_f32(&mix_path, &l, &r, E2E_SR).unwrap();
 
-        let stems = separate(&mix_path, &tmp.join("out"), false, &|_| true, None, None)
-            .expect("separation must succeed on a generated 44.1k stereo WAV");
+        let stems = separate(
+            &mix_path,
+            &tmp.join("out"),
+            false,
+            &|_| true,
+            None,
+            None,
+            None,
+        )
+        .expect("separation must succeed on a generated 44.1k stereo WAV");
         let (vl, vr, vsr) = read_wav_stereo(&stems.vocals).expect("vocals stem must be readable");
         let (il, ir, isr) =
             read_wav_stereo(&stems.instrumental).expect("instrumental stem must be readable");
@@ -1494,6 +1550,7 @@ mod tests {
             &|_| true,
             &|_, _| {},
             None,
+            None,
         )
         .expect("full pipeline must succeed on a generated mp4");
 
@@ -1561,6 +1618,7 @@ mod tests {
                 tracing::debug!(target: "sep_test", "progress {:.0}%", p * 100.0);
                 true
             },
+            None,
             None,
             None,
         )
@@ -1787,8 +1845,8 @@ mod tests {
         let wav = tmp.join("mix.wav");
         write_wav_stereo_f32(&wav, &l, &r, sr).unwrap();
         let t0 = std::time::Instant::now();
-        let stems =
-            separate(&wav, &tmp.join("out"), true, &|_| true, None, None).expect("CUDA separation");
+        let stems = separate(&wav, &tmp.join("out"), true, &|_| true, None, None, None)
+            .expect("CUDA separation");
         eprintln!(
             "SMOKE: 12s audio separated on CUDA in {:.1}s",
             t0.elapsed().as_secs_f32()
@@ -1923,7 +1981,7 @@ mod tests {
             analysis.suspect.len(), analysis.scored_windows);
 
         // Full path keeps the merge sample-exact (silence passes through).
-        let stems = separate(&wav, &tmp.join("out"), false, &|_| true, None, None)
+        let stems = separate(&wav, &tmp.join("out"), false, &|_| true, None, None, None)
             .expect("separation failed");
         let (vl, _, _) = read_wav_stereo(&stems.vocals).unwrap();
         let (il, _, _) = read_wav_stereo(&stems.instrumental).unwrap();
@@ -2269,6 +2327,7 @@ mod tests {
             },
             None,
             None,
+            None,
         );
         let elapsed = started.elapsed();
         assert!(
@@ -2433,7 +2492,7 @@ mod tests {
         let mut session = MdxSession::load(false).expect("MDX session");
 
         let full = demix(&mut session, &mix, &|_| true).expect("whole-file demix");
-        let seg = demix_segmented_with_steps(&mut session, &mix, 2, &|_| true, None)
+        let seg = demix_segmented_with_steps(&mut session, &mix, 2, &|_| true, None, None)
             .expect("segmented demix");
 
         for c in 0..2 {
@@ -2631,7 +2690,8 @@ mod tests {
         let mix = [l, r];
         let mut session = MdxSession::load(false).expect("MDX session");
         let full = demix(&mut session, &mix, &|_| true).expect("full");
-        let seg = demix_segmented_with_steps(&mut session, &mix, 2, &|_| true, None).expect("seg");
+        let seg =
+            demix_segmented_with_steps(&mut session, &mix, 2, &|_| true, None, None).expect("seg");
         for c in 0..2 {
             let r_full = rms(&full[c]);
             let r_diff = rms_diff(&seg[c], &full[c]);
@@ -2726,6 +2786,7 @@ mod tests {
                     .push((seg.index, seg.emit_start, seg.emit_end, part[0].len()));
                 Ok(())
             },
+            None,
         )
         .expect("drive");
         let got = seen.into_inner();
@@ -2773,6 +2834,7 @@ mod tests {
                     Ok(())
                 }
             },
+            None,
         )
         .expect_err("must fail");
         assert!(matches!(err, SepError::InvalidInput(_)));
@@ -2794,8 +2856,70 @@ mod tests {
                 Ok([v.clone(), v])
             },
             |_, _| Ok(()),
+            None,
         )
         .expect_err("must fail");
         assert!(matches!(err, SepError::InvalidInput(_)));
+    }
+
+    // ── ٤-ب: اختيار الأولوية — نقيّ بلا نموذج ──────────────────────────────
+
+    /// الطلب (واحد-أساس) يُقدَّم من المتبقّيّ ثم يسير الطبيعيّ: طلبُ المقطع 4
+    /// يجعل فهرسه 3 أوّلاً ثم 0،1،2،4،5 — وكلٌّ مرة واحدة.
+    #[test]
+    fn the_priority_request_pulls_its_segment_first_then_the_rest_natural() {
+        let mut remaining: std::collections::BTreeSet<usize> = (0..6).collect();
+        let mut order = Vec::new();
+        for request in [4usize, 0, 0, 0, 0, 0] {
+            order.push(
+                super::next_segment_by_priority(&mut remaining, request).expect("المتبقّي غير فارغ"),
+            );
+        }
+        assert_eq!(
+            order,
+            vec![3, 0, 1, 2, 4, 5],
+            "طلبُ الدقيقة 200 (المقطع 41 في ملفٍ طويل) يُنتَج أوّلاً"
+        );
+    }
+
+    /// طلبٌ منتهٍ (خارج المتبقّيّ) أو بلا طلب ⇒ الطبيعيّ — لا توقف ولا تكرار.
+    #[test]
+    fn a_stale_request_outside_the_remaining_falls_back_to_natural() {
+        let mut remaining: std::collections::BTreeSet<usize> = [2usize, 3, 4].into_iter().collect();
+        assert_eq!(
+            super::next_segment_by_priority(&mut remaining, 1).expect("1"),
+            2,
+            "المقطع 1 منتهٍ ⇒ الأصغر متبقياً"
+        );
+        assert_eq!(
+            super::next_segment_by_priority(&mut remaining, 99).expect("99"),
+            3
+        );
+        assert_eq!(
+            super::next_segment_by_priority(&mut remaining, 0).expect("0"),
+            4
+        );
+        assert!(
+            super::next_segment_by_priority(&mut remaining, 0).is_none(),
+            "الفراغ ⇒ لا شيء"
+        );
+    }
+
+    /// آخرُ طلبٍ فائز فيكل خطوة، وكل مقطع يمرّ مرة واحدة مهما تكرّر الطلب.
+    #[test]
+    fn the_latest_request_wins_and_no_segment_runs_twice() {
+        let mut remaining: std::collections::BTreeSet<usize> = (0..5).collect();
+        let mut order = Vec::new();
+        order.push(super::next_segment_by_priority(&mut remaining, 3).expect("3"));
+        order.push(super::next_segment_by_priority(&mut remaining, 1).expect("1"));
+        order.push(super::next_segment_by_priority(&mut remaining, 3).expect("مكرر"));
+        while let Some(i) = super::next_segment_by_priority(&mut remaining, 0) {
+            order.push(i);
+        }
+        assert_eq!(
+            order,
+            vec![2, 0, 1, 3, 4],
+            "الفائز يُقدَّم ثم يُستكمل الطبيعيّ بلا تكرار"
+        );
     }
 }
