@@ -1493,6 +1493,7 @@ mod tests {
             &crate::proc::CancelToken::new(),
             &|_| true,
             &|_, _| {},
+            None,
         )
         .expect("full pipeline must succeed on a generated mp4");
 

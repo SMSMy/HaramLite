@@ -322,6 +322,7 @@ fn process_watched(
         &|stage, pct| {
             let _ = (stage, pct);
         },
+        None,
     );
 
     match out {

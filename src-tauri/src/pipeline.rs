@@ -815,6 +815,10 @@ pub fn process_file(
     cancel: &CancelToken,
     progress: &dyn Fn(f32) -> bool,
     stage: &dyn Fn(&str, f32),
+    // مصرف الوحدات التدريجيّ (٤أ/٣): `Some` من الجسر في مسار مشاهدة الصوت
+    // فيُصدر البادئة النهائية بعد كل نافذة، و`None` في كل مسار آخر =
+    // السلوك القائم حرفياً بلا إصدار تدريجي.
+    sink: Option<&dyn crate::separator::SegmentSink>,
 ) -> Result<PipelineOutput, PipelineError> {
     let started = std::time::Instant::now();
     // Held for the whole run: any second path attempting this file gets a
@@ -941,9 +945,9 @@ pub fn process_file(
             use_cuda,
             &sep_progress,
             clip_analysis.as_ref(),
-            // مصرف المقاطع: يُوصَل من الجسر في خطوة لاحقة من المرحلة ٤أ.
-            // و`None` هنا = السلوك القائم حرفياً (لا إصدار تدريجي بعد).
-            None,
+            // مصرف الوحدات (٤أ/٣): `Some` يُوصَل من الجسر، و`None` =
+            // السلوك القائم حرفياً.
+            sink,
         )
         .map_err(|e| {
             let _ = std::fs::remove_dir_all(&work_dir);
@@ -1768,6 +1772,7 @@ mod tests {
             &CancelToken::new(),
             &|_| true,
             &|_, _| {},
+            None,
         );
         assert!(r.is_err(), "missing input must fail");
         assert!(
@@ -1997,6 +2002,7 @@ mod tests {
                 cancel,
                 &|_| true,
                 &|_, _| {},
+                None,
             )
         };
 

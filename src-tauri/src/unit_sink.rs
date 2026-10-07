@@ -20,11 +20,11 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use crate::segments::SegmentPlan;
-use crate::separator::{SepError, SegmentSink};
+use crate::separator::{SegmentSink, SepError};
 
 /// معلومة وحدة مخدومة: `k` واحد-أساس على الشبكة المطلقة، و`total` حجم
 /// ملفها المكتوب **في تلك الوحدة**، و`done` اكتمال ترميزها.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct UnitInfo {
     pub k: usize,
     pub total: usize,
@@ -135,7 +135,11 @@ impl<'e> UnitAggregator<'e> {
     fn finish_unit(&mut self, unit: usize, buf: OpenUnit) {
         let k = unit + 1;
         match self.encoder.encode(k, &[buf.l, buf.r]) {
-            Ok(total) => self.completed.push(UnitInfo { k, total, done: true }),
+            Ok(total) => self.completed.push(UnitInfo {
+                k,
+                total,
+                done: true,
+            }),
             Err(reason) => {
                 if self.degraded.is_none() {
                     self.degraded = Some(reason);
@@ -153,7 +157,8 @@ impl<'e> UnitAggregator<'e> {
         if self.degraded.is_some() {
             return;
         }
-        let remaining: Vec<(usize, OpenUnit)> = std::mem::take(&mut self.open).into_iter().collect();
+        let remaining: Vec<(usize, OpenUnit)> =
+            std::mem::take(&mut self.open).into_iter().collect();
         for (unit, buf) in remaining {
             if buf.l.is_empty() {
                 continue;
@@ -227,8 +232,11 @@ impl SegmentSink for UnitSink<'_> {
     }
 }
 
-/// المُرمِّز الإنتاجيّ: wav مؤقّت → ffmpeg `libmp3lame` 320k → ملف `.part`
-/// → إعادة تسمية ذرّية إلى الاسم النهائي ⇒ لا تُخدَم وحدة نصف مكتملة أبداً.
+/// المُرمِّز الإنتاجيّ: wav مؤقّت → ffmpeg `libmp3lame` 320k → ملف وسيط
+/// `unit-XXXX.enc.mp3` → إعادة تسمية ذرّية إلى الاسم النهائي ⇒ لا تُخدَم
+/// وحدة نصف مكتملة أبداً. **ولاحقة الوسيط `.mp3` مقصودة**: ffmpeg يستنتج
+/// الصيغة من اللاحقة (قياس حيّ: `.part` يُسقطه بـ«Invalid argument»)،
+/// والاسم لا يطابق نمط الوحدة النهائيّ فلا يُخدَم ولا يُعَد وحدة.
 pub struct ProductionUnitEncoder {
     pub dir: PathBuf,
     pub sr: u32,
@@ -238,7 +246,7 @@ impl UnitEncode for ProductionUnitEncoder {
     fn encode(&mut self, k: usize, samples: &[Vec<f32>; 2]) -> Result<usize, String> {
         let name = unit_file_name(k);
         let wav = self.dir.join(format!("unit-{k:04}.tmp.wav"));
-        let part = self.dir.join(format!("{name}.part"));
+        let part = self.dir.join(format!("unit-{k:04}.enc.mp3"));
         let done_path = self.dir.join(&name);
         crate::separator::write_wav_stereo_f32_pub(&wav, &samples[0], &samples[1], self.sr)
             .map_err(|e| format!("كتابة wav للوحدة {k}: {e}"))?;
@@ -324,9 +332,21 @@ mod tests {
             assert_eq!(
                 snap.units,
                 vec![
-                    UnitInfo { k: 1, total: 2000, done: true },
-                    UnitInfo { k: 2, total: 2000, done: true },
-                    UnitInfo { k: 3, total: 2000, done: true },
+                    UnitInfo {
+                        k: 1,
+                        total: 2000,
+                        done: true
+                    },
+                    UnitInfo {
+                        k: 2,
+                        total: 2000,
+                        done: true
+                    },
+                    UnitInfo {
+                        k: 3,
+                        total: 2000,
+                        done: true
+                    },
                 ],
                 "ثلاث وحدات مكتملة بمراسي الشبكة: {:?}",
                 snap.units
@@ -369,11 +389,7 @@ mod tests {
             let mut agg = UnitAggregator::new(UNIT, &mut enc);
             let p = plan(0, 0, 2 * UNIT + 500);
             agg.push(&p, 0, &chunk(2 * UNIT + 500)).expect("الشريحة");
-            assert_eq!(
-                agg.snapshot().units.len(),
-                2,
-                "لا ترميز للبقايا قبل الإتمام"
-            );
+            assert_eq!(agg.snapshot().units.len(), 2, "لا ترميز للبقايا قبل الإتمام");
             agg.finish();
             let snap = agg.snapshot();
             assert_eq!(snap.units.len(), 3);
@@ -393,7 +409,8 @@ mod tests {
             let mut agg = UnitAggregator::new(UNIT, &mut enc);
             let p = plan(0, 0, 4 * UNIT);
             // دفعةٌ واحدة تعبر الوحدة الفاشلة — ولا `Err` يخرج مهما حدث.
-            agg.push(&p, 0, &chunk(2500)).expect("فشل الكتابة لا يخرج خطأً");
+            agg.push(&p, 0, &chunk(2500))
+                .expect("فشل الكتابة لا يخرج خطأً");
             let snap = agg.snapshot();
             assert_eq!(snap.units.len(), 1, "الوحدة 1 اكتملت قبل الفشل");
             assert!(
@@ -438,11 +455,45 @@ mod tests {
         let mut agg = UnitAggregator::new(UNIT, &mut enc);
         let p = plan(0, 0, 2 * UNIT);
         let err = agg.push(&p, 1500, &chunk(600)).unwrap_err();
-        assert!(matches!(err, SepError::InvalidInput(_)), "الخطأ من نوع المُرسِل: {err:?}");
+        assert!(
+            matches!(err, SepError::InvalidInput(_)),
+            "الخطأ من نوع المُرسِل: {err:?}"
+        );
         assert!(
             agg.snapshot().degraded.is_none(),
             "خرق الهندسة ليس فشل كتابة: {:?}",
             agg.snapshot().degraded
         );
+    }
+
+    /// المُرمِّز الإنتاجيّ ضد ffmpeg الحقيقيّ بمسطرة المشروع نفسها
+    /// (`libmp3lame` 320k): ملفٌ نهائيّ بحجمٍ مُعلَن، ولا أثر للـwav
+    /// المؤقّت ولا لملف `.part` — إعادة التسمية الذرّية هي إعلان الاكتمال.
+    #[test]
+    #[ignore = "يتطلب bin/ffmpeg — يُقاس محلياً، والعدّاء بلا bin/ (stubs)"]
+    fn a_unit_encoder_writes_a_real_mp3_and_leaves_no_partial() {
+        let dir = std::env::temp_dir().join(format!("hl_unit_encode_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let n = crate::segments::DEMIX_STEP; // وحدة خطوة كاملة (4.4408 ث)
+        let l: Vec<f32> = (0..n).map(|i| ((i as f32) * 0.011).sin()).collect();
+        let r = l.clone();
+        let mut enc = ProductionUnitEncoder {
+            dir: dir.clone(),
+            sr: 44_100,
+        };
+        let total = enc.encode(1, &[l, r]).expect("الترميز ينجح بمسطرة المشروع");
+        let file = dir.join(unit_file_name(1));
+        let meta = std::fs::metadata(&file).expect("الملف النهائي موجود");
+        assert_eq!(meta.len() as usize, total, "الحجم المُعلَن = المقيس");
+        assert!(
+            total > 10_000,
+            "وحدة 195,840 عيّنة 320k لا تكون أقل من عشرة آلاف بايت: {total}"
+        );
+        assert!(!dir.join("unit-0001.tmp.wav").exists(), "لا wav مؤقّت باقٍ");
+        assert!(
+            !dir.join("unit-0001.enc.mp3").exists(),
+            "لا وسيط باقٍ بعد الإتمام"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

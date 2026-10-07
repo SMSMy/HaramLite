@@ -330,6 +330,32 @@ fn handle_host_message(msg: &serde_json::Value) {
                 Err(e) => reply_err(E_ENGINE, &e),
             }
         }
+        "page_units" => {
+            // الخطوة ٤أ/٣: وحدات الخطوة الجاهزة — **الحقيقة على القرص**:
+            // إعادة التسمية الذرّية تضمن أن الظاهر مكتمل لا نصف مكتمل.
+            reply_ok(serde_json::json!({
+                "ok": true,
+                "units": list_page_units(&page_audio_dir()),
+            }));
+        }
+        "page_unit" => {
+            // شريحة بايتات من وحدة واحدة بمرساتها المطلقة من الشبكة —
+            // `k` واحد-أساس: `unit-0001` يبدأ عند العيّنة صفر.
+            let k = msg.get("k").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            if k == 0 {
+                reply_err(E_BAD_INPUT, "unit k is one-based");
+                return;
+            }
+            let offset = msg.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+            let len = msg
+                .get("len")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(PAGE_SLICE_MAX as u64) as usize;
+            reply_ok(serde_json::json!({
+                "ok": true,
+                "unit": serve_unit_slice(&page_audio_dir(), k, offset, len),
+            }));
+        }
         "prioritize_page_audio" => {
             // الدفعة ب (المرحلة ٣): الصفحة تطلب أولوية معالجة من موضعها —
             // رقم المقطع واحد الأساس من `segqueue::SEGMENT_SECS`. يُحفظ في
@@ -582,6 +608,94 @@ fn serve_page_audio_slice(offset: usize, len: usize) -> Result<serde_json::Value
     serve_slice_from(std::path::Path::new(&path), produced, offset, len)
 }
 
+/// يقرأ اسم ملف وحدة إلى رقمها: `unit-0042.mp3` ⇔ ‏42. **النهائيّ وحده**:
+/// `unit-0042.mp3.part` و`unit-0042.tmp.wav` لا يُعَدَّان وحدةً — إعادة
+/// التسمية الذرّية هي إعلان الاكتمال.
+fn parse_unit_file_name(name: &str) -> Option<usize> {
+    name.strip_prefix("unit-")?
+        .strip_suffix(".mp3")?
+        .parse::<usize>()
+        .ok()
+}
+
+/// قائمة الوحدات الجاهزة من مجلد صوت الصفحة، مرتّبة بمراسيها. **الحقيقة
+/// على القرص**: ما ظهر هنا قابلٌ للخدمة فوراً، ولا آثار للنصف مكتمل.
+fn list_page_units(dir: &std::path::Path) -> Vec<crate::unit_sink::UnitInfo> {
+    let mut units = Vec::new();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return units;
+    };
+    for e in entries.flatten() {
+        let p = e.path();
+        let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let Some(k) = parse_unit_file_name(name) else {
+            continue;
+        };
+        let Ok(meta) = std::fs::metadata(&p) else {
+            continue;
+        };
+        units.push(crate::unit_sink::UnitInfo {
+            k,
+            total: meta.len() as usize,
+            done: true,
+        });
+    }
+    units.sort_by_key(|u| u.k);
+    units
+}
+
+/// خدمة شريحة بايتات من وحدة واحدة. العقد (`serve_slice_from`) نفسه لكن
+/// على مستوى الوحدة: `total` = بايتات **تلك الوحدة** (لا الملف كله)،
+/// و`done` = اكتمال **تلك الوحدة**. والوحدة الغائبة ليست عطلاً:
+/// `total: 0 · data: "" · done: false` — استطلاعٌ هادئ كالملفّ الناميّ
+/// (نمط المُفسِّر ١)، لا رمزُ خطأ يُترجم.
+fn serve_unit_slice(
+    dir: &std::path::Path,
+    k: usize,
+    offset: usize,
+    len: usize,
+) -> serde_json::Value {
+    let path = dir.join(crate::unit_sink::unit_file_name(k));
+    match std::fs::read(&path) {
+        Ok(bytes) => {
+            let (off, data, at_end) = slice_bytes(&bytes, offset, len);
+            serde_json::json!({
+                "k": k,
+                "total": bytes.len(),
+                "offset": off,
+                "data": data,
+                "done": at_end,
+            })
+        }
+        Err(_) => serde_json::json!({
+            "k": k,
+            "total": 0,
+            "offset": offset,
+            "data": "",
+            "done": false,
+        }),
+    }
+}
+
+/// تفريغ وحدات مهمّة سابقة عند بدء مهمّة جديدة — وحداتٌ لا تصف صوت
+/// المهمّة الحالية كذبٌ للمشغّل (ثابت «الخريطة تصف الملف المُسلَّم»)،
+/// فلا تختلط وحداتُ ملفٍّ بصوت ملفٍّ آخر في المجلد نفسه.
+fn clear_page_units(dir: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let Some(name) = e.file_name().into_string().ok() else {
+            continue;
+        };
+        if name.starts_with("unit-") {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
 /// النقي القابل للاختبار داخل [`serve_page_audio_slice`]: قراءة الملف **كما
 /// هو الآن** وتقطيعه بعلم الإنتاج. الملف الفارغ (موجود بلا بايتات) يُخدَم
 /// بمقطع فارغ وعلم الإنتاج — لا خطأ: «قبل أول بايت» هو غياب المسار وحده.
@@ -670,9 +784,15 @@ fn sweep_page_audio_dir(dir: &Path, keep: Option<&Path>) {
 }
 
 /// Pure predicate (unit-tested): an entry may be swept only when it sits
-/// DIRECTLY inside `dir` and is not the file we are keeping.
+/// DIRECTLY inside `dir`, is not the file we are keeping, and is not a
+/// step-unit final file (٤أ/٣: the player serves units during and after
+/// the run; the next job's start clears them via `clear_page_units`).
 fn sweep_deletable(entry: &Path, dir: &Path, keep: Option<&Path>) -> bool {
-    entry.parent() == Some(dir) && Some(entry) != keep
+    let name = entry
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
+    entry.parent() == Some(dir) && Some(entry) != keep && parse_unit_file_name(name).is_none()
 }
 
 /// صوت الصفحة المُسلَّم للمشغّل + **خريطة الملف المُسلَّم نفسه**.
@@ -829,6 +949,9 @@ struct LastJob<'a> {
     served_kept: &'a [(f64, f64)],
     mode: Mode,
     url: &'a str,
+    /// إن انحدر إصدار الوحدات (٤أ/٣): سببٌ معلَن — والملف الكامل هو
+    /// المُسلَّم. غيابه يعني أن الوحدات سلَّمت أو لم تُصدر أصلًا.
+    page_units_degraded: Option<&'a str>,
 }
 
 /// حِمل `last` لمهمّة ناجحة — **دالّة نقيّة** (تُختبر وحدها، بلا I/O).
@@ -858,6 +981,7 @@ fn last_ok_payload(job: &LastJob<'_>) -> serde_json::Value {
         served_kept,
         mode,
         url,
+        page_units_degraded,
     } = *job;
     serde_json::json!({
         "name": name,
@@ -878,6 +1002,9 @@ fn last_ok_payload(job: &LastJob<'_>) -> serde_json::Value {
         // identity (output names derive from titles, not ids — name-matching
         // would misfire). Old states lack it: None.
         "url": url,
+        // حقل جديد (٤أ/٣): سبب انحدار إصدار الوحدات إن حصل. توافق خلفي:
+        // القارئ القديم يتجاهل ما لا يعرفه، والغياب = لا انحدار.
+        "page_units_degraded": page_units_degraded,
     })
 }
 
@@ -1353,6 +1480,25 @@ fn handle_request(
                 "queue": queued,
                 "last": null
             }));
+            if watch {
+                // بداية مهمّة مشاهدة جديدة: وحدات المهمّة السابقة لا تصف
+                // صوتها (ثابت «الوحدات/الخريطة تصف الملف المُسلَّم») ⇒ تُفرَغ.
+                clear_page_units(&page_audio_dir());
+            }
+            // الخطوة ٤أ/٣: مصرف وحدات الخطوة — مسار مشاهدة **الأغنية** فقط:
+            // وحدات 4.4408 ث تُرمَّز إلى `page-audio/unit-XXXX.mp3` بمراسي
+            // مطلقة من الشبكة. وفشلُ وحدة يُنحدر داخلياً (لا `Err` يخرج
+            // أبداً): تتوقف الوحدات ويُسلَّم الملف الكامل كما كان — ولا
+            // يُسقط مهمّة المستخدم. ومسار **clip** بلا وحدات عمداً: وحدات
+            // الملف الكامل لا تصف المقصوص — عطب «خريطة لا تصف ملفها» م٦-ب.
+            let units_enabled = watch && matches!(mode, Mode::Song);
+            let mut unit_encoder = crate::unit_sink::ProductionUnitEncoder {
+                dir: page_audio_dir(),
+                sr: 44_100, // معدّل العمل الذي عُرِّفت عليه شبكة demix كلّها
+            };
+            let units =
+                crate::unit_sink::UnitSink::new(crate::segments::DEMIX_STEP, &mut unit_encoder);
+            let units_reader = units.reader();
             // م١: المدخل الواحد — الطلب القادم من المتصفح يأخذ فتحة جهاز.
             let res = slots::run_separation(
                 "bridge",
@@ -1380,7 +1526,21 @@ fn handle_request(
                         "last": null
                     }));
                 },
+                if units_enabled { Some(&units) } else { None },
             );
+            units.finish();
+            let units_degraded = units_reader
+                .lock()
+                .expect("قفل لقطة الوحدات")
+                .degraded
+                .clone();
+            if let Some(reason) = &units_degraded {
+                // الانحدار مُعلَن لا مُقنَّع: توقّفت الوحدات وسُلِّم الملف الكامل.
+                tracing::warn!(
+                    target: "bridge",
+                    "أُنحدر إصدار وحدات الخطوة وسُلِّم الملف الكامل: {reason}"
+                );
+            }
             match res {
                 Ok(o) => {
                     // name the FINISHED OUTPUT (not the downloaded input) so the
@@ -1425,6 +1585,7 @@ fn handle_request(
                             served_kept,
                             mode,
                             url,
+                            page_units_degraded: units_degraded.as_deref(),
                         })
                     }));
                     let _ = app.emit(
@@ -2674,6 +2835,90 @@ mod tests {
         let _ = std::fs::remove_dir(&dir);
     }
 
+    /// ٤أ/٣: قائمة الوحدات من **الحقيقة على القرص** — الملف النهائي وحده
+    /// وحدةٌ مخدومة، والمقتطعات (`.part`/`tmp.wav`) والغريبة تُهمل،
+    /// والترتيب بمراسي الشبكة لا بترتيب الكتابة.
+    #[test]
+    fn page_units_lists_only_final_units_sorted_by_anchor() {
+        let lock = test_serial();
+        let _g = lock.lock().unwrap_or_else(|p| p.into_inner());
+        let dir = std::env::temp_dir().join(format!("hl_units_list_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(dir.join("unit-0003.mp3"), b"ccc").unwrap();
+        std::fs::write(dir.join("unit-0001.mp3"), b"a").unwrap();
+        std::fs::write(dir.join("unit-0002.mp3.part"), b"half").unwrap();
+        std::fs::write(dir.join("unit-0004.tmp.wav"), b"wav").unwrap();
+        std::fs::write(dir.join("unit-junk.mp3"), b"junk").unwrap();
+        let units = list_page_units(&dir);
+        assert_eq!(
+            units,
+            vec![
+                crate::unit_sink::UnitInfo {
+                    k: 1,
+                    total: 1,
+                    done: true
+                },
+                crate::unit_sink::UnitInfo {
+                    k: 3,
+                    total: 3,
+                    done: true
+                },
+            ],
+            "النهائيّ وحده يُعَد وحدة، والترتيب بالمرسي: {units:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// ٤أ/٣: عقد شريحة الوحدة — `total` = حجم **تلك الوحدة** و`done` =
+    /// اكتمال **تلك الوحدة**؛ والوحدة الغائبة استطلاعٌ هادئ (`done:false`
+    /// بلا `data` ولا خطأ) لا رمزُ عطل يُترجم.
+    #[test]
+    fn a_unit_slice_serves_the_unit_contract_and_a_missing_unit_polls() {
+        let lock = test_serial();
+        let _g = lock.lock().unwrap_or_else(|p| p.into_inner());
+        let dir = std::env::temp_dir().join(format!("hl_units_slice_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(dir.join("unit-0002.mp3"), b"0123456789").unwrap();
+        let v = serve_unit_slice(&dir, 2, 8, PAGE_SLICE_MAX);
+        assert_eq!(v["k"], 2);
+        assert_eq!(v["total"], 10, "total = حجم الوحدة لا الكل");
+        assert_eq!(v["offset"], 8);
+        assert_eq!(v["data"], "3839", "hex البايتتين الباقيتين (8,9)");
+        assert_eq!(v["done"], true, "وصول النهاية ⇒ اكتمال الوحدة");
+        // شريحة تجاوزت الطول تُقصّ وتُعلن النهاية (عقد slice_bytes نفسه).
+        let v2 = serve_unit_slice(&dir, 2, 9, 100);
+        assert_eq!(v2["data"], "39");
+        assert_eq!(v2["done"], true);
+        // الوحدة الغائبة: لا خطأ — استطلاع.
+        let v3 = serve_unit_slice(&dir, 7, 0, 10);
+        assert_eq!(v3["k"], 7);
+        assert_eq!(v3["total"], 0);
+        assert_eq!(v3["data"], "");
+        assert_eq!(v3["done"], false);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// الكسح لا يمسّ وحدات الخطوة النهائية (يخدمها المشغّل)، ويمسّ غيرها
+    /// كما كان — والوحدات يفرّغها بدءُ المهمّة التالية حصراً.
+    #[test]
+    fn the_sweep_keeps_final_unit_files_and_clears_everything_else() {
+        let dir = std::env::temp_dir().join(format!("hl_units_sweep_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let unit = dir.join("unit-0001.mp3");
+        let part = dir.join("unit-0002.mp3.part");
+        let other = dir.join("page.mp3");
+        std::fs::write(&unit, b"u").unwrap();
+        std::fs::write(&part, b"p").unwrap();
+        std::fs::write(&other, b"o").unwrap();
+        assert!(
+            !sweep_deletable(&unit, &dir, None),
+            "الوحدة النهائية محفوظة"
+        );
+        assert!(sweep_deletable(&part, &dir, None), "النصف مكتمل يُكسح");
+        assert!(sweep_deletable(&other, &dir, None), "غير الوحدات كما كان");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// الدفعة ب (المرحلة ٣ — شرط القبول حرفياً): طابور `[1..6]` وأولوية على 4
     /// ⇒ `4,5,6,1,2,3` — تُخزَّن في الحالة ويُعاد الترتيب للصفحة. ورفض الضغط
     /// (بلا طلب) يبقى الترتيب الطبيعي (اختبار `segqueue` نفسه).
@@ -2745,6 +2990,7 @@ mod tests {
                 served_kept: m,
                 mode,
                 url: "https://youtu.be/x",
+                page_units_degraded: None,
             })
         };
         let song = mk(&song_map, Mode::Song);
@@ -3165,6 +3411,7 @@ mod m6b_spy_probe {
                 served_kept: m,
                 mode,
                 url: "https://youtu.be/x",
+                page_units_degraded: None,
             })
         };
         let song = mk(&song_map, Mode::Song);

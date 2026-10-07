@@ -341,6 +341,7 @@ fn run_files(o: &CliOpts) -> i32 {
                 true
             },
             &|_, _| {},
+            None,
         ) {
             Ok(out) => {
                 eprintln!("\r  [100%] تم في {:.1}s", t0.elapsed().as_secs_f32());

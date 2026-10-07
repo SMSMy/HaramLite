@@ -6895,7 +6895,7 @@ fn run_job(
         // behind the 150MB of "temporary" files the owner found in AppData:
         // the delivered artefact was being written to the scratch folder and
         // never cleaned (2026-09-11).
-        &input, &results, mode, kind, false, true, s.cuda, &prog, &stage,
+        &input, &results, mode, kind, false, true, s.cuda, &prog, &stage, None,
     );
     let out = match processed {
         Ok(o) => o,
