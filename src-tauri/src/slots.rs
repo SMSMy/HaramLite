@@ -2935,11 +2935,18 @@ mod tests {
         // (لا أوّله: `#` في أوّل `-Command` يُلغي بقيّة السطر فينتهي الابن فوراً
         // بلا نوم — عطل وقع فعلاً وكشفه ضابط `wait_for_live_child`)، وتُنقل إلى
         // الابن في سطر أوامره فيصير جرده بعينه ممكنًا.
+        // **والأداة المسجَّلة تُعلن رقمها أيضاً** (`$PID` = عمليّة السكربت نفسه،
+        // وهي الطفل الذي يُسجَّل مقبضه في `proc` و**ينتظره** `kill_children`):
+        // فبها يُقاس **عقد الإنتاج** («العودة تعني موت المسجَّل») على العملية
+        // التي ينتظرها فعلاً، لا على الابن وحده.
+        let tool_pid_file = pid_file.with_file_name("tool.pid");
         let script = format!(
             "$c = Start-Process -FilePath 'pwsh' -ArgumentList '-NoProfile','-NonInteractive','-Command',\"{child_script}\" -PassThru -WindowStyle Hidden; \
              Set-Content -Path '{}' -Value $c.Id; \
+             Set-Content -Path '{}' -Value $PID; \
              Start-Sleep -Seconds {secs}; # {token}",
-            pid_file.display()
+            pid_file.display(),
+            tool_pid_file.display()
         );
         (
             "pwsh".to_string(),
@@ -2962,9 +2969,19 @@ mod tests {
     /// **ولا يكفي «الملف موجود»**: `Set-Content` يُنشئ الملف **ثم** يكتب فيه،
     /// فنافذة «موجود وفارغ» قائمة — رُصدت فعلاً في تشغيل متوازٍ
     /// (`ParseIntError { kind: Empty }`). فيُنتظر **رقم مقروء** لا ملفٌّ موجود.
+    ///
+    /// **⚠ ورفعُ سقف الإقلاع مُعلَن (2026-10-06): ٢٠ ث ← ٦٠ ث.** والسبب مقيس:
+    /// هذا الانتظار يقيس **إقلاع `pwsh`** (والسكربت نفسه يُقلع `pwsh` آخر قبله)،
+    /// ورُصد انقضاؤه فعلاً — **مرّة في `pnpm rust:gates` كامل** و**مرّتين من ٣٠**
+    /// في قياس تحت ٤٠ حارق معالج — بالرسالة نفسها «رقم الابن لم يُكتب خلال ٢٠ ث».
+    /// والقصد من السقف أن **يفشل بصوت عالٍ** إن كان بناء الأمر لا ينام، لا أن
+    /// يقيس سرعة إقلاع باور شل على آلة محمَّلة ⇒ ٦٠ ث تُبقي القصد وتُزيل الرهان
+    /// على زمن الإقلاع (وهي لا تُكلِّف شيئاً في المسار السليم: الانتظار ينتهي
+    /// بمجرّد ظهور الرقم).
     #[cfg(windows)]
     fn wait_for_live_child(pid_file: &Path) -> u32 {
-        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        const START_BUDGET: Duration = Duration::from_secs(60);
+        let deadline = std::time::Instant::now() + START_BUDGET;
         let mut pid = 0u32;
         while std::time::Instant::now() < deadline {
             if let Ok(p) = std::fs::read_to_string(pid_file)
@@ -2977,7 +2994,10 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(25));
         }
-        assert!(pid != 0, "رقم الابن لم يُكتب خلال 20 ث — القياس بلا شجرة باطل");
+        assert!(
+            pid != 0,
+            "رقم الابن لم يُكتب خلال {START_BUDGET:?} — القياس بلا شجرة باطل"
+        );
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         while !pid_alive_native(pid) && std::time::Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(25));
@@ -3377,9 +3397,22 @@ mod tests {
         );
         // **الزمن الفعلي أولاً**: إسقاط فحص الرمز من حلقة الاستطلاع يُبقي الأداة
         // نائمة نومها كاملاً، فيسقط هذا التأكيد في ثوانٍ بدل انتظار دقيقة.
+        //
+        // **⚠ تغيير عتبة مُعلَن (2026-10-06): ٥ ث ← ١٥ ث.** والسبب **مقيس** لا
+        // مُقدَّر: الزمن المقيس هنا **يشمل ميزانية الإنتاج الداخلية**
+        // (`proc::KILL_WAIT` = ٥ ث، وهي مهلة انتظار `taskkill /T /F` في
+        // `kill_tree`) **زائد** زمن إقلاع `pwsh`؛ فمتى استُهلكت ميزانية الإنتاج
+        // كان القياس **بالضرورة** فوق ٥ ث. والقياس تحت حمل (٢٤ حارق معالج،
+        // ٢٠ تشغيلاً): **16 سقوطاً في 5.209–5.247 ث** — عنقودٌ ضيّق = الميزانية
+        // الداخلية (٥ ث) + الإقلاع — مقابل **4 نجاحات في 2.045–3.967 ث**.
+        // ⇒ فالعتبة القديمة كانت **دون ميزانية الإنتاج نفسها**: تسقط لاستهلاك
+        // الميزانية لا لغياب الإلغاء. **والادّعاء المقصود لم يتغيّر**: الأداة
+        // تنام ٦٠ ث والإلغاء يعود في **≪ ٦٠ ث**؛ و١٥ ث تحقّقه بهامش ٤×.
+        const CANCEL_TOOL_BUDGET: Duration = Duration::from_secs(15);
         assert!(
-            tool_elapsed < Duration::from_secs(5),
-            "الأداة (نوم 60 ث) عادت في {tool_elapsed:?} — الحلقة لم تقرأ رمز الإلغاء"
+            tool_elapsed < CANCEL_TOOL_BUDGET,
+            "الأداة (نوم 60 ث) عادت في {tool_elapsed:?} — الحلقة لم تقرأ رمز الإلغاء \
+             (السقف المعلَن {CANCEL_TOOL_BUDGET:?})"
         );
         assert_eq!(message, proc::CANCELLED, "الرسالة هي رسالة الإلغاء الواحدة");
         assert!(!done.exists(), "الأداة لم تكمل: {}", done.display());
@@ -3392,6 +3425,13 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// **مهلة موت الشجرة بعد عودة `cancel_job`** — حدثٌ يُنتظر بسقف فشل لا
+    /// لقطةٌ لحظية: الابن يُقتل بـ`TerminateJobObject` مع كل أعضاء المهمّة، لكن
+    /// الانتظار في `kill_children` على **مقبض المسجَّل** وحده ⇒ فموت الابن حدثٌ
+    /// لاحق قد يتأخّر مللي ثوانٍ على آلة محمَّلة.
+    #[cfg(windows)]
+    const TREE_GONE_BUDGET: Duration = Duration::from_secs(5);
+
     /// **القتل المباشر في `cancel_job` — قياس «تحسين الزمن» بنفسه (م٢/إصلاح)**.
     ///
     /// قياس المدقّق: حذف `proc::kill_children` من `cancel_job` **لا يُسقط** أي
@@ -3400,8 +3440,16 @@ mod tests {
     ///
     /// * **زمن**: `cancel_job` يعود في < 250 مللي (المقيس 169 = زمن `taskkill`)،
     /// * **وعدّاد**: عدد الأطفال الأحياء الذين قتلهم **المسار المباشر** ≥ 1،
-    /// * **وحال**: لحظة عودة الطلب تكون الشجرة **ميتة فعلاً** (فحص نواة سريع لا
-    ///   PowerShell — وإلا قاس الفحص نفسه زمن إطلاق عملية).
+    /// * **وحال**: العودة تعني أن **العملية المسجَّلة** ماتت (وهو ما ينتظره
+    ///   `proc::kill_children` على مقبضها حتى `KILL_CONFIRM_WAIT`)، وأن **الشجرة**
+    ///   تموت خلال مهلة مسقوفة بعدها.
+    ///
+    /// **وتصحيح مُعلَن (2026-10-06)**: كان الفحص يقيس **لحظة العودة** على **الابن**
+    /// (`child.pid`) — وهو ليس ما ينتظره الإنتاج: `TerminateJobObject` يقتل كل
+    /// أعضاء المهمّة، لكن الانتظار في `kill_children` على **مقبض المسجَّل** وحده.
+    /// فكانت اللقطة اللحظية على الابن **سباقَ قياس** لا عطلاً (شُهد سقوطها مرة
+    /// تحت حمل متوازٍ). فصار: الابن يُقاس بـ**حدثٍ بمهلة مسقوفة**، والمسجَّلة
+    /// تُقاس لحظة العودة (وهي المقيسة التي يضمنها الإنتاج).
     ///
     /// والمُفسَد: إسقاط النداء ⇒ العدّاد صفر، والابن حيّ لحظة العودة (تقتله
     /// الحلقة بعد دورة استطلاع) ⇒ يسقط الاختبار. ومُفسَد الزمن: استبدال القتل
@@ -3417,32 +3465,58 @@ mod tests {
         let name = unique_name("direct-kill");
         let (program, args) =
             sleeper_command(&tree_done, HELPER_SLEEP_SECS, &child_pid_file, &token_mark);
+        let tool_pid_file = child_pid_file.with_file_name("tool.pid");
         let mut waited = Duration::MAX;
         let mut dead_at_return = false;
+        let mut tool_dead_at_return = false;
+        let mut tree_gone = false;
+        let mut tree_gone_after = Duration::ZERO;
         let mut direct_kills = 0usize;
         let outcome = run_registered(&name, "direct-kill", None, |_token| {
             let id = active_jobs().first().map(|j| j.id).expect("مسجَّلة");
             let pid_file = child_pid_file.clone();
+            let tool_file = tool_pid_file.clone();
             let before = proc::DIRECT_KILLS.load(Ordering::SeqCst);
             let killer = std::thread::spawn(move || {
                 // ضابط موجب: الابن حيّ ونائم لحظة القياس (وإلا فالقتل يقيس لا شيء).
                 let child = wait_for_live_child(&pid_file);
+                // **والأداة المسجَّلة** — هي ما ينتظره `kill_children` فعلاً.
+                let tool = wait_for_live_child(&tool_file);
                 let t = std::time::Instant::now();
                 let ok = cancel_job(id);
                 let elapsed = t.elapsed();
-                // **لحظة العودة نفسها**: هل الشجرة ميتة؟ (فحص نواة، لا PowerShell.)
+                // **عقد الإنتاج**: الطفل المسجَّل ميت لحظة العودة (فحص نواة).
+                let tool_dead = !pid_alive_native(tool);
+                // **والشجرة**: حدثٌ بمهلة مسقوفة لا لقطةٌ لحظية — اللقطة اللحظية
+                // على الابن (وهو **غير** ما ينتظره الإنتاج) كانت تُسقط الفحص
+                // لسباق قياس: `TerminateJobObject` يقتل كل أعضاء المهمّة، لكن
+                // الانتظار في `kill_children` على **مقبض المسجَّل** وحده.
                 let dead = !pid_alive_native(child);
-                (ok, elapsed, dead)
+                let t_ret = std::time::Instant::now();
+                let mut gone = dead;
+                while !gone && t_ret.elapsed() < TREE_GONE_BUDGET {
+                    std::thread::sleep(Duration::from_millis(1));
+                    gone = !pid_alive_native(child);
+                }
+                let after = if dead {
+                    Duration::ZERO
+                } else {
+                    t_ret.elapsed()
+                };
+                (ok, elapsed, tool_dead, dead, gone, after)
             });
             let r = proc::run_cancellable_cmd(
                 Path::new(&program),
                 &args,
                 proc::current_cancel().as_ref(),
             );
-            let (ok, elapsed, dead) = killer.join().expect("خيط الإلغاء");
+            let (ok, elapsed, tool_dead, dead, gone, after) = killer.join().expect("خيط الإلغاء");
             assert!(ok, "cancel_job على مهمّة نشطة");
             waited = elapsed;
+            tool_dead_at_return = tool_dead;
             dead_at_return = dead;
+            tree_gone = gone;
+            tree_gone_after = after;
             direct_kills = proc::DIRECT_KILLS
                 .load(Ordering::SeqCst)
                 .saturating_sub(before);
@@ -3454,14 +3528,14 @@ mod tests {
         });
         assert!(outcome.is_err(), "الإلغاء لا يُعيد نجاحاً");
         eprintln!(
-            "م٢/القتل المباشر: cancel_job عاد في {waited:?} · الشجرة ميتة لحظة العودة={dead_at_return} · \
+            "م٢/القتل المباشر: cancel_job عاد في {waited:?} · المسجَّلة ميتة لحظة العودة={tool_dead_at_return} · \
+             الشجرة ميتة لحظة العودة={dead_at_return} · الشجرة ماتت خلال {tree_gone_after:?} بعد العودة · \
              عدّاد القتل المباشر={direct_kills}"
         );
         // **حدّ زمني سخيّ عمداً، والفحصان البنيويان هما الحارس**: قِيس تذبذب
         // فعليّ في الحدّ الضيّق (٢٥٠ مللي) — سقط هذا الاختبار مرة في ثلاثة
         // تشغيلات **تحت حمل متوازٍ** (عاملان يبنيان)، والزمن ليس ما يميّز
-        // العطل: المُفسَد «تأجيل القتل دورةَ استطلاع» يُسقطه `dead_at_return`
-        // (الشجرة حيّة لحظة العودة) و`direct_kills` — وكلاهما لا يتأثّر بالحمل.
+        // العطل: المُفسَد «تأجيل القتل دورةَ استطلاع» يُسقطه `direct_kills`.
         assert!(
             waited < Duration::from_secs(5),
             "الإلغاء عاد في {waited:?} — أبطأ من أي دورة استطلاع بكثير (المقيس 169 مللي)"
@@ -3470,9 +3544,20 @@ mod tests {
             direct_kills >= 1,
             "القتل المباشر لم يقتل شيئاً ({direct_kills}) — تحسين الزمن معطَّل"
         );
+        // **عقد الإنتاج**: `kill_children` ينتظر مقبض **العملية المسجَّلة** حتى
+        // `KILL_CONFIRM_WAIT` ويعود بعدها (بتحذير إن انقضت المهلة) ⇒ فعودة
+        // `cancel_job` تعني موت المسجَّلة، وهذا ما يُقاس هنا.
         assert!(
-            dead_at_return,
-            "الابن كان حيّاً لحظة عودة cancel_job — القتل المباشر لم يقع"
+            tool_dead_at_return,
+            "العملية المسجَّلة حيّة لحظة عودة cancel_job — العودة لم تعد تعني الموت \
+             (المقيس {waited:?})"
+        );
+        // **والشجرة حدثٌ بمهلة مسقوفة** لا لقطةٌ لحظية على الابن (وهو ما كان
+        // يُسقط الفحص سباقاً لا عطلاً: الابن ليس ما ينتظره الإنتاج).
+        assert!(
+            tree_gone,
+            "الشجرة لم تمت خلال {TREE_GONE_BUDGET:?} من عودة cancel_job \
+             (ميتة لحظة العودة={dead_at_return} · بعد {tree_gone_after:?})"
         );
         // تنظيف: العلامة قد تبقى إن نجا الابن (اختبار فاشل) — يُقتل بأي حال.
         if let Ok(pid) = std::fs::read_to_string(&child_pid_file)

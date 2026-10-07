@@ -159,13 +159,25 @@ pub fn read_state() -> serde_json::Value {
     // Windows a read hitting the rename instant can fail with Access Denied.
     // Retry briefly before falling back to an empty state (prevents the
     // in-page progress bar from flickering).
-    for _ in 0..3 {
+    //
+    // **ولا نوم بعد المحاولة الأخيرة** (وهو ما كان يقع: 10ms تُهدر ثم يُعاد
+    // البديل الفارغ في مسار يُنادى مع كل استطلاع)، **وسقفٌ على الساعة** فوق
+    // العدد: العدد يضمن ثلاث محاولات ولو تأخّرت الجدولة (وهو ما لا يضمنه سقفٌ
+    // زمني ضيّق وحده)، والمهلة تمنع تراكم الانتظار على خيط الواجهة.
+    const READ_ATTEMPTS: u32 = 3;
+    const READ_RETRY_SLEEP: std::time::Duration = std::time::Duration::from_millis(10);
+    const READ_RETRY_BUDGET: std::time::Duration = std::time::Duration::from_millis(50);
+    let deadline = std::time::Instant::now() + READ_RETRY_BUDGET;
+    for attempt in 0..READ_ATTEMPTS {
         if let Ok(s) = std::fs::read_to_string(state_path()) {
             if let Ok(v) = serde_json::from_str(&s) {
                 return v;
             }
         }
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        if attempt + 1 == READ_ATTEMPTS || std::time::Instant::now() >= deadline {
+            break; // لا نوم بعد المحاولة الأخيرة ولا بعد انقضاء الميزانية
+        }
+        std::thread::sleep(READ_RETRY_SLEEP);
     }
     serde_json::json!({ "running": null, "last": null })
 }

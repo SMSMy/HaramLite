@@ -109,7 +109,7 @@
     },
     {
       "path": "src-tauri/src/bridge.rs",
-      "sha256": "5c9f6d7a9d84646705d3bf428434549001a65373b5a408a771339f2493f0d2ef"
+      "sha256": "89e43d1d02348946771ee6e2dfa08b9787319aa27b000f351c25d2c79569fe9b"
     },
     {
       "path": "src-tauri/src/pipeline.rs",
