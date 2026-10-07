@@ -733,6 +733,7 @@ fn demix_segment(
     mix: &[Vec<f32>; 2],
     seg: &crate::segments::SegmentPlan,
     progress: &dyn Fn(f32) -> bool,
+    sink: Option<&dyn SegmentSink>,
 ) -> Result<[Vec<f32>; 2], SepError> {
     let n = mix[0].len().min(mix[1].len());
     if seg.emit_start >= seg.emit_end || seg.emit_end > n {
@@ -759,6 +760,9 @@ fn demix_segment(
     let mut window = vec![0.0f32; CHUNK_SIZE];
 
     let total_windows = seg.window_count() as f32;
+    let emit_len = seg.emit_end - seg.emit_start;
+    // كم عيّنة إصدار سُلِّمت **نهائياً** حتى الآن (تصاعدي متّصل).
+    let mut emitted = 0usize;
     for (wi, k) in (seg.first_window..=seg.last_window).enumerate() {
         let chunk = global_window_chunk(mix, k);
         // **نفس رياض `demix()` بالحرف**: actual = min(CHUNK_SIZE, padded_len − i).
@@ -771,28 +775,45 @@ fn demix_segment(
         let tar = session.run_model(&chunk)?;
         let offset = p - ola_start;
         accumulate_window(&mut result, &mut divider, offset, &tar, &window, actual);
+        // **الإصدار التدريجي**: ما صار نهائياً بعد هذه النافذة يُسلَّم **فوراً** —
+        // فالمنتظر لا ينتظر اكتمال المقطع (‏67 نافذة) بل أول نافذة تُنهي عيّناتها.
+        if let Some(s) = sink {
+            let upto = finalized_after_window(k, seg.emit_start, emit_len);
+            if upto > emitted {
+                let slice = materialize_emit(
+                    &result,
+                    &divider,
+                    ola_start,
+                    seg.emit_start,
+                    emitted,
+                    upto,
+                )?;
+                s.samples_ready(seg, emitted, &slice)?;
+                emitted = upto;
+            }
+        }
         if !progress(wi as f32 / total_windows) {
             return Err(SepError::Cancelled);
         }
     }
 
-    // إصدار البادئة المنتهية — تسلسل صلب، بلا crossfade.
-    let emit_len = seg.emit_end - seg.emit_start;
-    let mut out = [vec![0.0f32; emit_len], vec![0.0f32; emit_len]];
-    for c in 0..2 {
-        for (j, slot) in out[c].iter_mut().enumerate() {
-            let p = crate::segments::DEMIX_TRIM + seg.emit_start + j - ola_start;
-            if p >= ola_len {
-                return Err(SepError::Inference(format!(
-                    "segment {} emit sample {} outside OLA span",
-                    seg.index, j
-                )));
-            }
-            let d = divider[p];
-            *slot = if d > 1e-9 { result[c][p] / d } else { 0.0 };
+    // **إصدار البادئة المنتهية** — تسلسل صلب، بلا crossfade. وبقيّةٌ لم تُسلَّم
+    // بعد (آخر نافذة أو غياب مصرف) تُسلَّم هنا ثم يُختم المقطع.
+    if let Some(s) = sink {
+        if emitted < emit_len {
+            let slice = materialize_emit(
+                &result,
+                &divider,
+                ola_start,
+                seg.emit_start,
+                emitted,
+                emit_len,
+            )?;
+            s.samples_ready(seg, emitted, &slice)?;
         }
+        s.segment_finished(seg)?;
     }
-    Ok(out)
+    materialize_emit(&result, &divider, ola_start, seg.emit_start, 0, emit_len)
 }
 
 /// الفصل المجزأ على شبكة demix العالمية (المرحلة ٤أ — الإصلاح):
@@ -825,22 +846,73 @@ fn demix_segmented_to(
     )
 }
 
-/// **مصرف المقطع المنتهي** — يُنادى بعد اكتمال كل مقطع وقبل الانتقال إلى الذي
-/// يليه، وعيّناته كاملة في `part` (أول عيّنة فيه = `plan.emit_start`).
+/// **مصرف العيّنات النهائية** — يُنادى بعد كل نافذة بما **صار نهائياً** منها،
+/// وقبل أن تنتقل المعالجة إلى ما بعده.
 ///
-/// **ولماذا هنا بالذات**: هذا الموضع الوحيد الذي توجد فيه عيّنات المقطع
-/// **النهائية** قبل أن تختلط ببقية الملف — فهو نقطة الإصدار التدريجي التي
-/// ينتظرها المُنتِج (‏`seg-0001.mp3…`)، وبدونه لا يُخدَم بايت واحد قبل اكتمال
-/// الملف كله.
+/// **ولماذا هنا بالذات**: عيّنة `p` في المجال المُحشّى صارت نهائية بعد النافذة
+/// `p / step` (فلا نافذة بعدها تُسهم فيها) ⇒ فالبادئة المنتهية موجودة **داخل**
+/// المقطع لا بعده. وهذا هو الفرق بين **أول صوت بعد ثوانٍ** وأول صوت بعد دقائق
+/// (المقطع ‏297.53 ث = ٦٧ نافذة، والنافذة ‏4.4408 ث).
 ///
-/// **وحدّ الدلالة**: `Err` **تُوقف الفصل** — منتجٌ لا يستطيع الكتابة لا يجوز أن
-/// يُكمِل بصمت ثم يَعِد المشاهد بشيء لم يُكتب.
+/// **وحدّ الدلالة**: العيّنات المُسلَّمة **لا تُعدَّل بعدها** (نهائية بحساب تغطية
+/// النوافذ)، و`Err` **تُوقف الفصل** — مصرفٌ لا يستطيع الكتابة لا يُكمِل بصمت.
 pub trait SegmentSink {
-    fn segment_ready(
+    /// عيّنات نهائية جديدة من `plan`: `part[c][i]` هي العيّنة `emit_offset + i`
+    /// داخل نطاق إصدار المقطع. تُنادى مرّةً أو أكثر، بترتيب تصاعدي متّصل.
+    fn samples_ready(
         &self,
         plan: &crate::segments::SegmentPlan,
+        emit_offset: usize,
         part: &[Vec<f32>; 2],
     ) -> Result<(), SepError>;
+
+    /// انتهى نطاق المقطع: كل عيّناته سُلِّمت. (يُستعمل لختم المقطع في الحالة.)
+    fn segment_finished(&self, _plan: &crate::segments::SegmentPlan) -> Result<(), SepError> {
+        Ok(())
+    }
+}
+
+/// **نقي وقابل للاختبار بلا نموذج**: كم عيّنة من نطاق إصدار المقطع صارت نهائية
+/// بعد معالجة النافذة `k`؟
+/// `p` نهائية بعد `p / step`، وعيّنة الإصدار `j` لها `p = TRIM + emit_start + j`
+/// ⇒ الشرط `TRIM + emit_start + j < (k+1)·step`.
+fn finalized_after_window(k: usize, emit_start: usize, emit_len: usize) -> usize {
+    let reach = (k + 1) * crate::segments::DEMIX_STEP;
+    reach
+        .saturating_sub(crate::segments::DEMIX_TRIM + emit_start)
+        .min(emit_len)
+}
+
+/// **نقي وقابل للاختبار**: يُخرج عيّنات الإصدار `[from, to)` من مخزون OLA
+/// بقسمة كل عيّنة على مجموع أوزان هانّ عندها (`divider`)، وصفرٌ حيث لا وزن.
+/// (نفس رياض [`demix_segment`] بالحرف — مفصولةً لتُقاس بلا نموذج.)
+fn materialize_emit(
+    result: &[Vec<f32>; 2],
+    divider: &[f32],
+    ola_start: usize,
+    emit_start: usize,
+    from: usize,
+    to: usize,
+) -> Result<[Vec<f32>; 2], SepError> {
+    let len = to - from;
+    let mut out = [vec![0.0f32; len], vec![0.0f32; len]];
+    for c in 0..2 {
+        for (i, slot) in out[c].iter_mut().enumerate() {
+            let p = crate::segments::DEMIX_TRIM + emit_start + from + i;
+            let Some(p) = p.checked_sub(ola_start) else {
+                return Err(SepError::Inference("emit sample before OLA span".into()));
+            };
+            if p >= divider.len() {
+                return Err(SepError::Inference(format!(
+                    "emit sample {} outside OLA span",
+                    from + i
+                )));
+            }
+            let d = divider[p];
+            *slot = if d > 1e-9 { result[c][p] / d } else { 0.0 };
+        }
+    }
+    Ok(out)
 }
 
 /// **نقي وقابل للاختبار بلا نموذج**: يمشي على الخطة مقطعاً مقطعاً — يُنتج ثم
@@ -907,12 +979,18 @@ fn demix_segmented_with_steps(
         n,
         |seg| {
             let base = seg.index as f32;
-            demix_segment(session, mix, seg, &|p| progress((base + p) / segments))
+            // **المصرف يُسلَّم داخل `demix_segment`** لأن الإصدار صار **بالنافذة**
+            // لا بالمقطع: ما صار نهائياً بعد كل نافذة يخرج فوراً.
+            demix_segment(
+                session,
+                mix,
+                seg,
+                &|p| progress((base + p) / segments),
+                sink,
+            )
         },
-        |seg, part| match sink {
-            Some(s) => s.segment_ready(seg, part),
-            None => Ok(()),
-        },
+        // والإصدار وقع داخل المقطع؛ ودور `drive_segments` هنا جمع الناتج فقط.
+        |_seg, _part| Ok(()),
     )
 }
 
@@ -2457,7 +2535,7 @@ mod tests {
         // الترتيب الأمامي
         let mut forward = [vec![0.0f32; n], vec![0.0f32; n]];
         for seg in &plan {
-            let part = demix_segment(&mut session, &mix, seg, &|_| true).expect("seg");
+            let part = demix_segment(&mut session, &mix, seg, &|_| true, None).expect("seg");
             for c in 0..2 {
                 let len = seg.emit_end - seg.emit_start;
                 forward[c][seg.emit_start..seg.emit_start + len].copy_from_slice(&part[c]);
@@ -2466,7 +2544,7 @@ mod tests {
         // الترتيب العكسي
         let mut reverse = [vec![0.0f32; n], vec![0.0f32; n]];
         for seg in plan.iter().rev() {
-            let part = demix_segment(&mut session, &mix, seg, &|_| true).expect("seg rev");
+            let part = demix_segment(&mut session, &mix, seg, &|_| true, None).expect("seg rev");
             for c in 0..2 {
                 let len = seg.emit_end - seg.emit_start;
                 reverse[c][seg.emit_start..seg.emit_start + len].copy_from_slice(&part[c]);
@@ -2573,6 +2651,50 @@ mod tests {
     }
 
     // ─── نقطة الإصدار التدريجي (المرحلة ٤أ) — نقيّة، بلا نموذج ولا عتاد ──────
+
+    /// **حارس النافذة (المرحلة ٤أ، الخطوة ٢)**: حدّ الإصدار التدريجي محسوب
+    /// لا مُقدَّر — العيّنة نهائية بعد `p/step`، فالإصدار يتقدّم بخطوة كاملة كل
+    /// نافذة، لا يقفز ولا يتأخّر نافذةً كاملة، ولا يتجاوز نطاق المقطع.
+    /// ومُفسِده: إسقاط `TRIM` أو استعمال `k·step` بدل `(k+1)·step` ⇒ يسقط.
+    #[test]
+    fn the_progressive_emit_frontier_advances_one_step_per_window() {
+        let step = crate::segments::DEMIX_STEP;
+        let trim = crate::segments::DEMIX_TRIM;
+        // مقطع يبدأ عند الصفر: بعد النافذة 0 صار نهائياً ما قبل `step − TRIM`.
+        assert_eq!(finalized_after_window(0, 0, 10 * step), step - trim);
+        // وكل نافذة تُضيف خطوة كاملة.
+        assert_eq!(finalized_after_window(1, 0, 10 * step), 2 * step - trim);
+        assert_eq!(finalized_after_window(9, 0, 10 * step), 10 * step - trim);
+        // ولا يتجاوز نطاق الإصدار أبداً (السقف = emit_len).
+        assert_eq!(finalized_after_window(9, 0, 3 * step), 3 * step);
+        assert_eq!(finalized_after_window(999, 0, 3 * step), 3 * step);
+        // وبإزاحة إصدار صغيرة تُخصم من الحدّ (`TRIM + emit_start`).
+        assert_eq!(finalized_after_window(2, 100, 10 * step), 3 * step - trim - 100);
+        // والنافذة الأولى قد لا تُنهي شيئاً (الإزاحة أكبر من الحدّ) ⇒ صفر لا سالب.
+        assert_eq!(finalized_after_window(0, 2 * step, 10 * step), 0);
+    }
+
+    /// **ونقيّة التقطيع**: عيّنة بلا وزن (`divider ≤ 1e-9`) تُخرَج **صفراً** لا
+    /// `NaN`/`inf`، وعيّنة لها وزن تُقسَم عليه — ونطاق خارج المخزون **يُعلَن**
+    /// بخطأ لا بذعر.
+    #[test]
+    fn materialize_emit_divides_by_the_window_weight_and_reports_out_of_span() {
+        // مخزون وهمي: عيّنتان بوزن 2.0 و0.5، والثالثة بلا وزن.
+        let result = [vec![4.0f32, 3.0, 7.0], vec![8.0, 6.0, 14.0]];
+        let divider = vec![2.0f32, 0.5, 0.0];
+        // المخزون يبدأ عند `DEMIX_TRIM` كما في الواقع (`ola_start = window_start`).
+        let trim = crate::segments::DEMIX_TRIM;
+        let out = materialize_emit(&result, &divider, trim, 0, 0, 3).expect("materialize");
+        assert_eq!(out[0], vec![2.0, 6.0, 0.0], "القسمة على الوزن، وصفرٌ بلا وزن");
+        assert_eq!(out[1], vec![4.0, 12.0, 0.0]);
+        // نطاق فرعي (الإصدار التدريجي يُخرِج شريحة كل نافذة).
+        let slice = materialize_emit(&result, &divider, trim, 0, 1, 3).expect("slice");
+        assert_eq!(slice[0], vec![6.0, 0.0]);
+        // وخارج المخزون ⇒ خطأ مُعلَن لا ذعر.
+        assert!(materialize_emit(&result, &divider, trim, 0, 0, 4).is_err());
+        // وإزاحة تُخرج العيّنة قبل المخزون ⇒ خطأ مُعلَن أيضاً.
+        assert!(materialize_emit(&result, &divider, trim + 5, 0, 0, 1).is_err());
+    }
 
     /// مقطع اختباري قصير: خطوتان ⇒ `2 × 195840 = 391680` عيّنة (~8.9 ث)،
     /// فتبقى المصفوفات صغيرة والاختبار في الميلي ثانية.
