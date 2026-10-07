@@ -193,6 +193,19 @@ const MUTANTS_B = [
       const A = MS_LOG[0].sourceBuffer.anchors;
       const U = hl(w2).UNIT_SECS;
       return A.length !== 2 || A[0].ts !== 0 || A[1].ts !== U; }],
+  ['م5: إعادة فحص الحال عند المشاهدة مُزالة (بقي سباق الإقلاع)',
+    (s2) => MUST_CHANGE(s2,
+      '      await checkStatusForCurrentVideo();',
+      '      // مُفسَد: لا إعادة فحص — الرفض الصامت بقي'),
+    async (w2) => {
+      // الزرّ يُحقَن على مهل.
+      for (let i = 0; i < 25; i++) { if (w2.document.querySelector('#haramlite-yt-watch')) break; await sleep(200); }
+      try { w2.document.querySelector('#haramlite-yt-watch').click(); } catch { return true; }
+      await sleep(600);
+      const toast = w2.document.getElementById('haramlite-toast');
+      const txt = toast ? toast.textContent : '';
+      return txt.includes('Build the map first') || txt.includes('ابنِ الخريطة');
+    }],
 ];
 
 async function selfcheck() {
@@ -200,7 +213,14 @@ async function selfcheck() {
   for (const [label, mutate, expectFall] of MUTANTS_B) {
     const mutated = mutate(CONTENT);
     let unitsQueries = 0;
+    let statusCalls = 0;
     const { w: w2, sent: sent2, blobs: blobs2 } = await makeWindow({ responder: async (m) => {
+      if (m.type === 'status') {
+        statusCalls += 1;
+        // أول نداء حالة يفشل — محاكاة سباق إقلاع المضيف (مقيسة حيّاً).
+        if (statusCalls === 1) return { ok: false, error: 'cold-start' };
+        return { ok: true, state: { last: { ok: true, url: 'https://www.youtube.com/watch?v=abc', seconds: 10, kept: [] } } };
+      }
       if (m.type === 'page_units') {
         unitsQueries += 1;
         return { ok: true, units: [
@@ -373,6 +393,53 @@ async function main() {
       && JSON.stringify(sb.appended) === JSON.stringify([[0xA1, 0x0C], [0xA2, 0x0D]])
       && ms.ended === true,
       'anchors=' + JSON.stringify(A) + ' appended=' + JSON.stringify(sb.appended) + ' ended=' + ms.ended);
+    w.close();
+  }
+
+  /* ⑧ سباق إقلاع المضيف (مُقاس حيّاً 2026-10-07): فحصُ الحال عند تحميل الصفحة
+     يسقط قبل جهوزية قناة الـnative ⇒ مهمّة مكتملة موجودة والمشاهدة تموت
+     بـneedMap. الضابط: النقر يعيد فحص الحال فتُفتح المشاهدة رغم السقوط الأول. */
+  {
+    let statusCalls = 0;
+    const responder = async (m) => {
+      if (m.type === 'status') {
+        statusCalls += 1;
+        if (statusCalls === 1) return { ok: false, error: 'cold-start' }; // سباق الإقلاع
+        return { ok: true, state: { last: { ok: true, url: 'https://www.youtube.com/watch?v=abc', seconds: 10, kept: [] } } };
+      }
+      if (m.type === 'result_file') {
+        return { ok: true, file: { total: 2, offset: m.offset || 0, data: hex([1, 2]), done: true } };
+      }
+      if (m.type === 'page_units') return { ok: true, units: [], runDone: true };
+      return { ok: true };
+    };
+    const { w, blobs } = await makeWindow({ responder, withMSE: false });
+    await sleep(600); // فحصُ التحميل الساقط تم هنا
+    let clickErr = null;
+    // الزرّ يُحقَن على مهل — انتظر حتى 5 ثوانٍ.
+    let btnSeen = false;
+    for (let i = 0; i < 25; i++) {
+      if (w.document.querySelector('#haramlite-yt-watch')) { btnSeen = true; break; }
+      await sleep(200);
+    }
+    if (!btnSeen) { report('⑧ سباق إقلاع المضيف ⇒ النقر يعيد فحص الحال فتُفتح المشاهدة', false, 'الزرّ لم يُحقَن'); w.close(); return; }
+    try { w.document.querySelector('#haramlite-yt-watch').click(); } catch (e) { clickErr = e; }
+    let samples = [];
+    for (let i = 0; i < 6; i++) {
+      await sleep(500);
+      samples.push({
+        btn: ((w.document.querySelector('#haramlite-yt-watch') || { textContent: '' }).textContent || '').slice(0, 24),
+        toast: ((w.document.getElementById('haramlite-toast') || { textContent: '' }).textContent || '').slice(0, 50),
+        blobs: blobs.length,
+        audio: w.document.querySelectorAll('audio').length,
+      });
+    }
+    const lastS = samples[samples.length - 1];
+    const toast = w.document.getElementById('haramlite-toast');
+    const toastTxt = toast ? toast.textContent : '';
+    report('⑧ سباق إقلاع المضيف ⇒ النقر يعيد فحص الحال فتُفتح المشاهدة (بلا needMap)',
+      clickErr === null && blobs.length === 1 && !toastTxt.includes('Build the map first') && !toastTxt.includes('ابنِ الخريطة'),
+      JSON.stringify({ samples, err: clickErr && clickErr.message }));
     w.close();
   }
 

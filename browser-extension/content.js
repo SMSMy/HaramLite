@@ -758,7 +758,12 @@
       watchBtn.textContent = t('btn.watch.fetching');
       watchBtn.title = t('btn.watch.fetchingTitle');
     } else {
-      watchBtn.disabled = true;
+      // **لا `disabled = true` هنا** (مُقاس حيّاً 2026-10-07): الزرّ المعطَّل
+      // يبتلع نقرات المستخدم فلا سبيل لإعادة فحص الحال بعد سباق إقلاع
+      // المضيف — ومهمّةٌ مكتملة للفيديو تبقى ميتةً أمام الزرّ. يبقى المظهر
+      // خافتاً والعنوان يشرح، **والنقر يعيد الفحص** (startWatch يعيد فحص
+      // الحال حين LAST فارغة) فيتعافى الزرّ بذاته متى اكتملت مهمّة الفيديو.
+      watchBtn.disabled = false;
       watchBtn.style.opacity = '0.55';
       watchBtn.style.background = 'rgba(21,19,17,.94)';
       watchBtn.style.borderColor = '#5a544f';
@@ -1478,6 +1483,13 @@ function keptStretchAround(kept, gapStart, gapEnd) {
   async function startWatch() {
     if (WATCH) return;
     if (!LAST) {
+      // **سباق إقلاع المضيف — مُقاس حيّاً 2026-10-07**: فحصُ الحال عند تحميل
+      // الصفحة قد يسبق جهوزية قناة الـnative فيسقط صامتاً فتبقى LAST فارغة
+      // والمشاهدة ميتة رغم وجود مهمّة مكتملة لهذا الفيديو. أعِد الفحص الآن —
+      // الرفض إن لم يُسفر الفحصُ الثاني.
+      await checkStatusForCurrentVideo();
+    }
+    if (!LAST) {
       toast(t('watch.needMap'), 4000);
       return;
     }
@@ -2083,10 +2095,14 @@ function keptStretchAround(kept, gapStart, gapEnd) {
   // bar buttons alive, so tryInject's early-return used to skip the check
   // forever (watch stayed disabled on every navigated video). This runs on
   // every distinct URL whether the buttons persisted or were just created.
-  function checkStatusForCurrentVideo() {
+  // **وتُعيد true إن امتلأت LAST** — ليعيد startWatch الفحص عند الطلب بدل
+  // الرفض الصامت (قياس حيّ 2026-10-07: فحصُ التحميل يسبق جهوزية قناة
+  // الـnative فتسقط الحالة والزرّ ميت رغم وجود مهمّة مكتملة للفيديو).
+  async function checkStatusForCurrentVideo() {
     setProc('idle');
     setWatchBtn('disabled');
-    native({ type: 'status' }).then((r) => {
+    try {
+      const r = await native({ type: 'status' });
       const st = r && r.state;
       const last = st && st.last;
       if (last && last.ok && sameVideo(location.href, last.url)) {
@@ -2096,7 +2112,7 @@ function keptStretchAround(kept, gapStart, gapEnd) {
         };
         setProc('done');
         setWatchBtn('ready');
-        return;
+        return true;
       }
       // A download-phase job of THIS video still running → track it (the
       // running name is the request URL there; later phases rename it).
@@ -2106,7 +2122,11 @@ function keptStretchAround(kept, gapStart, gapEnd) {
         setProc('working', run.pct || 0);
         poll();
       }
-    }).catch(() => {});
+      return false;
+    } catch {
+      // القناة لم تُجهَّز بعد (سباق إقلاع المضيف) — الرفض ليس قراراً نهائياً.
+      return false;
+    }
   }
 
   /* ── موضعا الحقن — **مقيسان حيّاً** (كروم 153.0.8010.53، تبويبان حقيقيان) ────
