@@ -780,14 +780,8 @@ fn demix_segment(
         if let Some(s) = sink {
             let upto = finalized_after_window(k, seg.emit_start, emit_len);
             if upto > emitted {
-                let slice = materialize_emit(
-                    &result,
-                    &divider,
-                    ola_start,
-                    seg.emit_start,
-                    emitted,
-                    upto,
-                )?;
+                let slice =
+                    materialize_emit(&result, &divider, ola_start, seg.emit_start, emitted, upto)?;
                 s.samples_ready(seg, emitted, &slice)?;
                 emitted = upto;
             }
@@ -2669,7 +2663,10 @@ mod tests {
         assert_eq!(finalized_after_window(9, 0, 3 * step), 3 * step);
         assert_eq!(finalized_after_window(999, 0, 3 * step), 3 * step);
         // وبإزاحة إصدار صغيرة تُخصم من الحدّ (`TRIM + emit_start`).
-        assert_eq!(finalized_after_window(2, 100, 10 * step), 3 * step - trim - 100);
+        assert_eq!(
+            finalized_after_window(2, 100, 10 * step),
+            3 * step - trim - 100
+        );
         // والنافذة الأولى قد لا تُنهي شيئاً (الإزاحة أكبر من الحدّ) ⇒ صفر لا سالب.
         assert_eq!(finalized_after_window(0, 2 * step, 10 * step), 0);
     }
