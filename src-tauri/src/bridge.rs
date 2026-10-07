@@ -333,9 +333,14 @@ fn handle_host_message(msg: &serde_json::Value) {
         "page_units" => {
             // الخطوة ٤أ/٣: وحدات الخطوة الجاهزة — **الحقيقة على القرص**:
             // إعادة التسمية الذرّية تضمن أن الظاهر مكتمل لا نصف مكتمل.
+            // و`runDone` إشارةُ «لا وحدات قادمة» للعميل: بلاها يظلّ يستطلع
+            // عند الاكتمال حتى يُعلن `fetch.stalled` ظلماً.
+            let st = read_state();
+            let run_done = state_run_done(&st);
             reply_ok(serde_json::json!({
                 "ok": true,
                 "units": list_page_units(&page_audio_dir()),
+                "runDone": run_done,
             }));
         }
         "page_unit" => {
@@ -694,6 +699,17 @@ fn clear_page_units(dir: &std::path::Path) {
             let _ = std::fs::remove_file(e.path());
         }
     }
+}
+
+/// هل اكتملت مهمّة صوت الصفحة في هذه الحالة؟ (`last.page_audio_done`).
+/// غيابُها ⇒ غير مكتملة: `last` يُنضبط صفراً عند بدء المهمّة فلا حالة
+/// قديمة تُقرأ اكتمالاً كاذباً، والحالات الأقدم من الحقل (توافق خلفي)
+/// لم تكن تدريجية أصلاً.
+fn state_run_done(st: &serde_json::Value) -> bool {
+    st.get("last")
+        .and_then(|l| l.get("page_audio_done"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
 }
 
 /// النقي القابل للاختبار داخل [`serve_page_audio_slice`]: قراءة الملف **كما
@@ -2917,6 +2933,19 @@ mod tests {
         assert!(sweep_deletable(&part, &dir, None), "النصف مكتمل يُكسح");
         assert!(sweep_deletable(&other, &dir, None), "غير الوحدات كما كان");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// إشارة «لا وحدات قادمة» تأتي من علم اكتمال المهمّة في الحالة —
+    /// غيابُ `last` (أثناء التشغيل) أو غيابُ الحقل (حالات أقدم) ⇒ غير مكتملة.
+    #[test]
+    fn run_done_reads_the_completion_flag_from_state() {
+        assert!(
+            !state_run_done(&serde_json::json!({ "running": {} })),
+            "أثناء التشغيل: last مُصفَّر"
+        );
+        assert!(!state_run_done(&serde_json::json!({ "last": {} })), "حالة أقدم بلا الحقل");
+        assert!(!state_run_done(&serde_json::json!({ "last": { "page_audio_done": false } })));
+        assert!(state_run_done(&serde_json::json!({ "last": { "page_audio_done": true } })));
     }
 
     /// الدفعة ب (المرحلة ٣ — شرط القبول حرفياً): طابور `[1..6]` وأولوية على 4
