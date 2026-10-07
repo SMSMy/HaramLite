@@ -2943,9 +2943,16 @@ mod tests {
             !state_run_done(&serde_json::json!({ "running": {} })),
             "أثناء التشغيل: last مُصفَّر"
         );
-        assert!(!state_run_done(&serde_json::json!({ "last": {} })), "حالة أقدم بلا الحقل");
-        assert!(!state_run_done(&serde_json::json!({ "last": { "page_audio_done": false } })));
-        assert!(state_run_done(&serde_json::json!({ "last": { "page_audio_done": true } })));
+        assert!(
+            !state_run_done(&serde_json::json!({ "last": {} })),
+            "حالة أقدم بلا الحقل"
+        );
+        assert!(!state_run_done(
+            &serde_json::json!({ "last": { "page_audio_done": false } })
+        ));
+        assert!(state_run_done(
+            &serde_json::json!({ "last": { "page_audio_done": true } })
+        ));
     }
 
     /// الدفعة ب (المرحلة ٣ — شرط القبول حرفياً): طابور `[1..6]` وأولوية على 4
