@@ -34,6 +34,7 @@ mod telegram;
 mod tg_stats;
 mod throttle;
 mod tray;
+mod unit_sink;
 mod update_check;
 mod v1proto;
 mod watch_service;
