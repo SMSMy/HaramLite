@@ -1,7 +1,7 @@
 {
   "why": "خطّ أساس مقيس لبوّابات Rust — يُحدَّث بـ--update بعد مراجعة السبب، ولا يُخفَّض لتُمرَّر بوّابة.",
   "clippy_unique_warnings": 14,
-  "tests_passed": 486,
+  "tests_passed": 488,
   "tests_ignored": 8,
   "tests": [
     "atomic::tests::a_failed_write_keeps_the_old_file_and_leaves_no_temp",
@@ -246,12 +246,14 @@
     "separator::tests::ep_watcher_catches_ort_errors",
     "separator::tests::global_window_chunk_matches_the_padded_mixture",
     "separator::tests::inference_threads_leaves_air",
+    "separator::tests::materialize_emit_divides_by_the_window_weight_and_reports_out_of_span",
     "separator::tests::provider_file_roundtrips_isolated",
     "separator::tests::random_segment_processing_order_yields_identical_bytes",
     "separator::tests::report_separate_ab_inference_vs_build",
     "separator::tests::segmented_matches_whole_file_mechanically",
     "separator::tests::separates_tone_mixture_end_to_end",
     "separator::tests::the_cancel_stop_is_typed_in_the_production_path",
+    "separator::tests::the_progressive_emit_frontier_advances_one_step_per_window",
     "separator::tests::the_same_window_in_two_batch_contexts_is_identical",
     "separator::tests::the_sink_sees_every_segment_once_in_order_with_exact_ranges",
     "session::tests::report_scripted_session",
@@ -495,5 +497,5 @@
     "cargo": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
     "clippy": "clippy 0.1.95 (59807616e1 2026-04-14)"
   },
-  "measured_at": "2026-10-06 · قياس محلي"
+  "measured_at": "2026-10-07 · قياس محلي"
 }
