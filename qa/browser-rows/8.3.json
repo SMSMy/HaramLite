@@ -109,15 +109,15 @@
     },
     {
       "path": "src-tauri/src/bridge.rs",
-      "sha256": "462682293a0ff1a59f203b3bb71bbfc14cf0cf35ca0be08160c237934e0532e4"
+      "sha256": "09b0ce6a5523b42e1ef894934bcee20023ba60957d3a91768dda46ad2558280c"
     },
     {
       "path": "src-tauri/src/pipeline.rs",
-      "sha256": "ed01d89f8e919f172766454012f181de6bc2591702936add37ec66a15efee245"
+      "sha256": "1017c22103d0ea0a640deb1d416e1de80011c25c446bd069d23b9ebf72eb51ce"
     },
     {
       "path": "src-tauri/src/m6b_clip_guard.rs",
-      "sha256": "aaa06be1a26fd604f582bc9130d647c8cf44951fcdc037faee8f262f81d3749a"
+      "sha256": "31825e86d26f62a5cd159648c1d06787244021505d0dedb8f05acdd9f99b230d"
     }
   ]
 }
