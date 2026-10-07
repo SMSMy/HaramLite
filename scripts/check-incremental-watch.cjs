@@ -54,9 +54,13 @@ class FakeSB {
   constructor() {
     this.updating = false;
     this.appended = [];
+    this.anchors = [];   // ٤أ/٣: مرساة كل إلحاق (ts + حدود النافذة لحظتها)
     this.removed = [];
     this.throwOnce = false;
     this.buffered = { length: 1, end: () => 10 };
+    this.timestampOffset = 0;
+    this.appendWindowStart = 0;
+    this.appendWindowEnd = Infinity;
     this._l = {};
   }
   addEventListener(ev, fn) { (this._l[ev] = this._l[ev] || []).push(fn); }
@@ -64,6 +68,7 @@ class FakeSB {
   appendBuffer(bytes) {
     if (this.throwOnce) { this.throwOnce = false; const e = new Error('quota'); e.name = 'QuotaExceededError'; throw e; }
     this.appended.push(Array.from(bytes));
+    this.anchors.push({ ts: this.timestampOffset, ws: this.appendWindowStart, we: this.appendWindowEnd });
     this.updating = true;
     queueMicrotask(() => { this.updating = false; this._fire('updateend'); });
   }
@@ -177,15 +182,39 @@ const MUTANTS_B = [
       btn.click(); await sleep(20);
       const prio = sent2.find((m) => m.type === 'native' && m.message && m.message.type === 'prioritize_page_audio');
       return !!prio && prio.message.segment !== 3; }],
+  ['م4: مرساة الوحدة مشتقّة من نهاية المخزن لا من الشبكة',
+    (s2) => MUST_CHANGE(s2,
+      '        sb.timestampOffset = anchor;',
+      '        sb.timestampOffset = (() => { try { return sb.buffered.end(sb.buffered.length - 1); } catch (e) { return anchor; } })(); // مُفسَد: الاشتقاق من السابق'),
+    async (w2) => { const video = w2.document.querySelector('video'); video.currentTime = 0;
+      const p = await hl(w2).pumpUnits(video, null, () => 0, () => 30);
+      MS_LOG[0]._fire('sourceopen');
+      await p.pump;
+      const A = MS_LOG[0].sourceBuffer.anchors;
+      const U = hl(w2).UNIT_SECS;
+      return A.length !== 2 || A[0].ts !== 0 || A[1].ts !== U; }],
 ];
 
 async function selfcheck() {
   let caught = 0;
   for (const [label, mutate, expectFall] of MUTANTS_B) {
     const mutated = mutate(CONTENT);
-    const { w: w2, sent: sent2, blobs: blobs2 } = await makeWindow({ responder: async (m) => (m.offset === 0
-      ? { ok: true, file: { total: 2, offset: 0, data: hex([1, 2]), done: false } }
-      : { ok: true, file: { total: 4, offset: 2, data: hex([3, 4]), done: true } }), withMSE: true, src: mutated });
+    let unitsQueries = 0;
+    const { w: w2, sent: sent2, blobs: blobs2 } = await makeWindow({ responder: async (m) => {
+      if (m.type === 'page_units') {
+        unitsQueries += 1;
+        return { ok: true, units: [
+          { k: 1, total: 2, done: true },
+          { k: 2, total: 2, done: true },
+        ], runDone: unitsQueries > 2 };
+      }
+      if (m.type === 'page_unit') {
+        return { ok: true, unit: { k: m.k, total: 2, offset: m.offset, data: m.offset > 0 ? '' : hex([0xA0 + m.k, 0x0B + m.k]), done: m.offset > 0 } };
+      }
+      return m.offset === 0
+        ? { ok: true, file: { total: 2, offset: 0, data: hex([1, 2]), done: false } }
+        : { ok: true, file: { total: 4, offset: 2, data: hex([3, 4]), done: true } };
+    }, withMSE: true, src: mutated });
     const fell = await expectFall(w2, sent2, blobs2);
     w2.close();
     if (fell) { caught += 1; console.log('  ✅ سقط   ' + label); }
@@ -307,6 +336,43 @@ async function main() {
     report('⑥ والنقر يرسل prioritize_page_audio برقم المقطع ويخفي الطبقة',
       !!prio && prio.message.segment === 3 && !w.document.getElementById('haramlite-priority-overlay'),
       prio ? JSON.stringify(prio.message) : 'لا رسالة');
+    w.close();
+  }
+
+  /* ⑦ وضع الوحدات (٤أ/٣): المراسي **مطلقة من الشبكة** (`ts` = (k−1)·UNIT_SECS
+     لا مشتقّة من نهاية سابقة)، ونوافذ الحدود تُضبط قبل كل إلحاق (قتطاع حشو
+     الإطار ~20.8ms مُقيس)، والقناة تُنهى عند `runDone` لا عند صمتٍ ظالم. */
+  {
+    let unitsQueries = 0;
+    const responder = async (m) => {
+      if (m.type === 'page_units') {
+        unitsQueries += 1;
+        return { ok: true, units: [
+          { k: 1, total: 2, done: true },
+          { k: 2, total: 2, done: true },
+        ], runDone: unitsQueries > 2 };
+      }
+      if (m.type === 'page_unit') {
+        return { ok: true, unit: { k: m.k, total: 2, offset: m.offset, data: m.offset > 0 ? '' : hex([0xA0 + m.k, 0x0B + m.k]), done: m.offset > 0 } };
+      }
+      return { ok: true };
+    };
+    const { w } = await makeWindow({ responder, withMSE: true });
+    const video = w.document.querySelector('video');
+    video.currentTime = 0;
+    const p = await hl(w).pumpUnits(video, null, () => 0, () => 30);
+    const ms = MS_LOG[0];
+    ms._fire('sourceopen');
+    await p.pump;
+    const sb = ms.sourceBuffer;
+    const U = hl(w).UNIT_SECS;
+    const A = sb.anchors;
+    report('⑦ الوحدات تُلحق بمراسٍ مطلقة [0, U] ونوافذ الحدود تُضبط والقناة تُنهى عند runDone',
+      A.length === 2 && A[0].ts === 0 && A[1].ts === U
+      && A[0].ws === 0 && A[0].we === U && A[1].ws === U && A[1].we === 2 * U
+      && JSON.stringify(sb.appended) === JSON.stringify([[0xA1, 0x0C], [0xA2, 0x0D]])
+      && ms.ended === true,
+      'anchors=' + JSON.stringify(A) + ' appended=' + JSON.stringify(sb.appended) + ' ended=' + ms.ended);
     w.close();
   }
 

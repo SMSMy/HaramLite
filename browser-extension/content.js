@@ -1300,6 +1300,116 @@ function keptStretchAround(kept, gapStart, gapEnd) {
     return { url, pump, ms };
   }
 
+  /* ── وضع الوحدات (الخطوة ٤أ/٣) ─────────────────────────────────────────
+   * وحدات خطوة على الشبكة المطلقة: الوحدة k (واحد-أساس) تغطّي العيّنات
+   * [(k−1)·UNIT_SAMPLES, k·UNIT_SAMPLES) ومرساتها الزمنية (k−1)·UNIT_SECS.
+   * **وممنوع اشتقاق أي موضع من نهاية وحدة سابقة** — كل مرساة تُحسب من k
+   * وحده ⇒ التراكم مستحيل بالبناء. وحشوُ نهاية إطار mp3 (~20.8ms مُقيس)
+   * يُقتطع بـappendWindowEnd = مرساة الوحدة التالية (وصفة مقيسة)، وتأخيرُ
+   * وسم LAME يعوّضه المتصفح كاملاً (delaySamples = 0 مُقيس على محرّكنا). */
+  const UNIT_SAMPLES = 195840;            // DEMIX_STEP في segments.rs
+  const UNIT_SR = 44100;                  // معدّل شبكة demix الذي عُرِّفت عليه
+  const UNIT_SECS = UNIT_SAMPLES / UNIT_SR; // ‏4.440816... ث
+  const unitAnchorSecs = (k) => (k - 1) * UNIT_SECS;
+  const unitAt = (t) => Math.floor((t || 0) * UNIT_SR / UNIT_SAMPLES) + 1;
+
+  async function unitsList() {
+    const r = await native({ type: 'page_units' });
+    if (r && r.ok === false) throw bridgeError(r);
+    if (!r || !Array.isArray(r.units)) throw new Error(t('fetch.emptyReply'));
+    return { units: r.units, runDone: !!r.runDone };
+  }
+
+  async function unitSlice(k, offset) {
+    const r = await native({ type: 'page_unit', k, offset, len: PAGE_SLICE_LEN });
+    if (r && r.ok === false) throw bridgeError(r);
+    const u = r && r.unit;
+    if (!u) throw new Error(t('fetch.emptyReply'));
+    return u;
+  }
+
+  /** يجلب وحدة كاملة بشرائحها حتى `done` **الوحدة نفسها** (لا الملف كله):
+   * الوحدة ~178KB مُقيسة فغالباً شريحة واحدة، والاستطلاع الهادئ
+   * (`total:0 · data:"" · done:false`) يحمل حدود `FETCH_LIMITS` كما الناميّ. */
+  async function collectUnit(k, onProg) {
+    const parts = [];
+    let offset = 0;
+    let total = 0;
+    let done = false;
+    let quiet = 0;
+    while (!done) {
+      const u = await unitSlice(k, offset);
+      total = u.total || 0;
+      done = !!u.done;
+      if (!u.data.length && !done) {
+        if (++quiet > FETCH_LIMITS.polls) throw new Error(t('fetch.stalled'));
+        await sleepMs(FETCH_LIMITS.ms);
+        continue;
+      }
+      quiet = 0;
+      if (u.data.length) {
+        parts.push(u.data);
+        offset = u.offset + u.data.length / 2;
+      }
+      if (onProg) onProg(total > 0 ? Math.min(offset / total, 1) : 0);
+    }
+    return hexToBytes(parts.join(''));
+  }
+
+  /** **مضخّة الوحدات**: تفتح `MediaSource('audio/mpeg')` وتلحق الوحدات
+   * تصاعدياً بدءاً من وحدة موضع الفيديو الحالي، كلٌّ على **مرساتها
+   * المطلقة** (`timestampOffset` من الشبكة لا من نهاية سابقة) و`appendWindow`
+   * عند حدود الوحدة ليقتطع حشو نهاية الإطار، وتنهي القناة عند `runDone`.
+   * وحدّها المعلَن: فجوةُ وحدةٍ لم تكتمل بعد تُنتظر بالاستطلاع (الأولوية
+   * القادمة تُقرّب وصولها)، وانحدارُ الإصدار يُنهي القناة بما وُصل. */
+  async function pumpUnits(video, onProg, frontSecs, estimateSecs) {
+    const ms = new MediaSource();
+    const url = URL.createObjectURL(ms);
+    const sourceOpen = onceEvent(ms, 'sourceopen');
+    const startUnit = unitAt(video.currentTime || 0);
+    const pump = (async () => {
+      await sourceOpen;
+      const sb = ms.addSourceBuffer('audio/mpeg');
+      try { ms.duration = Math.max(estimateSecs() || 0, 0.1); } catch { /* gone */ }
+      let quiet = 0;
+      for (let k = startUnit; ; k++) {
+        const anchor = unitAnchorSecs(k);
+        let bytes = null;
+        while (bytes === null) {
+          const { units, runDone } = await unitsList();
+          const ready = units.find((u) => u.k === k && u.done);
+          if (ready) { bytes = await collectUnit(k, onProg); break; }
+          if (runDone) {
+            // المهمّة اكتملت وقائمة الوحدات اكتملت بلا هذه: نهاية ما وُصل
+            // (انحدارٌ مُعلَن أو نهاية الملف) — القناة تُنهى بما أُلحق،
+            // والمشاهدة التالية تسلك الملف الكامل (بوابة الطريق تقلبه).
+            try { if (ms.readyState === 'open') ms.endOfStream(); } catch { /* gone */ }
+            return;
+          }
+          if (++quiet > FETCH_LIMITS.polls) throw new Error(t('fetch.stalled'));
+          await sleepMs(FETCH_LIMITS.ms);
+        }
+        sb.appendWindowStart = anchor;
+        sb.appendWindowEnd = anchor + UNIT_SECS;
+        sb.timestampOffset = anchor;
+        await appendWithQuotaGuard(sb, bytes, frontSecs);
+        quiet = 0;
+      }
+    })();
+    return { url, pump, ms };
+  }
+
+  /** **بوابة الوحدات**: تبدأ المشاهدة بوضع الوحدات iff وحداتٌ جاهزة
+   * **والمهمّة لم تكتمل** — أما بعد الاكتمال فالملف الكامل أوفى (مسار
+   * اليوم: ملف واحد بلا درزات) والوحدات لا تُفضَّل عليه. وفشلُ الاستطلاع
+   * (لا جسر/لا وحدات) يعود بالطرق القائمة كما هي. */
+  async function unitsRouteReady() {
+    try {
+      const { units, runDone } = await unitsList();
+      return units.length > 0 && !runDone;
+    } catch { return false; }
+  }
+
   /** **بوابة الطريق**: الشريحة الأولى تحسم — مكتمل ⇒ مسار اليوم (Blob)؛ نامٍ
    * ⇒ MediaSource إن توفّر وإلّا تجميعاً كاملاً متحمّلاً للنموّ. */
   async function openPageAudio(onProg, frontSecs, estimateSecs) {
@@ -1354,7 +1464,9 @@ function keptStretchAround(kept, gapStart, gapEnd) {
   /* سطح قياس حارس الدفعة ب (jsdom): أسماء مساحة محدودة لا واجهة مستخدم. */
   window.__hlIncremental = {
     fetchPageAudio, openPageAudio, collectToBlob, showPriorityOverlay,
+    pumpUnits, unitsList, unitAt, unitsRouteReady, collectUnit,
     PAGE_SLICE_LEN, SEGMENT_SECS, FETCH_LIMITS, OVERLAY_AHEAD_SECS,
+    UNIT_SAMPLES, UNIT_SR, UNIT_SECS,
   };
 
   function watchLine() {
@@ -1382,11 +1494,21 @@ function keptStretchAround(kept, gapStart, gapEnd) {
       if (watchBtn) watchBtn.textContent = fill(t('btn.watch.fetchingPct'), { pct: Math.round(p * 100) });
     };
     try {
-      const opened = await openPageAudio(onProg,
-        () => (audioRef.current ? audioRef.current.currentTime : 0),
-        () => { try { return video.duration || 0; } catch { return 0; } });
-      url = opened.url;
-      if (opened.mode === 'mse') inc = opened;
+      // بوابة الوحدات (٤أ/٣): وحداتٌ جاهزة والمهمّة غير مكتملة ⇒ مضخّة
+      // الوحدات بمراسٍ مطلقة؛ وإلا الطرق القائمة كما هي (كامل / نامٍ).
+      if (await unitsRouteReady()) {
+        const p = await pumpUnits(video, onProg,
+          () => (audioRef.current ? audioRef.current.currentTime : 0),
+          () => { try { return video.duration || 0; } catch { return 0; } });
+        url = p.url;
+        inc = { pump: p.pump };
+      } else {
+        const opened = await openPageAudio(onProg,
+          () => (audioRef.current ? audioRef.current.currentTime : 0),
+          () => { try { return video.duration || 0; } catch { return 0; } });
+        url = opened.url;
+        if (opened.mode === 'mse') inc = opened;
+      }
     } catch (e) {
       setWatchBtn('ready');
       toast('✗ ' + errText(e, t('fetch.failed')), 4000);
